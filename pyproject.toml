@@ -1,0 +1,33 @@
+[project]
+name = "thundertalk"
+version = "0.2.0"
+description = "Lightning-fast voice-to-text for every desktop"
+requires-python = ">=3.12"
+dependencies = [
+    "PySide6>=6.7",
+    "sherpa-onnx>=1.12",
+    "sounddevice>=0.5",
+    "numpy>=1.24",
+    "pynput>=1.7",
+    "pyperclip>=1.8",
+    "sherpa-onnx-core>=1.12.38",
+]
+
+[project.optional-dependencies]
+mlx = [
+    "mlx-qwen3-asr>=0.3",
+]
+
+[project.scripts]
+thundertalk = "thundertalk.app:main"
+
+[build-system]
+requires = ["hatchling"]
+build-backend = "hatchling.build"
+
+[dependency-groups]
+dev = [
+    "pillow>=12.2.0",
+    "pyinstaller>=6.19.0",
+    "ruff>=0.11",
+]

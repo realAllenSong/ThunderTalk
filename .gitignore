@@ -1,0 +1,46 @@
+# === Python / uv ===
+.venv/
+__pycache__/
+*.pyc
+*.pyo
+*.egg-info/
+dist/
+build/
+.python-version
+
+# === Environment & Secrets ===
+.env
+.env.*
+!.env.example
+
+# === IDE & Editor ===
+.vscode/
+!.vscode/extensions.json
+.idea/
+*.swp
+*.swo
+*~
+
+# === OS ===
+.DS_Store
+Thumbs.db
+desktop.ini
+
+# === Logs ===
+*.log
+
+# === Models (large binary files, user downloads) ===
+models/
+
+# === Build output ===
+*.dmg
+*.exe
+*.msi
+*.deb
+*.AppImage
+*.app
+*.spec
+
+# === Internal reference / competitor research ===
+shandianshuo/
+reference.md
