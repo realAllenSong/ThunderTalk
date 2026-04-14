@@ -293,10 +293,12 @@ def main() -> None:
             app.processEvents()
             mute_on = settings.get("mute_speakers")
             print(f"[Toggle] Starting recording, mute_speakers={mute_on}")
-            if mute_on:
-                mute_system_audio()
+            # Start mic BEFORE muting: muting Bluetooth speakers can trigger
+            # a profile switch (A2DP→HFP) that changes the default input device.
             mic = settings.microphone
             pipe.recorder.start(device=None if mic == "auto" else mic)
+            if mute_on:
+                mute_system_audio()
             pipe._recording = True
             print("[Toggle] Recording started")
 
@@ -338,11 +340,6 @@ def main() -> None:
 
     tray.open_action.triggered.connect(_show_settings_window)
     tray.quit_action.triggered.connect(app.quit)
-    tray.activated.connect(
-        lambda reason: _show_settings_window()
-        if reason == TrayIcon.ActivationReason.Trigger
-        else None
-    )
     tray.show()
 
     window.show()

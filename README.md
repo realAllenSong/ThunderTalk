@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="assets/logo-placeholder.svg" width="80" alt="ThunderTalk Logo" />
+  <img src="assets/icon.png" width="80" alt="ThunderTalk Logo" />
 </p>
 
 <h1 align="center">ThunderTalk</h1>
@@ -10,8 +10,8 @@
 
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20%7C%20Windows%20%7C%20Linux-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-0.1.0-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
+  <img src="https://img.shields.io/badge/version-0.2.0-orange" alt="Version" />
 </p>
 
 ---
@@ -20,79 +20,65 @@
 
 - **Press a key, speak, get text.** One hotkey activates voice input anywhere on your desktop.
 - **100% local & private** — your voice never leaves your device. No cloud, no subscription.
-- **Multiple ASR models** — choose from SenseVoice-Small, FunASR-Nano-MLT, or Qwen3-ASR.
+- **Multiple ASR backends** — MLX (Metal GPU on Apple Silicon) and ONNX (CPU).
+- **Multiple ASR models** — SenseVoice, FunASR-Nano, Qwen3-ASR in various sizes.
+- **Hotwords & auto-learning** — custom vocabulary for domain-specific terms, with automatic frequency-based learning.
 - **Smart hardware detection** — identifies your CPU, RAM, and GPU to recommend the best model.
-- **Microphone on-demand** — only acquired during recording, released immediately after.
-- **Cross-platform** — macOS, Windows, and Linux.
+- **Speaker mute** — optionally mutes system audio during recording to avoid feedback.
 
-## Quick Start
+## Download
 
-```bash
-# 1. Install uv (if you don't have it)
-curl -LsSf https://astral.sh/uv/install.sh | sh
+Download the latest **ThunderTalk.app** from [Releases](https://github.com/realAllenSong/ThunderTalk/releases).
 
-# 2. Clone and install
-git clone https://github.com/songallen/ThunderTalk.git
-cd ThunderTalk
-uv sync
-
-# 3. Run
-uv run python run.py
-```
-
-On first launch, open **Settings** from the system tray to download a model. Then press **Option + Space** (macOS) or **Alt + Space** (Windows/Linux) to start voice input.
-
-> **macOS users**: Grant Accessibility permission to your terminal in System Settings → Privacy & Security → Accessibility for global hotkeys to work.
+> **macOS**: After downloading, move `ThunderTalk.app` to your Applications folder. On first launch, grant **Microphone** and **Accessibility** permissions when prompted.
 
 ## Supported Models
 
-| Model | Size | Languages | Accuracy | Hotwords |
-|-------|------|-----------|----------|----------|
-| SenseVoice-Small | 241 MB | 5 | ★★★☆☆ | No |
-| FunASR-Nano-MLT | ~2 GB | 31 | ★★★★☆ | Yes |
-| Qwen3-ASR-0.6B | 940 MB | 52 | ★★★★★ | Yes |
-| Qwen3-ASR-1.7B | ~3 GB | 52 | ★★★★★ | Coming Soon |
+| Model | Size | Backend | Languages | Accuracy | Hotwords |
+|-------|------|---------|-----------|----------|----------|
+| SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | No |
+| FunASR-Nano-MLT | ~2 GB | ONNX (CPU) | 31 | ★★★★☆ | Yes |
+| Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | Yes |
+| Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
+| Qwen3-ASR-1.7B | ~3 GB | ONNX (CPU) | 52 | ★★★★★ | Yes |
 
-Models are downloaded on-demand and stored at `~/.thundertalk/models/`.
+Models are downloaded on-demand from the app's Settings page and stored at `~/.thundertalk/models/`.
+
+## Usage
+
+1. Click the **ThunderTalk** icon in the menu bar → **Open Settings** → download a model.
+2. Press the hotkey (default: **F4**) to start recording. Press again to stop.
+3. The transcribed text is automatically pasted into the active application.
+
+## Development
+
+```bash
+# Install uv (if you don't have it)
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Clone and install
+git clone https://github.com/realAllenSong/ThunderTalk.git
+cd ThunderTalk
+uv sync
+
+# (Apple Silicon) Install MLX backend for GPU acceleration
+uv sync --extra mlx
+
+# Run from source
+uv run python run.py
+
+# Build macOS .app
+.venv/bin/python build_macos.py
+# Output: dist/ThunderTalk.app
+```
 
 ## Tech Stack
 
-- **UI**: [PySide6](https://doc.qt.io/qtforpython-6/) (Qt6 for Python)
-- **ASR engine**: [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) Python bindings (ONNX Runtime + llama.cpp)
+- **UI**: [PySide6](https://doc.qt.io/qtforpython-6/) (Qt6)
+- **ASR**: [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (ONNX), [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) (MLX)
 - **Audio**: [sounddevice](https://python-sounddevice.readthedocs.io/)
-- **Hotkeys**: [pynput](https://pynput.readthedocs.io/)
-- **Package management**: [uv](https://docs.astral.sh/uv/)
-
-## Project Structure
-
-```
-thundertalk/
-├── app.py              # Application entry, pipeline orchestration
-├── core/
-│   ├── audio.py        # Microphone recording (sounddevice)
-│   ├── asr.py          # ASR engine wrapper (sherpa-onnx)
-│   ├── hotkey.py       # Global shortcut listener (pynput)
-│   ├── text_output.py  # Paste text to active application
-│   └── models.py       # Model registry, download, hardware detection
-└── ui/
-    ├── overlay.py       # Floating voice input capsule
-    ├── main_window.py   # Settings / model management window
-    └── tray.py          # System tray icon
-```
-
-## Contributing
-
-We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) before submitting a pull request.
-
-## Roadmap
-
-- [x] Core voice-to-text pipeline
-- [x] Multi-model support with download manager
-- [x] Hardware detection
-- [ ] Personal dictionary with auto-learning
-- [ ] Hotword / custom vocabulary
-- [ ] GPU acceleration (Metal / CUDA)
-- [ ] Voice assistant mode (LLM integration)
+- **Hotkeys**: Native NSEvent (macOS)
+- **Build**: [PyInstaller](https://pyinstaller.org/) + Apple Development code signing
 
 ## License
 
@@ -101,7 +87,7 @@ We welcome contributions! Please read our [Contributing Guide](CONTRIBUTING.md) 
 ## Acknowledgments
 
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — cross-platform ASR inference
+- [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) — MLX-native Qwen3 ASR
 - [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) — lightweight ASR model
 - [FunASR](https://github.com/FunAudioLLM/Fun-ASR) — multilingual ASR
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) — state-of-the-art ASR
-- [PySide6](https://doc.qt.io/qtforpython-6/) — Qt6 Python bindings

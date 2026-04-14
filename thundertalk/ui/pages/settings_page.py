@@ -417,17 +417,7 @@ class SettingsPage(QWidget):
         self._mic_combo = QComboBox()
         self._mic_combo.setStyleSheet(theme.COMBO_QSS)
         self._mic_combo.addItem("Auto (System Default)")
-        try:
-            for d in sd.query_devices():
-                if d["max_input_channels"] > 0:
-                    self._mic_combo.addItem(d["name"])
-        except Exception:
-            pass
-        current = self._settings.microphone
-        if current != "auto":
-            idx = self._mic_combo.findText(current)
-            if idx >= 0:
-                self._mic_combo.setCurrentIndex(idx)
+        self._refresh_mic_list()
         self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
         ly.addWidget(self._mic_combo)
 
@@ -457,6 +447,30 @@ class SettingsPage(QWidget):
         ly.addWidget(card)
         ly.addStretch()
         self._add_page(page)
+
+    def _refresh_mic_list(self) -> None:
+        """Re-scan audio devices and rebuild the mic dropdown."""
+        self._mic_combo.blockSignals(True)
+        while self._mic_combo.count() > 1:
+            self._mic_combo.removeItem(1)
+        try:
+            sd._terminate()
+            sd._initialize()
+            for d in sd.query_devices():
+                if d["max_input_channels"] > 0:
+                    self._mic_combo.addItem(d["name"])
+        except Exception:
+            pass
+        current = self._settings.microphone
+        if current != "auto":
+            idx = self._mic_combo.findText(current)
+            if idx >= 0:
+                self._mic_combo.setCurrentIndex(idx)
+        self._mic_combo.blockSignals(False)
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        self._refresh_mic_list()
 
     def _on_mic_changed(self, idx: int) -> None:
         self._settings.set("microphone", "auto" if idx == 0 else self._mic_combo.currentText())

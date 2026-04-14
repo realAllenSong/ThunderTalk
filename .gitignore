@@ -39,7 +39,6 @@ models/
 *.deb
 *.AppImage
 *.app
-*.spec
 
 # === Internal reference / competitor research ===
 shandianshuo/
