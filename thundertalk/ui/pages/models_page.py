@@ -400,9 +400,9 @@ class ModelsPage(QWidget):
 
     def _detect_hw(self) -> None:
         hw = detect_hardware()
-        from thundertalk.core.asr import _MLX_AVAILABLE
+        from thundertalk.core.asr import _check_mlx, _IS_APPLE_SILICON
         plat = hw.platform_tag.replace("-", " ").title()
-        mlx_tag = "  [MLX available]" if _MLX_AVAILABLE else ""
+        mlx_tag = "  [MLX capable]" if _IS_APPLE_SILICON else ""
         self._hw_label.setText(
             f"CPU: {hw.cpu}   ·   RAM: {hw.memory_gb:.0f} GB   ·   GPU: {hw.gpu}\n"
             f"Platform: {plat}{mlx_tag}"

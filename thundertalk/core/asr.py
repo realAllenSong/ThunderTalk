@@ -29,8 +29,16 @@ _SYSTEM = platform.system()
 _MACHINE = platform.machine()
 _IS_APPLE_SILICON = _SYSTEM == "Darwin" and _MACHINE == "arm64"
 
-_MLX_AVAILABLE = False
-if _IS_APPLE_SILICON:
+_MLX_AVAILABLE: bool | None = None  # None = not yet checked
+
+def _check_mlx() -> bool:
+    """Lazy-check MLX availability (import only when first needed)."""
+    global _MLX_AVAILABLE
+    if _MLX_AVAILABLE is not None:
+        return _MLX_AVAILABLE
+    if not _IS_APPLE_SILICON:
+        _MLX_AVAILABLE = False
+        return False
     try:
         import mlx.core  # noqa: F401
         import mlx_qwen3_asr  # noqa: F401
@@ -39,6 +47,8 @@ if _IS_APPLE_SILICON:
         import sys, traceback
         print("MLX Load Error:", e, file=sys.stderr)
         traceback.print_exc()
+        _MLX_AVAILABLE = False
+    return _MLX_AVAILABLE
 
 _HAS_NVIDIA = False
 if _SYSTEM in ("Linux", "Windows"):
@@ -98,7 +108,7 @@ class AsrEngine:
         self._itn_enabled: bool = True   # Inverse Text Normalization
 
         print(f"[ASR] Platform: {_SYSTEM}/{_MACHINE}  "
-              f"mlx={'yes' if _MLX_AVAILABLE else 'no'}  "
+              f"mlx=lazy  "
               f"nvidia={'yes' if _HAS_NVIDIA else 'no'}")
 
     @property
@@ -153,7 +163,7 @@ class AsrEngine:
         self._active_backend = backend
 
         if backend == "mlx":
-            if not _MLX_AVAILABLE:
+            if not _check_mlx():
                 raise RuntimeError("MLX is not available on this system")
             self._load_mlx_qwen3(model_dir)
         elif family == "SenseVoice":
@@ -174,12 +184,15 @@ class AsrEngine:
         import mlx_qwen3_asr
         import mlx.core as mx
 
+        mx.metal.set_cache_limit(0)
+
         hf_repo = model_dir
         if hf_repo.startswith("hf://"):
             hf_repo = hf_repo[5:]
 
         print(f"[ASR-MLX] Calling load_model({hf_repo!r})...")
         model, _cfg = mlx_qwen3_asr.load_model(hf_repo, dtype=mx.float16)
+        mx.metal.clear_cache()
         print("[ASR-MLX] load_model returned")
         self._mlx_model = model
         self._model_id = hf_repo.split("/")[-1] if "/" in hf_repo else os.path.basename(model_dir)
@@ -292,6 +305,7 @@ class AsrEngine:
         )
 
     def _recognize_mlx(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
+        import mlx.core as mx
         import mlx_qwen3_asr
         from thundertalk.core.itn import normalize_numbers
 
@@ -308,8 +322,11 @@ class AsrEngine:
             language=self._language,
             max_new_tokens=4096,
         )
+        mx.eval(result.text) if hasattr(result.text, '__mlx_array__') else None
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MLX] Transcribe done in {inference_ms}ms")
+
+        mx.metal.clear_cache()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
 
         text = result.text.strip()
