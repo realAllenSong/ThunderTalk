@@ -359,6 +359,13 @@ class AsrEngine:
         text = stream.result.text.strip()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
 
+        if self._itn_enabled and text:
+            from thundertalk.core.itn import normalize_numbers
+            raw = text
+            text = normalize_numbers(text)
+            if text != raw:
+                print(f"[ASR-ITN] '{raw}' → '{text}'")
+
         return AsrResult(
             text=text,
             duration_secs=duration_secs,

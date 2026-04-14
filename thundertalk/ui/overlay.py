@@ -139,24 +139,22 @@ class VoiceOverlay(QWidget):
         f = QFont("Helvetica Neue", 13)
         f.setWeight(QFont.Weight.Medium)
         p.setFont(f)
-        p.setPen(QColor(theme.ACCENT_BLUE))
-        
-        # Draw centered
+        p.setPen(QColor(theme.ACCENT_ORANGE))
+
         fm = p.fontMetrics()
         text_w = fm.horizontalAdvance(self._text)
         dots_w = 40
         total_w = text_w + dots_w
         start_x = (w - total_w) / 2
-        
+
         p.drawText(int(start_x), int(h / 2 + 5), self._text)
 
-        dots = 3
-        for i in range(dots):
+        for i in range(3):
             offset = math.sin(self._phase * 2 + i * 0.8) * 4
             cx = start_x + text_w + 10 + i * 12
             cy = int(h / 2 + offset)
             alpha = int(120 + 120 * (0.5 + 0.5 * math.sin(self._phase * 2 + i * 0.8)))
-            c = QColor(theme.ACCENT_BLUE)
+            c = QColor(theme.ACCENT_ORANGE)
             c.setAlpha(alpha)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(c)
