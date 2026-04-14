@@ -26,12 +26,13 @@ from thundertalk.core.settings import Settings
 from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
 from thundertalk.ui.pages.home_page import HomePage
+from thundertalk.ui.pages.hotwords_page import HotwordsPage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
 
 _SIDEBAR_W = 190
 
-_NAV_ITEMS = ["Home", "Models", "Settings", "About"]
+_NAV_ITEMS = ["Home", "Models", "Hotwords", "Settings", "About"]
 
 
 class _NavButton(QPushButton):
@@ -183,11 +184,13 @@ class MainWindow(QMainWindow):
 
         self._home_page = HomePage(history)
         self._models_page = ModelsPage()
+        self._hotwords_page = HotwordsPage(settings)
         self._settings_page = SettingsPage(settings)
         self._about_page = AboutPage()
 
         self._stack.addWidget(self._home_page)
         self._stack.addWidget(self._models_page)
+        self._stack.addWidget(self._hotwords_page)
         self._stack.addWidget(self._settings_page)
         self._stack.addWidget(self._about_page)
 
@@ -217,6 +220,10 @@ class MainWindow(QMainWindow):
     @property
     def home_page(self) -> HomePage:
         return self._home_page
+
+    @property
+    def hotwords_page(self) -> HotwordsPage:
+        return self._hotwords_page
 
     @property
     def settings_page(self) -> SettingsPage:

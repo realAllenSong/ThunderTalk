@@ -1,9 +1,8 @@
-"""Settings page — segment-control tabs: Hotkey, Microphone, System, Hotwords.
+"""Settings page — segment-control tabs: Hotkey, Audio, Transcription, System.
 
 Layout and cards match 闪电说 style:
 - Rounded segment pill tab bar at top center
 - Card sections with bold in-card titles
-- Side-by-side toggle/press mode cards
 """
 
 from __future__ import annotations
@@ -20,8 +19,6 @@ from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
-    QListWidget,
     QPushButton,
     QScrollArea,
     QTabBar,
@@ -290,7 +287,6 @@ def _display_combo(combo_str: str) -> str:
 
 class SettingsPage(QWidget):
     hotkey_changed = Signal(str)
-    hotwords_changed = Signal(list)
     settings_changed = Signal()
 
     def __init__(self, settings: Settings) -> None:
@@ -301,6 +297,12 @@ class SettingsPage(QWidget):
         root.setContentsMargins(32, 28, 32, 20)
         root.setSpacing(0)
 
+        heading = QLabel("Settings")
+        heading.setFont(theme.font_heading(20))
+        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        root.addWidget(heading)
+        root.addSpacing(16)
+
         # ── Segment tab bar (centered) ──
         tab_container = QHBoxLayout()
         tab_container.setContentsMargins(0, 0, 0, 0)
@@ -310,21 +312,21 @@ class SettingsPage(QWidget):
         self._tabs.setExpanding(False)
         self._tabs.setDrawBase(False)
         self._tabs.setStyleSheet(theme.segment_tab_qss())
-        for name in ("Hotkey", "Microphone", "System", "Hotwords"):
+        for name in ("Hotkey", "Audio", "Transcription", "General"):
             self._tabs.addTab(name)
         tab_container.addWidget(self._tabs)
         tab_container.addStretch()
         root.addLayout(tab_container)
-        root.addSpacing(24)
+        root.addSpacing(20)
 
         self._pages: list[QWidget] = []
         self._stack_area = QVBoxLayout()
         root.addLayout(self._stack_area, stretch=1)
 
         self._build_hotkey_tab()
-        self._build_mic_tab()
-        self._build_system_tab()
-        self._build_hotwords_tab()
+        self._build_audio_tab()
+        self._build_transcription_tab()
+        self._build_general_tab()
 
         for i, page in enumerate(self._pages):
             page.setVisible(i == 0)
@@ -400,51 +402,64 @@ class SettingsPage(QWidget):
         self._settings.set("press_mode", mode)
         self.settings_changed.emit()
 
-    # ── Microphone tab ──
+    # ── Audio tab ──
 
-    def _build_mic_tab(self) -> None:
+    def _build_audio_tab(self) -> None:
         page = QWidget()
         ly = QVBoxLayout(page)
         ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(20)
+        ly.setSpacing(16)
 
-        hint = QLabel("Select recording device and test your microphone")
-        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
-        ly.addWidget(hint)
+        # --- Input device card ---
+        card1 = theme.make_card()
+        c1 = QVBoxLayout(card1)
+        c1.setContentsMargins(20, 18, 20, 18)
+        c1.setSpacing(12)
 
-        ly.addWidget(theme.section_heading("Microphone"))
+        sec1 = QLabel("Input Device")
+        sec1.setFont(theme.font(14, bold=True))
+        sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c1.addWidget(sec1)
 
+        c1.addWidget(theme.separator())
+
+        mic_row, _ = theme.setting_row(
+            "Microphone",
+            "Select recording device. Auto follows macOS system default.",
+        )
         self._mic_combo = QComboBox()
+        self._mic_combo.setFixedWidth(220)
         self._mic_combo.setStyleSheet(theme.COMBO_QSS)
         self._mic_combo.addItem("Auto (System Default)")
         self._refresh_mic_list()
         self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
-        ly.addWidget(self._mic_combo)
+        mic_row.addWidget(self._mic_combo)
+        c1.addLayout(mic_row)
+        ly.addWidget(card1)
 
-        # Options card
-        card = theme.make_card()
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(20, 18, 20, 18)
-        cl.setSpacing(16)
+        # --- Recording options card ---
+        card2 = theme.make_card()
+        c2 = QVBoxLayout(card2)
+        c2.setContentsMargins(20, 18, 20, 18)
+        c2.setSpacing(12)
 
-        row, _ = theme.setting_row(
+        sec2 = QLabel("Recording")
+        sec2.setFont(theme.font(14, bold=True))
+        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c2.addWidget(sec2)
+
+        c2.addWidget(theme.separator())
+
+        mute_row, _ = theme.setting_row(
             "Mute Speakers During Recording",
-            "Automatically mute system speakers to avoid feedback",
+            "Automatically mute system speakers to avoid feedback from playback",
         )
         self._mute_toggle = theme.ToggleSwitch(self._settings.get("mute_speakers"))
         self._mute_toggle.toggled_signal.connect(lambda v: self._settings.set("mute_speakers", v))
-        row.addWidget(self._mute_toggle)
-        cl.addLayout(row)
+        mute_row.addWidget(self._mute_toggle)
+        c2.addLayout(mute_row)
+        ly.addWidget(card2)
 
-        cl.addWidget(theme.separator())
-
-        dir_row, _ = theme.setting_row("Recording Directory")
-        open_btn = theme.pill_button("Open Folder", width=110, height=32)
-        open_btn.clicked.connect(self._open_log_dir)
-        dir_row.addWidget(open_btn)
-        cl.addLayout(dir_row)
-
-        ly.addWidget(card)
         ly.addStretch()
         self._add_page(page)
 
@@ -475,17 +490,97 @@ class SettingsPage(QWidget):
     def _on_mic_changed(self, idx: int) -> None:
         self._settings.set("microphone", "auto" if idx == 0 else self._mic_combo.currentText())
 
-    # ── System tab ──
+    # ── Transcription tab ──
 
-    def _build_system_tab(self) -> None:
+    def _build_transcription_tab(self) -> None:
         page = QWidget()
         ly = QVBoxLayout(page)
         ly.setContentsMargins(0, 0, 0, 0)
         ly.setSpacing(16)
 
-        hint = QLabel("Configure startup behavior and log settings")
-        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
-        ly.addWidget(hint)
+        # -- Language card --
+        card1 = theme.make_card()
+        c1 = QVBoxLayout(card1)
+        c1.setContentsMargins(20, 18, 20, 18)
+        c1.setSpacing(12)
+
+        sec1 = QLabel("Language")
+        sec1.setFont(theme.font(14, bold=True))
+        sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c1.addWidget(sec1)
+
+        c1.addWidget(theme.separator())
+
+        lang_row, _ = theme.setting_row(
+            "Recognition Language",
+            "Force a specific language or let the model auto-detect",
+        )
+        self._lang_combo = QComboBox()
+        self._lang_combo.setFixedWidth(180)
+        self._lang_combo.setStyleSheet(theme.COMBO_QSS)
+        langs = [
+            ("Auto Detect", "auto"), ("English", "en"), ("Chinese", "zh"),
+            ("Japanese", "ja"), ("Korean", "ko"), ("Spanish", "es"),
+            ("French", "fr"), ("German", "de"), ("Arabic", "ar"),
+            ("Hindi", "hi"), ("Italian", "it"), ("Portuguese", "pt"),
+            ("Russian", "ru"), ("Dutch", "nl"), ("Turkish", "tr"),
+        ]
+        for display, code in langs:
+            self._lang_combo.addItem(display, code)
+        cur = self._settings.transcription_language
+        for i, (_, code) in enumerate(langs):
+            if code == cur:
+                self._lang_combo.setCurrentIndex(i)
+                break
+        self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
+        lang_row.addWidget(self._lang_combo)
+        c1.addLayout(lang_row)
+        ly.addWidget(card1)
+
+        # -- Output card --
+        card2 = theme.make_card()
+        c2 = QVBoxLayout(card2)
+        c2.setContentsMargins(20, 18, 20, 18)
+        c2.setSpacing(12)
+
+        sec2 = QLabel("Output")
+        sec2.setFont(theme.font(14, bold=True))
+        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c2.addWidget(sec2)
+
+        c2.addWidget(theme.separator())
+
+        clip_row, _ = theme.setting_row(
+            "Save to Clipboard",
+            "Copy transcribed text to clipboard automatically",
+        )
+        ct = theme.ToggleSwitch(self._settings.get("save_to_clipboard"))
+        ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
+        clip_row.addWidget(ct)
+        c2.addLayout(clip_row)
+
+        c2.addWidget(theme.separator())
+
+        paste_row, _ = theme.setting_row(
+            "Auto-Paste",
+            "Automatically paste transcribed text into the active application",
+        )
+        pt = theme.ToggleSwitch(True)
+        pt.setEnabled(False)
+        paste_row.addWidget(pt)
+        c2.addLayout(paste_row)
+        ly.addWidget(card2)
+
+        ly.addStretch()
+        self._add_page(page)
+
+    # ── General tab ──
+
+    def _build_general_tab(self) -> None:
+        page = QWidget()
+        ly = QVBoxLayout(page)
+        ly.setContentsMargins(0, 0, 0, 0)
+        ly.setSpacing(16)
 
         # -- Appearance card --
         card1 = theme.make_card()
@@ -500,7 +595,7 @@ class SettingsPage(QWidget):
 
         c1.addWidget(theme.separator())
 
-        row, _ = theme.setting_row("Theme", "Use light, dark, or match system setting")
+        row, _ = theme.setting_row("Theme", "Currently dark mode only")
         lbl = QLabel("Dark")
         lbl.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
@@ -509,6 +604,18 @@ class SettingsPage(QWidget):
         )
         row.addWidget(lbl)
         c1.addLayout(row)
+
+        if platform.system() == "Darwin":
+            c1.addWidget(theme.separator())
+            dock_row, _ = theme.setting_row(
+                "Show in Dock",
+                "Hide app icon from Dock; access via menu bar icon only",
+            )
+            t_dock = theme.ToggleSwitch(self._settings.get("show_in_dock"))
+            t_dock.toggled_signal.connect(lambda v: self._settings.set("show_in_dock", v))
+            dock_row.addWidget(t_dock)
+            c1.addLayout(dock_row)
+
         ly.addWidget(card1)
 
         # -- Startup card --
@@ -524,8 +631,10 @@ class SettingsPage(QWidget):
 
         c2.addWidget(theme.separator())
 
-        r1, _ = theme.setting_row("Launch at Login",
-            "ThunderTalk will start when you log in")
+        r1, _ = theme.setting_row(
+            "Launch at Login",
+            "ThunderTalk will start automatically when you log in",
+        )
         t1 = theme.ToggleSwitch(self._settings.get("launch_at_startup"))
         t1.toggled_signal.connect(lambda v: self._settings.set("launch_at_startup", v))
         r1.addWidget(t1)
@@ -533,95 +642,46 @@ class SettingsPage(QWidget):
 
         c2.addWidget(theme.separator())
 
-        r2, _ = theme.setting_row("Start Minimized",
-            "Open to system tray without showing window")
+        r2, _ = theme.setting_row(
+            "Start Minimized",
+            "Open to system tray without showing the main window",
+        )
         t2 = theme.ToggleSwitch(self._settings.get("silent_launch"))
         t2.toggled_signal.connect(lambda v: self._settings.set("silent_launch", v))
         r2.addWidget(t2)
         c2.addLayout(r2)
-
-        if platform.system() == "Darwin":
-            c2.addWidget(theme.separator())
-            r3, _ = theme.setting_row("Show in Dock",
-                "Hide app icon from Dock; access via tray icon only")
-            t3 = theme.ToggleSwitch(self._settings.get("show_in_dock"))
-            t3.toggled_signal.connect(lambda v: self._settings.set("show_in_dock", v))
-            r3.addWidget(t3)
-            c2.addLayout(r3)
-
         ly.addWidget(card2)
 
-        # -- Transcription card --
+        # -- Logs card --
         card3 = theme.make_card()
         c3 = QVBoxLayout(card3)
         c3.setContentsMargins(20, 18, 20, 18)
         c3.setSpacing(12)
 
-        sec3 = QLabel("Transcription")
+        sec3 = QLabel("Logs")
         sec3.setFont(theme.font(14, bold=True))
         sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c3.addWidget(sec3)
 
         c3.addWidget(theme.separator())
 
-        lang_row, _ = theme.setting_row("Language", "Language for speech recognition")
-        self._lang_combo = QComboBox()
-        self._lang_combo.setFixedWidth(180)
-        self._lang_combo.setStyleSheet(theme.COMBO_QSS)
-        langs = [
-            ("Auto Detect", "auto"), ("English", "en"), ("Chinese", "zh"),
-            ("Japanese", "ja"), ("Korean", "ko"), ("Spanish", "es"),
-            ("French", "fr"), ("German", "de"),
-        ]
-        for display, code in langs:
-            self._lang_combo.addItem(display, code)
-        cur = self._settings.transcription_language
-        for i, (_, code) in enumerate(langs):
-            if code == cur:
-                self._lang_combo.setCurrentIndex(i)
-                break
-        self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
-        lang_row.addWidget(self._lang_combo)
-        c3.addLayout(lang_row)
-
-        c3.addWidget(theme.separator())
-
-        clip_row, _ = theme.setting_row("Save to Clipboard",
-            "Copy transcribed text to clipboard automatically")
-        ct = theme.ToggleSwitch(self._settings.get("save_to_clipboard"))
-        ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
-        clip_row.addWidget(ct)
-        c3.addLayout(clip_row)
-        ly.addWidget(card3)
-
-        # -- Logs card --
-        card4 = theme.make_card()
-        c4 = QVBoxLayout(card4)
-        c4.setContentsMargins(20, 18, 20, 18)
-        c4.setSpacing(12)
-
-        sec4 = QLabel("Logs")
-        sec4.setFont(theme.font(14, bold=True))
-        sec4.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c4.addWidget(sec4)
-
-        c4.addWidget(theme.separator())
-
-        log_row, _ = theme.setting_row("Enable Logging",
-            "Save debug logs to disk")
+        log_row, _ = theme.setting_row(
+            "Enable Logging",
+            "Save debug logs to disk for troubleshooting",
+        )
         lt = theme.ToggleSwitch(self._settings.get("log_enabled"))
         lt.toggled_signal.connect(lambda v: self._settings.set("log_enabled", v))
         log_row.addWidget(lt)
-        c4.addLayout(log_row)
+        c3.addLayout(log_row)
 
-        c4.addWidget(theme.separator())
+        c3.addWidget(theme.separator())
 
-        dir_row, _ = theme.setting_row("Log Directory")
+        dir_row, _ = theme.setting_row("Data Directory")
         open_btn = theme.pill_button("Open Folder", width=110, height=32)
         open_btn.clicked.connect(self._open_log_dir)
         dir_row.addWidget(open_btn)
-        c4.addLayout(dir_row)
-        ly.addWidget(card4)
+        c3.addLayout(dir_row)
+        ly.addWidget(card3)
 
         ly.addStretch()
         self._add_page(page)
@@ -642,99 +702,3 @@ class SettingsPage(QWidget):
         elif platform.system() == "Windows":
             subprocess.run(["explorer", str(log_dir)], check=False)
 
-    # ── Hotwords tab ──
-
-    def _build_hotwords_tab(self) -> None:
-        page = QWidget()
-        ly = QVBoxLayout(page)
-        ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(16)
-
-        hint = QLabel(
-            "Add domain-specific terms to improve recognition accuracy."
-        )
-        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
-        hint.setWordWrap(True)
-        ly.addWidget(hint)
-
-        card = theme.make_card()
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(20, 18, 20, 18)
-        cl.setSpacing(12)
-
-        sec = QLabel("Custom Vocabulary")
-        sec.setFont(theme.font(14, bold=True))
-        sec.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        cl.addWidget(sec)
-
-        cl.addWidget(theme.separator())
-
-        add_row = QHBoxLayout()
-        add_row.setSpacing(8)
-        self._hw_input = QLineEdit()
-        self._hw_input.setPlaceholderText("Type a word or phrase…")
-        self._hw_input.setStyleSheet(theme.INPUT_QSS)
-        add_row.addWidget(self._hw_input)
-
-        add_btn = theme.accent_button("Add", height=36)
-        add_btn.setFixedWidth(72)
-        add_btn.clicked.connect(self._add_hotword)
-        self._hw_input.returnPressed.connect(self._add_hotword)
-        add_row.addWidget(add_btn)
-        cl.addLayout(add_row)
-
-        self._hw_list = QListWidget()
-        self._hw_list.setStyleSheet(
-            f"QListWidget {{ background: {theme.BG_INPUT}; color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 10px; font-size: 13px; }}"
-            f"QListWidget::item {{ padding: 8px 14px; border-bottom: 1px solid {theme.BORDER_SUBTLE}; }}"
-            f"QListWidget::item:selected {{ background: {theme.ACCENT_BLUE_A10}; }}"
-        )
-        self._hw_list.setMinimumHeight(180)
-        for word in self._settings.hotwords:
-            self._hw_list.addItem(word)
-        cl.addWidget(self._hw_list)
-
-        rm_btn = theme.pill_button("Remove Selected", height=32)
-        rm_btn.clicked.connect(self._remove_hotword)
-        cl.addWidget(rm_btn)
-
-        ly.addWidget(card)
-        ly.addStretch()
-        self._add_page(page)
-
-    def _add_hotword(self) -> None:
-        word = self._hw_input.text().strip()
-        if not word:
-            return
-        words = self._settings.hotwords
-        if word not in words:
-            words.append(word)
-            self._settings.set("hotwords", words)
-            self._hw_list.addItem(word)
-            self.hotwords_changed.emit(words)
-        self._hw_input.clear()
-
-    def add_hotword_external(self, word: str) -> None:
-        word = word.strip()
-        if not word:
-            return
-        words = self._settings.hotwords
-        if word not in words:
-            words.append(word)
-            self._settings.set("hotwords", words)
-            self._hw_list.addItem(word)
-            self.hotwords_changed.emit(words)
-
-    def _remove_hotword(self) -> None:
-        items = self._hw_list.selectedItems()
-        if not items:
-            return
-        words = self._settings.hotwords
-        for item in items:
-            w = item.text()
-            if w in words:
-                words.remove(w)
-            self._hw_list.takeItem(self._hw_list.row(item))
-        self._settings.set("hotwords", words)
-        self.hotwords_changed.emit(words)

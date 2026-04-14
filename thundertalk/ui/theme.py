@@ -175,6 +175,25 @@ def _draw_icon_settings(p: QPainter, r: QRect) -> None:
         p.drawLine(int(x1), int(y1), int(x2), int(y2))
 
 
+def _draw_icon_hotwords(p: QPainter, r: QRect) -> None:
+    """Star/sparkle icon for hotwords."""
+    cx, cy = r.center().x(), r.center().y()
+    import math
+    path = QPainterPath()
+    outer, inner = 7.5, 3.5
+    for i in range(10):
+        angle = math.radians(-90 + i * 36)
+        rad = outer if i % 2 == 0 else inner
+        x = cx + rad * math.cos(angle)
+        y = cy + rad * math.sin(angle)
+        if i == 0:
+            path.moveTo(x, y)
+        else:
+            path.lineTo(x, y)
+    path.closeSubpath()
+    p.drawPath(path)
+
+
 def _draw_icon_about(p: QPainter, r: QRect) -> None:
     """Info icon — elegant circle with 'i'."""
     cx, cy = r.center().x(), r.center().y()
@@ -213,7 +232,7 @@ def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:
     p.setBrush(old_brush)
 
 
-ICON_PAINTERS = [_draw_icon_home, _draw_icon_models, _draw_icon_settings, _draw_icon_about]
+ICON_PAINTERS = [_draw_icon_home, _draw_icon_models, _draw_icon_hotwords, _draw_icon_settings, _draw_icon_about]
 
 
 # ── Custom Toggle Switch (QPainter-based) ───────────────────────────────

@@ -1,10 +1,9 @@
 """Model registry and download management.
 
-Each model family (Qwen3-ASR, SenseVoice, etc.) can have multiple
-**variants** — different formats targeting different hardware:
+Each model family can have multiple **variants** — different formats
+targeting different hardware:
   - MLX fp16    → Apple Silicon (Metal GPU)
   - ONNX int8   → All platforms (CPU)
-  - ONNX+GGUF   → All platforms (CPU + llama.cpp)
 
 The UI presents variants grouped by family, with a "Recommended" badge
 on the best variant for the detected hardware.
@@ -24,7 +23,7 @@ from typing import Optional
 @dataclass
 class ModelInfo:
     id: str
-    family: str          # "Qwen3-ASR", "FunASR-Nano", "SenseVoice"
+    family: str          # "Qwen3-ASR", "Qwen3-ASR-1.7B", "SenseVoice"
     name: str            # family display name (shared by variants in the same group)
     variant: str         # "MLX fp16", "ONNX int8", "GGUF Q4", etc.
     backend: str         # "mlx" | "onnx" | "onnx-cuda" — tells asr.py which loader to use
@@ -86,20 +85,6 @@ BUILTIN_MODELS: list[ModelInfo] = [
         platform="apple-silicon",
         notes="Metal GPU · Higher accuracy · Needs 4 GB+ RAM",
     ),
-    ModelInfo(
-        id="qwen3-asr-17b-onnx",
-        family="Qwen3-ASR-1.7B",
-        name="Qwen3-ASR-1.7B",
-        variant="ONNX",
-        backend="onnx",
-        size_mb=3000,
-        language_count=52,
-        accuracy_stars=5,
-        download_url="",
-        hotword_support=True,
-        platform="all",
-        notes="Coming Soon",
-    ),
     # ── SenseVoice-Small ────────────────────────────────────────────────
     ModelInfo(
         id="sensevoice-small-int8",
@@ -113,21 +98,6 @@ BUILTIN_MODELS: list[ModelInfo] = [
         download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
         platform="all",
         notes="CPU · Lightweight · Fast on all platforms",
-    ),
-    # ── FunASR-Nano-MLT ─────────────────────────────────────────────────
-    ModelInfo(
-        id="funasr-nano-mlt-int8",
-        family="FunASR-Nano",
-        name="FunASR-Nano-MLT",
-        variant="ONNX + GGUF",
-        backend="onnx",
-        size_mb=2100,
-        language_count=31,
-        accuracy_stars=4,
-        download_url="",
-        hotword_support=True,
-        platform="all",
-        notes="Unavailable — waiting for compatible sherpa-onnx model export",
     ),
 ]
 

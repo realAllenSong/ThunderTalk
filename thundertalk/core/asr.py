@@ -170,8 +170,6 @@ class AsrEngine:
             self._load_sherpa_sensevoice(model_dir, backend)
         elif family in ("Qwen3-ASR", "Qwen3-ASR-1.7B"):
             self._load_sherpa_qwen3(model_dir, backend)
-        elif family == "FunASR-Nano":
-            self._load_sherpa_funasr(model_dir, backend)
         else:
             raise ValueError(f"Unknown model family: {family}")
 
@@ -239,33 +237,6 @@ class AsrEngine:
         )
         self._model_id = os.path.basename(model_dir)
         print(f"[ASR] Loaded Qwen3-ASR (sherpa-onnx)  threads={threads}  provider={provider}")
-
-    def _load_sherpa_funasr(self, model_dir: str, backend: str) -> None:
-        import sherpa_onnx
-        embedding = _find(model_dir, "CTC", ".onnx") or _find(model_dir, "embedding", ".onnx")
-        encoder_adaptor = _find(model_dir, "Encoder-Adaptor", ".onnx") or _find(
-            model_dir, "encoder_adaptor", ".onnx"
-        )
-        llm = _find_any(model_dir, "Decoder", ("gguf", "onnx")) or _find_any(
-            model_dir, "llm", ("gguf", "onnx")
-        )
-        tokens = os.path.join(model_dir, "tokens.txt")
-        provider = self._onnx_provider(backend)
-        threads = _detect_threads()
-
-        _validate_funasr_model(encoder_adaptor)
-
-        self._recognizer = sherpa_onnx.OfflineRecognizer.from_funasr_nano(
-            embedding=embedding,
-            encoder_adaptor=encoder_adaptor,
-            llm=llm,
-            tokenizer=tokens if os.path.isfile(tokens) else "",
-            num_threads=threads,
-            provider=provider,
-            hotwords=self._hotwords,
-        )
-        self._model_id = os.path.basename(model_dir)
-        print(f"[ASR] Loaded FunASR-Nano  threads={threads}  provider={provider}")
 
     # -- Inference --------------------------------------------------------
 
@@ -380,37 +351,6 @@ class AsrEngine:
 # Helpers
 # ---------------------------------------------------------------------------
 
-def _validate_funasr_model(encoder_adaptor_path: str) -> None:
-    """Validate FunASR model compatibility by checking for required metadata.
-
-    IMPORTANT: This function executes directly in the current process instead of
-    using subprocess to avoid infinite app launch loops in PyInstaller-packaged apps
-    (where sys.executable points to the app bundle, not the Python interpreter).
-    """
-    import os
-
-    # Check if file exists
-    if not os.path.isfile(encoder_adaptor_path):
-        raise FileNotFoundError(f"Encoder-Adaptor not found: {encoder_adaptor_path}")
-
-    # Read and validate model metadata
-    try:
-        with open(encoder_adaptor_path, 'rb') as f:
-            data = f.read()
-
-        if b'lfr_window_size' not in data:
-            raise RuntimeError(
-                "FunASR Nano model incompatible: 'lfr_window_size' metadata missing "
-                "from Encoder-Adaptor ONNX file. This model export is not compatible "
-                "with the current sherpa-onnx version. Please use a model from "
-                "github.com/k2-fsa/sherpa-onnx/releases instead."
-            )
-    except (IOError, OSError) as e:
-        # File read errors - skip validation rather than crash
-        print(f"[ASR] Warning: Could not validate FunASR model: {e}")
-        pass
-
-
 def _find(directory: str, keyword: str, ext: str) -> str:
     kw_lower = keyword.lower()
     for fname in os.listdir(directory):
@@ -422,12 +362,3 @@ def _find(directory: str, keyword: str, ext: str) -> str:
     raise FileNotFoundError(f"No {ext} file matching '{keyword}' in {directory}")
 
 
-def _find_any(directory: str, keyword: str, exts: tuple[str, ...]) -> str:
-    kw_lower = keyword.lower()
-    for ext in exts:
-        for fname in os.listdir(directory):
-            if fname.lower().endswith(f".{ext}") and kw_lower in fname.lower():
-                return os.path.join(directory, fname)
-    raise FileNotFoundError(
-        f"No file matching '{keyword}' with extensions {exts} in {directory}"
-    )

@@ -204,7 +204,7 @@ def main() -> None:
     # --- Auto-learn hotwords -------------------------------------------
     def _on_auto_learned_word(word: str) -> None:
         print(f"[AutoLearn] New hotword: {word}")
-        QTimer.singleShot(0, lambda: window.settings_page.add_hotword_external(word))
+        QTimer.singleShot(0, lambda: window.hotwords_page.add_hotword_external(word))
 
     set_auto_learn_callback(_on_auto_learned_word)
 
@@ -323,7 +323,7 @@ def main() -> None:
             if md and mf:
                 _start_model_load(mid or "", md, mf, be)
 
-    window.settings_page.hotwords_changed.connect(_on_hotwords_changed)
+    window.hotwords_page.hotwords_changed.connect(_on_hotwords_changed)
 
     # --- Language setting → ASR engine ---
     def _on_settings_changed() -> None:

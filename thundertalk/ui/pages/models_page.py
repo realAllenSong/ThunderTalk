@@ -34,7 +34,6 @@ _FAMILY_COLORS = {
     "SenseVoice": theme.ACCENT_CYAN,
     "Qwen3-ASR": theme.ACCENT_BLUE,
     "Qwen3-ASR-1.7B": theme.ACCENT_BLUE,
-    "FunASR-Nano": theme.ACCENT_PURPLE,
 }
 
 

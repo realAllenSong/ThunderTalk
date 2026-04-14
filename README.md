@@ -37,10 +37,9 @@ Download the latest **ThunderTalk.app** from [Releases](https://github.com/realA
 | Model | Size | Backend | Languages | Accuracy | Hotwords |
 |-------|------|---------|-----------|----------|----------|
 | SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | No |
-| FunASR-Nano-MLT | ~2 GB | ONNX (CPU) | 31 | ★★★★☆ | Yes |
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
-| Qwen3-ASR-1.7B | ~3 GB | ONNX (CPU) | 52 | ★★★★★ | Yes |
+| Qwen3-ASR-1.7B | ~3.4 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 
 Models are downloaded on-demand from the app's Settings page and stored at `~/.thundertalk/models/`.
 
@@ -89,5 +88,4 @@ uv run python run.py
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — cross-platform ASR inference
 - [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) — MLX-native Qwen3 ASR
 - [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) — lightweight ASR model
-- [FunASR](https://github.com/FunAudioLLM/Fun-ASR) — multilingual ASR
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) — state-of-the-art ASR
