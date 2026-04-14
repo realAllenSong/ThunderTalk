@@ -1,5 +1,9 @@
 """python -m thundertalk  — main entry point."""
 
-from thundertalk.app import main
+import multiprocessing
+import sys
 
-main()
+if __name__ == "__main__":
+    multiprocessing.freeze_support()
+    from thundertalk.app import main
+    main()

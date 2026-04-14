@@ -99,8 +99,7 @@ class VariantRow(QFrame):
             badge = QLabel("Recommended")
             badge.setStyleSheet(
                 f"color: {theme.SUCCESS}; font-size: 10px; font-weight: bold;"
-                f" background: {theme.SUCCESS_A20}; border: 1px solid {theme.SUCCESS_A40};"
-                " border-radius: 6px; padding: 2px 8px;"
+                " background: transparent; border: none; padding: 2px 8px;"
             )
             row.addWidget(badge)
 
@@ -170,21 +169,18 @@ class VariantRow(QFrame):
             )
             self._btn.setEnabled(False)
         elif is_active:
-            self._btn.setText("✓  Active")
+            self._btn.setText("✓ Active")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: {theme.SUCCESS_A20}; color: {theme.SUCCESS};"
-                f" border: 1px solid {theme.SUCCESS_A40}; border-radius: 15px; font-weight: bold; font-size: 11px; }}"
+                f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.SUCCESS};"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
         elif downloaded:
             self._btn.setText("Activate")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: qlineargradient("
-                f"x1:0, y1:0, x2:1, y2:0, stop:0 {theme.ACCENT_BLUE}, stop:1 #7ba6f7);"
-                f" color: #fff; border: none;"
-                " border-radius: 15px; font-weight: bold; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: qlineargradient("
-                f"x1:0, y1:0, x2:1, y2:0, stop:0 {theme.ACCENT_BLUE_HOVER}, stop:1 #6b96e7); }}"
+                f"QPushButton {{ background: {theme.ACCENT_BLUE}; color: #ffffff; border: none;"
+                " border-radius: 15px; font-weight: 500; font-size: 11px; }}"
+                f"QPushButton:hover {{ background: {theme.ACCENT_BLUE_HOVER}; }}"
             )
             self._btn.setEnabled(True)
         elif self.info.download_url:

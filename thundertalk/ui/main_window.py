@@ -57,27 +57,25 @@ class _NavButton(QPushButton):
             self.setStyleSheet(
                 f"QPushButton {{ background: {theme.BG_CARD};"
                 f" color: {theme.TEXT_PRIMARY}; border: none;"
-                f" border-left: 3px solid {theme.ACCENT_ORANGE};"
-                " text-align: left; padding-left: 36px;"
+                " text-align: left; padding-left: 38px;"
                 " font-size: 13px; font-weight: 600;"
-                f" border-radius: 0; margin: 0 8px 0 0; }}"
+                f" border-radius: 8px; margin: 2px 14px; }}"
             )
         else:
             self.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
-                " border: none; border-left: 3px solid transparent;"
-                " text-align: left; padding-left: 36px;"
-                " font-size: 13px; border-radius: 0; margin: 0 8px 0 0; }}"
+                " border: none; text-align: left; padding-left: 38px;"
+                " font-size: 13px; border-radius: 8px; margin: 2px 14px; }}"
                 f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-                f" background: rgba(255, 255, 255, 6); }}"
+                f" background: rgba(255, 255, 255, 8); }}"
             )
-        self.setText(f"    {self._label}")
+        self.setText(f"   {self._label}")
 
     def paintEvent(self, ev) -> None:
         super().paintEvent(ev)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        icon_rect = self.rect().adjusted(14, 0, 0, 0)
+        icon_rect = self.rect().adjusted(24, 0, 0, 0)
         icon_rect.setWidth(22)
         color = QColor(theme.TEXT_PRIMARY) if self._active else QColor(theme.TEXT_SECONDARY)
         p.setPen(QPen(color, 1.5))

@@ -21,7 +21,12 @@ from thundertalk.core.hotkey import HotkeyListener
 from thundertalk.core.settings import Settings
 from thundertalk.core.auto_learn import on_text_pasted as notify_auto_learn
 from thundertalk.core.auto_learn import set_callback as set_auto_learn_callback
-from thundertalk.core.platform_utils import set_accessory_app, activate_app, deactivate_app
+from thundertalk.core.platform_utils import (
+    set_accessory_app, activate_app, deactivate_app,
+    check_accessibility, request_accessibility,
+    check_microphone, request_microphone,
+    open_accessibility_settings, open_microphone_settings,
+)
 from thundertalk.core.system_audio import mute_system_audio, unmute_system_audio, force_unmute, ensure_audio_restored
 from thundertalk.core.text_output import paste_text, save_frontmost_app
 from thundertalk.ui.main_window import MainWindow
@@ -110,6 +115,29 @@ def main() -> None:
     overlay = VoiceOverlay()
     window = MainWindow(settings, history)
     tray = TrayIcon()
+
+    # --- Startup permission checks (macOS) --------------------------------
+    def _check_permissions() -> None:
+        from PySide6.QtWidgets import QMessageBox
+
+        mic_status = check_microphone()
+        if mic_status == "not_determined":
+            request_microphone()
+        elif mic_status == "denied":
+            dlg = QMessageBox(window)
+            dlg.setWindowTitle("需要麦克风权限")
+            dlg.setText("ThunderTalk 需要麦克风权限来进行语音识别。\n请在系统设置中开启麦克风权限。")
+            dlg.setIcon(QMessageBox.Icon.Warning)
+            open_btn = dlg.addButton("打开系统设置", QMessageBox.ButtonRole.AcceptRole)
+            dlg.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
+            dlg.exec()
+            if dlg.clickedButton() == open_btn:
+                open_microphone_settings()
+
+        if not check_accessibility():
+            request_accessibility()
+
+    QTimer.singleShot(800, _check_permissions)
 
     # --- Hotwords + Language → ASR engine ---
     pipe.asr.set_hotwords(settings.hotwords)

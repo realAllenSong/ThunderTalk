@@ -11,6 +11,7 @@ dependencies = [
     "pynput>=1.7",
     "pyperclip>=1.8",
     "sherpa-onnx-core>=1.12.38",
+    "pyinstaller>=6.19.0",
 ]
 
 [project.optional-dependencies]

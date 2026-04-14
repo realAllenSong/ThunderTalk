@@ -135,67 +135,53 @@ def make_card() -> QFrame:
 # Cleaner, bolder vector icons drawn with QPainterPath
 
 def _draw_icon_home(p: QPainter, r: QRect) -> None:
-    """House icon — clean filled shape."""
+    """House icon — clean outlined shape."""
     cx, cy = r.center().x(), r.center().y()
     from PySide6.QtCore import QPointF
     from PySide6.QtGui import QPolygonF
-    # Roof (triangle)
     path = QPainterPath()
-    path.moveTo(cx, cy - 8)
-    path.lineTo(cx + 9, cy - 1)
-    path.lineTo(cx + 7, cy - 1)
-    path.lineTo(cx + 7, cy + 6)
-    path.lineTo(cx + 2, cy + 6)
-    path.lineTo(cx + 2, cy + 1)
-    path.lineTo(cx - 2, cy + 1)
-    path.lineTo(cx - 2, cy + 6)
-    path.lineTo(cx - 7, cy + 6)
-    path.lineTo(cx - 7, cy - 1)
-    path.lineTo(cx - 9, cy - 1)
+    path.moveTo(cx, cy - 6)
+    path.lineTo(cx + 7, cy)
+    path.lineTo(cx + 7, cy + 7)
+    path.lineTo(cx + 2, cy + 7)
+    path.lineTo(cx + 2, cy + 3)
+    path.lineTo(cx - 2, cy + 3)
+    path.lineTo(cx - 2, cy + 7)
+    path.lineTo(cx - 7, cy + 7)
+    path.lineTo(cx - 7, cy)
     path.closeSubpath()
-    old_pen = p.pen()
-    p.setPen(Qt.PenStyle.NoPen)
     p.drawPath(path)
-    p.setPen(old_pen)
 
 
 def _draw_icon_models(p: QPainter, r: QRect) -> None:
-    """Chip/model icon — rounded rect with inner circuit lines."""
+    """Chip/model icon — outlined rounded rect with inner details."""
     cx, cy = r.center().x(), r.center().y()
-    # Outer rounded rect
-    p.drawRoundedRect(QRectF(cx - 7, cy - 7, 14, 14), 3, 3)
-    # Inner details — two horizontal lines
-    p.drawLine(int(cx - 4), int(cy - 3), int(cx + 4), int(cy - 3))
-    p.drawLine(int(cx - 4), int(cy + 0), int(cx + 3), int(cy + 0))
-    p.drawLine(int(cx - 4), int(cy + 3), int(cx + 1), int(cy + 3))
+    p.drawRoundedRect(QRectF(cx - 6, cy - 6, 12, 12), 2, 2)
+    p.drawPoint(int(cx - 2), int(cy - 2))
+    p.drawPoint(int(cx + 2), int(cy - 2))
+    p.drawPoint(int(cx - 2), int(cy + 2))
+    p.drawPoint(int(cx + 2), int(cy + 2))
 
 
 def _draw_icon_settings(p: QPainter, r: QRect) -> None:
-    """Gear icon — cleaner cog with 6 teeth."""
+    """Gear icon — cleaner stroke design."""
     cx, cy = r.center().x(), r.center().y()
-    # Center circle
-    p.drawEllipse(QRectF(cx - 3.5, cy - 3.5, 7, 7))
-    # Outer teeth — 6 spokes
+    p.drawEllipse(QRectF(cx - 3, cy - 3, 6, 6))
     import math
-    pen = p.pen()
-    thick_pen = QPen(pen.color(), 2.0)
-    p.setPen(thick_pen)
-    for angle in range(0, 360, 60):
+    for angle in range(0, 360, 45):
         rad = math.radians(angle)
-        x1, y1 = cx + 6 * math.cos(rad), cy + 6 * math.sin(rad)
-        x2, y2 = cx + 8.5 * math.cos(rad), cy + 8.5 * math.sin(rad)
+        x1, y1 = cx + 5 * math.cos(rad), cy + 5 * math.sin(rad)
+        x2, y2 = cx + 7.5 * math.cos(rad), cy + 7.5 * math.sin(rad)
         p.drawLine(int(x1), int(y1), int(x2), int(y2))
-    p.setPen(pen)
 
 
 def _draw_icon_about(p: QPainter, r: QRect) -> None:
-    """Info icon — circle with 'i'."""
+    """Info icon — elegant circle with 'i'."""
     cx, cy = r.center().x(), r.center().y()
-    p.drawEllipse(QRectF(cx - 8, cy - 8, 16, 16))
+    p.drawEllipse(QRectF(cx - 7, cy - 7, 14, 14))
     f = QFont("Helvetica Neue", 10)
-    f.setWeight(QFont.Weight.Bold)
     p.setFont(f)
-    p.drawText(QRectF(cx - 8, cy - 8, 16, 16), Qt.AlignmentFlag.AlignCenter, "i")
+    p.drawText(QRectF(cx - 7, cy - 7, 14, 14), Qt.AlignmentFlag.AlignCenter, "i")
 
 
 def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:

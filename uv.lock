@@ -989,6 +989,7 @@ version = "0.2.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
+    { name = "pyinstaller" },
     { name = "pynput" },
     { name = "pyperclip" },
     { name = "pyside6" },
@@ -1013,6 +1014,7 @@ dev = [
 requires-dist = [
     { name = "mlx-qwen3-asr", marker = "extra == 'mlx'", specifier = ">=0.3" },
     { name = "numpy", specifier = ">=1.24" },
+    { name = "pyinstaller", specifier = ">=6.19.0" },
     { name = "pynput", specifier = ">=1.7" },
     { name = "pyperclip", specifier = ">=1.8" },
     { name = "pyside6", specifier = ">=6.7" },

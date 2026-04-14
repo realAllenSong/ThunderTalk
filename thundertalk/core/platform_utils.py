@@ -78,3 +78,79 @@ def deactivate_app() -> None:
         return
     _objc.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long]
     _objc.objc_msgSend(_NSApp, _objc.sel_registerName(b"setActivationPolicy:"), 1)
+
+
+# ---------------------------------------------------------------------------
+# macOS permission checks
+# ---------------------------------------------------------------------------
+
+def check_accessibility() -> bool:
+    """Return True if accessibility (keyboard simulation) is granted."""
+    if _SYSTEM != "Darwin":
+        return True
+    try:
+        from ApplicationServices import AXIsProcessTrusted
+        return AXIsProcessTrusted()
+    except ImportError:
+        return True
+
+
+def request_accessibility() -> bool:
+    """Prompt the user to grant accessibility permission. Returns current status."""
+    if _SYSTEM != "Darwin":
+        return True
+    try:
+        from ApplicationServices import AXIsProcessTrustedWithOptions
+        from CoreFoundation import kCFBooleanTrue
+        options = {"AXTrustedCheckOptionPrompt": kCFBooleanTrue}
+        return AXIsProcessTrustedWithOptions(options)
+    except ImportError:
+        return True
+
+
+def check_microphone() -> str:
+    """Return microphone permission status: 'authorized', 'denied', 'not_determined', 'restricted'."""
+    if _SYSTEM != "Darwin":
+        return "authorized"
+    try:
+        import AVFoundation
+        status = AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(
+            AVFoundation.AVMediaTypeAudio
+        )
+        return {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}.get(status, "authorized")
+    except ImportError:
+        return "authorized"
+
+
+def request_microphone(callback=None) -> None:
+    """Trigger the system microphone permission dialog."""
+    if _SYSTEM != "Darwin":
+        return
+    try:
+        import AVFoundation
+        AVFoundation.AVCaptureDevice.requestAccessForMediaType_completionHandler_(
+            AVFoundation.AVMediaTypeAudio,
+            callback or (lambda granted: None),
+        )
+    except ImportError:
+        pass
+
+
+def open_accessibility_settings() -> None:
+    """Open System Settings > Privacy > Accessibility."""
+    if _SYSTEM == "Darwin":
+        import subprocess
+        subprocess.run(
+            ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Accessibility"],
+            check=False,
+        )
+
+
+def open_microphone_settings() -> None:
+    """Open System Settings > Privacy > Microphone."""
+    if _SYSTEM == "Darwin":
+        import subprocess
+        subprocess.run(
+            ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"],
+            check=False,
+        )

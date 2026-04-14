@@ -35,8 +35,10 @@ if _IS_APPLE_SILICON:
         import mlx.core  # noqa: F401
         import mlx_qwen3_asr  # noqa: F401
         _MLX_AVAILABLE = True
-    except ImportError:
-        pass
+    except ImportError as e:
+        import sys, traceback
+        print("MLX Load Error:", e, file=sys.stderr)
+        traceback.print_exc()
 
 _HAS_NVIDIA = False
 if _SYSTEM in ("Linux", "Windows"):
@@ -355,37 +357,33 @@ class AsrEngine:
 # ---------------------------------------------------------------------------
 
 def _validate_funasr_model(encoder_adaptor_path: str) -> None:
-    import subprocess as sp
-    import sys
+    """Validate FunASR model compatibility by checking for required metadata.
 
-    script = f"""
-import sys, os
-path = {encoder_adaptor_path!r}
-if not os.path.isfile(path):
-    print("FILE_MISSING"); sys.exit(1)
-with open(path, 'rb') as f:
-    data = f.read()
-if b'lfr_window_size' in data:
-    print("OK")
-else:
-    print("MISSING_LFR"); sys.exit(1)
-"""
+    IMPORTANT: This function executes directly in the current process instead of
+    using subprocess to avoid infinite app launch loops in PyInstaller-packaged apps
+    (where sys.executable points to the app bundle, not the Python interpreter).
+    """
+    import os
+
+    # Check if file exists
+    if not os.path.isfile(encoder_adaptor_path):
+        raise FileNotFoundError(f"Encoder-Adaptor not found: {encoder_adaptor_path}")
+
+    # Read and validate model metadata
     try:
-        result = sp.run(
-            [sys.executable, "-c", script],
-            capture_output=True, text=True, timeout=10,
-        )
-        output = result.stdout.strip()
-        if "MISSING_LFR" in output or result.returncode != 0:
+        with open(encoder_adaptor_path, 'rb') as f:
+            data = f.read()
+
+        if b'lfr_window_size' not in data:
             raise RuntimeError(
                 "FunASR Nano model incompatible: 'lfr_window_size' metadata missing "
                 "from Encoder-Adaptor ONNX file. This model export is not compatible "
                 "with the current sherpa-onnx version. Please use a model from "
                 "github.com/k2-fsa/sherpa-onnx/releases instead."
             )
-        if "FILE_MISSING" in output:
-            raise FileNotFoundError(f"Encoder-Adaptor not found: {encoder_adaptor_path}")
-    except sp.TimeoutExpired:
+    except (IOError, OSError) as e:
+        # File read errors - skip validation rather than crash
+        print(f"[ASR] Warning: Could not validate FunASR model: {e}")
         pass
 
 

@@ -145,7 +145,7 @@ class HotkeyCapture(QWidget):
             label = self._display if self._held_modifiers else "Press keys…"
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
         else:
-            p.fillPath(bg, QColor(theme.BG_CARD))
+            p.fillPath(bg, QColor(theme.BG_ELEVATED))
             p.setPen(QPen(QColor(theme.BORDER_SUBTLE), 1))
             p.drawPath(bg)
 
@@ -283,49 +283,7 @@ def _display_combo(combo_str: str) -> str:
 
 # ── Mode selection card ─────────────────────────────────────────────────
 
-class _ModeCard(QFrame):
-    """Side-by-side card for press mode (like 闪电说 短按/长按)."""
-    clicked = Signal()
-
-    def __init__(self, title: str, desc: str, selected: bool = False) -> None:
-        super().__init__()
-        self._selected = selected
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._update_style()
-
-        ly = QVBoxLayout(self)
-        ly.setContentsMargins(20, 18, 20, 18)
-        ly.setSpacing(8)
-
-        name = QLabel(title)
-        name.setFont(theme.font(15, bold=True))
-        name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ly.addWidget(name)
-
-        d = QLabel(desc)
-        d.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
-        d.setWordWrap(True)
-        ly.addWidget(d)
-
-    def _update_style(self) -> None:
-        if self._selected:
-            self.setStyleSheet(
-                f"QFrame {{ background: {theme.BG_CARD};"
-                f" border: 1px solid {theme.TEXT_SECONDARY}; border-radius: 12px; }}"
-            )
-        else:
-            self.setStyleSheet(
-                f"QFrame {{ background: {theme.BG_CARD};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
-                f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
-            )
-
-    def set_selected(self, val: bool) -> None:
-        self._selected = val
-        self._update_style()
-
-    def mousePressEvent(self, ev) -> None:
-        self.clicked.emit()
+# Removed _ModeCard
 
 
 # ── SettingsPage ────────────────────────────────────────────────────────
@@ -392,27 +350,44 @@ class SettingsPage(QWidget):
         ly.setContentsMargins(0, 0, 0, 0)
         ly.setSpacing(20)
 
+        card = theme.make_card()
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(20, 18, 20, 18)
+        cl.setSpacing(16)
+
+        header = QLabel("Activation hotkey")
+        header.setFont(theme.font(14, bold=False))
+        header.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
+        cl.addWidget(header)
+
         self._hotkey_capture = HotkeyCapture(self._settings.hotkey)
         self._hotkey_capture.key_captured.connect(self._on_hotkey_changed)
-        ly.addWidget(self._hotkey_capture)
+        cl.addWidget(self._hotkey_capture)
 
-        # Side-by-side mode cards (like 闪电说 短按/长按)
-        mode_row = QHBoxLayout()
-        mode_row.setSpacing(12)
+        cl.addSpacing(4)
+        cl.addWidget(theme.separator())
+        cl.addSpacing(4)
 
-        self._mode_toggle = _ModeCard(
-            "Toggle", "Press once to start,\npress again to stop",
-            selected=self._settings.press_mode == "toggle",
+        mode_row, _ = theme.setting_row(
+            "Activation Mode",
+            "Choose between toggle (click to start/stop) or hold-to-record."
         )
-        self._mode_hold = _ModeCard(
-            "Hold to Record", "Hold key to record,\nrelease to stop",
-            selected=self._settings.press_mode == "hold",
+        
+        self._mode_combo = QComboBox()
+        self._mode_combo.setStyleSheet(theme.COMBO_QSS)
+        self._mode_combo.addItem("Toggle (Click)")
+        self._mode_combo.addItem("Hold to Record")
+        self._mode_combo.setFixedWidth(160)
+        
+        idx = 1 if self._settings.press_mode == "hold" else 0
+        self._mode_combo.setCurrentIndex(idx)
+        self._mode_combo.currentIndexChanged.connect(
+            lambda i: self._set_mode("hold" if i == 1 else "toggle")
         )
-        self._mode_toggle.clicked.connect(lambda: self._set_mode("toggle"))
-        self._mode_hold.clicked.connect(lambda: self._set_mode("hold"))
-        mode_row.addWidget(self._mode_toggle)
-        mode_row.addWidget(self._mode_hold)
-        ly.addLayout(mode_row)
+        mode_row.addWidget(self._mode_combo)
+        cl.addLayout(mode_row)
+
+        ly.addWidget(card)
 
         ly.addStretch()
         self._add_page(page)
@@ -423,8 +398,6 @@ class SettingsPage(QWidget):
 
     def _set_mode(self, mode: str) -> None:
         self._settings.set("press_mode", mode)
-        self._mode_toggle.set_selected(mode == "toggle")
-        self._mode_hold.set_selected(mode == "hold")
         self.settings_changed.emit()
 
     # ── Microphone tab ──

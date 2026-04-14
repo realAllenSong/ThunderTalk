@@ -5,17 +5,19 @@ import sys
 
 CMD = [
     sys.executable, "-m", "PyInstaller",
-    "--name", "ThunderTalk",
-    "--windowed",
-    "--onedir",
-    "--icon", "assets/icon.icns",
-    "--add-data", "assets:assets",
+    "ThunderTalk.spec",
     "--noconfirm",
-    "--clean",
-    "--osx-bundle-identifier", "com.thundertalk.app",
-    "thundertalk/__main__.py",
+    "--clean"
 ]
+
+SIGN_IDENTITY = "Apple Development: realoulasong@gmail.com (WQ9QHZC988)"
 
 print("Running:", " ".join(CMD))
 subprocess.run(CMD, check=True)
-print("\n✅ Build complete: dist/ThunderTalk.app")
+
+print("\n🔏 Signing dist/ThunderTalk.app ...")
+subprocess.run([
+    "codesign", "--force", "--deep", "--sign", SIGN_IDENTITY,
+    "dist/ThunderTalk.app",
+], check=True)
+print("✅ Build + sign complete: dist/ThunderTalk.app")

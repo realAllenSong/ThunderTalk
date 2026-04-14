@@ -110,27 +110,29 @@ class VoiceOverlay(QWidget):
 
     def _draw_recording(self, p: QPainter, w: int, h: int) -> None:
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(theme.ACCENT_BLUE))
-        pulse = 4.5 + 1.5 * math.sin(self._phase * 2)
-        p.drawEllipse(QRectF(20 - pulse / 2, h / 2 - pulse / 2, 9 + pulse, 9 + pulse))
+        p.setBrush(QColor(theme.ACCENT_ORANGE))
+        # More delicate pulsing dot
+        pulse = 4.0 + 1.2 * math.sin(self._phase * 2)
+        p.drawEllipse(QRectF(24 - pulse / 2, h / 2 - pulse / 2, 8 + pulse, 8 + pulse))
 
         f = QFont("Helvetica Neue", 13)
         f.setWeight(QFont.Weight.Medium)
         p.setFont(f)
         p.setPen(QColor(theme.TEXT_PRIMARY))
-        p.drawText(40, int(h / 2 + 5), self._text)
+        p.drawText(44, int(h / 2 + 5), self._text)
 
-        bar_x, bar_w = 160, 150
-        n_bars = 24
+        # Elegant waveform right-aligned
+        bar_x, bar_w = 170, 140
+        n_bars = 20
         for i in range(n_bars):
             x = bar_x + i * (bar_w / n_bars)
-            amp = 0.3 + 0.7 * abs(math.sin(self._phase * 1.2 + i * 0.45))
-            bh = int(22 * amp)
+            amp = 0.2 + 0.8 * abs(math.sin(self._phase * 1.5 + i * 0.4))
+            bh = int(18 * amp)
             y1 = int(h / 2 - bh / 2)
 
-            c = QColor(theme.ACCENT_BLUE)
-            c.setAlpha(int(120 + 100 * amp))
-            p.setPen(QPen(c, 2.0, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            c = QColor(theme.ACCENT_ORANGE)
+            c.setAlpha(int(140 + 100 * amp))
+            p.setPen(QPen(c, 2.5, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
             p.drawLine(int(x), y1, int(x), y1 + bh)
 
     def _draw_transcribing(self, p: QPainter, w: int, h: int) -> None:
@@ -138,23 +140,31 @@ class VoiceOverlay(QWidget):
         f.setWeight(QFont.Weight.Medium)
         p.setFont(f)
         p.setPen(QColor(theme.ACCENT_BLUE))
-        p.drawText(24, int(h / 2 + 5), self._text)
+        
+        # Draw centered
+        fm = p.fontMetrics()
+        text_w = fm.horizontalAdvance(self._text)
+        dots_w = 40
+        total_w = text_w + dots_w
+        start_x = (w - total_w) / 2
+        
+        p.drawText(int(start_x), int(h / 2 + 5), self._text)
 
         dots = 3
         for i in range(dots):
             offset = math.sin(self._phase * 2 + i * 0.8) * 4
-            cx = 170 + i * 14
+            cx = start_x + text_w + 10 + i * 12
             cy = int(h / 2 + offset)
             alpha = int(120 + 120 * (0.5 + 0.5 * math.sin(self._phase * 2 + i * 0.8)))
             c = QColor(theme.ACCENT_BLUE)
             c.setAlpha(alpha)
             p.setPen(Qt.PenStyle.NoPen)
             p.setBrush(c)
-            p.drawEllipse(QRectF(cx - 3, cy - 3, 6, 6))
+            p.drawEllipse(QRectF(cx - 2.5, cy - 2.5, 5, 5))
 
     def _draw_text(self, p: QPainter, w: int, h: int) -> None:
-        f = QFont("Helvetica Neue", 12)
+        f = QFont("Helvetica Neue", 13)
         p.setFont(f)
         color = QColor(theme.ERROR) if self._state == self._ERROR else QColor(theme.TEXT_PRIMARY)
         p.setPen(color)
-        p.drawText(24, int(h / 2 + 5), self._text)
+        p.drawText(QRectF(24, 0, w-48, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self._text)

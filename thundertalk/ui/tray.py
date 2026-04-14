@@ -10,23 +10,42 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 
 def app_icon() -> QIcon:
-    """Load the app icon from assets, or generate a fallback."""
+    """Load the app icon from assets, or generate a monochrome fallback."""
     icon_path = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "icon.png")
     icon_path = os.path.normpath(icon_path)
     if os.path.isfile(icon_path):
         return QIcon(icon_path)
-    px = QPixmap(64, 64)
+    
+    # Generate a sleek macOS native tray icon (monochrome)
+    from PySide6.QtCore import QRectF
+    px = QPixmap(44, 44)
     px.fill(QColor(0, 0, 0, 0))
     p = QPainter(px)
     p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    p.setBrush(QColor(59, 130, 246))
-    p.setPen(QColor(59, 130, 246))
-    p.drawEllipse(4, 4, 56, 56)
-    p.setPen(QColor(255, 255, 255))
-    p.setFont(QFont("Helvetica Neue", 28, QFont.Weight.Bold))
-    p.drawText(px.rect(), 0x0084, "⚡")
+    
+    # Instead of importing theme here directly which may have circular deps if not careful,
+    # just draw the same bolt shape scaled for 44x44
+    from PySide6.QtGui import QPainterPath
+    from PySide6.QtCore import Qt
+    path = QPainterPath()
+    cx, cy = 22, 22
+    w, h = 18, 26
+    path.moveTo(cx + w*0.15, cy - h*0.45)
+    path.lineTo(cx - w*0.35, cy + h*0.05)
+    path.lineTo(cx + w*0.15, cy + h*0.05)
+    path.lineTo(cx - w*0.15, cy + h*0.45)
+    path.lineTo(cx + w*0.35, cy - h*0.15)
+    path.lineTo(cx - w*0.15, cy - h*0.15)
+    path.closeSubpath()
+
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(230, 230, 230))  # Standard macOS light grey for dark menubar
+    p.drawPath(path)
     p.end()
-    return QIcon(px)
+    
+    icon = QIcon(px)
+    icon.setIsMask(True) # crucial for macOS native coloring (template icon)
+    return icon
 
 
 class TrayIcon(QSystemTrayIcon):
