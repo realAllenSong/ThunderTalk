@@ -1,14 +1,17 @@
-"""Main window — polished sidebar navigation + stacked page content."""
+"""Main window — sidebar navigation + stacked page content.
+
+Sidebar matches 闪电说 style: warm dark bg, orange bolt logo,
+minimal nav items with left accent bar on active.
+"""
 
 from __future__ import annotations
 
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QRectF
-from PySide6.QtGui import QCloseEvent, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap
+from PySide6.QtGui import QCloseEvent, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
-    QGraphicsDropShadowEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -26,18 +29,20 @@ from thundertalk.ui.pages.home_page import HomePage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
 
-_SIDEBAR_W = 200
+_SIDEBAR_W = 190
 
 _NAV_ITEMS = ["Home", "Models", "Settings", "About"]
 
 
 class _NavButton(QPushButton):
+    """Sidebar nav button — active state shows left accent bar + bg fill."""
+
     def __init__(self, index: int, label: str) -> None:
         super().__init__()
         self._index = index
         self._label = label
         self._active = False
-        self.setFixedHeight(42)
+        self.setFixedHeight(44)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setCheckable(True)
         self._update()
@@ -50,20 +55,21 @@ class _NavButton(QPushButton):
     def _update(self) -> None:
         if self._active:
             self.setStyleSheet(
-                f"QPushButton {{ background: {theme.ACCENT_BLUE_A10};"
+                f"QPushButton {{ background: {theme.BG_CARD};"
                 f" color: {theme.TEXT_PRIMARY}; border: none;"
-                f" border-left: 3px solid {theme.ACCENT_BLUE};"
-                " text-align: left; padding-left: 38px;"
-                " font-size: 13px; font-weight: bold; border-radius: 0; }"
+                f" border-left: 3px solid {theme.ACCENT_ORANGE};"
+                " text-align: left; padding-left: 36px;"
+                " font-size: 13px; font-weight: 600;"
+                f" border-radius: 0; margin: 0 8px 0 0; }}"
             )
         else:
             self.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+                f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
                 " border: none; border-left: 3px solid transparent;"
-                " text-align: left; padding-left: 38px;"
-                " font-size: 13px; border-radius: 0; }"
-                f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY};"
-                f" background: {theme.BG_CARD}; }}"
+                " text-align: left; padding-left: 36px;"
+                " font-size: 13px; border-radius: 0; margin: 0 8px 0 0; }}"
+                f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
+                f" background: rgba(255, 255, 255, 6); }}"
             )
         self.setText(f"    {self._label}")
 
@@ -71,23 +77,44 @@ class _NavButton(QPushButton):
         super().paintEvent(ev)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        icon_rect = self.rect().adjusted(16, 0, 0, 0)
+        icon_rect = self.rect().adjusted(14, 0, 0, 0)
         icon_rect.setWidth(22)
-        color = QColor(theme.ACCENT_BLUE) if self._active else QColor(theme.TEXT_MUTED)
-        p.setPen(QPen(color, 1.6))
+        color = QColor(theme.TEXT_PRIMARY) if self._active else QColor(theme.TEXT_SECONDARY)
+        p.setPen(QPen(color, 1.5))
         p.setBrush(Qt.BrushStyle.NoBrush)
         theme.ICON_PAINTERS[self._index](p, icon_rect)
         p.end()
 
 
+class _LogoBolt(QWidget):
+    """Orange rounded-square lightning bolt icon, matching 闪电说 style."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFixedSize(32, 32)
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(0, 0, 32, 32)
+        grad = QLinearGradient(0, 0, 32, 32)
+        grad.setColorAt(0, QColor("#fbbf24"))   # Warm amber top
+        grad.setColorAt(1, QColor("#f97316"))   # Orange bottom
+        path = QPainterPath()
+        path.addRoundedRect(rect, 8, 8)
+        p.fillPath(path, grad)
+        theme.draw_boltPath(p, rect)
+        p.end()
+
+
 class MainWindow(QMainWindow):
-    load_model_signal = Signal(str, str, str, str)  # model_id, path, family, backend
+    load_model_signal = Signal(str, str, str, str)
 
     def __init__(self, settings: Settings, history: HistoryStore) -> None:
         super().__init__()
         self._settings = settings
         self.setWindowTitle("ThunderTalk")
-        self.setMinimumSize(760, 560)
+        self.setMinimumSize(820, 580)
         self.setStyleSheet(theme.APP_QSS)
 
         from thundertalk.ui.tray import app_icon
@@ -115,26 +142,19 @@ class MainWindow(QMainWindow):
         logo_area.setFixedHeight(64)
         logo_area.setStyleSheet("background: transparent;")
         logo_ly = QHBoxLayout(logo_area)
-        logo_ly.setContentsMargins(18, 0, 18, 0)
+        logo_ly.setContentsMargins(18, 0, 16, 0)
         logo_ly.setSpacing(10)
 
-        bolt_label = QLabel("⚡")
-        bolt_label.setFont(QFont("Helvetica Neue", 18))
-        bolt_label.setStyleSheet("color: #f97316;")
-        logo_ly.addWidget(bolt_label)
+        bolt = _LogoBolt()
+        logo_ly.addWidget(bolt)
 
         name_label = QLabel("ThunderTalk")
-        name_label.setFont(theme.font_heading(15))
+        name_label.setFont(theme.font_heading(14))
         name_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         logo_ly.addWidget(name_label)
         logo_ly.addStretch()
         sb.addWidget(logo_area)
 
-        # Divider
-        div = QFrame()
-        div.setFixedHeight(1)
-        div.setStyleSheet(f"background: {theme.BORDER_SUBTLE}; margin: 0 14px;")
-        sb.addWidget(div)
         sb.addSpacing(8)
 
         # Nav buttons
@@ -147,10 +167,11 @@ class MainWindow(QMainWindow):
 
         sb.addStretch()
 
-        # Bottom info
+        # Bottom model status
         self._sidebar_model_label = QLabel("No model loaded")
         self._sidebar_model_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 8px 18px;"
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 14px 18px;"
+            " background: transparent;"
         )
         self._sidebar_model_label.setWordWrap(True)
         sb.addWidget(self._sidebar_model_label)
@@ -208,12 +229,14 @@ class MainWindow(QMainWindow):
         if model_id:
             self._sidebar_model_label.setText(f"✓  {model_id}")
             self._sidebar_model_label.setStyleSheet(
-                f"color: {theme.SUCCESS}; font-size: 11px; padding: 8px 18px;"
+                f"color: {theme.SUCCESS}; font-size: 11px; padding: 14px 18px;"
+                " background: transparent;"
             )
         else:
             self._sidebar_model_label.setText("No model loaded")
             self._sidebar_model_label.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 8px 18px;"
+                f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 14px 18px;"
+                " background: transparent;"
             )
 
     def show_load_error(self, msg: str) -> None:

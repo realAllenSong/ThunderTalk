@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import time
 import traceback
 
 from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, qInstallMessageHandler
@@ -21,7 +22,7 @@ from thundertalk.core.settings import Settings
 from thundertalk.core.auto_learn import on_text_pasted as notify_auto_learn
 from thundertalk.core.auto_learn import set_callback as set_auto_learn_callback
 from thundertalk.core.platform_utils import set_accessory_app, activate_app, deactivate_app
-from thundertalk.core.system_audio import mute_system_audio, unmute_system_audio, force_unmute
+from thundertalk.core.system_audio import mute_system_audio, unmute_system_audio, force_unmute, ensure_audio_restored
 from thundertalk.core.text_output import paste_text, save_frontmost_app
 from thundertalk.ui.main_window import MainWindow
 from thundertalk.ui.overlay import VoiceOverlay
@@ -110,8 +111,9 @@ def main() -> None:
     window = MainWindow(settings, history)
     tray = TrayIcon()
 
-    # --- Hotwords → ASR engine ---
+    # --- Hotwords + Language → ASR engine ---
     pipe.asr.set_hotwords(settings.hotwords)
+    pipe.asr.set_language(settings.transcription_language)
 
     # --- Model loading helpers -----------------------------------------
     def _start_model_load(model_id: str, path: str, family: str, backend: str) -> None:
@@ -185,29 +187,36 @@ def main() -> None:
     # --- Voice pipeline ------------------------------------------------
     def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float) -> None:
         # Audio is restored when recording stops (before ASR), not here.
+        t_start = time.perf_counter()
         print("[Toggle] _on_asr_done called")
-        if pipe._worker:
-            pipe._worker.wait()
-            pipe._worker = None
+        # Don't block with wait() — the signal firing already means run() finished.
+        # Just clear the reference so it can be garbage-collected.
+        pipe._worker = None
         print(f'[ASR] Result: "{text}" ({ms}ms, backend={backend}, RTF={rtf:.3f})')
         if text:
             overlay.hide_overlay()
+            # Paste FIRST — lowest latency path to the user's target app
+            _paste_and_learn(text)
+            paste_dispatch_ms = int((time.perf_counter() - t_start) * 1000)
+            print(f"[Toggle] Post-ASR dispatch took {paste_dispatch_ms}ms")
+            # Defer non-critical UI updates so they don't block paste
             history.add(
                 text=text,
                 duration_secs=dur,
                 inference_ms=ms,
                 model=pipe.asr.current_model or "unknown",
             )
-            window.home_page.refresh()
-            _paste_and_learn(text)
+            QTimer.singleShot(50, window.home_page.refresh)
+            # Post-paste watchdog: macOS may silently re-mute audio when
+            # _do_paste activates the previous app.  Check after 500ms.
+            if settings.get("mute_speakers"):
+                QTimer.singleShot(500, ensure_audio_restored)
         else:
             overlay.show_error("No speech detected")
 
     def _on_asr_error(msg: str) -> None:
         print("[Toggle] _on_asr_error called")
-        if pipe._worker:
-            pipe._worker.wait()
-            pipe._worker = None
+        pipe._worker = None
         print(f"[ASR] Error: {msg}")
         overlay.show_error(msg[:40])
 
@@ -216,14 +225,18 @@ def main() -> None:
         print(f"[Toggle] on_toggle called, _recording={pipe._recording}")
         if pipe._recording:
             # ---- STOP recording ----
+            t_stop = time.perf_counter()
             print("[Toggle] Stopping recording...")
             overlay.show_transcribing()
             samples = pipe.recorder.stop()
+            stop_ms = int((time.perf_counter() - t_stop) * 1000)
             if settings.get("mute_speakers"):
-                print("[Toggle] Restoring system audio immediately after stop")
+                # Small delay so PortAudio fully releases the audio device
+                # before we restore output volume via CoreAudio.
+                time.sleep(0.02)
+                print(f"[Toggle] Restoring system audio ({stop_ms}ms to stop recorder)")
                 unmute_system_audio()
             pipe._recording = False
-            _update_rec_btn()
 
             if samples is None or len(samples) < 800:
                 print("[Toggle] Too short (audio already restored on stop)")
@@ -247,40 +260,19 @@ def main() -> None:
                 overlay.show_error("Load a model first")
                 return
             save_frontmost_app()
+            # Show overlay immediately so user gets instant visual feedback
+            overlay.show_recording()
+            app.processEvents()
             mute_on = settings.get("mute_speakers")
             print(f"[Toggle] Starting recording, mute_speakers={mute_on}")
             if mute_on:
                 mute_system_audio()
-            overlay.show_recording()
             mic = settings.microphone
             pipe.recorder.start(device=None if mic == "auto" else mic)
             pipe._recording = True
-            _update_rec_btn()
             print("[Toggle] Recording started")
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
-
-    # --- UI record button on Models page -------------------------------
-    def _update_rec_btn() -> None:
-        btn = window.models_page.rec_btn
-        hk = settings.hotkey.replace("+", " + ").upper()
-        if pipe._recording:
-            btn.setText("⏹  Stop Recording")
-            btn.setStyleSheet(
-                "QPushButton { background: #dc2626; color: #fff; border: none;"
-                " border-radius: 22px; font-size: 14px; font-weight: bold; }"
-                "QPushButton:hover { background: #b91c1c; }"
-            )
-        else:
-            btn.setText(f"Start Recording  ({hk})")
-            btn.setStyleSheet(
-                "QPushButton { background: #3b82f6; color: #fff; border: none;"
-                " border-radius: 22px; font-size: 14px; font-weight: bold; }"
-                "QPushButton:hover { background: #2563eb; }"
-            )
-
-    window.models_page.rec_btn.clicked.connect(on_toggle)
-    _update_rec_btn()
 
     # --- Hotkey --------------------------------------------------------
     hotkey = HotkeyListener(on_toggle=pipe.toggle, key_name=settings.hotkey)
@@ -288,7 +280,6 @@ def main() -> None:
 
     def _on_hotkey_setting_changed(key_name: str) -> None:
         hotkey.set_hotkey(key_name)
-        _update_rec_btn()
 
     window.settings_page.hotkey_changed.connect(_on_hotkey_setting_changed)
 
@@ -303,6 +294,12 @@ def main() -> None:
                 _start_model_load(mid or "", md, mf, be)
 
     window.settings_page.hotwords_changed.connect(_on_hotwords_changed)
+
+    # --- Language setting → ASR engine ---
+    def _on_settings_changed() -> None:
+        pipe.asr.set_language(settings.transcription_language)
+
+    window.settings_page.settings_changed.connect(_on_settings_changed)
 
     # --- Tray ----------------------------------------------------------
     def _show_settings_window() -> None:

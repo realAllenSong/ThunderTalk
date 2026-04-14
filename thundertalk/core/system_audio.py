@@ -17,12 +17,15 @@ import ctypes.util
 import platform
 import subprocess
 import threading
+import time
 
 _we_muted: bool = False
 # macOS: device_id -> (volume_scalar_or_None, muted_or_None) captured before ducking
 _darwin_duck_snapshots: dict[int, tuple[float | None, bool | None]] = {}
 # macOS: (output volume 0..100, output muted) from AppleScript before ducking
 _darwin_osascript_snapshot: tuple[int, bool] | None = None
+# macOS: last AppleScript volume settings we restored to (for post-paste verification)
+_last_unmute_target: tuple[int, bool] | None = None
 _lock = threading.Lock()
 _SYSTEM = platform.system()
 
@@ -321,38 +324,58 @@ if _SYSTEM == "Darwin":
 
 def mute_system_audio() -> None:
     """Mute system output. SYNCHRONOUS so mic doesn't pick up residual audio."""
-    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted
+    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted, _last_unmute_target
     print("[Audio] mute_system_audio() called")
     with _lock:
+        _last_unmute_target = None  # clear post-paste watchdog target
         if _SYSTEM == "Darwin":
             _darwin_osascript_snapshot = None
             _darwin_duck_snapshots.clear()
+
+            # ── Phase 1: SNAPSHOT everything BEFORE any mutations ──
+            o_snap = _osascript_read_volume_settings()
+
             device_ids = _list_audio_device_ids_darwin()
             if not device_ids:
                 fallback = _get_default_output_device_darwin()
                 if fallback is not None:
                     device_ids = [fallback]
                     print(f"[Audio]   device enumeration empty, fallback default={fallback}")
+
+            duckable: list[tuple[int, float | None, bool | None]] = []
             for dev_id in device_ids:
                 if not _is_duckable_output_device(dev_id):
                     continue
                 vol = _get_output_volume_darwin(dev_id)
                 mut = _get_output_muted_darwin(dev_id)
+                duckable.append((dev_id, vol, mut))
+
+            # ── Phase 2: APPLY mutes (AppleScript first for immediate effect) ──
+            if o_snap is not None:
+                _darwin_osascript_snapshot = o_snap
+                _osascript_apply_volume_settings(0, True)
+                print(
+                    "[Audio]   + aggregate output via AppleScript "
+                    f"(saved vol={o_snap[0]} muted={o_snap[1]})"
+                )
+
+            for dev_id, vol, mut in duckable:
                 _darwin_duck_snapshots[dev_id] = (vol, mut)
                 _set_output_muted_darwin(True, dev_id)
                 if vol is not None:
                     _set_output_volume_darwin(0.0, dev_id)
 
-            _we_muted = len(_darwin_duck_snapshots) > 0
-            o_snap = _osascript_read_volume_settings()
-            if o_snap is not None:
-                _darwin_osascript_snapshot = o_snap
-                if _osascript_apply_volume_settings(0, True):
-                    _we_muted = True
-                    print(
-                        "[Audio]   + aggregate output via AppleScript "
-                        f"(saved vol={o_snap[0]} muted={o_snap[1]})"
-                    )
+            _we_muted = _darwin_osascript_snapshot is not None or len(_darwin_duck_snapshots) > 0
+
+            # ── Phase 3: Verify mute took effect — retry once if needed ──
+            if _we_muted:
+                time.sleep(0.05)  # 50ms for CoreAudio to propagate
+                check = _osascript_read_volume_settings()
+                if check is not None and (check[0] > 0 or not check[1]):
+                    print("[Audio]   AppleScript mute did not stick, retrying...")
+                    _osascript_apply_volume_settings(0, True)
+                    time.sleep(0.05)
+
             print(
                 "[Audio]   silenced via CoreAudio "
                 f"(devices={len(_darwin_duck_snapshots)} "
@@ -391,7 +414,7 @@ def mute_system_audio() -> None:
 
 def unmute_system_audio() -> None:
     """Unmute system output. SYNCHRONOUS for reliability."""
-    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted
+    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted, _last_unmute_target
     print(f"[Audio] unmute_system_audio() called  "
           f"(_we_muted={_we_muted}, devices={len(_darwin_duck_snapshots)})")
     with _lock:
@@ -405,24 +428,55 @@ def unmute_system_audio() -> None:
         _we_muted = False
 
     if _SYSTEM == "Darwin":
+        # 1) Restore aggregate output via AppleScript FIRST.
+        #    This is the menu-bar slider that apps (Chrome, Safari) actually
+        #    follow.  Setting it first establishes the correct aggregate
+        #    state so device-level restores don't fight it.
+        if o_snap is not None:
+            _osascript_apply_volume_settings(o_snap[0], o_snap[1])
+            print(
+                "[Audio]   restored aggregate via AppleScript "
+                f"(vol={o_snap[0]} muted={o_snap[1]})"
+            )
+
+        # 2) Restore individual CoreAudio devices.
+        #    Unmute each device before setting volume so the volume sticks.
         ok_all = True
         for dev_id, (prev_vol, prev_mut) in sorted(snapshots.items()):
+            muted_target = bool(prev_mut) if prev_mut is not None else False
+            mut_ok = _set_output_muted_darwin(muted_target, dev_id)
             vol_ok = True
             if prev_vol is not None:
                 vol_ok = _set_output_volume_darwin(prev_vol, dev_id)
-            muted_target = bool(prev_mut) if prev_mut is not None else False
-            mut_ok = _set_output_muted_darwin(muted_target, dev_id)
             ok_all = ok_all and vol_ok and mut_ok
         print(
             "[Audio]   restored via CoreAudio "
             f"(count={len(snapshots)} ids={sorted(snapshots.keys())}) ok={ok_all}"
         )
+
+        # 3) Re-apply AppleScript to ensure device-level restores didn't
+        #    override the aggregate.  Then verify with retry.
         if o_snap is not None:
-            o_ok = _osascript_apply_volume_settings(o_snap[0], o_snap[1])
-            print(
-                "[Audio]   restored aggregate via AppleScript "
-                f"(vol={o_snap[0]} muted={o_snap[1]}) ok={o_ok}"
-            )
+            _osascript_apply_volume_settings(o_snap[0], o_snap[1])
+            time.sleep(0.10)
+            for attempt in range(3):
+                check = _osascript_read_volume_settings()
+                if check is None:
+                    break
+                vol_bad = abs(check[0] - o_snap[0]) > 2
+                mute_bad = check[1] != o_snap[1]
+                if not vol_bad and not mute_bad:
+                    print(f"[Audio]   verify OK (vol={check[0]} muted={check[1]})")
+                    break
+                print(f"[Audio]   drift attempt {attempt+1}: "
+                      f"got vol={check[0]} muted={check[1]}, retrying...")
+                _osascript_apply_volume_settings(o_snap[0], o_snap[1])
+                time.sleep(0.10)
+
+        # Remember what we restored to, so ensure_audio_restored() can fix
+        # any re-muting caused by app activation after paste.
+        with _lock:
+            _last_unmute_target = o_snap
     elif _SYSTEM == "Linux":
         try:
             subprocess.run(
@@ -443,6 +497,43 @@ def unmute_system_audio() -> None:
         except Exception:
             pass
 
+def ensure_audio_restored() -> None:
+    """Post-paste watchdog: if macOS silently re-muted after app activation,
+    re-apply the last unmute target.
+
+    Call this ~300ms after paste_text() to catch re-muting caused by
+    macOS audio graph reconfiguration during app activation.
+    """
+    global _last_unmute_target
+    if _SYSTEM != "Darwin":
+        return
+    with _lock:
+        target = _last_unmute_target
+        if target is None:
+            return
+        if _we_muted:
+            # A new recording started — don't interfere
+            return
+    check = _osascript_read_volume_settings()
+    if check is None:
+        return
+    vol_bad = abs(check[0] - target[0]) > 2
+    mute_bad = (not target[1]) and check[1]  # only fix if target was unmuted but now muted
+    if vol_bad or mute_bad:
+        print(f"[Audio] ensure_audio_restored: system was re-muted "
+              f"(got vol={check[0]} muted={check[1]}, "
+              f"target vol={target[0]} muted={target[1]}), fixing...")
+        _osascript_apply_volume_settings(target[0], target[1])
+        # Also unmute CoreAudio default device in case it was re-muted
+        dev = _get_default_output_device_darwin()
+        if dev is not None:
+            _set_output_muted_darwin(target[1], dev)
+            if target[0] > 0:
+                _set_output_volume_darwin(target[0] / 100.0, dev)
+    else:
+        print(f"[Audio] ensure_audio_restored: OK (vol={check[0]} muted={check[1]})")
+    with _lock:
+        _last_unmute_target = None
 
 def force_unmute() -> None:
     """Emergency unmute — ignores flags, just unmutes."""

@@ -1,4 +1,10 @@
-"""Settings page with tabs: Hotkey, Microphone, System, Hotwords."""
+"""Settings page — segment-control tabs: Hotkey, Microphone, System, Hotwords.
+
+Layout and cards match 闪电说 style:
+- Rounded segment pill tab bar at top center
+- Card sections with bold in-card titles
+- Side-by-side toggle/press mode cards
+"""
 
 from __future__ import annotations
 
@@ -34,20 +40,18 @@ if TYPE_CHECKING:
 # ── Hotkey Capture Widget ───────────────────────────────────────────────
 
 class HotkeyCapture(QWidget):
-    """Click the capsule, hold modifiers + press a key to set a combo hotkey.
+    """Click the capsule, press a key combo to set hotkey.
 
-    Supports combos like Cmd+Space, Option+Shift+Z, or single keys like F4.
-    While capturing: shows held modifiers in real time.
-    Finalizes when a non-modifier key is pressed (modifier-only combos also OK
-    after a 1.5s timeout).
+    Displays current hotkey as key-cap badges.
+    While capturing: shows held modifiers live.
     """
 
-    key_captured = Signal(str)   # emits "cmd_l+space" format
+    key_captured = Signal(str)
 
     def __init__(self, current: str) -> None:
         super().__init__()
         self._capturing = False
-        self._combo_str = current          # stored as "cmd_l+space"
+        self._combo_str = current
         self._display = _display_combo(current)
         self._saved_display = self._display
         self._held_modifiers: list[str] = []
@@ -83,7 +87,6 @@ class HotkeyCapture(QWidget):
             self.update()
             return
 
-        # Non-modifier key pressed → finalize combo
         parts = self._held_modifiers + [key_name]
         combo = "+".join(parts)
         self._finalize(combo)
@@ -91,10 +94,8 @@ class HotkeyCapture(QWidget):
     def keyReleaseEvent(self, ev: QKeyEvent) -> None:
         if not self._capturing:
             return super().keyReleaseEvent(ev)
-        # Don't react to releases during capture — just absorb
 
     def timerEvent(self, ev) -> None:
-        """Modifier-only combo: accept after 1.5s timeout."""
         if ev.timerId() == self._modifier_timer_id:
             self.killTimer(self._modifier_timer_id)
             self._modifier_timer_id = None
@@ -133,51 +134,67 @@ class HotkeyCapture(QWidget):
 
         rect = QRectF(0, 0, self.width(), self.height())
         bg = QPainterPath()
-        bg.addRoundedRect(rect, 16, 16)
+        bg.addRoundedRect(rect, 14, 14)
 
         if self._capturing:
-            c = QColor(theme.ACCENT_BLUE)
-            c.setAlpha(25)
-            p.fillPath(bg, c)
-            border_path = QPainterPath()
-            border_path.addRoundedRect(rect.adjusted(0.5, 0.5, -0.5, -0.5), 16, 16)
-            p.setPen(QPen(QColor(theme.ACCENT_ORANGE), 1.5))
-            p.drawPath(border_path)
-        else:
-            p.fillPath(bg, QColor(theme.BG_CARD))
-            p.setPen(QPen(QColor(theme.BORDER_DEFAULT), 1))
+            p.fillPath(bg, QColor(theme.BG_ELEVATED))
+            p.setPen(QPen(QColor(theme.ACCENT_BLUE), 1.5))
             p.drawPath(bg)
-
-        if self._capturing:
             p.setFont(theme.font(14))
-            p.setPen(QColor(theme.ACCENT_ORANGE))
+            p.setPen(QColor(theme.ACCENT_BLUE))
             label = self._display if self._held_modifiers else "Press keys…"
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
         else:
-            p.setFont(theme.font_heading(20))
-            p.setPen(QColor(theme.TEXT_PRIMARY))
-            p.drawText(rect.adjusted(0, -8, 0, 0), Qt.AlignmentFlag.AlignCenter, self._display)
+            p.fillPath(bg, QColor(theme.BG_CARD))
+            p.setPen(QPen(QColor(theme.BORDER_SUBTLE), 1))
+            p.drawPath(bg)
+
+            # Draw key-cap badges
+            parts = [pt.strip() for pt in self._combo_str.split("+") if pt.strip()]
+            displayed = [_display_single(pt) for pt in parts]
+
+            total_width = 0
+            cap_widths = []
+            for d in displayed:
+                w = max(38, len(d) * 11 + 20)
+                cap_widths.append(w)
+                total_width += w
+            total_width += (len(displayed) - 1) * 8
+
+            start_x = (self.width() - total_width) / 2
+            cap_h = 34
+            cap_y = (self.height() - cap_h) / 2 - 6
+
+            for i, (d, cw) in enumerate(zip(displayed, cap_widths)):
+                cap_rect = QRectF(start_x, cap_y, cw, cap_h)
+                cap_path = QPainterPath()
+                cap_path.addRoundedRect(cap_rect, 8, 8)
+                p.fillPath(cap_path, QColor(theme.BG_ELEVATED))
+                p.setPen(QPen(QColor(theme.BORDER_DEFAULT), 1))
+                p.drawPath(cap_path)
+                p.setFont(theme.font_heading(13))
+                p.setPen(QColor(theme.TEXT_PRIMARY))
+                p.drawText(cap_rect, Qt.AlignmentFlag.AlignCenter, d)
+                start_x += cw + 8
+
+            # Hint
             p.setFont(theme.font(11))
             p.setPen(QColor(theme.TEXT_MUTED))
-            p.drawText(rect.adjusted(0, 20, 0, 0), Qt.AlignmentFlag.AlignCenter, "Click to change")
+            hint_rect = QRectF(0, cap_y + cap_h + 6, self.width(), 20)
+            p.drawText(hint_rect, Qt.AlignmentFlag.AlignCenter, "✏ Click to change")
 
         p.end()
 
 
 _MAC_NATIVE_VK: dict[int, str] = {
-    0x37: "cmd_l",   # Left Command ⌘
-    0x36: "cmd_r",   # Right Command ⌘
-    0x3A: "alt_l",   # Left Option ⌥
-    0x3D: "alt_r",   # Right Option ⌥
-    0x38: "shift_l",  # Left Shift ⇧
-    0x3C: "shift_r",  # Right Shift ⇧
-    0x3B: "ctrl_l",   # Left Control ⌃
-    0x3E: "ctrl_r",   # Right Control ⌃
+    0x37: "cmd_l", 0x36: "cmd_r",
+    0x3A: "alt_l", 0x3D: "alt_r",
+    0x38: "shift_l", 0x3C: "shift_r",
+    0x3B: "ctrl_l", 0x3E: "ctrl_r",
 }
 
 
 def _qt_key_to_name(ev: QKeyEvent) -> str:
-    """Map a QKeyEvent to a pynput-compatible key name string."""
     import platform
     from PySide6.QtCore import Qt as QtKey
 
@@ -206,7 +223,7 @@ def _qt_key_to_name(ev: QKeyEvent) -> str:
         QtKey.Key.Key_Up: "up",
         QtKey.Key.Key_Down: "down",
         QtKey.Key.Key_Shift: "shift_l",
-        QtKey.Key.Key_Control: "cmd_l",     # Qt swaps Ctrl/Meta on macOS
+        QtKey.Key.Key_Control: "cmd_l",
         QtKey.Key.Key_Meta: "ctrl_l",
         QtKey.Key.Key_Alt: "alt_l",
     }
@@ -220,10 +237,8 @@ def _qt_key_to_name(ev: QKeyEvent) -> str:
 
 
 _MODIFIER_NAMES = {
-    "cmd", "cmd_l", "cmd_r",
-    "alt", "alt_l", "alt_r",
-    "ctrl", "ctrl_l", "ctrl_r",
-    "shift", "shift_l", "shift_r",
+    "cmd", "cmd_l", "cmd_r", "alt", "alt_l", "alt_r",
+    "ctrl", "ctrl_l", "ctrl_r", "shift", "shift_l", "shift_r",
 }
 
 
@@ -237,15 +252,14 @@ _DISPLAY_NAMES: dict[str, str] = {
     "home": "Home", "end": "End",
     "page_up": "PgUp", "page_down": "PgDn",
     "right": "→", "left": "←", "up": "↑", "down": "↓",
-    "cmd": "⌘", "cmd_l": "⌘", "cmd_r": "⌘R",
-    "alt": "⌥", "alt_l": "⌥", "alt_r": "⌥R",
-    "ctrl": "⌃", "ctrl_l": "⌃", "ctrl_r": "⌃R",
-    "shift": "⇧", "shift_l": "⇧", "shift_r": "⇧R",
+    "cmd": "⌘", "cmd_l": "⌘", "cmd_r": "Right ⌘",
+    "alt": "⌥", "alt_l": "⌥", "alt_r": "Right ⌥",
+    "ctrl": "⌃", "ctrl_l": "⌃", "ctrl_r": "Right ⌃",
+    "shift": "⇧", "shift_l": "⇧", "shift_r": "Right ⇧",
 }
 
 
 def _display_single(key_name: str) -> str:
-    """User-friendly display for a single key."""
     low = key_name.lower().strip()
     if low in _DISPLAY_NAMES:
         return _DISPLAY_NAMES[low]
@@ -257,7 +271,6 @@ def _display_single(key_name: str) -> str:
 
 
 def _display_combo(combo_str: str) -> str:
-    """User-friendly display for a combo like 'cmd_l+space' → '⌘ Space'."""
     parts = [p.strip() for p in combo_str.split("+") if p.strip()]
     if not parts:
         return "None"
@@ -268,43 +281,37 @@ def _display_combo(combo_str: str) -> str:
     return " + ".join(displayed)
 
 
-# ── Radio option ────────────────────────────────────────────────────────
+# ── Mode selection card ─────────────────────────────────────────────────
 
-class _RadioOption(QFrame):
+class _ModeCard(QFrame):
+    """Side-by-side card for press mode (like 闪电说 短按/长按)."""
     clicked = Signal()
 
-    def __init__(self, label: str, desc: str, selected: bool = False) -> None:
+    def __init__(self, title: str, desc: str, selected: bool = False) -> None:
         super().__init__()
         self._selected = selected
         self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFixedHeight(56)
-        self._label = label
-        self._desc = desc
         self._update_style()
 
-        ly = QHBoxLayout(self)
-        ly.setContentsMargins(16, 0, 16, 0)
+        ly = QVBoxLayout(self)
+        ly.setContentsMargins(20, 18, 20, 18)
+        ly.setSpacing(8)
 
-        left = QVBoxLayout()
-        left.setSpacing(1)
-        name = QLabel(label)
-        name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; border: none;")
-        left.addWidget(name)
+        name = QLabel(title)
+        name.setFont(theme.font(15, bold=True))
+        name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        ly.addWidget(name)
+
         d = QLabel(desc)
-        d.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
-        left.addWidget(d)
-        ly.addLayout(left, stretch=1)
-
-        self._dot = QLabel()
-        self._dot.setFixedSize(20, 20)
-        ly.addWidget(self._dot)
-        self._update_dot()
+        d.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
+        d.setWordWrap(True)
+        ly.addWidget(d)
 
     def _update_style(self) -> None:
         if self._selected:
             self.setStyleSheet(
-                f"QFrame {{ background: {theme.ACCENT_BLUE_A10};"
-                f" border: 1px solid {theme.ACCENT_BLUE_A30}; border-radius: 12px; }}"
+                f"QFrame {{ background: {theme.BG_CARD};"
+                f" border: 1px solid {theme.TEXT_SECONDARY}; border-radius: 12px; }}"
             )
         else:
             self.setStyleSheet(
@@ -313,20 +320,9 @@ class _RadioOption(QFrame):
                 f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
             )
 
-    def _update_dot(self) -> None:
-        if self._selected:
-            self._dot.setStyleSheet(
-                f"background: {theme.ACCENT_BLUE}; border: none; border-radius: 10px;"
-            )
-        else:
-            self._dot.setStyleSheet(
-                f"background: transparent; border: 2px solid {theme.BORDER_STRONG}; border-radius: 10px;"
-            )
-
     def set_selected(self, val: bool) -> None:
         self._selected = val
         self._update_style()
-        self._update_dot()
 
     def mousePressEvent(self, ev) -> None:
         self.clicked.emit()
@@ -344,34 +340,24 @@ class SettingsPage(QWidget):
         self._settings = settings
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 28, 28, 20)
+        root.setContentsMargins(32, 28, 32, 20)
         root.setSpacing(0)
 
-        heading = QLabel("Settings")
-        heading.setFont(theme.font_heading(20))
-        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        root.addWidget(heading)
-        root.addSpacing(16)
+        # ── Segment tab bar (centered) ──
+        tab_container = QHBoxLayout()
+        tab_container.setContentsMargins(0, 0, 0, 0)
+        tab_container.addStretch()
 
-        # ── Tab bar ──
         self._tabs = QTabBar()
         self._tabs.setExpanding(False)
         self._tabs.setDrawBase(False)
-        self._tabs.setStyleSheet(
-            "QTabBar { background: transparent; }"
-            f"QTabBar::tab {{ background: transparent; color: {theme.TEXT_MUTED};"
-            " padding: 8px 20px; border: none; margin-bottom: 2px; font-size: 13px; }}"
-            f"QTabBar::tab:selected {{ color: {theme.TEXT_PRIMARY};"
-            f" border-bottom: 2px solid {theme.ACCENT_BLUE}; margin-bottom: 0px; }}"
-            f"QTabBar::tab:hover {{ color: {theme.TEXT_SECONDARY}; }}"
-        )
+        self._tabs.setStyleSheet(theme.segment_tab_qss())
         for name in ("Hotkey", "Microphone", "System", "Hotwords"):
             self._tabs.addTab(name)
-        root.addWidget(self._tabs)
-
-        div = theme.separator()
-        root.addWidget(div)
-        root.addSpacing(20)
+        tab_container.addWidget(self._tabs)
+        tab_container.addStretch()
+        root.addLayout(tab_container)
+        root.addSpacing(24)
 
         self._pages: list[QWidget] = []
         self._stack_area = QVBoxLayout()
@@ -406,24 +392,28 @@ class SettingsPage(QWidget):
         ly.setContentsMargins(0, 0, 0, 0)
         ly.setSpacing(20)
 
-        ly.addWidget(theme.section_heading("SHORTCUT KEY"))
         self._hotkey_capture = HotkeyCapture(self._settings.hotkey)
         self._hotkey_capture.key_captured.connect(self._on_hotkey_changed)
         ly.addWidget(self._hotkey_capture)
 
-        ly.addWidget(theme.section_heading("PRESS MODE"))
-        self._radio_toggle = _RadioOption(
-            "Toggle", "Press once to start, press again to stop",
+        # Side-by-side mode cards (like 闪电说 短按/长按)
+        mode_row = QHBoxLayout()
+        mode_row.setSpacing(12)
+
+        self._mode_toggle = _ModeCard(
+            "Toggle", "Press once to start,\npress again to stop",
             selected=self._settings.press_mode == "toggle",
         )
-        self._radio_hold = _RadioOption(
-            "Hold to Record", "Hold key to record, release to stop",
+        self._mode_hold = _ModeCard(
+            "Hold to Record", "Hold key to record,\nrelease to stop",
             selected=self._settings.press_mode == "hold",
         )
-        self._radio_toggle.clicked.connect(lambda: self._set_mode("toggle"))
-        self._radio_hold.clicked.connect(lambda: self._set_mode("hold"))
-        ly.addWidget(self._radio_toggle)
-        ly.addWidget(self._radio_hold)
+        self._mode_toggle.clicked.connect(lambda: self._set_mode("toggle"))
+        self._mode_hold.clicked.connect(lambda: self._set_mode("hold"))
+        mode_row.addWidget(self._mode_toggle)
+        mode_row.addWidget(self._mode_hold)
+        ly.addLayout(mode_row)
+
         ly.addStretch()
         self._add_page(page)
 
@@ -433,8 +423,8 @@ class SettingsPage(QWidget):
 
     def _set_mode(self, mode: str) -> None:
         self._settings.set("press_mode", mode)
-        self._radio_toggle.set_selected(mode == "toggle")
-        self._radio_hold.set_selected(mode == "hold")
+        self._mode_toggle.set_selected(mode == "toggle")
+        self._mode_hold.set_selected(mode == "hold")
         self.settings_changed.emit()
 
     # ── Microphone tab ──
@@ -445,7 +435,11 @@ class SettingsPage(QWidget):
         ly.setContentsMargins(0, 0, 0, 0)
         ly.setSpacing(20)
 
-        ly.addWidget(theme.section_heading("INPUT DEVICE"))
+        hint = QLabel("Select recording device and test your microphone")
+        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
+        ly.addWidget(hint)
+
+        ly.addWidget(theme.section_heading("Microphone"))
 
         self._mic_combo = QComboBox()
         self._mic_combo.setStyleSheet(theme.COMBO_QSS)
@@ -464,20 +458,29 @@ class SettingsPage(QWidget):
         self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
         ly.addWidget(self._mic_combo)
 
-        ly.addSpacing(4)
-        ly.addWidget(theme.section_heading("OPTIONS"))
-
+        # Options card
         card = theme.make_card()
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(18, 16, 18, 16)
+        cl.setContentsMargins(20, 18, 20, 18)
+        cl.setSpacing(16)
+
         row, _ = theme.setting_row(
             "Mute Speakers During Recording",
-            "Avoid feedback by muting system audio while recording",
+            "Automatically mute system speakers to avoid feedback",
         )
         self._mute_toggle = theme.ToggleSwitch(self._settings.get("mute_speakers"))
         self._mute_toggle.toggled_signal.connect(lambda v: self._settings.set("mute_speakers", v))
         row.addWidget(self._mute_toggle)
         cl.addLayout(row)
+
+        cl.addWidget(theme.separator())
+
+        dir_row, _ = theme.setting_row("Recording Directory")
+        open_btn = theme.pill_button("Open Folder", width=110, height=32)
+        open_btn.clicked.connect(self._open_log_dir)
+        dir_row.addWidget(open_btn)
+        cl.addLayout(dir_row)
+
         ly.addWidget(card)
         ly.addStretch()
         self._add_page(page)
@@ -491,31 +494,51 @@ class SettingsPage(QWidget):
         page = QWidget()
         ly = QVBoxLayout(page)
         ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(20)
+        ly.setSpacing(16)
 
-        # -- Appearance --
-        ly.addWidget(theme.section_heading("APPEARANCE"))
+        hint = QLabel("Configure startup behavior and log settings")
+        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
+        ly.addWidget(hint)
+
+        # -- Appearance card --
         card1 = theme.make_card()
         c1 = QVBoxLayout(card1)
-        c1.setContentsMargins(18, 16, 18, 16)
-        row, _ = theme.setting_row("Theme", "Dark mode only in this version")
+        c1.setContentsMargins(20, 18, 20, 18)
+        c1.setSpacing(12)
+
+        sec1 = QLabel("Appearance")
+        sec1.setFont(theme.font(14, bold=True))
+        sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c1.addWidget(sec1)
+
+        c1.addWidget(theme.separator())
+
+        row, _ = theme.setting_row("Theme", "Use light, dark, or match system setting")
         lbl = QLabel("Dark")
         lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 8px; padding: 3px 10px;"
+            f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
+            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_SUBTLE};"
+            " border-radius: 8px; padding: 4px 14px;"
         )
         row.addWidget(lbl)
         c1.addLayout(row)
         ly.addWidget(card1)
 
-        # -- Startup --
-        ly.addWidget(theme.section_heading("STARTUP"))
+        # -- Startup card --
         card2 = theme.make_card()
         c2 = QVBoxLayout(card2)
-        c2.setContentsMargins(18, 16, 18, 16)
-        c2.setSpacing(16)
+        c2.setContentsMargins(20, 18, 20, 18)
+        c2.setSpacing(12)
 
-        r1, _ = theme.setting_row("Launch at Login", "Start ThunderTalk when you log in")
+        sec2 = QLabel("Startup")
+        sec2.setFont(theme.font(14, bold=True))
+        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c2.addWidget(sec2)
+
+        c2.addWidget(theme.separator())
+
+        r1, _ = theme.setting_row("Launch at Login",
+            "ThunderTalk will start when you log in")
         t1 = theme.ToggleSwitch(self._settings.get("launch_at_startup"))
         t1.toggled_signal.connect(lambda v: self._settings.set("launch_at_startup", v))
         r1.addWidget(t1)
@@ -523,7 +546,8 @@ class SettingsPage(QWidget):
 
         c2.addWidget(theme.separator())
 
-        r2, _ = theme.setting_row("Start Minimized", "Open to system tray without showing window")
+        r2, _ = theme.setting_row("Start Minimized",
+            "Open to system tray without showing window")
         t2 = theme.ToggleSwitch(self._settings.get("silent_launch"))
         t2.toggled_signal.connect(lambda v: self._settings.set("silent_launch", v))
         r2.addWidget(t2)
@@ -531,7 +555,8 @@ class SettingsPage(QWidget):
 
         if platform.system() == "Darwin":
             c2.addWidget(theme.separator())
-            r3, _ = theme.setting_row("Show in Dock", "Show the app icon in macOS Dock")
+            r3, _ = theme.setting_row("Show in Dock",
+                "Hide app icon from Dock; access via tray icon only")
             t3 = theme.ToggleSwitch(self._settings.get("show_in_dock"))
             t3.toggled_signal.connect(lambda v: self._settings.set("show_in_dock", v))
             r3.addWidget(t3)
@@ -539,12 +564,18 @@ class SettingsPage(QWidget):
 
         ly.addWidget(card2)
 
-        # -- Transcription --
-        ly.addWidget(theme.section_heading("TRANSCRIPTION"))
+        # -- Transcription card --
         card3 = theme.make_card()
         c3 = QVBoxLayout(card3)
-        c3.setContentsMargins(18, 16, 18, 16)
-        c3.setSpacing(16)
+        c3.setContentsMargins(20, 18, 20, 18)
+        c3.setSpacing(12)
+
+        sec3 = QLabel("Transcription")
+        sec3.setFont(theme.font(14, bold=True))
+        sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c3.addWidget(sec3)
+
+        c3.addWidget(theme.separator())
 
         lang_row, _ = theme.setting_row("Language", "Language for speech recognition")
         self._lang_combo = QComboBox()
@@ -568,21 +599,29 @@ class SettingsPage(QWidget):
 
         c3.addWidget(theme.separator())
 
-        clip_row, _ = theme.setting_row("Save to Clipboard", "Copy transcribed text to clipboard automatically")
+        clip_row, _ = theme.setting_row("Save to Clipboard",
+            "Copy transcribed text to clipboard automatically")
         ct = theme.ToggleSwitch(self._settings.get("save_to_clipboard"))
         ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
         clip_row.addWidget(ct)
         c3.addLayout(clip_row)
         ly.addWidget(card3)
 
-        # -- Logs --
-        ly.addWidget(theme.section_heading("LOGS"))
+        # -- Logs card --
         card4 = theme.make_card()
         c4 = QVBoxLayout(card4)
-        c4.setContentsMargins(18, 16, 18, 16)
-        c4.setSpacing(16)
+        c4.setContentsMargins(20, 18, 20, 18)
+        c4.setSpacing(12)
 
-        log_row, _ = theme.setting_row("Enable Logging", "Save debug logs to disk")
+        sec4 = QLabel("Logs")
+        sec4.setFont(theme.font(14, bold=True))
+        sec4.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        c4.addWidget(sec4)
+
+        c4.addWidget(theme.separator())
+
+        log_row, _ = theme.setting_row("Enable Logging",
+            "Save debug logs to disk")
         lt = theme.ToggleSwitch(self._settings.get("log_enabled"))
         lt.toggled_signal.connect(lambda v: self._settings.set("log_enabled", v))
         log_row.addWidget(lt)
@@ -591,7 +630,7 @@ class SettingsPage(QWidget):
         c4.addWidget(theme.separator())
 
         dir_row, _ = theme.setting_row("Log Directory")
-        open_btn = theme.pill_button("Open Folder", width=100, height=30)
+        open_btn = theme.pill_button("Open Folder", width=110, height=32)
         open_btn.clicked.connect(self._open_log_dir)
         dir_row.addWidget(open_btn)
         c4.addLayout(dir_row)
@@ -604,6 +643,7 @@ class SettingsPage(QWidget):
         code = self._lang_combo.itemData(idx)
         if code:
             self._settings.set("transcription_language", code)
+            self.settings_changed.emit()
 
     def _open_log_dir(self) -> None:
         log_dir = Path.home() / ".thundertalk"
@@ -623,18 +663,24 @@ class SettingsPage(QWidget):
         ly.setContentsMargins(0, 0, 0, 0)
         ly.setSpacing(16)
 
-        ly.addWidget(theme.section_heading("CUSTOM VOCABULARY"))
         hint = QLabel(
             "Add domain-specific terms to improve recognition accuracy."
         )
-        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px;")
+        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
         hint.setWordWrap(True)
         ly.addWidget(hint)
 
         card = theme.make_card()
         cl = QVBoxLayout(card)
-        cl.setContentsMargins(18, 16, 18, 16)
+        cl.setContentsMargins(20, 18, 20, 18)
         cl.setSpacing(12)
+
+        sec = QLabel("Custom Vocabulary")
+        sec.setFont(theme.font(14, bold=True))
+        sec.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        cl.addWidget(sec)
+
+        cl.addWidget(theme.separator())
 
         add_row = QHBoxLayout()
         add_row.setSpacing(8)
@@ -653,8 +699,8 @@ class SettingsPage(QWidget):
         self._hw_list = QListWidget()
         self._hw_list.setStyleSheet(
             f"QListWidget {{ background: {theme.BG_INPUT}; color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 10px; font-size: 13px; }}"
-            f"QListWidget::item {{ padding: 8px 12px; border-bottom: 1px solid {theme.BORDER_SUBTLE}; }}"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 10px; font-size: 13px; }}"
+            f"QListWidget::item {{ padding: 8px 14px; border-bottom: 1px solid {theme.BORDER_SUBTLE}; }}"
             f"QListWidget::item:selected {{ background: {theme.ACCENT_BLUE_A10}; }}"
         )
         self._hw_list.setMinimumHeight(180)
@@ -683,7 +729,6 @@ class SettingsPage(QWidget):
         self._hw_input.clear()
 
     def add_hotword_external(self, word: str) -> None:
-        """Add a hotword programmatically (e.g. from auto-learn)."""
         word = word.strip()
         if not word:
             return

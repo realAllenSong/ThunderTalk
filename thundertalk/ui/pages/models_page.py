@@ -78,13 +78,14 @@ class VariantRow(QFrame):
         self._loading = False
 
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED};"
+            f"QFrame {{ background: {theme.BG_CARD};"
             f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 10px; }}"
+            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
         )
-        self.setMinimumHeight(56)
+        self.setMinimumHeight(52)
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(14, 8, 14, 8)
+        row.setContentsMargins(14, 10, 14, 10)
         row.setSpacing(10)
 
         # Variant name
@@ -132,7 +133,7 @@ class VariantRow(QFrame):
 
         # Action button
         self._btn = QPushButton()
-        self._btn.setFixedSize(110, 28)
+        self._btn.setFixedSize(110, 30)
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
         row.addWidget(self._btn)
 
@@ -145,7 +146,7 @@ class VariantRow(QFrame):
             self._btn.setText("Loading…")
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; font-size: 11px; }}"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
             self._progress.show()
@@ -165,29 +166,32 @@ class VariantRow(QFrame):
             self._btn.setText(f"Needs {plat}")
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; font-size: 10px; }}"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-size: 10px; }}"
             )
             self._btn.setEnabled(False)
         elif is_active:
-            self._btn.setText("Active")
+            self._btn.setText("✓  Active")
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: {theme.SUCCESS_A20}; color: {theme.SUCCESS};"
-                f" border: 1px solid {theme.SUCCESS_A40}; border-radius: 14px; font-weight: bold; font-size: 11px; }}"
+                f" border: 1px solid {theme.SUCCESS_A40}; border-radius: 15px; font-weight: bold; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
         elif downloaded:
             self._btn.setText("Activate")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: {theme.ACCENT_BLUE}; color: #fff; border: none;"
-                " border-radius: 14px; font-weight: bold; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: {theme.ACCENT_BLUE_HOVER}; }}"
+                f"QPushButton {{ background: qlineargradient("
+                f"x1:0, y1:0, x2:1, y2:0, stop:0 {theme.ACCENT_BLUE}, stop:1 #7ba6f7);"
+                f" color: #fff; border: none;"
+                " border-radius: 15px; font-weight: bold; font-size: 11px; }}"
+                f"QPushButton:hover {{ background: qlineargradient("
+                f"x1:0, y1:0, x2:1, y2:0, stop:0 {theme.ACCENT_BLUE_HOVER}, stop:1 #6b96e7); }}"
             )
             self._btn.setEnabled(True)
         elif self.info.download_url:
             self._btn.setText("Download")
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: {theme.BG_CARD}; color: {theme.TEXT_SECONDARY};"
-                f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; font-size: 11px; }}"
+                f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
                 f"QPushButton:hover {{ background: {theme.BORDER_DEFAULT}; color: {theme.TEXT_PRIMARY}; }}"
             )
             self._btn.setEnabled(True)
@@ -195,7 +199,8 @@ class VariantRow(QFrame):
             self._btn.setText("Coming Soon")
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; font-size: 10px; }}"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
+                " font-size: 10px; font-style: italic; }}"
             )
             self._btn.setEnabled(False)
 
@@ -246,18 +251,19 @@ class FamilyCard(QFrame):
             f"QFrame#familyCard {{ background: {theme.BG_CARD};"
             f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
         )
+        self.setGraphicsEffect(theme.auto_shadow())
         self.setObjectName("familyCard")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(18, 14, 18, 14)
-        layout.setSpacing(8)
+        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setSpacing(10)
 
         # Header: name + family pill + metadata
         first = variants[0]
         top = QHBoxLayout()
         top.setSpacing(10)
         name = QLabel(first.name)
-        name.setFont(theme.font(14, bold=True))
+        name.setFont(theme.font(15, bold=True))
         name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         top.addWidget(name)
 
@@ -265,7 +271,7 @@ class FamilyCard(QFrame):
         pill.setStyleSheet(
             f"color: {self._accent}; font-size: 10px;"
             f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 8px; padding: 2px 8px;"
+            " border-radius: 8px; padding: 2px 10px;"
         )
         top.addWidget(pill)
         top.addStretch()
@@ -297,13 +303,14 @@ class FamilyCard(QFrame):
         super().paintEvent(ev)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        grad = QLinearGradient(1, 12, 1, 50)
+        # Left accent bar
+        grad = QLinearGradient(1, 12, 1, 60)
         grad.setColorAt(0, QColor(self._accent))
         grad.setColorAt(1, QColor(0, 0, 0, 0))
         p.setPen(Qt.PenStyle.NoPen)
         p.setBrush(grad)
         path = QPainterPath()
-        path.addRoundedRect(QRectF(1, 8, 3, 40), 1.5, 1.5)
+        path.addRoundedRect(QRectF(1, 10, 3, 50), 1.5, 1.5)
         p.drawPath(path)
         p.end()
 
@@ -338,8 +345,8 @@ class ModelsPage(QWidget):
 
         container = QWidget()
         self._layout = QVBoxLayout(container)
-        self._layout.setContentsMargins(28, 28, 28, 20)
-        self._layout.setSpacing(14)
+        self._layout.setContentsMargins(32, 32, 32, 20)
+        self._layout.setSpacing(16)
         scroll.setWidget(container)
 
         heading = QLabel("Models")
@@ -348,15 +355,27 @@ class ModelsPage(QWidget):
         self._layout.addWidget(heading)
 
         # Hardware info card
-        hw_card = theme.make_card()
+        hw_card = QFrame()
+        hw_card.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_CARD};"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
+        )
+        hw_card.setGraphicsEffect(theme.auto_shadow())
         hw_ly = QHBoxLayout(hw_card)
-        hw_ly.setContentsMargins(16, 14, 16, 14)
-        hw_icon = QLabel("🖥")
-        hw_icon.setFont(QFont("Helvetica Neue", 18))
-        hw_icon.setStyleSheet("border: none;")
+        hw_ly.setContentsMargins(20, 16, 20, 16)
+        hw_icon = QLabel("HW")
+        hw_icon.setFont(QFont("Helvetica Neue", 11, QFont.Weight.Bold))
+        hw_icon.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; border: none;"
+            f" background: {theme.BG_ELEVATED}; border-radius: 4px;"
+            " padding: 4px 6px;"
+        )
         hw_ly.addWidget(hw_icon)
+        hw_ly.addSpacing(6)
         self._hw_label = QLabel("Detecting hardware...")
-        self._hw_label.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;")
+        self._hw_label.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
+        )
         self._hw_label.setWordWrap(True)
         hw_ly.addWidget(self._hw_label, stretch=1)
         self._layout.addWidget(hw_card)
@@ -366,7 +385,7 @@ class ModelsPage(QWidget):
         self._error_label.setStyleSheet(
             f"color: {theme.ERROR}; background: {theme.ERROR_DIM};"
             f" border: 1px solid {theme.ERROR_A40};"
-            " border-radius: 10px; padding: 10px 14px; font-size: 12px;"
+            " border-radius: 10px; padding: 12px 16px; font-size: 12px;"
         )
         self._error_label.hide()
         self._layout.addWidget(self._error_label)
@@ -380,9 +399,6 @@ class ModelsPage(QWidget):
             self._family_cards[family] = card
 
         self._layout.addStretch()
-
-        self.rec_btn = theme.accent_button("Start Recording", height=44)
-        self._layout.addWidget(self.rec_btn)
 
         self._detect_hw()
 

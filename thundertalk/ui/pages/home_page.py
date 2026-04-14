@@ -1,4 +1,8 @@
-"""Home page — transcription history and usage stats."""
+"""Home page — hotkey info bar, stats, and chronological history.
+
+Layout inspired by 闪电说: compact info bar at top showing current hotkey
+and stats, then chronological history cards grouped by day.
+"""
 
 from __future__ import annotations
 
@@ -6,12 +10,11 @@ import datetime
 from typing import TYPE_CHECKING
 
 from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QFont, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QScrollArea,
     QVBoxLayout,
     QWidget,
@@ -23,46 +26,102 @@ if TYPE_CHECKING:
     from thundertalk.core.history import HistoryStore
 
 
-class _StatCard(QFrame):
-    """Painted stat card with a colored top accent line."""
+class _InfoBar(QFrame):
+    """Compact top bar showing hotkey + session stats (like 闪电说)."""
 
-    def __init__(self, value: str, label: str, accent: str) -> None:
+    def __init__(self) -> None:
         super().__init__()
-        self._accent = accent
-        self.setFixedHeight(90)
         self.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
         )
+        self.setGraphicsEffect(theme.auto_shadow())
+        self.setFixedHeight(52)
+
+        ly = QHBoxLayout(self)
+        ly.setContentsMargins(20, 0, 20, 0)
+        ly.setSpacing(0)
+
+        # Hotkey display
+        self._hotkey_label = QLabel("⌃R")
+        self._hotkey_label.setFont(theme.font(13, bold=True))
+        self._hotkey_label.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; border: none;"
+            f" background: {theme.BG_ELEVATED}; border-radius: 6px;"
+            " padding: 4px 12px;"
+        )
+        ly.addWidget(self._hotkey_label)
+
+        ly.addSpacing(16)
+
+        # Separator
+        sep = QFrame()
+        sep.setFixedSize(1, 24)
+        sep.setStyleSheet(f"background: {theme.BORDER_SUBTLE};")
+        ly.addWidget(sep)
+
+        ly.addStretch()
+
+        # Stats
+        self._stat_time = QLabel("0 min")
+        self._stat_time.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;")
+        ly.addWidget(self._stat_time)
+
+        ly.addSpacing(20)
+
+        self._stat_chars = QLabel("0 chars")
+        self._stat_chars.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;")
+        ly.addWidget(self._stat_chars)
+
+        ly.addSpacing(20)
+
+        self._stat_speed = QLabel("0 sessions")
+        self._stat_speed.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;")
+        ly.addWidget(self._stat_speed)
+
+    def update_stats(self, sessions: int, mins: int, chars: int) -> None:
+        time_str = f"{mins} min" if mins < 60 else f"{mins // 60}h {mins % 60}m"
+        self._stat_time.setText(f"{time_str}")
+        self._stat_chars.setText(f"{chars:,} chars")
+        self._stat_speed.setText(f"{sessions} sessions")
+
+
+class _HistoryCard(QFrame):
+    """Single transcription card — time on top-left, text below."""
+
+    def __init__(self, entry) -> None:
+        super().__init__()
+        self.setStyleSheet(
+            f"QFrame {{ background: {theme.BG_CARD};"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
+            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
+        )
+        self.setGraphicsEffect(theme.auto_shadow())
+
         ly = QVBoxLayout(self)
-        ly.setContentsMargins(18, 20, 18, 14)
-        ly.setSpacing(2)
+        ly.setContentsMargins(20, 16, 20, 16)
+        ly.setSpacing(8)
 
-        self._val = QLabel(value)
-        self._val.setFont(theme.font_heading(22))
-        self._val.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ly.addWidget(self._val)
+        # Time
+        ts = datetime.datetime.fromtimestamp(entry.timestamp)
+        time_lbl = QLabel(ts.strftime("%H:%M"))
+        time_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
+        ly.addWidget(time_lbl)
 
-        lbl = QLabel(label)
-        lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
-        ly.addWidget(lbl)
+        # Text
+        text_lbl = QLabel(entry.text)
+        text_lbl.setWordWrap(True)
+        text_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 14px; border: none;")
+        ly.addWidget(text_lbl)
 
-    def set_value(self, v: str) -> None:
-        self._val.setText(v)
 
-    def paintEvent(self, ev) -> None:
-        super().paintEvent(ev)
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        grad = QLinearGradient(14, 0, 60, 0)
-        grad.setColorAt(0, QColor(self._accent))
-        grad.setColorAt(1, QColor(0, 0, 0, 0))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(grad)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(10, 1, 50, 3), 1.5, 1.5)
-        p.drawPath(path)
-        p.end()
+class _DayHeader(QLabel):
+    """Day separator like '昨天' / 'Today' / 'Apr 12, 2026'."""
+
+    def __init__(self, text: str) -> None:
+        super().__init__(text)
+        self.setFont(theme.font(12, bold=True))
+        self.setStyleSheet(f"color: {theme.TEXT_MUTED}; padding-top: 8px;")
 
 
 class HomePage(QWidget):
@@ -71,41 +130,31 @@ class HomePage(QWidget):
         self._history = history
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(28, 28, 28, 20)
-        root.setSpacing(20)
+        root.setContentsMargins(32, 28, 32, 20)
+        root.setSpacing(16)
 
-        # ── Header ──
-        header_row = QHBoxLayout()
-        heading = QLabel("Home")
-        heading.setFont(theme.font_heading(20))
-        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        header_row.addWidget(heading)
-        header_row.addStretch()
-        root.addLayout(header_row)
+        # ── Info Bar ──
+        self._info_bar = _InfoBar()
+        root.addWidget(self._info_bar)
 
-        # ── Stats ──
-        stats_row = QHBoxLayout()
-        stats_row.setSpacing(12)
-        self._stat_sessions = _StatCard("0", "Sessions", theme.ACCENT_BLUE)
-        self._stat_duration = _StatCard("0 min", "Total Time", theme.ACCENT_ORANGE)
-        self._stat_chars = _StatCard("0", "Characters", theme.ACCENT_PURPLE)
-        stats_row.addWidget(self._stat_sessions)
-        stats_row.addWidget(self._stat_duration)
-        stats_row.addWidget(self._stat_chars)
-        root.addLayout(stats_row)
+        # ── Filter row + Clear ──
+        filter_row = QHBoxLayout()
+        filter_row.setSpacing(8)
 
-        # ── History header ──
-        hist_header = QHBoxLayout()
-        hist_label = QLabel("Recent Transcriptions")
-        hist_label.setFont(theme.font(14, bold=True))
-        hist_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        hist_header.addWidget(hist_label)
-        hist_header.addStretch()
+        all_tab = QLabel("All")
+        all_tab.setFont(theme.font(12, bold=True))
+        all_tab.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; background: {theme.BG_ELEVATED};"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 6px;"
+            " padding: 4px 14px;"
+        )
+        filter_row.addWidget(all_tab)
+        filter_row.addStretch()
 
-        self._clear_btn = theme.pill_button("Clear All", width=80, height=30)
+        self._clear_btn = theme.pill_button("Clear", width=80, height=30)
         self._clear_btn.clicked.connect(self._on_clear)
-        hist_header.addWidget(self._clear_btn)
-        root.addLayout(hist_header)
+        filter_row.addWidget(self._clear_btn)
+        root.addLayout(filter_row)
 
         # ── History list ──
         scroll = QScrollArea()
@@ -116,7 +165,7 @@ class HomePage(QWidget):
         self._history_container = QWidget()
         self._history_layout = QVBoxLayout(self._history_container)
         self._history_layout.setContentsMargins(0, 0, 0, 0)
-        self._history_layout.setSpacing(8)
+        self._history_layout.setSpacing(10)
         self._history_layout.addStretch()
         scroll.setWidget(self._history_container)
 
@@ -125,75 +174,66 @@ class HomePage(QWidget):
     def refresh(self) -> None:
         dur = self._history.total_duration_secs
         mins = int(dur // 60)
-        self._stat_sessions.set_value(str(self._history.session_count))
-        self._stat_duration.set_value(
-            f"{mins} min" if mins < 60 else f"{mins // 60}h {mins % 60}m"
+        self._info_bar.update_stats(
+            self._history.session_count,
+            mins,
+            self._history.total_characters,
         )
-        self._stat_chars.set_value(str(self._history.total_characters))
 
+        # Clear existing cards
         while self._history_layout.count() > 1:
             item = self._history_layout.takeAt(0)
             if item.widget():
                 item.widget().deleteLater()
 
+        # Group by day
+        today = datetime.date.today()
+        yesterday = today - datetime.timedelta(days=1)
+        current_day = None
+
         for entry in self._history.entries[:200]:
-            card = QFrame()
-            card.setStyleSheet(
-                f"QFrame {{ background: {theme.BG_CARD};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
-                f"QFrame:hover {{ background: {theme.BG_CARD_HOVER};"
-                f" border: 1px solid {theme.BORDER_DEFAULT}; }}"
-            )
-            cl = QVBoxLayout(card)
-            cl.setContentsMargins(16, 12, 16, 12)
-            cl.setSpacing(5)
-
-            top_row = QHBoxLayout()
             ts = datetime.datetime.fromtimestamp(entry.timestamp)
-            time_label = QLabel(ts.strftime("%b %d, %Y   %H:%M"))
-            time_label.setStyleSheet(f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;")
-            top_row.addWidget(time_label)
-            top_row.addStretch()
-            ms_label = QLabel(f"{entry.inference_ms}ms")
-            ms_label.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: 10px;"
-                f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_SUBTLE};"
-                " border-radius: 8px; padding: 2px 8px;"
+            entry_day = ts.date()
+
+            if entry_day != current_day:
+                current_day = entry_day
+                if entry_day == today:
+                    day_text = "Today"
+                elif entry_day == yesterday:
+                    day_text = "Yesterday"
+                else:
+                    day_text = ts.strftime("%b %d, %Y")
+                header = _DayHeader(day_text)
+                self._history_layout.insertWidget(
+                    self._history_layout.count() - 1, header
+                )
+
+            card = _HistoryCard(entry)
+            self._history_layout.insertWidget(
+                self._history_layout.count() - 1, card
             )
-            top_row.addWidget(ms_label)
-            cl.addLayout(top_row)
 
-            text_label = QLabel(entry.text)
-            text_label.setWordWrap(True)
-            text_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; border: none;")
-            cl.addWidget(text_label)
-
-            meta = QLabel(f"{entry.model}  ·  {entry.duration_secs:.1f}s audio")
-            meta.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
-            cl.addWidget(meta)
-
-            self._history_layout.insertWidget(self._history_layout.count() - 1, card)
-
+        # Empty state
         if self._history.session_count == 0:
             empty_w = QWidget()
             ely = QVBoxLayout(empty_w)
-            ely.setContentsMargins(0, 40, 0, 40)
+            ely.setContentsMargins(0, 80, 0, 80)
             ely.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
             icon = QLabel("🎙")
-            icon.setFont(QFont("Helvetica Neue", 32))
+            icon.setFont(QFont("Helvetica Neue", 36))
             icon.setAlignment(Qt.AlignmentFlag.AlignCenter)
-            icon.setStyleSheet("color: #666;")
             ely.addWidget(icon)
+            ely.addSpacing(12)
 
             msg = QLabel("No transcriptions yet")
-            msg.setFont(theme.font(14, bold=True))
-            msg.setStyleSheet(f"color: {theme.TEXT_MUTED};")
+            msg.setFont(theme.font(16, bold=True))
+            msg.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
             msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
             ely.addWidget(msg)
 
             sub = QLabel("Press your hotkey to start recording")
-            sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px;")
+            sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
             sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
             ely.addWidget(sub)
 

@@ -11,6 +11,8 @@ load_model() receives the backend from the ModelInfo.backend field.
 from __future__ import annotations
 
 import os
+os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
+
 import platform
 import time
 from dataclasses import dataclass
@@ -90,6 +92,8 @@ class AsrEngine:
         self._model_dir: str = ""
         self._model_family: str = ""
         self._active_backend: str = ""   # actual backend of the currently loaded model
+        self._language: Optional[str] = None  # forced language (None = auto-detect)
+        self._itn_enabled: bool = True   # Inverse Text Normalization
 
         print(f"[ASR] Platform: {_SYSTEM}/{_MACHINE}  "
               f"mlx={'yes' if _MLX_AVAILABLE else 'no'}  "
@@ -115,6 +119,22 @@ class AsrEngine:
     def set_hotwords(self, words: list[str]) -> None:
         """Store hotwords. Does NOT reload the model — caller must handle reload."""
         self._hotwords = "/".join(w.strip() for w in words if w.strip())
+
+    def set_language(self, language: str) -> None:
+        """Set forced language for transcription. 'auto' = auto-detect."""
+        if language in ("auto", ""):
+            self._language = None
+        else:
+            # Map our settings codes to mlx_qwen3_asr language names
+            _LANG_MAP = {
+                "en": "English", "zh": "Chinese", "ja": "Japanese",
+                "ko": "Korean", "es": "Spanish", "fr": "French",
+                "de": "German", "ar": "Arabic", "hi": "Hindi",
+                "it": "Italian", "pt": "Portuguese", "ru": "Russian",
+                "nl": "Dutch", "tr": "Turkish",
+            }
+            self._language = _LANG_MAP.get(language, language)
+        print(f"[ASR] Language set to: {self._language or 'auto-detect'}")
 
     def unload(self) -> None:
         self._recognizer = None
@@ -271,24 +291,36 @@ class AsrEngine:
 
     def _recognize_mlx(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
         import mlx_qwen3_asr
+        from thundertalk.core.itn import normalize_numbers
 
         duration_secs = len(samples) / sample_rate
         context = self._hotwords.replace("/", " ") if self._hotwords else ""
 
-        print(f"[ASR-MLX] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s)...")
+        lang_info = f", lang={self._language}" if self._language else ""
+        print(f"[ASR-MLX] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s{lang_info})...")
         t0 = time.perf_counter()
         result = mlx_qwen3_asr.transcribe(
             (samples, sample_rate),
             model=self._mlx_model,
             context=context,
+            language=self._language,
             max_new_tokens=4096,
         )
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MLX] Transcribe done in {inference_ms}ms")
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
 
+        text = result.text.strip()
+
+        # Apply Inverse Text Normalization (一千 → 1000, etc.)
+        if self._itn_enabled and text:
+            raw = text
+            text = normalize_numbers(text)
+            if text != raw:
+                print(f"[ASR-ITN] '{raw}' → '{text}'")
+
         return AsrResult(
-            text=result.text.strip(),
+            text=text,
             duration_secs=duration_secs,
             inference_ms=inference_ms,
             model=self._model_id or "unknown",

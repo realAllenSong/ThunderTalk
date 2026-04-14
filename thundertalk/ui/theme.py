@@ -1,4 +1,8 @@
-"""Design system — colors, fonts, shared QSS, and reusable painted widgets."""
+"""Design system — colors, fonts, shared QSS, and reusable painted widgets.
+
+Inspired by macOS-native dark UI conventions with warm tonal depth.
+Reference: ShandianShuo UI (闪电说).
+"""
 
 from __future__ import annotations
 
@@ -15,45 +19,48 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 # ── Color Tokens ─────────────────────────────────────────────────────────
+# Warm dark palette — closer to 闪电说's native macOS look
+# Key: deeper, warmer tones with clear card-to-background contrast
 
-BG_DEEPEST = "#0d0d0d"
-BG_BASE = "#111111"
-BG_SIDEBAR = "#0f0f0f"
-BG_CARD = "#181818"
-BG_CARD_HOVER = "#1e1e1e"
-BG_ELEVATED = "#222222"
-BG_INPUT = "#141414"
+BG_DEEPEST = "#151517"       # Window chrome / outer frame
+BG_BASE = "#1c1c1e"          # Main content area background
+BG_SIDEBAR = "#151517"       # Sidebar — darker than content
+BG_CARD = "#242426"          # Card / section fill — visible lift from base
+BG_CARD_HOVER = "#2c2c2e"    # Card hover state
+BG_ELEVATED = "#303032"      # Elevated surface (inputs, active tabs)
+BG_INPUT = "#1e1e20"         # Text input / combo background
 
-BORDER_SUBTLE = "#1f1f1f"
-BORDER_DEFAULT = "#2a2a2a"
-BORDER_STRONG = "#3a3a3a"
+BORDER_SUBTLE = "#38383c"    # Card borders — warm gray
+BORDER_DEFAULT = "#48484e"   # Interactive element borders
+BORDER_STRONG = "#636366"    # Strong emphasis borders
 
-TEXT_PRIMARY = "#f0f0f0"
-TEXT_SECONDARY = "#9a9a9a"
-TEXT_MUTED = "#5a5a5a"
+TEXT_PRIMARY = "#f0f0f2"     # Primary text — soft white (not harsh #fff)
+TEXT_SECONDARY = "#98989d"   # Secondary labels
+TEXT_MUTED = "#636366"       # Muted / hint text
 
-ACCENT_BLUE = "#3b82f6"
-ACCENT_BLUE_HOVER = "#2563eb"
+ACCENT_BLUE = "#5b8def"      # Primary accent
+ACCENT_BLUE_HOVER = "#4a7de0"
 ACCENT_BLUE_DIM = "#1e3a5f"
 
-SUCCESS = "#22c55e"
-SUCCESS_DIM = "#14532d"
-WARNING = "#f59e0b"
+SUCCESS = "#34d399"
+SUCCESS_DIM = "#0d3328"
+WARNING = "#fbbf24"
 WARNING_DIM = "#78350f"
-ERROR = "#ef4444"
-ERROR_DIM = "#7f1d1d"
+ERROR = "#f87171"
+ERROR_DIM = "#3b1111"
 
-ACCENT_ORANGE = "#f97316"
-ACCENT_PURPLE = "#a855f7"
-ACCENT_CYAN = "#06b6d4"
+ACCENT_ORANGE = "#f97316"    # Brand accent — lightning bolt
+ACCENT_ORANGE_WARM = "#fb923c"
+ACCENT_PURPLE = "#a78bfa"
+ACCENT_CYAN = "#22d3ee"
 
 # Pre-computed rgba() values for Qt stylesheet alpha colors
-ACCENT_BLUE_A10 = "rgba(59, 130, 246, 25)"
-ACCENT_BLUE_A20 = "rgba(59, 130, 246, 50)"
-ACCENT_BLUE_A30 = "rgba(59, 130, 246, 76)"
-SUCCESS_A20 = "rgba(34, 197, 94, 50)"
-SUCCESS_A40 = "rgba(34, 197, 94, 100)"
-ERROR_A40 = "rgba(239, 68, 68, 100)"
+ACCENT_BLUE_A10 = "rgba(91, 141, 239, 25)"
+ACCENT_BLUE_A20 = "rgba(91, 141, 239, 50)"
+ACCENT_BLUE_A30 = "rgba(91, 141, 239, 76)"
+SUCCESS_A20 = "rgba(52, 211, 153, 50)"
+SUCCESS_A40 = "rgba(52, 211, 153, 100)"
+ERROR_A40 = "rgba(248, 113, 113, 100)"
 
 # ── Font Helpers ─────────────────────────────────────────────────────────
 
@@ -84,9 +91,9 @@ QScrollBar:vertical {{
     background: transparent; width: 6px; margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: #333; min-height: 30px; border-radius: 3px;
+    background: {BORDER_DEFAULT}; min-height: 30px; border-radius: 3px;
 }}
-QScrollBar::handle:vertical:hover {{ background: #4a4a4a; }}
+QScrollBar::handle:vertical:hover {{ background: {BORDER_STRONG}; }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}
 QScrollBar:horizontal {{ height: 0; }}
@@ -102,90 +109,130 @@ QToolTip {{
 
 CARD_QSS = (
     f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE};"
-    " border-radius: 14px; }"
+    " border-radius: 12px; }"
 )
 
-CARD_HOVER_QSS = (
-    f"QFrame {{ background: {BG_CARD_HOVER}; border: 1px solid {BORDER_DEFAULT};"
-    " border-radius: 14px; }}"
-)
+
+def auto_shadow() -> QGraphicsDropShadowEffect:
+    """Subtle shadow for cards to provide depth."""
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+    shadow = QGraphicsDropShadowEffect()
+    shadow.setBlurRadius(16)
+    shadow.setXOffset(0)
+    shadow.setYOffset(4)
+    shadow.setColor(QColor(0, 0, 0, 40))
+    return shadow
 
 
 def make_card() -> QFrame:
     f = QFrame()
     f.setStyleSheet(CARD_QSS)
+    f.setGraphicsEffect(auto_shadow())
     return f
 
 
 # ── Painted Sidebar Icons ───────────────────────────────────────────────
+# Cleaner, bolder vector icons drawn with QPainterPath
 
 def _draw_icon_home(p: QPainter, r: QRect) -> None:
-    p.setPen(QPen(QColor(TEXT_SECONDARY), 1.6))
-    p.setBrush(Qt.BrushStyle.NoBrush)
+    """House icon — clean filled shape."""
     cx, cy = r.center().x(), r.center().y()
-    s = 7
-    pts = [
-        (cx, cy - s), (cx + s, cy - 1), (cx + s, cy + s - 1),
-        (cx - s, cy + s - 1), (cx - s, cy - 1),
-    ]
     from PySide6.QtCore import QPointF
     from PySide6.QtGui import QPolygonF
-    poly = QPolygonF([QPointF(x, y) for x, y in pts])
-    p.drawPolygon(poly)
+    # Roof (triangle)
+    path = QPainterPath()
+    path.moveTo(cx, cy - 8)
+    path.lineTo(cx + 9, cy - 1)
+    path.lineTo(cx + 7, cy - 1)
+    path.lineTo(cx + 7, cy + 6)
+    path.lineTo(cx + 2, cy + 6)
+    path.lineTo(cx + 2, cy + 1)
+    path.lineTo(cx - 2, cy + 1)
+    path.lineTo(cx - 2, cy + 6)
+    path.lineTo(cx - 7, cy + 6)
+    path.lineTo(cx - 7, cy - 1)
+    path.lineTo(cx - 9, cy - 1)
+    path.closeSubpath()
+    old_pen = p.pen()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.drawPath(path)
+    p.setPen(old_pen)
 
 
 def _draw_icon_models(p: QPainter, r: QRect) -> None:
-    p.setPen(QPen(QColor(TEXT_SECONDARY), 1.6))
-    p.setBrush(Qt.BrushStyle.NoBrush)
+    """Chip/model icon — rounded rect with inner circuit lines."""
     cx, cy = r.center().x(), r.center().y()
-    p.drawRoundedRect(QRectF(cx - 6, cy - 6, 12, 12), 2.5, 2.5)
-    p.drawLine(cx - 3, cy - 2, cx + 3, cy - 2)
-    p.drawLine(cx - 3, cy + 1, cx + 2, cy + 1)
+    # Outer rounded rect
+    p.drawRoundedRect(QRectF(cx - 7, cy - 7, 14, 14), 3, 3)
+    # Inner details — two horizontal lines
+    p.drawLine(int(cx - 4), int(cy - 3), int(cx + 4), int(cy - 3))
+    p.drawLine(int(cx - 4), int(cy + 0), int(cx + 3), int(cy + 0))
+    p.drawLine(int(cx - 4), int(cy + 3), int(cx + 1), int(cy + 3))
 
 
 def _draw_icon_settings(p: QPainter, r: QRect) -> None:
-    p.setPen(QPen(QColor(TEXT_SECONDARY), 1.6))
-    p.setBrush(Qt.BrushStyle.NoBrush)
+    """Gear icon — cleaner cog with 6 teeth."""
     cx, cy = r.center().x(), r.center().y()
-    p.drawEllipse(QRectF(cx - 4, cy - 4, 8, 8))
-    for angle in range(0, 360, 45):
-        import math
+    # Center circle
+    p.drawEllipse(QRectF(cx - 3.5, cy - 3.5, 7, 7))
+    # Outer teeth — 6 spokes
+    import math
+    pen = p.pen()
+    thick_pen = QPen(pen.color(), 2.0)
+    p.setPen(thick_pen)
+    for angle in range(0, 360, 60):
         rad = math.radians(angle)
         x1, y1 = cx + 6 * math.cos(rad), cy + 6 * math.sin(rad)
-        x2, y2 = cx + 8 * math.cos(rad), cy + 8 * math.sin(rad)
+        x2, y2 = cx + 8.5 * math.cos(rad), cy + 8.5 * math.sin(rad)
         p.drawLine(int(x1), int(y1), int(x2), int(y2))
+    p.setPen(pen)
 
 
 def _draw_icon_about(p: QPainter, r: QRect) -> None:
-    p.setPen(QPen(QColor(TEXT_SECONDARY), 1.6))
-    p.setBrush(Qt.BrushStyle.NoBrush)
+    """Info icon — circle with 'i'."""
     cx, cy = r.center().x(), r.center().y()
-    p.drawEllipse(QRectF(cx - 7, cy - 7, 14, 14))
-    f = QFont("Helvetica Neue", 9)
+    p.drawEllipse(QRectF(cx - 8, cy - 8, 16, 16))
+    f = QFont("Helvetica Neue", 10)
     f.setWeight(QFont.Weight.Bold)
     p.setFont(f)
-    p.drawText(QRectF(cx - 7, cy - 7, 14, 14), Qt.AlignmentFlag.AlignCenter, "i")
+    p.drawText(QRectF(cx - 8, cy - 8, 16, 16), Qt.AlignmentFlag.AlignCenter, "i")
+
+
+def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:
+    """Draws a clean, dynamic lightning bolt symbol centered in the rect."""
+    path = QPainterPath()
+    # A classic bolt: wide at top, jutting left, narrowing to a point.
+    cx, cy = rect.center().x(), rect.center().y()
+    w, h = min(rect.width(), 20), min(rect.height(), 24)
+    # Start top right
+    path.moveTo(cx + w*0.15, cy - h*0.45)
+    # angle down left
+    path.lineTo(cx - w*0.35, cy + h*0.05)
+    # horizontal right
+    path.lineTo(cx + w*0.15, cy + h*0.05)
+    # jut down
+    path.lineTo(cx - w*0.15, cy + h*0.45)
+    # angle up right
+    path.lineTo(cx + w*0.35, cy - h*0.15)
+    # horizontal left
+    path.lineTo(cx - w*0.15, cy - h*0.15)
+    path.closeSubpath()
+
+    old_pen = p.pen()
+    old_brush = p.brush()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(QColor(color))
+    p.drawPath(path)
+    p.setPen(old_pen)
+    p.setBrush(old_brush)
 
 
 ICON_PAINTERS = [_draw_icon_home, _draw_icon_models, _draw_icon_settings, _draw_icon_about]
 
 
-def make_nav_icon(index: int, size: int = 22, active: bool = False) -> QPixmap:
-    px = QPixmap(size, size)
-    px.fill(QColor(0, 0, 0, 0))
-    p = QPainter(px)
-    p.setRenderHint(QPainter.RenderHint.Antialiasing)
-    if active:
-        pen_color = QColor(ACCENT_BLUE)
-    else:
-        pen_color = QColor(TEXT_SECONDARY)
-    p.setPen(QPen(pen_color, 1.6))
-    ICON_PAINTERS[index](p, QRect(0, 0, size, size))
-    p.end()
-    return px
-
-
 # ── Custom Toggle Switch (QPainter-based) ───────────────────────────────
+# Matches 闪电说 style: dark gray track + white knob when ON
+#                       darker track + gray knob when OFF
 
 class ToggleSwitch(QWidget):
     toggled_signal = Signal(bool)
@@ -198,7 +245,7 @@ class ToggleSwitch(QWidget):
         self._knob_x = 22.0 if checked else 2.0
 
         self._anim = QPropertyAnimation(self, b"knob_x")
-        self._anim.setDuration(150)
+        self._anim.setDuration(180)
         self._anim.setEasingCurve(QEasingCurve.Type.InOutCubic)
 
     def isChecked(self) -> bool:
@@ -232,15 +279,22 @@ class ToggleSwitch(QWidget):
 
         track = QRectF(0, 0, 44, 24)
         if self._checked:
-            p.setBrush(QColor(ACCENT_BLUE))
+            # ON: darker fill track + white knob (like 闪电说)
+            p.setBrush(QColor("#48484e"))
+            p.setPen(Qt.PenStyle.NoPen)
         else:
+            # OFF: very dark track + gray knob
             p.setBrush(QColor(BG_ELEVATED))
-        p.setPen(QPen(QColor(BORDER_DEFAULT), 1))
+            p.setPen(QPen(QColor(BORDER_SUBTLE), 1))
         p.drawRoundedRect(track, 12, 12)
 
+        # Knob
         knob = QRectF(self._knob_x, 2, 20, 20)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor("#ffffff"))
+        if self._checked:
+            p.setBrush(QColor("#f0f0f2"))   # White knob when ON
+        else:
+            p.setBrush(QColor(BORDER_DEFAULT))   # Gray knob when OFF
         p.drawEllipse(knob)
 
         p.end()
@@ -250,8 +304,10 @@ class ToggleSwitch(QWidget):
 
 def section_heading(title: str) -> QLabel:
     lbl = QLabel(title)
-    lbl.setFont(font(13, bold=True))
-    lbl.setStyleSheet(f"color: {TEXT_SECONDARY}; padding-top: 4px;")
+    lbl.setFont(font(14, bold=True))
+    lbl.setStyleSheet(
+        f"color: {TEXT_PRIMARY}; padding-top: 4px;"
+    )
     return lbl
 
 
@@ -261,14 +317,15 @@ def setting_row(label: str, description: str = "") -> tuple[QHBoxLayout, QLabel]
     row = QHBoxLayout()
     row.setContentsMargins(0, 0, 0, 0)
     left = QVBoxLayout()
-    left.setSpacing(1)
+    left.setSpacing(4)
     left.setContentsMargins(0, 0, 0, 0)
     name = QLabel(label)
-    name.setStyleSheet(f"color: {TEXT_PRIMARY}; font-size: 13px; border: none;")
+    name.setFont(font(13, bold=True))
+    name.setStyleSheet(f"color: {TEXT_PRIMARY}; border: none;")
     left.addWidget(name)
     if description:
         desc = QLabel(description)
-        desc.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 11px; border: none;")
+        desc.setStyleSheet(f"color: {TEXT_MUTED}; font-size: 12px; border: none;")
         desc.setWordWrap(True)
         left.addWidget(desc)
     row.addLayout(left, stretch=1)
@@ -279,13 +336,13 @@ def setting_row(label: str, description: str = "") -> tuple[QHBoxLayout, QLabel]
 
 def pill_button(
     text: str,
-    bg: str = BG_CARD,
+    bg: str = BG_ELEVATED,
     fg: str = TEXT_SECONDARY,
-    bg_hover: str = BG_ELEVATED,
+    bg_hover: str = BORDER_DEFAULT,
     fg_hover: str = TEXT_PRIMARY,
     border: str = BORDER_DEFAULT,
     width: int = 0,
-    height: int = 32,
+    height: int = 34,
 ) -> QPushButton:
     btn = QPushButton(text)
     btn.setFixedHeight(height)
@@ -294,7 +351,7 @@ def pill_button(
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setStyleSheet(
         f"QPushButton {{ background: {bg}; color: {fg}; border: 1px solid {border};"
-        f" border-radius: {height // 2}px; padding: 0 16px; font-size: 12px; }}"
+        f" border-radius: {height // 2}px; padding: 0 18px; font-size: 12px; }}"
         f"QPushButton:hover {{ background: {bg_hover}; color: {fg_hover}; }}"
     )
     return btn
@@ -305,21 +362,10 @@ def accent_button(text: str, height: int = 40) -> QPushButton:
     btn.setFixedHeight(height)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setStyleSheet(
-        f"QPushButton {{ background: {ACCENT_BLUE}; color: #fff; border: none;"
-        f" border-radius: {height // 2}px; padding: 0 24px; font-size: 14px; font-weight: bold; }}"
+        f"QPushButton {{ background: {ACCENT_BLUE};"
+        f" color: #fff; border: none;"
+        f" border-radius: {height // 2}px; padding: 0 24px; font-size: 13px; font-weight: bold; }}"
         f"QPushButton:hover {{ background: {ACCENT_BLUE_HOVER}; }}"
-    )
-    return btn
-
-
-def danger_button(text: str, height: int = 40) -> QPushButton:
-    btn = QPushButton(text)
-    btn.setFixedHeight(height)
-    btn.setCursor(Qt.CursorShape.PointingHandCursor)
-    btn.setStyleSheet(
-        f"QPushButton {{ background: {ERROR}; color: #fff; border: none;"
-        f" border-radius: {height // 2}px; padding: 0 24px; font-size: 14px; font-weight: bold; }}"
-        f"QPushButton:hover {{ background: #dc2626; }}"
     )
     return btn
 
@@ -336,10 +382,10 @@ def separator() -> QFrame:
 # ── Combo box style ─────────────────────────────────────────────────────
 
 COMBO_QSS = (
-    f"QComboBox {{ background: {BG_INPUT}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_DEFAULT};"
-    f" border-radius: 10px; padding: 8px 14px; font-size: 13px; }}"
-    f"QComboBox:hover {{ border: 1px solid {BORDER_STRONG}; }}"
-    f"QComboBox::drop-down {{ border: none; width: 24px; }}"
+    f"QComboBox {{ background: {BG_INPUT}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_SUBTLE};"
+    f" border-radius: 10px; padding: 10px 16px; font-size: 13px; }}"
+    f"QComboBox:hover {{ border: 1px solid {BORDER_DEFAULT}; }}"
+    f"QComboBox::drop-down {{ border: none; width: 28px; }}"
     f"QComboBox QAbstractItemView {{ background: {BG_CARD}; color: {TEXT_PRIMARY};"
     f" selection-background-color: {BORDER_DEFAULT}; border: 1px solid {BORDER_DEFAULT};"
     f" border-radius: 8px; padding: 4px; }}"
@@ -348,7 +394,22 @@ COMBO_QSS = (
 # ── Line edit style ─────────────────────────────────────────────────────
 
 INPUT_QSS = (
-    f"QLineEdit {{ background: {BG_INPUT}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_DEFAULT};"
-    f" border-radius: 10px; padding: 8px 14px; font-size: 13px; }}"
+    f"QLineEdit {{ background: {BG_INPUT}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_SUBTLE};"
+    f" border-radius: 10px; padding: 10px 16px; font-size: 13px; }}"
     f"QLineEdit:focus {{ border: 1px solid {ACCENT_BLUE}; }}"
 )
+
+
+# ── Segment tab bar (pill-style) ────────────────────────────────────────
+
+def segment_tab_qss() -> str:
+    """Returns QSS for a segment-control style tab bar (rounded pill tabs)."""
+    return (
+        f"QTabBar {{ background: transparent; }}"
+        f"QTabBar::tab {{ background: transparent; color: {TEXT_SECONDARY};"
+        f" padding: 8px 24px; border: 1px solid transparent;"
+        f" border-radius: 8px; margin: 0 2px; font-size: 13px; }}"
+        f"QTabBar::tab:selected {{ background: {BG_ELEVATED}; color: {TEXT_PRIMARY};"
+        f" border: 1px solid {BORDER_SUBTLE}; font-weight: bold; }}"
+        f"QTabBar::tab:hover {{ color: {TEXT_PRIMARY}; }}"
+    )
