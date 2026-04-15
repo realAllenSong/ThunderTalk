@@ -10,7 +10,7 @@ CMD = [
     "--clean"
 ]
 
-SIGN_IDENTITY = "Apple Development: realoulasong@gmail.com (WQ9QHZC988)"
+SIGN_IDENTITY = "-"  # ad-hoc sign; replace with your own identity for distribution
 
 print("Running:", " ".join(CMD))
 subprocess.run(CMD, check=True)

@@ -53,7 +53,7 @@ exe = EXE(
     disable_windowed_traceback=False,
     argv_emulation=False,
     target_arch=None,
-    codesign_identity='Apple Development: realoulasong@gmail.com (WQ9QHZC988)',
+    codesign_identity=None,
     entitlements_file=None,
     icon=['assets/icon.icns'],
 )

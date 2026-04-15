@@ -115,7 +115,7 @@ class AboutPage(QWidget):
             f" border: 1px solid {theme.BORDER_DEFAULT}; }}"
         )
         check_btn.clicked.connect(
-            lambda: webbrowser.open("https://github.com/songallen/ThunderTalk/releases")
+            lambda: webbrowser.open("https://github.com/realAllenSong/ThunderTalk/releases")
         )
         ver_row.addWidget(check_btn)
         ly.addLayout(ver_row)
@@ -151,11 +151,11 @@ class AboutPage(QWidget):
             d.setStyleSheet(f"color: {theme.BORDER_DEFAULT}; font-size: 12px; padding: 0 4px;")
             return d
 
-        footer_links.addWidget(_link("Website", "https://github.com/songallen/ThunderTalk"))
+        footer_links.addWidget(_link("Website", "https://github.com/realAllenSong/ThunderTalk"))
         footer_links.addWidget(_divider())
-        footer_links.addWidget(_link("Report Issue", "https://github.com/songallen/ThunderTalk/issues"))
+        footer_links.addWidget(_link("Report Issue", "https://github.com/realAllenSong/ThunderTalk/issues"))
         footer_links.addWidget(_divider())
-        footer_links.addWidget(_link("License", "https://github.com/songallen/ThunderTalk/blob/main/LICENSE"))
+        footer_links.addWidget(_link("License", "https://github.com/realAllenSong/ThunderTalk/blob/main/LICENSE"))
         ly.addLayout(footer_links)
 
         ly.addSpacing(8)
