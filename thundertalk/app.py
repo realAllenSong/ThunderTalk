@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import sys
+import threading
 import time
 import traceback
 
@@ -209,8 +210,13 @@ def main() -> None:
     set_auto_learn_callback(_on_auto_learned_word)
 
     def _paste_and_learn(text: str) -> None:
-        paste_text(text)
+        keep_clipboard = not settings.get("save_to_clipboard")
+        paste_text(text, keep_clipboard=keep_clipboard)
         notify_auto_learn(text)
+
+    def _unmute_bg() -> None:
+        time.sleep(0.02)
+        unmute_system_audio()
 
     # --- Voice pipeline ------------------------------------------------
     def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float) -> None:
@@ -259,11 +265,8 @@ def main() -> None:
             samples = pipe.recorder.stop()
             stop_ms = int((time.perf_counter() - t_stop) * 1000)
             if settings.get("mute_speakers"):
-                # Small delay so PortAudio fully releases the audio device
-                # before we restore output volume via CoreAudio.
-                time.sleep(0.02)
                 print(f"[Toggle] Restoring system audio ({stop_ms}ms to stop recorder)")
-                unmute_system_audio()
+                threading.Thread(target=_unmute_bg, daemon=True).start()
             pipe._recording = False
 
             if samples is None or len(samples) < 800:
@@ -298,7 +301,7 @@ def main() -> None:
             mic = settings.microphone
             pipe.recorder.start(device=None if mic == "auto" else mic)
             if mute_on:
-                mute_system_audio()
+                threading.Thread(target=mute_system_audio, daemon=True).start()
             pipe._recording = True
             print("[Toggle] Recording started")
 

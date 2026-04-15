@@ -3,20 +3,20 @@ from PyInstaller.utils.hooks import collect_submodules, collect_data_files, coll
 
 hidden_imports = []
 hidden_imports += collect_submodules("pynput")
-hidden_imports += collect_submodules("mlx")
-hidden_imports += collect_submodules("mlx_qwen3_asr")
-hidden_imports += collect_submodules("huggingface_hub")
-hidden_imports += collect_submodules("transformers")
 hidden_imports += collect_submodules("sherpa_onnx")
 hidden_imports += collect_submodules("sounddevice")
 hidden_imports += collect_submodules("rubicon")
-hidden_imports += ["mlx._reprlib_fix"]
+# MLX & mlx_qwen3_asr: only import names, not full submodule trees.
+# They are lazy-loaded at runtime only when user selects an MLX model.
+hidden_imports += ["mlx", "mlx.core", "mlx.nn", "mlx._reprlib_fix"]
+hidden_imports += ["mlx_qwen3_asr"]
+# huggingface_hub: needed by mlx_qwen3_asr for model downloads
+hidden_imports += ["huggingface_hub"]
 
 custom_datas = [('assets', 'assets')]
 custom_datas += collect_data_files("mlx")
 custom_datas += collect_data_files("mlx_qwen3_asr")
 custom_datas += collect_data_files("huggingface_hub")
-custom_datas += collect_data_files("transformers")
 custom_datas += collect_data_files("sherpa_onnx")
 
 custom_binaries = []
@@ -33,7 +33,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=[],
+    excludes=['transformers', 'torch', 'tensorflow', 'keras', 'scipy', 'matplotlib', 'pandas'],
     noarchive=False,
     optimize=0,
 )

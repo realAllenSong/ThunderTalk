@@ -64,14 +64,18 @@ def save_frontmost_app() -> None:
             pass
 
 
-def paste_text(text: str) -> None:
+def paste_text(text: str, keep_clipboard: bool = False) -> None:
     """Copy text to clipboard, restore user's app, simulate Cmd+V.
+
+    If *keep_clipboard* is True, the user's original clipboard content
+    is saved before pasting and restored afterward so the paste operation
+    is transparent to the user.
 
     Runs in a background thread with full mutual exclusion.
     """
     if not text:
         return
-    threading.Thread(target=_do_paste, args=(text,), daemon=True).start()
+    threading.Thread(target=_do_paste, args=(text, keep_clipboard), daemon=True).start()
 
 
 def _clipboard_write_verified(text: str) -> bool:
@@ -154,9 +158,17 @@ def _wait_for_frontmost_app(target_app: str, timeout: float = _FRONTMOST_ACTIVAT
     return False
 
 
-def _do_paste(text: str) -> None:
+def _do_paste(text: str, keep_clipboard: bool = False) -> None:
     started_at = time.perf_counter()
     with _paste_lock:
+        # Save original clipboard if we need to restore it later
+        original_clipboard: str | None = None
+        if keep_clipboard:
+            try:
+                original_clipboard = pyperclip.paste()
+            except Exception:
+                original_clipboard = None
+
         with _lock:
             prev = _previous_app
 
@@ -194,3 +206,12 @@ def _do_paste(text: str) -> None:
 
         elapsed_ms = int((time.perf_counter() - started_at) * 1000)
         print(f"[Paste] Submitted to target app in {elapsed_ms}ms (target={prev or 'current'})")
+
+        # Restore original clipboard after paste completes
+        if keep_clipboard and original_clipboard is not None:
+            time.sleep(0.15)
+            try:
+                pyperclip.copy(original_clipboard)
+                print("[Paste] Restored original clipboard")
+            except Exception:
+                pass
