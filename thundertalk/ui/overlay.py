@@ -7,11 +7,12 @@ import time
 
 from PySide6.QtCore import QRectF, QTimer, Qt, QPointF
 from PySide6.QtGui import (
-    QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen,
+    QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen,
     QRadialGradient,
 )
 from PySide6.QtWidgets import QWidget
 
+from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
 _W, _H = 340, 56
@@ -47,7 +48,7 @@ class VoiceOverlay(QWidget):
 
     def show_recording(self) -> None:
         self._state = self._RECORDING
-        self._text = "Listening…"
+        self._text = t("overlay.listening")
         self._phase = 0.0
         self._center()
         self.show()
@@ -58,9 +59,11 @@ class VoiceOverlay(QWidget):
 
     def show_transcribing(self) -> None:
         self._state = self._TRANSCRIBING
-        self._text = "Transcribing…"
+        self._text = t("overlay.transcribing")
         self._progress = 0.0
         self._t0 = time.monotonic()
+        if not self._anim.isActive():
+            self._anim.start(16)
         self.update()
 
     def complete_transcribing(self) -> None:
@@ -121,38 +124,32 @@ class VoiceOverlay(QWidget):
         pill = QPainterPath()
         pill.addRoundedRect(QRectF(0, 0, w, h), r, r)
 
-        if self._state == self._TRANSCRIBING:
-            self._paint_transcribing(p, pill, w, h, r)
+        bg = QColor(40, 15, 15, 240) if self._state == self._ERROR else QColor(18, 18, 18, 240)
+        p.fillPath(pill, bg)
+        p.setPen(QPen(QColor(255, 255, 255, 15), 1))
+        p.drawPath(pill)
+
+        if self._state == self._RECORDING:
+            self._paint_recording(p, w, h)
+        elif self._state == self._TRANSCRIBING:
+            self._paint_transcribing(p, w, h)
         else:
-            bg = QColor(40, 15, 15, 240) if self._state == self._ERROR else QColor(18, 18, 18, 240)
-            p.fillPath(pill, bg)
-            p.setPen(QPen(QColor(255, 255, 255, 15), 1))
-            p.drawPath(pill)
-            if self._state == self._RECORDING:
-                self._paint_recording(p, w, h)
-            else:
-                self._paint_text(p, w, h)
+            self._paint_text(p, w, h)
         p.end()
 
     # ── recording ───────────────────────────────────────────────────────
 
     def _paint_recording(self, p: QPainter, w: int, h: int) -> None:
-        # Pulsing dot
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(QColor(theme.ACCENT_ORANGE))
-        pulse = 4.0 + 1.2 * math.sin(self._phase * 2.5)
-        p.drawEllipse(QRectF(22 - pulse / 2, h / 2 - pulse / 2, 8 + pulse, 8 + pulse))
-
         # Label
         f = QFont("Helvetica Neue", 13)
         f.setWeight(QFont.Weight.Medium)
         p.setFont(f)
         p.setPen(QColor(theme.TEXT_PRIMARY))
-        p.drawText(42, int(h / 2 + 5), self._text)
+        p.drawText(24, int(h / 2 + 5), self._text)
 
         # Waveform bars with smooth interpolation
         lv = self._smooth_rms
-        bx, bw, nb = 165, 148, 26
+        bx, bw, nb = 150, 168, 28
         sp = bw / nb
         for i in range(nb):
             x = bx + i * sp
@@ -167,64 +164,38 @@ class VoiceOverlay(QWidget):
 
     # ── transcribing ────────────────────────────────────────────────────
 
-    def _paint_transcribing(self, p: QPainter, pill: QPainterPath, w: int, h: int, r: float) -> None:
-        prog = self._progress
-        breath = 0.92 + 0.08 * math.sin(self._phase * 1.6)
+    def _paint_transcribing(self, p: QPainter, w: int, h: int) -> None:
+        # Soft, wide breathing orange glow behind the text — subtle warmth,
+        # no hard edges, reads as "thinking"
+        breath = 0.5 + 0.5 * math.sin(self._phase * 1.4)
+        glow = QRadialGradient(QPointF(w / 2, h / 2), w * 0.55)
+        glow.setColorAt(0.0, QColor(249, 115, 22, int(55 + 45 * breath)))
+        glow.setColorAt(0.5, QColor(234, 88, 12, int(18 + 14 * breath)))
+        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(glow)
+        p.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
 
-        # Dark background for unfilled portion
-        p.fillPath(pill, QColor(18, 18, 18, 240))
-
-        # Filled region clipped to pill
-        fw = max(1.0, w * prog)
-        clip_rect = QPainterPath()
-        clip_rect.addRect(QRectF(0, 0, fw, h))
-        filled = pill & clip_rect
-
-        # Multi-stop warm gradient
-        g = QLinearGradient(0, 0, fw, 0)
-        a = int(220 * breath)
-        g.setColorAt(0.0, QColor(234, 88, 12, a))
-        g.setColorAt(0.4, QColor(249, 115, 22, a))
-        g.setColorAt(0.75, QColor(251, 146, 60, a))
-        g.setColorAt(1.0, QColor(253, 186, 116, int(a * 0.9)))
-        p.fillPath(filled, g)
-
-        # Soft inner glow near leading edge
-        if fw > 30:
-            glow = QRadialGradient(QPointF(fw - 8, h / 2), h * 0.7)
-            glow.setColorAt(0, QColor(255, 255, 255, int(35 * breath)))
-            glow.setColorAt(1, QColor(255, 255, 255, 0))
-            glow_rect = QPainterPath()
-            glow_rect.addRect(QRectF(fw - h, 0, h, h))
-            p.fillPath(filled & glow_rect, glow)
-
-        # Travelling shimmer highlight
-        cyc = (self._phase * 0.06) % 1.0
-        sx = fw * cyc
-        sw = fw * 0.18
-        if sx > 0 and sx + sw < fw:
-            sg = QLinearGradient(sx, 0, sx + sw, 0)
-            sa = int(22 * breath)
-            sg.setColorAt(0.0, QColor(255, 255, 255, 0))
-            sg.setColorAt(0.5, QColor(255, 255, 255, sa))
-            sg.setColorAt(1.0, QColor(255, 255, 255, 0))
-            sr = QPainterPath()
-            sr.addRect(QRectF(sx, 0, sw, h))
-            p.fillPath(filled & sr, sg)
-
-        # Pill outline
-        p.setPen(QPen(QColor(255, 255, 255, 12), 1))
-        p.drawPath(pill)
-
-        # Text
-        f = QFont("Helvetica Neue", 13)
+        # Centered text — base color is muted, a travelling bright gradient
+        # sweeps across the text creating an Apple-style shimmer.
+        f = QFont("Helvetica Neue", 14)
         f.setWeight(QFont.Weight.Medium)
         p.setFont(f)
         fm = p.fontMetrics()
         tw = fm.horizontalAdvance(self._text)
         tx = int((w - tw) / 2)
-        ty = int(h / 2 + fm.ascent() / 2 - 1)
-        p.setPen(QColor(255, 255, 255, 210))
+        ty = int(h / 2 + fm.ascent() / 2 - 2)
+
+        cyc = (self._phase * 0.04) % 1.0
+        sweep = (tw + 120) * cyc - 60
+        g = QLinearGradient(tx + sweep - 60, 0, tx + sweep + 60, 0)
+        g.setColorAt(0.0, QColor(180, 180, 185))
+        g.setColorAt(0.45, QColor(180, 180, 185))
+        g.setColorAt(0.5, QColor(255, 255, 255))
+        g.setColorAt(0.55, QColor(180, 180, 185))
+        g.setColorAt(1.0, QColor(180, 180, 185))
+        pen = QPen(QBrush(g), 1)
+        p.setPen(pen)
         p.drawText(tx, ty, self._text)
 
     # ── text (result / error) ───────────────────────────────────────────

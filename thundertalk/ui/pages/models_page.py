@@ -28,6 +28,7 @@ from thundertalk.core.models import (
     is_downloaded,
     is_variant_compatible,
 )
+from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
 _FAMILY_COLORS = {
@@ -35,6 +36,41 @@ _FAMILY_COLORS = {
     "Qwen3-ASR": theme.ACCENT_BLUE,
     "Qwen3-ASR-1.7B": theme.ACCENT_BLUE,
 }
+
+
+class _DeviceIcon(QWidget):
+    """Outlined device glyph — MacBook (clamshell + base) or generic PC tower."""
+
+    def __init__(self, kind: str = "mac") -> None:
+        super().__init__()
+        self._kind = kind
+        self.setFixedSize(44, 32)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def set_kind(self, kind: str) -> None:
+        self._kind = kind
+        self.update()
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        color = QColor(theme.TEXT_SECONDARY)
+        p.setPen(QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
+                      Qt.PenJoinStyle.RoundJoin))
+        p.setBrush(Qt.BrushStyle.NoBrush)
+
+        if self._kind == "mac":
+            # Screen
+            p.drawRoundedRect(QRectF(6, 4, 32, 20), 2.2, 2.2)
+            # Base lip
+            p.drawLine(2, 26, 42, 26)
+            # Notch/hinge
+            p.drawLine(18, 26, 26, 26)
+        else:
+            # Desktop tower / generic
+            p.drawRoundedRect(QRectF(10, 4, 24, 22), 3, 3)
+            p.drawLine(14, 28, 30, 28)
+        p.end()
 
 
 class DownloadWorker(QThread):
@@ -344,7 +380,7 @@ class ModelsPage(QWidget):
         self._layout.setSpacing(16)
         scroll.setWidget(container)
 
-        heading = QLabel("Models")
+        heading = QLabel(t("models.title"))
         heading.setFont(theme.font_heading(20))
         heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         self._layout.addWidget(heading)
@@ -358,15 +394,9 @@ class ModelsPage(QWidget):
         hw_card.setGraphicsEffect(theme.auto_shadow())
         hw_ly = QHBoxLayout(hw_card)
         hw_ly.setContentsMargins(20, 16, 20, 16)
-        hw_icon = QLabel("HW")
-        hw_icon.setFont(QFont("Helvetica Neue", 11, QFont.Weight.Bold))
-        hw_icon.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 4px;"
-            " padding: 4px 6px;"
-        )
-        hw_ly.addWidget(hw_icon)
-        hw_ly.addSpacing(6)
+        hw_ly.setSpacing(14)
+        self._hw_icon = _DeviceIcon("mac")
+        hw_ly.addWidget(self._hw_icon)
         self._hw_label = QLabel("Detecting hardware...")
         self._hw_label.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
@@ -402,6 +432,8 @@ class ModelsPage(QWidget):
         from thundertalk.core.asr import _check_mlx, _IS_APPLE_SILICON
         plat = hw.platform_tag.replace("-", " ").title()
         mlx_tag = "  [MLX capable]" if _IS_APPLE_SILICON else ""
+        import platform
+        self._hw_icon.set_kind("mac" if platform.system() == "Darwin" else "pc")
         self._hw_label.setText(
             f"CPU: {hw.cpu}   ·   RAM: {hw.memory_gb:.0f} GB   ·   GPU: {hw.gpu}\n"
             f"Platform: {plat}{mlx_tag}"

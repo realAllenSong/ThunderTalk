@@ -25,6 +25,8 @@
 - **Hotwords & auto-learning** — custom vocabulary for domain-specific terms, with automatic frequency-based learning.
 - **Smart hardware detection** — identifies your CPU, RAM, and GPU to recommend the best model.
 - **Speaker mute** — optionally mutes system audio during recording to avoid feedback.
+- **Dark & Light themes** — pick whichever feels right.
+- **English & 中文 UI** — switch the interface language in Settings.
 
 ## Download
 
@@ -46,8 +48,10 @@ Models are downloaded on-demand from the app's Settings page and stored at `~/.t
 ## Usage
 
 1. Click the **ThunderTalk** icon in the menu bar → **Open Settings** → download a model.
-2. Press the hotkey (default: **F4**) to start recording. Press again to stop.
+2. Press the hotkey (default: **Right ⌘**) to start recording. Press again to stop.
 3. The transcribed text is automatically pasted into the active application.
+
+> Change the hotkey, language (English / 中文), theme (dark / light), and more from the **Settings** page.
 
 ## Development
 

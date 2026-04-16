@@ -8,6 +8,8 @@ from typing import Optional
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QFont
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
+from thundertalk.core.i18n import t
+
 
 def app_icon() -> QIcon:
     """Load the app icon from assets, or generate a monochrome fallback."""
@@ -60,22 +62,14 @@ class TrayIcon(QSystemTrayIcon):
             "QMenu::item:selected { background: #333; }"
         )
 
-        self._status_action = QAction("No model loaded")
-        self._status_action.setEnabled(False)
-        self._menu.addAction(self._status_action)
-        self._menu.addSeparator()
-
-        self.open_action = QAction("Open Settings")
+        self.open_action = QAction(t("tray.open"))
         self._menu.addAction(self.open_action)
 
-        self.quit_action = QAction("Quit")
+        self.quit_action = QAction(t("tray.quit"))
         self._menu.addAction(self.quit_action)
 
         self.setContextMenu(self._menu)
         self.setToolTip("ThunderTalk")
 
     def set_model_status(self, model_name: Optional[str]) -> None:
-        if model_name:
-            self._status_action.setText(f"Model: {model_name}")
-        else:
-            self._status_action.setText("No model loaded")
+        pass

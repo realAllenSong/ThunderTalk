@@ -28,6 +28,7 @@ from PySide6.QtWidgets import (
 
 import sounddevice as sd
 
+from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
 if TYPE_CHECKING:
@@ -44,6 +45,8 @@ class HotkeyCapture(QWidget):
     """
 
     key_captured = Signal(str)
+    capture_started = Signal()
+    capture_ended = Signal()
 
     def __init__(self, current: str) -> None:
         super().__init__()
@@ -62,6 +65,7 @@ class HotkeyCapture(QWidget):
         self._held_modifiers.clear()
         self.setFocus(Qt.FocusReason.MouseFocusReason)
         self.grabKeyboard()
+        self.capture_started.emit()
         self.update()
 
     def keyPressEvent(self, ev: QKeyEvent) -> None:
@@ -108,6 +112,7 @@ class HotkeyCapture(QWidget):
         self._saved_display = self._display
         self._held_modifiers.clear()
         self.key_captured.emit(combo)
+        self.capture_ended.emit()
         self.update()
 
     def focusOutEvent(self, ev) -> None:
@@ -119,6 +124,7 @@ class HotkeyCapture(QWidget):
                 self.killTimer(self._modifier_timer_id)
                 self._modifier_timer_id = None
             self.releaseKeyboard()
+            self.capture_ended.emit()
             self.update()
         super().focusOutEvent(ev)
 
@@ -288,6 +294,8 @@ def _display_combo(combo_str: str) -> str:
 class SettingsPage(QWidget):
     hotkey_changed = Signal(str)
     settings_changed = Signal()
+    capture_started = Signal()
+    capture_ended = Signal()
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -297,7 +305,7 @@ class SettingsPage(QWidget):
         root.setContentsMargins(32, 28, 32, 20)
         root.setSpacing(0)
 
-        heading = QLabel("Settings")
+        heading = QLabel(t("settings.title"))
         heading.setFont(theme.font_heading(20))
         heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         root.addWidget(heading)
@@ -312,7 +320,8 @@ class SettingsPage(QWidget):
         self._tabs.setExpanding(False)
         self._tabs.setDrawBase(False)
         self._tabs.setStyleSheet(theme.segment_tab_qss())
-        for name in ("Hotkey", "Audio", "Transcription", "General"):
+        for name in (t("settings.tab_hotkey"), t("settings.tab_audio"),
+                     t("settings.tab_transcription"), t("settings.tab_general")):
             self._tabs.addTab(name)
         tab_container.addWidget(self._tabs)
         tab_container.addStretch()
@@ -364,6 +373,8 @@ class SettingsPage(QWidget):
 
         self._hotkey_capture = HotkeyCapture(self._settings.hotkey)
         self._hotkey_capture.key_captured.connect(self._on_hotkey_changed)
+        self._hotkey_capture.capture_started.connect(self.capture_started.emit)
+        self._hotkey_capture.capture_ended.connect(self.capture_ended.emit)
         cl.addWidget(self._hotkey_capture)
 
         cl.addSpacing(4)
@@ -558,17 +569,6 @@ class SettingsPage(QWidget):
         ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
         clip_row.addWidget(ct)
         c2.addLayout(clip_row)
-
-        c2.addWidget(theme.separator())
-
-        paste_row, _ = theme.setting_row(
-            "Auto-Paste",
-            "Automatically paste transcribed text into the active application",
-        )
-        pt = theme.ToggleSwitch(True)
-        pt.setEnabled(False)
-        paste_row.addWidget(pt)
-        c2.addLayout(paste_row)
         ly.addWidget(card2)
 
         ly.addStretch()
@@ -595,15 +595,37 @@ class SettingsPage(QWidget):
 
         c1.addWidget(theme.separator())
 
-        row, _ = theme.setting_row("Theme", "Currently dark mode only")
-        lbl = QLabel("Dark")
-        lbl.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_SUBTLE};"
-            " border-radius: 8px; padding: 4px 14px;"
+        # Language selector
+        lang_row, _ = theme.setting_row(t("settings.language"), t("settings.language_desc"))
+        self._ui_lang_combo = QComboBox()
+        self._ui_lang_combo.setFixedWidth(160)
+        self._ui_lang_combo.setStyleSheet(theme.COMBO_QSS)
+        self._ui_lang_combo.addItem("English", "en")
+        self._ui_lang_combo.addItem("中文", "zh")
+        cur_lang = self._settings.get("language") or "en"
+        self._ui_lang_combo.setCurrentIndex(1 if cur_lang == "zh" else 0)
+        self._ui_lang_combo.currentIndexChanged.connect(
+            lambda i: self._settings.set("language", self._ui_lang_combo.itemData(i))
         )
-        row.addWidget(lbl)
-        c1.addLayout(row)
+        lang_row.addWidget(self._ui_lang_combo)
+        c1.addLayout(lang_row)
+
+        c1.addWidget(theme.separator())
+
+        # Theme selector
+        theme_row, _ = theme.setting_row(t("settings.theme"), t("settings.theme_desc"))
+        self._theme_combo = QComboBox()
+        self._theme_combo.setFixedWidth(160)
+        self._theme_combo.setStyleSheet(theme.COMBO_QSS)
+        self._theme_combo.addItem(t("settings.theme_dark"), "dark")
+        self._theme_combo.addItem(t("settings.theme_light"), "light")
+        cur_theme = self._settings.get("theme") or "dark"
+        self._theme_combo.setCurrentIndex(1 if cur_theme == "light" else 0)
+        self._theme_combo.currentIndexChanged.connect(
+            lambda i: self._settings.set("theme", self._theme_combo.itemData(i))
+        )
+        theme_row.addWidget(self._theme_combo)
+        c1.addLayout(theme_row)
 
         if platform.system() == "Darwin":
             c1.addWidget(theme.separator())

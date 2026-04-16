@@ -7,11 +7,12 @@ from pathlib import Path
 from typing import Any
 
 DEFAULTS: dict[str, Any] = {
-    "hotkey": "f4",
+    "hotkey": "cmd_r",
     "press_mode": "toggle",
     "microphone": "auto",
     "mute_speakers": True,
     "theme": "dark",
+    "language": "en",
     "launch_at_startup": False,
     "silent_launch": True,
     "show_in_dock": False,

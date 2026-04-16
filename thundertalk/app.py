@@ -307,6 +307,30 @@ def main() -> None:
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 
+    # Feed live mic level into the overlay waveform — only runs while
+    # recording so idle CPU stays near zero.
+    _level_timer = QTimer()
+    _level_timer.setInterval(40)
+    _level_timer.timeout.connect(lambda: overlay.set_audio_level(pipe.recorder.current_rms))
+
+    _orig_show_recording = overlay.show_recording
+    def _show_recording_wrapped() -> None:
+        _orig_show_recording()
+        _level_timer.start()
+    overlay.show_recording = _show_recording_wrapped
+
+    _orig_show_transcribing = overlay.show_transcribing
+    def _show_transcribing_wrapped() -> None:
+        _level_timer.stop()
+        _orig_show_transcribing()
+    overlay.show_transcribing = _show_transcribing_wrapped
+
+    _orig_hide = overlay.hide_overlay
+    def _hide_wrapped() -> None:
+        _level_timer.stop()
+        _orig_hide()
+    overlay.hide_overlay = _hide_wrapped
+
     # --- Hotkey --------------------------------------------------------
     hotkey = HotkeyListener(on_toggle=pipe.toggle, key_name=settings.hotkey)
     hotkey.start()
@@ -315,6 +339,11 @@ def main() -> None:
         hotkey.set_hotkey(key_name)
 
     window.settings_page.hotkey_changed.connect(_on_hotkey_setting_changed)
+
+    # While the user is capturing a new hotkey, gate the global listener so
+    # pressing the current hotkey doesn't trigger recording.
+    window.settings_page.capture_started.connect(lambda: hotkey.set_enabled(False))
+    window.settings_page.capture_ended.connect(lambda: hotkey.set_enabled(True))
 
     def _on_hotwords_changed(words: list[str]) -> None:
         pipe.asr.set_hotwords(words)

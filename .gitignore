@@ -40,6 +40,13 @@ models/
 *.AppImage
 *.app
 
+# === Claude Code runtime state ===
+.claude/
+CLAUDE.local.md
+
+# === ThunderTalk user data ===
+.thundertalk/
+
 # === Internal reference / competitor research ===
 shandianshuo/
 reference.md

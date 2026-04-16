@@ -80,6 +80,14 @@ if _SYSTEM == "Darwin":
             self._modifier_state: int = 0
             self._fired = False
             self._monitors: list = []
+            self._enabled: bool = True
+
+        def set_enabled(self, enabled: bool) -> None:
+            """Gate firing while the user is capturing a new hotkey."""
+            self._enabled = enabled
+            if not enabled:
+                self._pressed_vks.clear()
+                self._fired = False
 
         def start(self) -> None:
             mask = NSKeyDownMask | NSKeyUpMask | NSFlagsChangedMask
@@ -165,6 +173,8 @@ if _SYSTEM == "Darwin":
                     return
 
         def _check_and_fire(self) -> None:
+            if not self._enabled:
+                return
             if self._fired:
                 return
             if not self._combo:
@@ -240,6 +250,14 @@ else:
             self._pressed: set = set()
             self._listener_obj: Optional[keyboard.Listener] = None
             self._fired = False
+            self._enabled: bool = True
+
+        def set_enabled(self, enabled: bool) -> None:
+            """Gate firing while the user is capturing a new hotkey."""
+            self._enabled = enabled
+            if not enabled:
+                self._pressed.clear()
+                self._fired = False
 
         def start(self) -> None:
             self._listener_obj = keyboard.Listener(
@@ -272,6 +290,8 @@ else:
                 if key is None or not self._combo:
                     return
                 self._pressed.add(self._normalize(key))
+                if not self._enabled:
+                    return
                 if not self._fired and self._check_combo():
                     self._fired = True
                     self._on_toggle()

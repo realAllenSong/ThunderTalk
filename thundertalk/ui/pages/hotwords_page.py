@@ -16,6 +16,7 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
 if TYPE_CHECKING:
@@ -95,15 +96,12 @@ class HotwordsPage(QWidget):
         self._layout.setSpacing(16)
         scroll.setWidget(container)
 
-        heading = QLabel("Hotwords")
+        heading = QLabel(t("hotwords.title"))
         heading.setFont(theme.font_heading(20))
         heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         self._layout.addWidget(heading)
 
-        subtitle = QLabel(
-            "Add domain-specific terms to improve recognition accuracy. "
-            "These words will be prioritized during transcription."
-        )
+        subtitle = QLabel(t("hotwords.desc"))
         subtitle.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
         subtitle.setWordWrap(True)
         self._layout.addWidget(subtitle)
@@ -124,11 +122,11 @@ class HotwordsPage(QWidget):
         add_row = QHBoxLayout()
         add_row.setSpacing(8)
         self._input = QLineEdit()
-        self._input.setPlaceholderText("Type a word or phrase…")
+        self._input.setPlaceholderText(t("hotwords.placeholder"))
         self._input.setStyleSheet(theme.INPUT_QSS)
         add_row.addWidget(self._input)
 
-        add_btn = theme.accent_button("Add", height=36)
+        add_btn = theme.accent_button(t("hotwords.add"), height=36)
         add_btn.setFixedWidth(72)
         add_btn.clicked.connect(self._add_word)
         self._input.returnPressed.connect(self._add_word)

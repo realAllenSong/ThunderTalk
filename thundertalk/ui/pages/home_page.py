@@ -21,49 +21,120 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
 if TYPE_CHECKING:
     from thundertalk.core.history import HistoryStore
 
 
+def _draw_stat_icon_clock(p: QPainter, cx: float, cy: float, color: QColor) -> None:
+    p.setPen(QPen(color, 1.6))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawEllipse(QRectF(cx - 8, cy - 8, 16, 16))
+    p.drawLine(int(cx), int(cy), int(cx), int(cy - 5))
+    p.drawLine(int(cx), int(cy), int(cx + 4), int(cy + 1))
+
+
+def _draw_stat_icon_text(p: QPainter, cx: float, cy: float, color: QColor) -> None:
+    p.setPen(QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    for i, w in enumerate((12, 10, 8)):
+        y = int(cy - 6 + i * 6)
+        p.drawLine(int(cx - 7), y, int(cx - 7 + w), y)
+
+
+def _draw_stat_icon_bolt(p: QPainter, cx: float, cy: float, color: QColor) -> None:
+    path = QPainterPath()
+    path.moveTo(cx + 1.5, cy - 9)
+    path.lineTo(cx - 5, cy + 1)
+    path.lineTo(cx - 1, cy + 1)
+    path.lineTo(cx - 2, cy + 9)
+    path.lineTo(cx + 5, cy - 1)
+    path.lineTo(cx + 1, cy - 1)
+    path.closeSubpath()
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(color)
+    p.drawPath(path)
+
+
+def _draw_stat_icon_bars(p: QPainter, cx: float, cy: float, color: QColor) -> None:
+    p.setPen(Qt.PenStyle.NoPen)
+    p.setBrush(color)
+    for i, h in enumerate((6, 11, 8, 14)):
+        x = cx - 8 + i * 4.5
+        p.drawRoundedRect(QRectF(x, cy + 6 - h, 3, h), 1.2, 1.2)
+
+
+_STAT_ICON_PAINTERS = {
+    "clock": _draw_stat_icon_clock,
+    "text": _draw_stat_icon_text,
+    "bolt": _draw_stat_icon_bolt,
+    "bars": _draw_stat_icon_bars,
+}
+
+
+class _StatIcon(QWidget):
+    def __init__(self, kind: str, color: str) -> None:
+        super().__init__()
+        self._kind = kind
+        self._color = QColor(color)
+        self.setFixedSize(36, 36)
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        # Soft tinted disc behind the glyph for a premium, badge-y feel
+        bg = QColor(self._color)
+        bg.setAlpha(38)
+        p.setPen(Qt.PenStyle.NoPen)
+        p.setBrush(bg)
+        p.drawEllipse(QRectF(0, 0, 36, 36))
+        _STAT_ICON_PAINTERS[self._kind](p, 18, 18, self._color)
+        p.end()
+
+
 class _StatCard(QFrame):
     """A single stat card with icon, large value, and label."""
 
-    def __init__(self, icon_text: str, value: str, label: str,
+    def __init__(self, icon_kind: str, value: str, label: str,
                  accent: str = theme.ACCENT_ORANGE) -> None:
         super().__init__()
         self._accent = accent
         self.setObjectName("statCard")
         self.setStyleSheet(
             f"QFrame#statCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 16px; }}"
         )
         self.setGraphicsEffect(theme.auto_shadow())
-        self.setMinimumHeight(110)
+        self.setMinimumHeight(140)
 
         ly = QVBoxLayout(self)
-        ly.setContentsMargins(20, 16, 20, 16)
-        ly.setSpacing(6)
+        ly.setContentsMargins(22, 20, 22, 20)
+        ly.setSpacing(4)
 
         # Icon
-        icon = QLabel(icon_text)
-        icon.setStyleSheet(
-            f"color: {accent}; font-size: 18px; border: none; background: transparent;"
-        )
+        icon = _StatIcon(icon_kind, accent)
         ly.addWidget(icon)
 
         ly.addStretch()
 
         # Value
         self._value = QLabel(value)
-        self._value.setFont(QFont("Helvetica Neue", 26, QFont.Weight.Bold))
-        self._value.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        self._value.setFont(QFont("Helvetica Neue", 32, QFont.Weight.Bold))
+        self._value.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; border: none;"
+            " letter-spacing: -0.5px;"
+        )
         ly.addWidget(self._value)
 
         # Label
-        self._label = QLabel(label)
-        self._label.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
+        self._label = QLabel(label.upper())
+        self._label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 10px; border: none;"
+            " letter-spacing: 1.2px; font-weight: 600;"
+        )
         ly.addWidget(self._label)
 
     def set_value(self, value: str) -> None:
@@ -73,13 +144,19 @@ class _StatCard(QFrame):
         super().paintEvent(ev)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        grad = QLinearGradient(1, 10, 1, 55)
-        grad.setColorAt(0, QColor(self._accent))
-        grad.setColorAt(1, QColor(0, 0, 0, 0))
+        # Soft accent glow in the top-right corner — premium achievement feel
+        w = self.width()
+        glow = QLinearGradient(w, 0, w - 120, 120)
+        c0 = QColor(self._accent)
+        c0.setAlpha(45)
+        c1 = QColor(self._accent)
+        c1.setAlpha(0)
+        glow.setColorAt(0, c0)
+        glow.setColorAt(1, c1)
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(grad)
+        p.setBrush(glow)
         path = QPainterPath()
-        path.addRoundedRect(QRectF(1, 8, 3, 45), 1.5, 1.5)
+        path.addRoundedRect(QRectF(1, 1, self.width() - 2, self.height() - 2), 15, 15)
         p.drawPath(path)
         p.end()
 
@@ -123,7 +200,7 @@ class _HistoryCard(QFrame):
 
         from PySide6.QtWidgets import QPushButton
         from PySide6.QtWidgets import QApplication
-        copy_btn = QPushButton("Copy")
+        copy_btn = QPushButton(t("home.copy"))
         copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         copy_btn.setFixedHeight(22)
         copy_btn.setStyleSheet(
@@ -133,10 +210,10 @@ class _HistoryCard(QFrame):
             f" background: {theme.BG_CARD_HOVER}; }}"
         )
         _text = entry.text
-        def _copy(checked=False, t=_text, b=copy_btn):
-            QApplication.clipboard().setText(t)
-            b.setText("Copied!")
-            QTimer.singleShot(1500, lambda: b.setText("Copy"))
+        def _copy(checked=False, _t=_text, b=copy_btn):
+            QApplication.clipboard().setText(_t)
+            b.setText(t("home.copied"))
+            QTimer.singleShot(1500, lambda: b.setText(t("home.copy")))
         copy_btn.clicked.connect(_copy)
         top.addSpacing(8)
         top.addWidget(copy_btn)
@@ -152,8 +229,11 @@ class _HistoryCard(QFrame):
 class _DayHeader(QLabel):
     def __init__(self, text: str) -> None:
         super().__init__(text)
-        self.setFont(theme.font(12, bold=True))
-        self.setStyleSheet(f"color: {theme.TEXT_MUTED}; padding-top: 4px;")
+        self.setFont(theme.font(11, bold=True))
+        self.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; background: transparent;"
+            " padding: 10px 0 4px 2px; letter-spacing: 0.5px;"
+        )
 
 
 class HomePage(QWidget):
@@ -169,15 +249,13 @@ class HomePage(QWidget):
         stats_row = QHBoxLayout()
         stats_row.setSpacing(12)
 
-        self._stat_time = _StatCard("🕐", "0m", "Speaking Time", theme.ACCENT_ORANGE)
-        self._stat_chars = _StatCard("📝", "0", "Characters", theme.ACCENT_BLUE)
-        self._stat_sessions = _StatCard("⚡", "0", "Sessions", theme.ACCENT_ORANGE_WARM)
-        self._stat_speed = _StatCard("📊", "0", "Chars / Min", theme.ACCENT_CYAN)
+        self._stat_time = _StatCard("clock", "0m", t("home.speaking_time"), theme.ACCENT_ORANGE)
+        self._stat_chars = _StatCard("text", "0", t("home.characters"), theme.ACCENT_BLUE)
+        self._stat_sessions = _StatCard("bolt", "0", t("home.sessions"), theme.ACCENT_ORANGE_WARM)
 
         stats_row.addWidget(self._stat_time)
         stats_row.addWidget(self._stat_chars)
         stats_row.addWidget(self._stat_sessions)
-        stats_row.addWidget(self._stat_speed)
         root.addLayout(stats_row)
 
         root.addSpacing(20)
@@ -186,14 +264,14 @@ class HomePage(QWidget):
         hist_header = QHBoxLayout()
         hist_header.setSpacing(8)
 
-        title = QLabel("Recent")
+        title = QLabel(t("home.recent"))
         title.setFont(theme.font(14, bold=True))
         title.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         hist_header.addWidget(title)
 
         hist_header.addStretch()
 
-        self._clear_btn = theme.pill_button("Clear", width=72, height=28)
+        self._clear_btn = theme.pill_button(t("home.clear"), width=72, height=28)
         self._clear_btn.clicked.connect(self._on_clear)
         hist_header.addWidget(self._clear_btn)
         root.addLayout(hist_header)
@@ -228,13 +306,9 @@ class HomePage(QWidget):
         else:
             time_str = f"{mins}m"
 
-        # Chars per minute
-        cpm = int(total_chars / (total_dur / 60)) if total_dur > 30 else 0
-
         self._stat_time.set_value(time_str)
         self._stat_chars.set_value(f"{total_chars:,}")
         self._stat_sessions.set_value(str(sessions))
-        self._stat_speed.set_value(str(cpm))
 
         # Clear existing cards
         while self._history_layout.count() > 1:
@@ -254,9 +328,9 @@ class HomePage(QWidget):
             if entry_day != current_day:
                 current_day = entry_day
                 if entry_day == today:
-                    day_text = "Today"
+                    day_text = t("home.today")
                 elif entry_day == yesterday:
-                    day_text = "Yesterday"
+                    day_text = t("home.yesterday")
                 else:
                     day_text = ts.strftime("%b %d, %Y")
                 header = _DayHeader(day_text)
@@ -280,13 +354,13 @@ class HomePage(QWidget):
             ely.addWidget(bolt, alignment=Qt.AlignmentFlag.AlignCenter)
             ely.addSpacing(16)
 
-            msg = QLabel("Ready to go")
+            msg = QLabel(t("home.ready"))
             msg.setFont(theme.font(16, bold=True))
             msg.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
             msg.setAlignment(Qt.AlignmentFlag.AlignCenter)
             ely.addWidget(msg)
 
-            sub = QLabel("Press your hotkey to start recording")
+            sub = QLabel(t("home.ready_sub"))
             sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
             sub.setAlignment(Qt.AlignmentFlag.AlignCenter)
             ely.addWidget(sub)
@@ -307,9 +381,20 @@ class _EmptyBolt(QWidget):
         self._phase = 0.0
         self._timer = QTimer(self)
         self._timer.timeout.connect(self._tick)
-        self._timer.start(50)
+
+    def showEvent(self, ev) -> None:
+        super().showEvent(ev)
+        if not self._timer.isActive():
+            self._timer.start(80)
+
+    def hideEvent(self, ev) -> None:
+        super().hideEvent(ev)
+        self._timer.stop()
 
     def _tick(self) -> None:
+        if not self.isVisible():
+            self._timer.stop()
+            return
         self._phase += 0.06
         self.update()
 

@@ -22,6 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from thundertalk.core.history import HistoryStore
+from thundertalk.core.i18n import t
 from thundertalk.core.settings import Settings
 from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
@@ -32,7 +33,10 @@ from thundertalk.ui.pages.settings_page import SettingsPage
 
 _SIDEBAR_W = 190
 
-_NAV_ITEMS = ["Home", "Models", "Hotwords", "Settings", "About"]
+
+def _nav_items() -> list[str]:
+    return [t("nav.home"), t("nav.models"), t("nav.hotwords"),
+            t("nav.settings"), t("nav.about")]
 
 
 class _NavButton(QPushButton):
@@ -127,8 +131,7 @@ class MainWindow(QMainWindow):
         sidebar = QFrame()
         sidebar.setFixedWidth(_SIDEBAR_W)
         sidebar.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_SIDEBAR};"
-            f" border-right: 1px solid {theme.BORDER_SUBTLE}; }}"
+            f"QFrame {{ background: {theme.BG_SIDEBAR}; border: none; }}"
         )
         sb = QVBoxLayout(sidebar)
         sb.setContentsMargins(0, 0, 0, 0)
@@ -156,22 +159,13 @@ class MainWindow(QMainWindow):
 
         # Nav buttons
         self._nav_buttons: list[_NavButton] = []
-        for i, label in enumerate(_NAV_ITEMS):
+        for i, label in enumerate(_nav_items()):
             btn = _NavButton(i, label)
             btn.clicked.connect(lambda checked, b=btn: self._on_nav(b))
             sb.addWidget(btn)
             self._nav_buttons.append(btn)
 
         sb.addStretch()
-
-        # Bottom model status
-        self._sidebar_model_label = QLabel("No model loaded")
-        self._sidebar_model_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 14px 18px;"
-            " background: transparent;"
-        )
-        self._sidebar_model_label.setWordWrap(True)
-        sb.addWidget(self._sidebar_model_label)
 
         root.addWidget(sidebar)
 
@@ -229,18 +223,6 @@ class MainWindow(QMainWindow):
 
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._models_page.set_active_model(model_id)
-        if model_id:
-            self._sidebar_model_label.setText(f"✓  {model_id}")
-            self._sidebar_model_label.setStyleSheet(
-                f"color: {theme.SUCCESS}; font-size: 11px; padding: 14px 18px;"
-                " background: transparent;"
-            )
-        else:
-            self._sidebar_model_label.setText("No model loaded")
-            self._sidebar_model_label.setStyleSheet(
-                f"color: {theme.TEXT_MUTED}; font-size: 11px; padding: 14px 18px;"
-                " background: transparent;"
-            )
 
     def show_load_error(self, msg: str) -> None:
         self._models_page.show_load_error(msg)
