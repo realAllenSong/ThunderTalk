@@ -8,10 +8,8 @@ from __future__ import annotations
 
 import webbrowser
 
-from PySide6.QtCore import Qt, QRectF
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath
+from PySide6.QtCore import Qt
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QPushButton,
@@ -23,28 +21,23 @@ import thundertalk
 from thundertalk.ui import theme
 
 
-class _LogoWidget(QWidget):
-    """Large rounded-square icon matching 闪电说 about page."""
+class _LogoWidget(QLabel):
+    """Large app icon for the about page."""
 
     def __init__(self) -> None:
         super().__init__()
         self.setFixedSize(80, 80)
-
-    def paintEvent(self, ev) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        rect = QRectF(0, 0, 80, 80)
-        grad = QLinearGradient(0, 0, 80, 80)
-        grad.setColorAt(0, QColor("#fbbf24"))
-        grad.setColorAt(1, QColor("#f97316"))
-        path = QPainterPath()
-        path.addRoundedRect(rect, 20, 20)
-        p.fillPath(path, grad)
-
-        # White bolt
-        theme.draw_boltPath(p, rect)
-        p.end()
+        import os
+        from PySide6.QtGui import QPixmap
+        from thundertalk import asset_path
+        icon_file = asset_path("icon.png")
+        if os.path.isfile(icon_file):
+            pm = QPixmap(icon_file).scaled(
+                80, 80,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self.setPixmap(pm)
 
 
 class AboutPage(QWidget):

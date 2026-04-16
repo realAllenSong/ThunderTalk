@@ -9,7 +9,7 @@ from __future__ import annotations
 from typing import Optional
 
 from PySide6.QtCore import Qt, Signal, QRectF
-from PySide6.QtGui import QCloseEvent, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -85,25 +85,23 @@ class _NavButton(QPushButton):
         p.end()
 
 
-class _LogoBolt(QWidget):
-    """Orange rounded-square lightning bolt icon, matching 闪电说 style."""
+class _LogoBolt(QLabel):
+    """Sidebar logo using the actual app icon."""
 
     def __init__(self) -> None:
         super().__init__()
         self.setFixedSize(32, 32)
-
-    def paintEvent(self, ev) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(0, 0, 32, 32)
-        grad = QLinearGradient(0, 0, 32, 32)
-        grad.setColorAt(0, QColor("#fbbf24"))   # Warm amber top
-        grad.setColorAt(1, QColor("#f97316"))   # Orange bottom
-        path = QPainterPath()
-        path.addRoundedRect(rect, 8, 8)
-        p.fillPath(path, grad)
-        theme.draw_boltPath(p, rect)
-        p.end()
+        import os
+        from PySide6.QtGui import QPixmap
+        from thundertalk import asset_path
+        icon_file = asset_path("icon.png")
+        if os.path.isfile(icon_file):
+            pm = QPixmap(icon_file).scaled(
+                32, 32,
+                Qt.AspectRatioMode.KeepAspectRatio,
+                Qt.TransformationMode.SmoothTransformation,
+            )
+            self.setPixmap(pm)
 
 
 class MainWindow(QMainWindow):

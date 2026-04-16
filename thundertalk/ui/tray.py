@@ -11,8 +11,8 @@ from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
 def app_icon() -> QIcon:
     """Load the app icon from assets, or generate a monochrome fallback."""
-    icon_path = os.path.join(os.path.dirname(__file__), "..", "..", "assets", "icon.png")
-    icon_path = os.path.normpath(icon_path)
+    from thundertalk import asset_path
+    icon_path = asset_path("icon.png")
     if os.path.isfile(icon_path):
         return QIcon(icon_path)
     

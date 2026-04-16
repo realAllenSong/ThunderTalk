@@ -48,6 +48,7 @@ class AudioRecorder:
         self._chunks: list[np.ndarray] = []
         self._recording = False
         self._skip_counter = 0
+        self._current_rms: float = 0.0
 
     @staticmethod
     def list_devices() -> list[str]:
@@ -114,6 +115,10 @@ class AudioRecorder:
     def is_recording(self) -> bool:
         return self._recording
 
+    @property
+    def current_rms(self) -> float:
+        return self._current_rms
+
     def _audio_cb(
         self,
         indata: np.ndarray,
@@ -125,4 +130,6 @@ class AudioRecorder:
             if self._skip_counter < _SKIP_CHUNKS:
                 self._skip_counter += 1
                 return
-            self._chunks.append(indata[:, 0].copy())
+            chunk = indata[:, 0].copy()
+            self._chunks.append(chunk)
+            self._current_rms = float(np.sqrt(np.mean(chunk ** 2)))

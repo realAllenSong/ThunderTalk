@@ -101,6 +101,7 @@ class AsrEngine:
         self._mlx_model = None           # pre-loaded mlx model object
         self._model_id: Optional[str] = None
         self._hotwords: str = ""
+        self._hotword_set: set[str] = set()
         self._model_dir: str = ""
         self._model_family: str = ""
         self._active_backend: str = ""   # actual backend of the currently loaded model
@@ -131,6 +132,17 @@ class AsrEngine:
     def set_hotwords(self, words: list[str]) -> None:
         """Store hotwords. Does NOT reload the model — caller must handle reload."""
         self._hotwords = "/".join(w.strip() for w in words if w.strip())
+        self._hotword_set = {w.strip().lower() for w in words if w.strip()}
+
+    def _is_hotword_hallucination(self, text: str) -> bool:
+        """Detect when ASR output is just a concatenation of hotwords (hallucinated)."""
+        if not self._hotword_set:
+            return False
+        words = text.replace(",", " ").replace("，", " ").replace("、", " ").split()
+        if not words:
+            return False
+        hotword_count = sum(1 for w in words if w.strip().lower() in self._hotword_set)
+        return hotword_count >= len(words) * 0.8 and len(words) >= 2
 
     def set_language(self, language: str) -> None:
         """Set forced language for transcription. 'auto' = auto-detect."""
@@ -246,6 +258,13 @@ class AsrEngine:
         if len(samples) == 0:
             raise ValueError("Empty audio")
 
+        rms = float(np.sqrt(np.mean(samples ** 2)))
+        if rms < 0.003:
+            duration = len(samples) / sample_rate
+            print(f"[ASR] Audio too quiet (rms={rms:.5f}), skipping inference")
+            return AsrResult(text="", duration_secs=duration, inference_ms=0,
+                             model=self._model_id or "unknown", backend=self._active_backend)
+
         if self._mlx_model is not None:
             return self._recognize_mlx(samples, sample_rate)
 
@@ -302,12 +321,15 @@ class AsrEngine:
 
         text = result.text.strip()
 
-        # Apply Inverse Text Normalization (一千 → 1000, etc.)
         if self._itn_enabled and text:
             raw = text
             text = normalize_numbers(text)
             if text != raw:
                 print(f"[ASR-ITN] '{raw}' → '{text}'")
+
+        if text and self._is_hotword_hallucination(text):
+            print(f"[ASR] Filtered hotword hallucination: '{text}'")
+            text = ""
 
         return AsrResult(
             text=text,
@@ -336,6 +358,10 @@ class AsrEngine:
             text = normalize_numbers(text)
             if text != raw:
                 print(f"[ASR-ITN] '{raw}' → '{text}'")
+
+        if text and self._is_hotword_hallucination(text):
+            print(f"[ASR] Filtered hotword hallucination: '{text}'")
+            text = ""
 
         return AsrResult(
             text=text,

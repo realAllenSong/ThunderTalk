@@ -85,7 +85,7 @@ class _StatCard(QFrame):
 
 
 class _HistoryCard(QFrame):
-    """Single transcription card — time on top-left, text below."""
+    """Single transcription card — time on top-left, copy button, text below."""
 
     def __init__(self, entry) -> None:
         super().__init__()
@@ -120,6 +120,26 @@ class _HistoryCard(QFrame):
             f" background: {theme.BG_ELEVATED}; border-radius: 4px; padding: 2px 6px;"
         )
         top.addWidget(dur_lbl)
+
+        from PySide6.QtWidgets import QPushButton
+        from PySide6.QtWidgets import QApplication
+        copy_btn = QPushButton("Copy")
+        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        copy_btn.setFixedHeight(22)
+        copy_btn.setStyleSheet(
+            f"QPushButton {{ color: {theme.TEXT_MUTED}; font-size: 10px; border: none;"
+            f" background: {theme.BG_ELEVATED}; border-radius: 4px; padding: 2px 10px; }}"
+            f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
+            f" background: {theme.BG_CARD_HOVER}; }}"
+        )
+        _text = entry.text
+        def _copy(checked=False, t=_text, b=copy_btn):
+            QApplication.clipboard().setText(t)
+            b.setText("Copied!")
+            QTimer.singleShot(1500, lambda: b.setText("Copy"))
+        copy_btn.clicked.connect(_copy)
+        top.addSpacing(8)
+        top.addWidget(copy_btn)
 
         ly.addLayout(top)
 
