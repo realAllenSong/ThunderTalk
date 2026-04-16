@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
   <img src="https://img.shields.io/badge/version-0.3.0-orange" alt="Version" />
 </p>
@@ -21,8 +21,8 @@
 - **Press a key, speak, get text.** One hotkey activates voice input anywhere on your desktop.
 - **100% local & private** — your voice never leaves your device. No cloud, no subscription.
 - **Multiple ASR backends** — MLX (Metal GPU on Apple Silicon) and ONNX (CPU).
-- **Multiple ASR models** — SenseVoice, FunASR-Nano, Qwen3-ASR in various sizes.
-- **Hotwords & auto-learning** — custom vocabulary for domain-specific terms, with automatic frequency-based learning.
+- **Multiple ASR models** — SenseVoice and Qwen3-ASR in various sizes.
+- **Hotwords** — custom vocabulary for domain-specific terms.
 - **Smart hardware detection** — identifies your CPU, RAM, and GPU to recommend the best model.
 - **Speaker mute** — optionally mutes system audio during recording to avoid feedback.
 - **English & 中文 UI** — switch the interface language in Settings (instant, no restart).
@@ -50,7 +50,7 @@ Models are downloaded on-demand from the app's Settings page and stored at `~/.t
 2. Press the hotkey (default: **Right ⌘**) to start recording. Press again to stop.
 3. The transcribed text is automatically pasted into the active application.
 
-> Change the hotkey, language (English / 中文), theme (dark / light), and more from the **Settings** page.
+> Change the hotkey, language (English / 中文), and more from the **Settings** page.
 
 ## Development
 
@@ -84,7 +84,16 @@ uv run python run.py
 
 ## License
 
-[Apache-2.0](LICENSE)
+ThunderTalk is **source-available** under the
+[PolyForm Noncommercial License 1.0.0](LICENSE).
+
+- ✅ **Free for personal use** — individuals, hobbyists, students, researchers, and non-commercial use by charities, schools, and public-interest organizations.
+- ✅ **Free to modify and share** for any noncommercial purpose.
+- 💼 **Commercial use requires a separate license** from the author, granted at the author's discretion. This includes bundling into paid products, offering as a hosted service, or internal use by for-profit organizations.
+
+For commercial licensing inquiries, contact **zysong@seas.upenn.edu**.
+
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the CLA that accompanies every pull request.
 
 ## Acknowledgments
 
