@@ -98,6 +98,9 @@ class _StatIcon(QWidget):
 class _StatCard(QFrame):
     """A single stat card with icon, large value, and label."""
 
+    def set_label(self, label: str) -> None:
+        self._label.setText(label.upper())
+
     def __init__(self, icon_kind: str, value: str, label: str,
                  accent: str = theme.ACCENT_ORANGE) -> None:
         super().__init__()
@@ -264,10 +267,10 @@ class HomePage(QWidget):
         hist_header = QHBoxLayout()
         hist_header.setSpacing(8)
 
-        title = QLabel(t("home.recent"))
-        title.setFont(theme.font(14, bold=True))
-        title.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        hist_header.addWidget(title)
+        self._recent_title = QLabel(t("home.recent"))
+        self._recent_title.setFont(theme.font(14, bold=True))
+        self._recent_title.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        hist_header.addWidget(self._recent_title)
 
         hist_header.addStretch()
 
@@ -369,6 +372,14 @@ class HomePage(QWidget):
 
     def _on_clear(self) -> None:
         self._history.clear()
+        self.refresh()
+
+    def retranslate(self) -> None:
+        self._stat_time.set_label(t("home.speaking_time"))
+        self._stat_chars.set_label(t("home.characters"))
+        self._stat_sessions.set_label(t("home.sessions"))
+        self._recent_title.setText(t("home.recent"))
+        self._clear_btn.setText(t("home.clear"))
         self.refresh()
 
 

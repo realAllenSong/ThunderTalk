@@ -380,10 +380,10 @@ class ModelsPage(QWidget):
         self._layout.setSpacing(16)
         scroll.setWidget(container)
 
-        heading = QLabel(t("models.title"))
-        heading.setFont(theme.font_heading(20))
-        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        self._layout.addWidget(heading)
+        self._heading = QLabel(t("models.title"))
+        self._heading.setFont(theme.font_heading(20))
+        self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        self._layout.addWidget(self._heading)
 
         # Hardware info card
         hw_card = QFrame()
@@ -492,3 +492,6 @@ class ModelsPage(QWidget):
         self._error_label.setText(f"Download failed for {model_id}: {msg}")
         self._error_label.show()
         self._workers.pop(model_id, None)
+
+    def retranslate(self) -> None:
+        self._heading.setText(t("models.title"))

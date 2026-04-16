@@ -96,15 +96,15 @@ class HotwordsPage(QWidget):
         self._layout.setSpacing(16)
         scroll.setWidget(container)
 
-        heading = QLabel(t("hotwords.title"))
-        heading.setFont(theme.font_heading(20))
-        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        self._layout.addWidget(heading)
+        self._heading = QLabel(t("hotwords.title"))
+        self._heading.setFont(theme.font_heading(20))
+        self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        self._layout.addWidget(self._heading)
 
-        subtitle = QLabel(t("hotwords.desc"))
-        subtitle.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
-        subtitle.setWordWrap(True)
-        self._layout.addWidget(subtitle)
+        self._subtitle = QLabel(t("hotwords.desc"))
+        self._subtitle.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 13px;")
+        self._subtitle.setWordWrap(True)
+        self._layout.addWidget(self._subtitle)
 
         # --- Add word card ---
         add_card = theme.make_card()
@@ -126,11 +126,11 @@ class HotwordsPage(QWidget):
         self._input.setStyleSheet(theme.INPUT_QSS)
         add_row.addWidget(self._input)
 
-        add_btn = theme.accent_button(t("hotwords.add"), height=36)
-        add_btn.setFixedWidth(72)
-        add_btn.clicked.connect(self._add_word)
+        self._add_btn = theme.accent_button(t("hotwords.add"), height=36)
+        self._add_btn.setFixedWidth(72)
+        self._add_btn.clicked.connect(self._add_word)
         self._input.returnPressed.connect(self._add_word)
-        add_row.addWidget(add_btn)
+        add_row.addWidget(self._add_btn)
         ac.addLayout(add_row)
 
         hint = QLabel("Press Enter or click Add. Words are saved automatically.")
@@ -282,3 +282,9 @@ class HotwordsPage(QWidget):
             self._settings.set("hotwords", words)
             self._rebuild_chips()
             self.hotwords_changed.emit(words)
+
+    def retranslate(self) -> None:
+        self._heading.setText(t("hotwords.title"))
+        self._subtitle.setText(t("hotwords.desc"))
+        self._input.setPlaceholderText(t("hotwords.placeholder"))
+        self._add_btn.setText(t("hotwords.add"))

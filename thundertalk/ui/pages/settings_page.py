@@ -28,7 +28,7 @@ from PySide6.QtWidgets import (
 
 import sounddevice as sd
 
-from thundertalk.core.i18n import t
+from thundertalk.core.i18n import bus as i18n_bus, set_language, t
 from thundertalk.ui import theme
 
 if TYPE_CHECKING:
@@ -305,10 +305,10 @@ class SettingsPage(QWidget):
         root.setContentsMargins(32, 28, 32, 20)
         root.setSpacing(0)
 
-        heading = QLabel(t("settings.title"))
-        heading.setFont(theme.font_heading(20))
-        heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        root.addWidget(heading)
+        self._heading = QLabel(t("settings.title"))
+        self._heading.setFont(theme.font_heading(20))
+        self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        root.addWidget(self._heading)
         root.addSpacing(16)
 
         # ── Segment tab bar (centered) ──
@@ -340,6 +340,8 @@ class SettingsPage(QWidget):
         for i, page in enumerate(self._pages):
             page.setVisible(i == 0)
         self._tabs.currentChanged.connect(self._switch_tab)
+
+        i18n_bus.language_changed.connect(self.retranslate)
 
     def _switch_tab(self, idx: int) -> None:
         for i, page in enumerate(self._pages):
@@ -595,8 +597,11 @@ class SettingsPage(QWidget):
 
         c1.addWidget(theme.separator())
 
-        # Language selector
-        lang_row, _ = theme.setting_row(t("settings.language"), t("settings.language_desc"))
+        # Language selector — applies instantly
+        lang_row, lang_label = theme.setting_row(
+            t("settings.language"), t("settings.language_desc")
+        )
+        self._ui_lang_label = lang_label
         self._ui_lang_combo = QComboBox()
         self._ui_lang_combo.setFixedWidth(160)
         self._ui_lang_combo.setStyleSheet(theme.COMBO_QSS)
@@ -604,39 +609,9 @@ class SettingsPage(QWidget):
         self._ui_lang_combo.addItem("中文", "zh")
         cur_lang = self._settings.get("language") or "en"
         self._ui_lang_combo.setCurrentIndex(1 if cur_lang == "zh" else 0)
-        self._ui_lang_combo.currentIndexChanged.connect(
-            lambda i: self._settings.set("language", self._ui_lang_combo.itemData(i))
-        )
+        self._ui_lang_combo.currentIndexChanged.connect(self._on_ui_lang_changed)
         lang_row.addWidget(self._ui_lang_combo)
         c1.addLayout(lang_row)
-
-        c1.addWidget(theme.separator())
-
-        # Theme selector
-        theme_row, _ = theme.setting_row(t("settings.theme"), t("settings.theme_desc"))
-        self._theme_combo = QComboBox()
-        self._theme_combo.setFixedWidth(160)
-        self._theme_combo.setStyleSheet(theme.COMBO_QSS)
-        self._theme_combo.addItem(t("settings.theme_dark"), "dark")
-        self._theme_combo.addItem(t("settings.theme_light"), "light")
-        cur_theme = self._settings.get("theme") or "dark"
-        self._theme_combo.setCurrentIndex(1 if cur_theme == "light" else 0)
-        self._theme_combo.currentIndexChanged.connect(
-            lambda i: self._settings.set("theme", self._theme_combo.itemData(i))
-        )
-        theme_row.addWidget(self._theme_combo)
-        c1.addLayout(theme_row)
-
-        if platform.system() == "Darwin":
-            c1.addWidget(theme.separator())
-            dock_row, _ = theme.setting_row(
-                "Show in Dock",
-                "Hide app icon from Dock; access via menu bar icon only",
-            )
-            t_dock = theme.ToggleSwitch(self._settings.get("show_in_dock"))
-            t_dock.toggled_signal.connect(lambda v: self._settings.set("show_in_dock", v))
-            dock_row.addWidget(t_dock)
-            c1.addLayout(dock_row)
 
         ly.addWidget(card1)
 
@@ -713,6 +688,20 @@ class SettingsPage(QWidget):
         if code:
             self._settings.set("transcription_language", code)
             self.settings_changed.emit()
+
+    def _on_ui_lang_changed(self, idx: int) -> None:
+        code = self._ui_lang_combo.itemData(idx)
+        if code:
+            self._settings.set("language", code)
+            set_language(code)
+
+    def retranslate(self) -> None:
+        self._heading.setText(t("settings.title"))
+        tabs = (t("settings.tab_hotkey"), t("settings.tab_audio"),
+                t("settings.tab_transcription"), t("settings.tab_general"))
+        for i, name in enumerate(tabs):
+            self._tabs.setTabText(i, name)
+        self._ui_lang_label.setText(t("settings.language"))
 
     def _open_log_dir(self) -> None:
         log_dir = Path.home() / ".thundertalk"

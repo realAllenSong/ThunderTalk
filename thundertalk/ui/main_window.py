@@ -22,7 +22,7 @@ from PySide6.QtWidgets import (
 )
 
 from thundertalk.core.history import HistoryStore
-from thundertalk.core.i18n import t
+from thundertalk.core.i18n import bus as i18n_bus, t
 from thundertalk.core.settings import Settings
 from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
@@ -50,6 +50,10 @@ class _NavButton(QPushButton):
         self.setFixedHeight(44)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setCheckable(True)
+        self._update()
+
+    def set_label(self, label: str) -> None:
+        self._label = label
         self._update()
 
     def set_active(self, active: bool) -> None:
@@ -191,6 +195,18 @@ class MainWindow(QMainWindow):
         )
 
         self._select_nav(0)
+
+        i18n_bus.language_changed.connect(self._retranslate)
+
+    def _retranslate(self) -> None:
+        for btn, label in zip(self._nav_buttons, _nav_items()):
+            btn.set_label(label)
+        if hasattr(self._home_page, "retranslate"):
+            self._home_page.retranslate()
+        if hasattr(self._models_page, "retranslate"):
+            self._models_page.retranslate()
+        if hasattr(self._hotwords_page, "retranslate"):
+            self._hotwords_page.retranslate()
 
     # ── Navigation ───────────────────────────────────────────────
 

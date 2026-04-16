@@ -8,7 +8,7 @@ from typing import Optional
 from PySide6.QtGui import QAction, QIcon, QPixmap, QPainter, QColor, QFont
 from PySide6.QtWidgets import QMenu, QSystemTrayIcon
 
-from thundertalk.core.i18n import t
+from thundertalk.core.i18n import bus as i18n_bus, t
 
 
 def app_icon() -> QIcon:
@@ -70,6 +70,12 @@ class TrayIcon(QSystemTrayIcon):
 
         self.setContextMenu(self._menu)
         self.setToolTip("ThunderTalk")
+
+        i18n_bus.language_changed.connect(self._retranslate)
+
+    def _retranslate(self) -> None:
+        self.open_action.setText(t("tray.open"))
+        self.quit_action.setText(t("tray.quit"))
 
     def set_model_status(self, model_name: Optional[str]) -> None:
         pass

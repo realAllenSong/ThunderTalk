@@ -1,16 +1,18 @@
-"""Lightweight i18n — language is chosen once per session from settings.
+"""Lightweight i18n with live switching.
 
 Usage:
-    from thundertalk.core.i18n import t
+    from thundertalk.core.i18n import t, bus, set_language
     label.setText(t("home.speaking_time"))
-
-To change the language, update settings ("language": "en"|"zh") and restart.
+    bus.language_changed.connect(self.retranslate)
+    set_language("zh")  # switches instantly and notifies listeners
 """
 
 from __future__ import annotations
 
 import json
 from pathlib import Path
+
+from PySide6.QtCore import QObject, Signal
 
 _SETTINGS_PATH = Path.home() / ".thundertalk" / "settings.json"
 
@@ -25,6 +27,22 @@ def _read_language() -> str:
 
 
 LANG = _read_language()
+
+
+class _I18nBus(QObject):
+    language_changed = Signal()
+
+
+bus = _I18nBus()
+
+
+def set_language(code: str) -> None:
+    """Switch UI language at runtime and notify listeners."""
+    global LANG
+    if code not in ("en", "zh") or code == LANG:
+        return
+    LANG = code
+    bus.language_changed.emit()
 
 
 _STRINGS: dict[str, dict[str, str]] = {

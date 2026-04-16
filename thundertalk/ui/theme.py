@@ -6,9 +6,6 @@ Reference: ShandianShuo UI (闪电说).
 
 from __future__ import annotations
 
-import json
-from pathlib import Path
-
 from PySide6.QtCore import QRect, QRectF, Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, Property
 from PySide6.QtGui import (
     QColor,
@@ -21,59 +18,24 @@ from PySide6.QtGui import (
 )
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
-# ── Theme loading ────────────────────────────────────────────────────────
-# Read user's theme choice at import time. Changing the theme requires an
-# app restart (QSS strings are captured at widget construction).
-
-_SETTINGS_PATH = Path.home() / ".thundertalk" / "settings.json"
-
-
-def _read_theme() -> str:
-    try:
-        with open(_SETTINGS_PATH, "r", encoding="utf-8") as f:
-            return json.load(f).get("theme", "dark")
-    except Exception:
-        return "dark"
-
-
-IS_LIGHT = _read_theme() == "light"
-
 # ── Color Tokens ─────────────────────────────────────────────────────────
+# Dark palette — unified base so content area matches sidebar.
 
-if IS_LIGHT:
-    # Light palette — inspired by macOS Big Sur system bg
-    BG_DEEPEST = "#ececf0"
-    BG_BASE = "#f2f2f7"
-    BG_SIDEBAR = "#f2f2f7"
-    BG_CARD = "#ffffff"
-    BG_CARD_HOVER = "#f7f7fa"
-    BG_ELEVATED = "#ffffff"
-    BG_INPUT = "#ffffff"
+BG_DEEPEST = "#0f0f11"
+BG_BASE = "#151517"
+BG_SIDEBAR = "#151517"
+BG_CARD = "#242426"
+BG_CARD_HOVER = "#2c2c2e"
+BG_ELEVATED = "#303032"
+BG_INPUT = "#1e1e20"
 
-    BORDER_SUBTLE = "#dddde0"
-    BORDER_DEFAULT = "#c7c7cc"
-    BORDER_STRONG = "#8e8e93"
+BORDER_SUBTLE = "#38383c"
+BORDER_DEFAULT = "#48484e"
+BORDER_STRONG = "#636366"
 
-    TEXT_PRIMARY = "#1c1c1e"
-    TEXT_SECONDARY = "#48484a"
-    TEXT_MUTED = "#8e8e93"
-else:
-    # Dark palette — unified base with sidebar so content area matches
-    BG_DEEPEST = "#0f0f11"
-    BG_BASE = "#151517"        # unified with sidebar
-    BG_SIDEBAR = "#151517"
-    BG_CARD = "#242426"
-    BG_CARD_HOVER = "#2c2c2e"
-    BG_ELEVATED = "#303032"
-    BG_INPUT = "#1e1e20"
-
-    BORDER_SUBTLE = "#38383c"
-    BORDER_DEFAULT = "#48484e"
-    BORDER_STRONG = "#636366"
-
-    TEXT_PRIMARY = "#f0f0f2"
-    TEXT_SECONDARY = "#98989d"
-    TEXT_MUTED = "#636366"
+TEXT_PRIMARY = "#f0f0f2"
+TEXT_SECONDARY = "#98989d"
+TEXT_MUTED = "#636366"
 
 ACCENT_BLUE = "#5b8def"      # Primary accent
 ACCENT_BLUE_HOVER = "#4a7de0"
