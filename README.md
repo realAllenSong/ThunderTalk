@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-Apache--2.0-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-0.2.0-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.3.0-orange" alt="Version" />
 </p>
 
 ---
@@ -25,8 +25,7 @@
 - **Hotwords & auto-learning** — custom vocabulary for domain-specific terms, with automatic frequency-based learning.
 - **Smart hardware detection** — identifies your CPU, RAM, and GPU to recommend the best model.
 - **Speaker mute** — optionally mutes system audio during recording to avoid feedback.
-- **Dark & Light themes** — pick whichever feels right.
-- **English & 中文 UI** — switch the interface language in Settings.
+- **English & 中文 UI** — switch the interface language in Settings (instant, no restart).
 
 ## Download
 
