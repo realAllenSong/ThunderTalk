@@ -14,11 +14,7 @@
   <img src="https://img.shields.io/badge/version-0.3.1-orange" alt="Version" />
 </p>
 
-<p align="center">
-  <a href="https://raw.githubusercontent.com/realAllenSong/ThunderTalk/main/assets/thundertalk-promo.mp4">
-    <img src="assets/promo-thumb.png" width="720" alt="ThunderTalk Demo Video - Click to Play" />
-  </a>
-</p>
+<https://github.com/realAllenSong/ThunderTalk/raw/main/assets/thundertalk-promo.mp4>
 
 ---
 
