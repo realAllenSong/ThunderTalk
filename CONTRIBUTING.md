@@ -9,7 +9,7 @@ contribution to this repository, **you agree that:**
 
 1. You are the author of the contribution, or you have the right to
    submit it under the terms below.
-2. You grant **Zhiyuan Song** (the ThunderTalk project author and
+2. You grant **realAllenSong** (the ThunderTalk project author and
    copyright holder) a **perpetual, worldwide, royalty-free,
    non-exclusive, irrevocable license** to use, reproduce, modify,
    prepare derivative works of, publicly display, publicly perform,
