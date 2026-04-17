@@ -60,7 +60,7 @@ class AsrWorker(QThread):
 class ModelLoadWorker(QThread):
     """Loads an ASR model off the main thread."""
 
-    finished = Signal(str)      # model_id
+    loaded = Signal(str)      # model_id — emitted from run() on success
     error = Signal(str, str)    # model_id, error_message
 
     def __init__(self, engine: AsrEngine, model_id: str, path: str, family: str, backend: str) -> None:
@@ -76,7 +76,7 @@ class ModelLoadWorker(QThread):
             print(f"[ModelLoad] Loading {self._model_id} ({self._backend})...")
             self._engine.load_model(self._path, self._family, self._backend)
             print("[ModelLoad] load_model done")
-            self.finished.emit(self._model_id)
+            self.loaded.emit(self._model_id)
         except Exception as e:
             print(f"[ModelLoad] ERROR: {e}")
             self.error.emit(self._model_id, str(e))
@@ -155,20 +155,24 @@ def main() -> None:
         worker = ModelLoadWorker(pipe.asr, model_id, path, family, backend)
 
         def _on_load_finished(mid: str) -> None:
-            pipe._load_worker = None
             window.set_active_model(mid)
             tray.set_model_status(mid)
             settings.set("active_model_id", mid)
             window.models_page.set_loading(mid, False)
 
         def _on_load_error(mid: str, msg: str) -> None:
-            pipe._load_worker = None
             window.show_load_error(f"Failed to load {mid}: {msg}")
             window.models_page.set_loading(mid, False)
             traceback.print_exc()
 
-        worker.finished.connect(_on_load_finished)
+        def _clear_load_worker() -> None:
+            # Runs on QThread's built-in finished signal, AFTER run() has fully
+            # exited — so dropping the last Python ref here is safe.
+            pipe._load_worker = None
+
+        worker.loaded.connect(_on_load_finished)
         worker.error.connect(_on_load_error)
+        worker.finished.connect(_clear_load_worker)
         pipe._load_worker = worker
         worker.start()
 
@@ -223,9 +227,11 @@ def main() -> None:
         # Audio is restored when recording stops (before ASR), not here.
         t_start = time.perf_counter()
         print("[Toggle] _on_asr_done called")
-        # Don't block with wait() — the signal firing already means run() finished.
-        # Just clear the reference so it can be garbage-collected.
-        pipe._worker = None
+        # Note: do NOT clear pipe._worker here — the QThread's run() hasn't
+        # fully unwound yet when this handler fires. Clearing now can drop the
+        # last Python ref and trigger dealloc of a still-running QThread, which
+        # Qt aborts on with SIGABRT. _clear_asr_worker() handles it from the
+        # built-in finished signal, after run() has returned.
         print(f'[ASR] Result: "{text}" ({ms}ms, backend={backend}, RTF={rtf:.3f})')
         if text:
             overlay.hide_overlay()
@@ -250,9 +256,13 @@ def main() -> None:
 
     def _on_asr_error(msg: str) -> None:
         print("[Toggle] _on_asr_error called")
-        pipe._worker = None
         print(f"[ASR] Error: {msg}")
         overlay.show_error(msg[:40])
+
+    def _clear_asr_worker() -> None:
+        # Runs on QThread's built-in finished signal, after run() has fully
+        # exited. Safe to drop the last Python reference here.
+        pipe._worker = None
 
     @Slot()
     def on_toggle() -> None:
@@ -283,6 +293,7 @@ def main() -> None:
             worker = AsrWorker(pipe.asr, samples)
             worker.done.connect(_on_asr_done)
             worker.error.connect(_on_asr_error)
+            worker.finished.connect(_clear_asr_worker)
             pipe._worker = worker
             worker.start()
         else:

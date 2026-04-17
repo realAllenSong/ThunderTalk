@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 import time
 from dataclasses import asdict, dataclass
 from pathlib import Path
@@ -35,10 +36,15 @@ class HistoryStore:
                 self._entries = []
 
     def save(self) -> None:
+        """Atomic write: a crash mid-save cannot corrupt the existing file."""
         _PATH.parent.mkdir(parents=True, exist_ok=True)
         data = [asdict(e) for e in self._entries[-_MAX_ENTRIES:]]
-        with open(_PATH, "w", encoding="utf-8") as f:
+        tmp = _PATH.with_suffix(_PATH.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(data, f, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _PATH)
 
     def add(self, text: str, duration_secs: float, inference_ms: int, model: str) -> None:
         self._entries.append(

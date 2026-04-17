@@ -11,7 +11,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-0.3.0-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-0.3.1-orange" alt="Version" />
 </p>
 
 ---

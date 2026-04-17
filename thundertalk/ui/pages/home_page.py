@@ -111,7 +111,7 @@ class _StatCard(QFrame):
             f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 16px; }}"
         )
         self.setGraphicsEffect(theme.auto_shadow())
-        self.setMinimumHeight(140)
+        self.setFixedHeight(150)
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(22, 20, 22, 20)
@@ -285,7 +285,7 @@ class HomePage(QWidget):
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        root.addWidget(scroll)
+        root.addWidget(scroll, stretch=1)
 
         self._history_container = QWidget()
         self._history_layout = QVBoxLayout(self._history_container)

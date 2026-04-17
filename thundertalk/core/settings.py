@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import json
+import os
 from pathlib import Path
 from typing import Any
 
@@ -11,11 +12,9 @@ DEFAULTS: dict[str, Any] = {
     "press_mode": "toggle",
     "microphone": "auto",
     "mute_speakers": True,
-    "theme": "dark",
     "language": "en",
     "launch_at_startup": False,
     "silent_launch": True,
-    "show_in_dock": False,
     "transcription_language": "auto",
     "save_to_clipboard": True,
     "hotwords": [],
@@ -43,9 +42,14 @@ class Settings:
                 pass
 
     def save(self) -> None:
+        """Atomic write: a crash mid-save cannot corrupt the existing file."""
         _PATH.parent.mkdir(parents=True, exist_ok=True)
-        with open(_PATH, "w", encoding="utf-8") as f:
+        tmp = _PATH.with_suffix(_PATH.suffix + ".tmp")
+        with open(tmp, "w", encoding="utf-8") as f:
             json.dump(self._data, f, indent=2, ensure_ascii=False)
+            f.flush()
+            os.fsync(f.fileno())
+        os.replace(tmp, _PATH)
 
     def get(self, key: str) -> Any:
         return self._data.get(key, DEFAULTS.get(key))
