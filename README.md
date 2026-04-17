@@ -15,9 +15,9 @@
 </p>
 
 <p align="center">
-  <video src="https://raw.githubusercontent.com/realAllenSong/ThunderTalk/main/assets/thundertalk-promo.mp4" width="720" autoplay loop muted playsinline>
-    <a href="assets/thundertalk-promo.mp4">Watch Demo</a>
-  </video>
+  <a href="https://raw.githubusercontent.com/realAllenSong/ThunderTalk/main/assets/thundertalk-promo.mp4">
+    <img src="assets/promo-thumb.png" width="720" alt="ThunderTalk Demo Video - Click to Play" />
+  </a>
 </p>
 
 ---
