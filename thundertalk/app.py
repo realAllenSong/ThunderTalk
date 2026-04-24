@@ -264,38 +264,49 @@ def main() -> None:
         # exited. Safe to drop the last Python reference here.
         pipe._worker = None
 
+    # Grace period (ms) between stop-requested and stream-closed so the
+    # audio callback can capture trailing speech that is still being spoken
+    # as the user's fingers reach the hotkey. Without this, the OS driver /
+    # PortAudio in-flight buffer (~50-150ms) plus any audio spoken during
+    # keystroke reaction (~100-200ms) is lost, eating 1-2 trailing syllables.
+    TAIL_GRACE_MS = 250
+
     @Slot()
     def on_toggle() -> None:
         print(f"[Toggle] on_toggle called, _recording={pipe._recording}")
         if pipe._recording:
             # ---- STOP recording ----
             t_stop = time.perf_counter()
-            print("[Toggle] Stopping recording...")
+            print(f"[Toggle] Stop requested, capturing {TAIL_GRACE_MS}ms tail...")
             overlay.show_transcribing()
-            samples = pipe.recorder.stop()
-            stop_ms = int((time.perf_counter() - t_stop) * 1000)
-            if settings.get("mute_speakers"):
-                print(f"[Toggle] Restoring system audio ({stop_ms}ms to stop recorder)")
-                threading.Thread(target=_unmute_bg, daemon=True).start()
-            pipe._recording = False
+            pipe._recording = False  # prevent re-entry during grace window
 
-            if samples is None or len(samples) < 800:
-                print("[Toggle] Too short (audio already restored on stop)")
-                overlay.show_error("Too short")
-                return
+            def _finalize_stop() -> None:
+                samples = pipe.recorder.stop()
+                stop_ms = int((time.perf_counter() - t_stop) * 1000)
+                if settings.get("mute_speakers"):
+                    print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
+                    threading.Thread(target=_unmute_bg, daemon=True).start()
 
-            if not pipe.asr.is_loaded:
-                print("[Toggle] No model (audio already restored on stop)")
-                overlay.show_error("No model loaded")
-                return
+                if samples is None or len(samples) < 800:
+                    print("[Toggle] Too short (audio already restored on stop)")
+                    overlay.show_error("Too short")
+                    return
 
-            print(f"[Toggle] Starting ASR on {len(samples)} samples")
-            worker = AsrWorker(pipe.asr, samples)
-            worker.done.connect(_on_asr_done)
-            worker.error.connect(_on_asr_error)
-            worker.finished.connect(_clear_asr_worker)
-            pipe._worker = worker
-            worker.start()
+                if not pipe.asr.is_loaded:
+                    print("[Toggle] No model (audio already restored on stop)")
+                    overlay.show_error("No model loaded")
+                    return
+
+                print(f"[Toggle] Starting ASR on {len(samples)} samples")
+                worker = AsrWorker(pipe.asr, samples)
+                worker.done.connect(_on_asr_done)
+                worker.error.connect(_on_asr_error)
+                worker.finished.connect(_clear_asr_worker)
+                pipe._worker = worker
+                worker.start()
+
+            QTimer.singleShot(TAIL_GRACE_MS, _finalize_stop)
         else:
             # ---- START recording ----
             if not pipe.asr.is_loaded:
