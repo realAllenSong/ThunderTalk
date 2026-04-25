@@ -115,6 +115,36 @@ class ModelLoadWorker(QThread):
             self.error.emit(self._model_id, str(e))
 
 
+class TranslatorLoadWorker(QThread):
+    """Loads a TranslationEngine model off the main thread.
+
+    Mirrors ModelLoadWorker's signal shape so the UI loading-state plumbing
+    (set_loading / show_load_error) can reuse the same handlers, but the
+    underlying engine and load_model() signature are different
+    (single-arg path, no family/backend).
+    """
+
+    loaded = Signal(str)
+    error = Signal(str, str)
+
+    def __init__(self, engine, model_id: str, path: str) -> None:
+        super().__init__()
+        self._engine = engine
+        self._model_id = model_id
+        self._path = path
+
+    def run(self) -> None:
+        try:
+            print(f"[ModelLoad] Loading {self._model_id} (seamless-torch translator)...")
+            self._engine.load_model(self._path)
+            print("[ModelLoad] translator load_model done")
+            self.loaded.emit(self._model_id)
+        except Exception as e:
+            print(f"[ModelLoad] ERROR: {e}")
+            traceback.print_exc()
+            self.error.emit(self._model_id, str(e))
+
+
 class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
@@ -128,7 +158,7 @@ class Pipeline(QObject):
         self.translator = None  # lazy-instantiated TranslationEngine
         self._recording = False
         self._worker: AsrWorker | TranslationWorker | None = None
-        self._load_worker: ModelLoadWorker | None = None
+        self._load_worker: ModelLoadWorker | TranslatorLoadWorker | None = None
         self._mic_device = None if mic == "auto" else mic
 
     def toggle(self) -> None:
@@ -192,6 +222,35 @@ def main() -> None:
     pipe.asr.set_language(settings.transcription_language)
 
     # --- Model loading helpers -----------------------------------------
+    def _clear_load_worker() -> None:
+        # Runs on QThread's built-in finished signal, AFTER run() has fully
+        # exited — so dropping the last Python ref here is safe.
+        pipe._load_worker = None
+
+    def _start_translator_load(model_id: str, path: str) -> None:
+        """Load SeamlessM4T into the TranslationEngine on a background thread.
+
+        Translation models are NOT set as active_model_id (that's ASR-specific
+        and would crash _restore_model on next launch with 'Unknown model
+        family'). They simply become the loaded translator engine.
+        """
+        translator = pipe.get_translator()
+        worker = TranslatorLoadWorker(translator, model_id, path)
+
+        def _on_translator_loaded(mid: str) -> None:
+            print(f"[ModelLoad] Translator ready: {mid}")
+            window.models_page.set_loading(mid, False)
+
+        def _on_translator_error(mid: str, msg: str) -> None:
+            window.show_load_error(f"Failed to load {mid}: {msg}")
+            window.models_page.set_loading(mid, False)
+
+        worker.loaded.connect(_on_translator_loaded)
+        worker.error.connect(_on_translator_error)
+        worker.finished.connect(_clear_load_worker)
+        pipe._load_worker = worker
+        worker.start()
+
     def _start_model_load(model_id: str, path: str, family: str, backend: str) -> None:
         """Start loading a model in a background thread."""
         if pipe._load_worker and pipe._load_worker.isRunning():
@@ -199,6 +258,14 @@ def main() -> None:
             return
 
         window.models_page.set_loading(model_id, True)
+
+        # Translation models load into TranslationEngine, not AsrEngine.
+        # AsrEngine.load_model() does not understand the SeamlessM4T-v2 family
+        # and would raise ValueError("Unknown model family").
+        if backend == "seamless-torch":
+            _start_translator_load(model_id, path)
+            return
+
         worker = ModelLoadWorker(pipe.asr, model_id, path, family, backend)
 
         def _on_load_finished(mid: str) -> None:
@@ -211,11 +278,6 @@ def main() -> None:
             window.show_load_error(f"Failed to load {mid}: {msg}")
             window.models_page.set_loading(mid, False)
             traceback.print_exc()
-
-        def _clear_load_worker() -> None:
-            # Runs on QThread's built-in finished signal, AFTER run() has fully
-            # exited — so dropping the last Python ref here is safe.
-            pipe._load_worker = None
 
         worker.loaded.connect(_on_load_finished)
         worker.error.connect(_on_load_error)
@@ -234,6 +296,10 @@ def main() -> None:
         path = get_model_path(last_model)
         info = next((m for m in BUILTIN_MODELS if m.id == last_model), None)
         if not (path and info):
+            return
+        # Skip translation engine models — they go through _maybe_load_translator,
+        # not the ASR active-model restore path.
+        if info.backend == "seamless-torch":
             return
         print(f"[Startup] Loading model sync: {last_model}")
         try:
