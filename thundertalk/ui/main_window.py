@@ -151,8 +151,14 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: Settings, history: HistoryStore) -> None:
         super().__init__()
         self._settings = settings
+        self._vibrancy_applied = False
         self.setWindowTitle("ThunderTalk")
         self.setMinimumSize(820, 580)
+        # WA_TranslucentBackground tells Qt not to paint the window's
+        # native bg, so the NSVisualEffectView attached in showEvent()
+        # actually shows through. Without this, Qt would paint an opaque
+        # rectangle on top of the blur.
+        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
         self.setStyleSheet(theme.APP_QSS)
 
         from thundertalk.ui.tray import app_icon
@@ -277,6 +283,21 @@ class MainWindow(QMainWindow):
 
     def show_load_error(self, msg: str) -> None:
         self._models_page.show_load_error(msg)
+
+    # ── Native macOS blur ────────────────────────────────────────
+
+    def showEvent(self, event) -> None:
+        """Install NSVisualEffectView once the native NSWindow exists.
+
+        Done in showEvent rather than __init__ because winId() only
+        becomes a valid native pointer after the widget is shown for
+        the first time. The helper is idempotent — re-shows after
+        hide-to-tray no-op.
+        """
+        super().showEvent(event)
+        if not self._vibrancy_applied:
+            from thundertalk.ui.macos_blur import apply_window_vibrancy
+            self._vibrancy_applied = apply_window_vibrancy(self, "under")
 
     # ── Close to tray ────────────────────────────────────────────
 

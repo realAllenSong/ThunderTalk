@@ -22,28 +22,36 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLay
 # Dark palette inspired by Linear / Raycast / macOS-native — strong layer
 # differentiation through background tints rather than visible borders.
 
-# Pure-black surfaces. Layering comes from borders, not background tints.
-BG_DEEPEST    = "#000000"
-BG_BASE       = "#000000"   # window background
-BG_SIDEBAR    = "#000000"   # nav sidebar
-BG_SURFACE    = "#000000"   # main content area
-BG_CARD       = "#000000"   # cards — defined by border, not fill
-BG_CARD_HOVER = "#000000"   # cards stay flat on hover
-BG_ELEVATED   = "#16161a"   # ONLY for painted interactive surfaces
-                            # (ToggleSwitch track, HotkeyCapture pill).
-                            # Stylesheet pills/badges should use transparent.
-BG_INPUT      = "#000000"   # inputs — defined by border
+# Translucent surfaces designed to sit on top of NSVisualEffectView
+# (real macOS blur). The window itself is "transparent" — Qt paints
+# nothing — and the cards use rgba so the blur shows through.
+#
+# Qt's QSS parser accepts rgba() with alpha as 0-1.0 float (the CSS
+# form). The integer-alpha form fails silently with "Could not parse
+# stylesheet" warnings, so always use the float form here.
+BG_DEEPEST    = "transparent"
+BG_BASE       = "transparent"                # window — NSVisualEffectView paints
+BG_SIDEBAR    = "transparent"                # sidebar — same
+BG_SURFACE    = "transparent"                # main content area
+BG_CARD       = "rgba(20, 20, 22, 0.55)"     # smoked-glass card
+BG_CARD_HOVER = "rgba(28, 28, 30, 0.65)"     # slight darken on hover
+BG_ELEVATED   = "rgba(34, 34, 38, 0.78)"     # painted interactive surfaces
+                                              # (ToggleSwitch track, HotkeyCapture)
+BG_INPUT      = "rgba(0, 0, 0, 0.35)"        # gentle wash for inputs
 
-# Borders — used SPARINGLY. Most layering should come from BG tints.
-BORDER_SUBTLE  = "#1f1f23"   # almost invisible — for grouping only
-BORDER_DEFAULT = "#2a2a32"   # visible on hover
-BORDER_STRONG  = "#3a3a44"   # focus / active states
+# Borders — translucent white to act as the glass-rim highlight that
+# macOS HUD / Control Center cards have. On a frosted bg, an opaque
+# dark border looks dirty; a faint white edge reads as glass.
+BORDER_SUBTLE  = "rgba(255, 255, 255, 0.07)"  # grouping only
+BORDER_DEFAULT = "rgba(255, 255, 255, 0.13)"  # default card edge
+BORDER_STRONG  = "rgba(255, 255, 255, 0.25)"  # focus / active
 
-# Text hierarchy
-TEXT_PRIMARY   = "#f5f5f7"   # high-contrast headings, primary content
-TEXT_SECONDARY = "#b8b8be"   # body text
-TEXT_MUTED     = "#7d7d85"   # captions, metadata
-TEXT_SUBTLE    = "#5a5a62"   # disabled, hints
+# Text hierarchy — bumped to pure white for primary so contrast stays
+# readable on a translucent backdrop. Body / muted lift in tandem.
+TEXT_PRIMARY   = "#ffffff"   # high-contrast headings, primary content
+TEXT_SECONDARY = "#d4d4d8"   # body text
+TEXT_MUTED     = "#9c9ca5"   # captions, metadata
+TEXT_SUBTLE    = "#6c6c75"   # disabled, hints
 
 # Brand accent — orange. Used SPARINGLY: active state, primary CTA only.
 ACCENT_ORANGE        = "#f97316"
@@ -97,10 +105,14 @@ def font_heading(size: int = 17) -> QFont:
 
 APP_QSS = f"""
 QMainWindow {{ background: {BG_BASE}; }}
+/* The QMainWindow's central QWidget would otherwise paint macOS
+   native gray on top of the NSVisualEffectView. Force transparent. */
+QMainWindow > QWidget {{ background: transparent; }}
 
 /* Pages inside the QStackedWidget — direct child QWidgets that Qt
-   otherwise paints with the macOS native window tint (gray). Force
-   pure black so cards/borders are the only visual structure. */
+   otherwise paints with the macOS native window tint. Setting
+   transparent here lets the window-level NSVisualEffectView blur
+   show through every page's empty area. */
 QStackedWidget {{ background: {BG_BASE}; }}
 QStackedWidget > QWidget {{ background: {BG_BASE}; }}
 
@@ -306,9 +318,11 @@ class ToggleSwitch(QWidget):
             p.setBrush(QColor("#48484e"))
             p.setPen(Qt.PenStyle.NoPen)
         else:
-            # OFF: very dark track + gray knob
-            p.setBrush(QColor(BG_ELEVATED))
-            p.setPen(QPen(QColor(BORDER_SUBTLE), 1))
+            # OFF: translucent dark track + faint white rim. Painted
+            # widgets need explicit QColor(r,g,b,a) — Qt's QColor does
+            # NOT parse the CSS rgba() strings used by our QSS tokens.
+            p.setBrush(QColor(34, 34, 38, 200))
+            p.setPen(QPen(QColor(255, 255, 255, 18), 1))
         p.drawRoundedRect(track, 12, 12)
 
         # Knob
@@ -317,7 +331,9 @@ class ToggleSwitch(QWidget):
         if self._checked:
             p.setBrush(QColor("#f0f0f2"))   # White knob when ON
         else:
-            p.setBrush(QColor(BORDER_DEFAULT))   # Gray knob when OFF
+            # Mid-gray knob — must read as a control, not vanish into
+            # the translucent track behind it.
+            p.setBrush(QColor(140, 140, 145))
         p.drawEllipse(knob)
 
         p.end()
