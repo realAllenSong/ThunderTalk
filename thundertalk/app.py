@@ -449,6 +449,41 @@ def main() -> None:
 
     window.settings_page.settings_changed.connect(_on_settings_changed)
 
+    # --- Translation engine (lazy load) --------------------------------
+    def _maybe_load_translator() -> None:
+        """Load SeamlessM4T into RAM if target language is set AND model is on disk.
+
+        Skips if target == 'off' or model missing. Runs the heavy load on a
+        background thread so app startup / settings changes never block the UI.
+        """
+        tgt = settings.get("translation_target")
+        if not tgt or tgt == "off":
+            return
+        from thundertalk.core.models import is_downloaded, get_model_path
+        if not is_downloaded("seamless-m4t-v2-large"):
+            print("[Translate] Target set but model not downloaded; skipping load")
+            return
+        translator = pipe.get_translator()
+        if translator.is_loaded:
+            return
+
+        model_path = get_model_path("seamless-m4t-v2-large")
+        if not model_path:
+            return
+
+        def _load() -> None:
+            try:
+                translator.load_model(model_path)
+            except Exception:
+                traceback.print_exc()
+
+        threading.Thread(target=_load, daemon=True).start()
+
+    QTimer.singleShot(1500, _maybe_load_translator)
+    window.settings_page.translation_target_changed.connect(
+        lambda _code: _maybe_load_translator()
+    )
+
     # --- Tray ----------------------------------------------------------
     def _show_settings_window() -> None:
         activate_app()
