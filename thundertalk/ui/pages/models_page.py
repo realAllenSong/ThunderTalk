@@ -7,6 +7,8 @@ from typing import Optional
 from PySide6.QtCore import Qt, Signal, QThread, QRectF
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QButtonGroup,
+    QComboBox,
     QFrame,
     QHBoxLayout,
     QLabel,
@@ -88,6 +90,209 @@ class DownloadWorker(QThread):
             self.finished.emit(self._info.id)
         except Exception as e:
             self.error.emit(str(e))
+
+
+# ---------------------------------------------------------------------------
+# Translation mode card — appears at the top of Models page.
+# ---------------------------------------------------------------------------
+
+# ISO-639-3 codes + display labels for the inline target picker.
+TRANSLATION_TARGETS_NEW: list[tuple[str, str]] = [
+    ("eng", "English"),
+    ("cmn", "中文 (Chinese)"),
+    ("jpn", "日本語 (Japanese)"),
+    ("spa", "Español (Spanish)"),
+    ("fra", "Français (French)"),
+    ("deu", "Deutsch (German)"),
+    ("por", "Português (Portuguese)"),
+    ("rus", "Русский (Russian)"),
+    ("ita", "Italiano (Italian)"),
+    ("arb", "العربية (Arabic)"),
+    ("hin", "हिन्दी (Hindi)"),
+]
+
+
+class TranslationModeCard(QFrame):
+    """Top-of-page card with a 3-segment Mode switch (Off / Direct / Review)
+    and an inline target language picker. Replaces the old Settings ▸
+    Translation tab.
+
+    Settings semantics:
+      - Mode = Off    → translation_target = "off"  (mode value preserved)
+      - Mode = Direct → translation_mode = "direct", target = current lang
+      - Mode = Review → translation_mode = "review", target = current lang
+    """
+
+    mode_changed = Signal(str)        # "off" | "direct" | "review"
+    target_changed = Signal(str)      # ISO-639-3
+
+    _MODES: list[tuple[str, str]] = [
+        ("off", "Off"),
+        ("direct", "Direct"),
+        ("review", "Review"),
+    ]
+
+    def __init__(self, settings) -> None:
+        super().__init__()
+        self._settings = settings
+        self.setStyleSheet(
+            f"QFrame#translationModeCard {{ background: {theme.BG_CARD};"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
+        )
+        self.setObjectName("translationModeCard")
+        self.setGraphicsEffect(theme.auto_shadow())
+
+        ly = QVBoxLayout(self)
+        ly.setContentsMargins(20, 14, 20, 14)
+        ly.setSpacing(8)
+
+        # Title row (with right-aligned target combo)
+        title_row = QHBoxLayout()
+        title_row.setSpacing(10)
+
+        title = QLabel("Translation")
+        title.setFont(theme.font(14, bold=True))
+        title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        title_row.addWidget(title)
+
+        subtitle = QLabel(
+            "Speech translation via SeamlessM4T v2"
+        )
+        subtitle.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
+        )
+        title_row.addWidget(subtitle)
+        title_row.addStretch()
+
+        self._target_combo = QComboBox()
+        self._target_combo.setFixedHeight(28)
+        self._target_combo.setFixedWidth(180)
+        self._target_combo.setStyleSheet(theme.COMBO_QSS)
+        for code, display in TRANSLATION_TARGETS_NEW:
+            self._target_combo.addItem(display, code)
+        self._target_combo.currentIndexChanged.connect(self._on_target_changed)
+        title_row.addWidget(self._target_combo)
+        ly.addLayout(title_row)
+
+        # Segmented control row
+        seg_outer = QFrame()
+        seg_outer.setStyleSheet(
+            "QFrame { background: rgba(255,255,255,0.04);"
+            " border: 1px solid rgba(255,255,255,0.06);"
+            " border-radius: 11px; }"
+        )
+        seg_outer.setFixedHeight(36)
+        seg_inner = QHBoxLayout(seg_outer)
+        seg_inner.setContentsMargins(3, 3, 3, 3)
+        seg_inner.setSpacing(2)
+
+        self._buttons: dict[str, QPushButton] = {}
+        self._group = QButtonGroup(self)
+        self._group.setExclusive(True)
+        for code, label in self._MODES:
+            btn = QPushButton(label)
+            btn.setCheckable(True)
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setStyleSheet(
+                "QPushButton {"
+                " background: transparent;"
+                f" color: {theme.TEXT_MUTED};"
+                " border: none; border-radius: 8px;"
+                " padding: 4px 22px; font-size: 12px; font-weight: 500;"
+                " }"
+                f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; }}"
+                f"QPushButton:checked {{ background: {theme.ACCENT_ORANGE};"
+                f" color: #ffffff; font-weight: 600; }}"
+            )
+            btn.clicked.connect(lambda _, c=code: self._on_mode_clicked(c))
+            self._buttons[code] = btn
+            self._group.addButton(btn)
+            seg_inner.addWidget(btn)
+
+        seg_row = QHBoxLayout()
+        seg_row.setSpacing(0)
+        seg_row.addWidget(seg_outer)
+        seg_row.addStretch()
+        ly.addLayout(seg_row)
+
+        # Warning shown when Review is picked without an active ASR
+        self._warning = QLabel(
+            "Review mode needs an active ASR model. "
+            "Activate Qwen3-ASR or SenseVoice below."
+        )
+        self._warning.setStyleSheet(
+            f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
+            " padding-top: 2px;"
+        )
+        self._warning.setWordWrap(True)
+        self._warning.hide()
+        ly.addWidget(self._warning)
+
+        self._restore_state()
+
+    # ── public API ──────────────────────────────────────────────────────
+
+    def refresh_warning(self) -> None:
+        """Re-evaluate whether to show the 'Review needs ASR' warning.
+        Called by ModelsPage when active model state changes."""
+        mode = self._settings.translation_mode
+        target = self._settings.translation_target
+        active_id = self._settings.active_model_id
+        is_review = (target != "off") and (mode == "review")
+        is_asr_active = bool(active_id) and not active_id.startswith("seamless")
+        self._warning.setVisible(is_review and not is_asr_active)
+
+    # ── internals ──────────────────────────────────────────────────────
+
+    def _restore_state(self) -> None:
+        """Sync UI to current settings."""
+        target = self._settings.translation_target
+        mode = self._settings.translation_mode
+
+        # Determine effective mode for the segmented control
+        if not target or target == "off":
+            effective_mode = "off"
+        else:
+            effective_mode = mode if mode in ("direct", "review") else "direct"
+
+        for code, btn in self._buttons.items():
+            btn.setChecked(code == effective_mode)
+
+        # Restore target language (use current target, or default to "eng" if off)
+        restore_code = target if target and target != "off" else "eng"
+        self._target_combo.blockSignals(True)
+        for i in range(self._target_combo.count()):
+            if self._target_combo.itemData(i) == restore_code:
+                self._target_combo.setCurrentIndex(i)
+                break
+        self._target_combo.blockSignals(False)
+
+        self.refresh_warning()
+
+    def _on_mode_clicked(self, mode: str) -> None:
+        """User clicked one of the segment buttons."""
+        if mode == "off":
+            # Off = no translation. Clear translation_target.
+            self._settings.set("translation_target", "off")
+        else:
+            # Direct or Review: ensure target_lang is set (use combo selection)
+            current = self._target_combo.currentData() or "eng"
+            self._settings.set("translation_target", current)
+            self._settings.set("translation_mode", mode)
+
+        self.mode_changed.emit(mode)
+        self.target_changed.emit(self._settings.translation_target)
+        self.refresh_warning()
+
+    def _on_target_changed(self, idx: int) -> None:
+        code = self._target_combo.itemData(idx)
+        if not code:
+            return
+        # Only meaningful when not in Off mode; persist anyway so it sticks
+        # the next time user enables Direct/Review.
+        if self._settings.translation_target != "off":
+            self._settings.set("translation_target", code)
+            self.target_changed.emit(code)
 
 
 # ---------------------------------------------------------------------------
@@ -369,15 +574,19 @@ class FamilyCard(QFrame):
 
 class ModelsPage(QWidget):
     load_model_signal = Signal(str, str, str, str)  # model_id, path, family, backend
+    translation_mode_changed = Signal(str)           # off | direct | review
+    translation_target_changed = Signal(str)         # ISO-639-3 code or "off"
 
-    def __init__(self) -> None:
+    def __init__(self, settings=None) -> None:
         super().__init__()
+        self._settings = settings
         self._active_model: Optional[str] = None
         # Translator (SeamlessM4T) is loaded into a separate engine; tracked
         # independently of _active_model so both badges can co-exist.
         self._translator_active: Optional[str] = None
         self._family_cards: dict[str, FamilyCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
+        self._mode_card: Optional[TranslationModeCard] = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -417,6 +626,13 @@ class ModelsPage(QWidget):
         self._hw_label.setWordWrap(True)
         hw_ly.addWidget(self._hw_label, stretch=1)
         self._layout.addWidget(hw_card)
+
+        # Translation mode + target picker (only if settings provided)
+        if self._settings is not None:
+            self._mode_card = TranslationModeCard(self._settings)
+            self._mode_card.mode_changed.connect(self.translation_mode_changed)
+            self._mode_card.target_changed.connect(self.translation_target_changed)
+            self._layout.addWidget(self._mode_card)
 
         self._error_label = QLabel()
         self._error_label.setWordWrap(True)
@@ -460,6 +676,8 @@ class ModelsPage(QWidget):
         self._active_model = model_id
         for card in self._family_cards.values():
             card.refresh(self._active_model, self._translator_active)
+        if self._mode_card is not None:
+            self._mode_card.refresh_warning()
 
     def set_translator_active(self, model_id: Optional[str]) -> None:
         """Mark the SeamlessM4T translator model as active in the UI.

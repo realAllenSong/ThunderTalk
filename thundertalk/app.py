@@ -716,8 +716,15 @@ def main() -> None:
         threading.Thread(target=_load, daemon=True).start()
 
     QTimer.singleShot(1500, _maybe_load_translator)
-    window.settings_page.translation_target_changed.connect(
+    # The Translation Mode card on the Models page is the canonical control
+    # for translation_target / translation_mode. Either signal triggers a
+    # translator-load check (loads SeamlessM4T into RAM if user just turned
+    # translation on, no-ops otherwise).
+    window.models_page.translation_target_changed.connect(
         lambda _code: _maybe_load_translator()
+    )
+    window.models_page.translation_mode_changed.connect(
+        lambda _mode: _maybe_load_translator()
     )
 
     # --- Tray ----------------------------------------------------------

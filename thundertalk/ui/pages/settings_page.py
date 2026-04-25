@@ -36,24 +36,6 @@ if TYPE_CHECKING:
 
 
 # Curated SeamlessM4T v2 target languages (ISO-639-3).
-# Korean (kor) intentionally excluded — model produces malformed output
-# for that target (see spike notes in docs/plans/2026-04-24-translation-seamlessm4t.md).
-TRANSLATION_TARGETS: list[tuple[str, str]] = [
-    ("off", "off"),  # display text fetched via i18n at runtime
-    ("eng", "English"),
-    ("cmn", "中文 (Chinese)"),
-    ("jpn", "日本語 (Japanese)"),
-    ("spa", "Español (Spanish)"),
-    ("fra", "Français (French)"),
-    ("deu", "Deutsch (German)"),
-    ("por", "Português (Portuguese)"),
-    ("rus", "Русский (Russian)"),
-    ("ita", "Italiano (Italian)"),
-    ("arb", "العربية (Arabic)"),
-    ("hin", "हिन्दी (Hindi)"),
-]
-
-
 # ── Hotkey Capture Widget ───────────────────────────────────────────────
 
 class HotkeyCapture(QWidget):
@@ -315,7 +297,6 @@ class SettingsPage(QWidget):
     settings_changed = Signal()
     capture_started = Signal()
     capture_ended = Signal()
-    translation_target_changed = Signal(str)   # NEW
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -341,8 +322,7 @@ class SettingsPage(QWidget):
         self._tabs.setDrawBase(False)
         self._tabs.setStyleSheet(theme.segment_tab_qss())
         for name in (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                     t("settings.tab_transcription"),
-                     t("settings.tab_translation"), t("settings.tab_general")):
+                     t("settings.tab_transcription"), t("settings.tab_general")):
             self._tabs.addTab(name)
         tab_container.addWidget(self._tabs)
         tab_container.addStretch()
@@ -356,7 +336,6 @@ class SettingsPage(QWidget):
         self._build_hotkey_tab()
         self._build_audio_tab()
         self._build_transcription_tab()
-        self._build_translation_tab()
         self._build_general_tab()
 
         for i, page in enumerate(self._pages):
@@ -521,7 +500,6 @@ class SettingsPage(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._refresh_mic_list()
-        self._refresh_review_warning()
 
     def _on_mic_changed(self, idx: int) -> None:
         self._settings.set("microphone", "auto" if idx == 0 else self._mic_combo.currentText())
@@ -598,147 +576,6 @@ class SettingsPage(QWidget):
 
         ly.addStretch()
         self._add_page(page)
-
-    # ── Translation tab ──
-
-    def _build_translation_tab(self) -> None:
-        page = QWidget()
-        ly = QVBoxLayout(page)
-        ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(16)
-
-        card = theme.make_card()
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(20, 18, 20, 18)
-        cl.setSpacing(12)
-
-        self._translation_section_label = QLabel(t("settings.translation.title"))
-        self._translation_section_label.setFont(theme.font(14, bold=True))
-        self._translation_section_label.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; border: none;"
-        )
-        cl.addWidget(self._translation_section_label)
-
-        self._translation_desc_label = QLabel(t("settings.translation.desc"))
-        self._translation_desc_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;"
-        )
-        self._translation_desc_label.setWordWrap(True)
-        cl.addWidget(self._translation_desc_label)
-
-        cl.addWidget(theme.separator())
-
-        # ── Mode row ──
-        mode_row, mode_label = theme.setting_row(
-            t("settings.translation.mode"),
-            "",
-        )
-        self._translation_mode_label = mode_label
-
-        self._translation_mode_combo = QComboBox()
-        self._translation_mode_combo.setFixedWidth(220)
-        self._translation_mode_combo.setStyleSheet(theme.COMBO_QSS)
-        self._translation_mode_combo.addItem(
-            t("settings.translation.mode_direct"), "direct"
-        )
-        self._translation_mode_combo.addItem(
-            t("settings.translation.mode_review"), "review"
-        )
-
-        # Restore current selection
-        current_mode = self._settings.translation_mode
-        for i in range(self._translation_mode_combo.count()):
-            if self._translation_mode_combo.itemData(i) == current_mode:
-                self._translation_mode_combo.setCurrentIndex(i)
-                break
-
-        self._translation_mode_combo.currentIndexChanged.connect(
-            self._on_translation_mode_changed
-        )
-        mode_row.addWidget(self._translation_mode_combo)
-        cl.addLayout(mode_row)
-
-        # Mode caption (small, multi-line)
-        self._translation_mode_caption = QLabel(t("settings.translation.mode_desc"))
-        self._translation_mode_caption.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
-            f" padding-left: 0px;"
-        )
-        self._translation_mode_caption.setWordWrap(True)
-        cl.addWidget(self._translation_mode_caption)
-
-        # Warning shown when Review mode is selected but no ASR model is
-        # active — Review needs Qwen3-ASR / SenseVoice to produce the
-        # original-language text first.
-        self._translation_review_warning = QLabel(
-            t("settings.translation.review_needs_asr")
-        )
-        self._translation_review_warning.setStyleSheet(
-            f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
-            " padding: 4px 0;"
-        )
-        self._translation_review_warning.setWordWrap(True)
-        self._translation_review_warning.hide()
-        cl.addWidget(self._translation_review_warning)
-
-        # ── Target row ──
-        target_row, target_label = theme.setting_row(
-            t("settings.translation.target"),
-            "",
-        )
-        self._translation_target_label = target_label
-
-        self._translation_combo = QComboBox()
-        self._translation_combo.setFixedWidth(220)
-        self._translation_combo.setStyleSheet(theme.COMBO_QSS)
-        for code, display in TRANSLATION_TARGETS:
-            label = t("settings.translation.off") if code == "off" else display
-            self._translation_combo.addItem(label, code)
-
-        # Restore current selection
-        current = self._settings.translation_target
-        for i in range(self._translation_combo.count()):
-            if self._translation_combo.itemData(i) == current:
-                self._translation_combo.setCurrentIndex(i)
-                break
-
-        self._translation_combo.currentIndexChanged.connect(
-            self._on_translation_target_changed
-        )
-        target_row.addWidget(self._translation_combo)
-        cl.addLayout(target_row)
-
-        ly.addWidget(card)
-        ly.addStretch()
-        self._add_page(page)
-        # Initial visibility check (mode may already be Review with no ASR)
-        self._refresh_review_warning()
-
-    def _on_translation_target_changed(self, idx: int) -> None:
-        code = self._translation_combo.itemData(idx)
-        if not code:
-            return
-        self._settings.set("translation_target", code)
-        self.translation_target_changed.emit(code)
-
-    def _on_translation_mode_changed(self, idx: int) -> None:
-        code = self._translation_mode_combo.itemData(idx)
-        if not code:
-            return
-        self._settings.set("translation_mode", code)
-        self._refresh_review_warning()
-
-    def _refresh_review_warning(self) -> None:
-        """Show the 'Review needs an ASR model' warning when applicable.
-        Called on init, on mode change, and on every showEvent (so re-opening
-        Settings after activating an ASR model clears the warning)."""
-        if not hasattr(self, "_translation_review_warning"):
-            return
-        mode = self._settings.translation_mode
-        active_id = self._settings.active_model_id
-        is_asr_active = bool(active_id) and not active_id.startswith("seamless")
-        needs_warn = (mode == "review") and not is_asr_active
-        self._translation_review_warning.setVisible(needs_warn)
 
     # ── General tab ──
 
@@ -862,24 +699,10 @@ class SettingsPage(QWidget):
     def retranslate(self) -> None:
         self._heading.setText(t("settings.title"))
         tabs = (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                t("settings.tab_transcription"),
-                t("settings.tab_translation"), t("settings.tab_general"))
+                t("settings.tab_transcription"), t("settings.tab_general"))
         for i, name in enumerate(tabs):
             self._tabs.setTabText(i, name)
         self._ui_lang_label.setText(t("settings.language"))
-        self._translation_section_label.setText(t("settings.translation.title"))
-        self._translation_desc_label.setText(t("settings.translation.desc"))
-        self._translation_target_label.setText(t("settings.translation.target"))
-        # Re-translate the "Off" entry in the combo (other entries are
-        # native-language labels and shouldn't change with UI language).
-        if self._translation_combo.count() > 0:
-            self._translation_combo.setItemText(0, t("settings.translation.off"))
-        # Mode combo
-        self._translation_mode_label.setText(t("settings.translation.mode"))
-        self._translation_mode_caption.setText(t("settings.translation.mode_desc"))
-        if self._translation_mode_combo.count() >= 2:
-            self._translation_mode_combo.setItemText(0, t("settings.translation.mode_direct"))
-            self._translation_mode_combo.setItemText(1, t("settings.translation.mode_review"))
 
     def _open_log_dir(self) -> None:
         log_dir = Path.home() / ".thundertalk"

@@ -179,7 +179,7 @@ class MainWindow(QMainWindow):
         root.addWidget(self._stack, stretch=1)
 
         self._home_page = HomePage(history)
-        self._models_page = ModelsPage()
+        self._models_page = ModelsPage(settings)
         self._hotwords_page = HotwordsPage(settings)
         self._settings_page = SettingsPage(settings)
         self._about_page = AboutPage()
