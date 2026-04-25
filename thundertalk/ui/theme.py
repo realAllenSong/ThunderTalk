@@ -19,39 +19,50 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 # ── Color Tokens ─────────────────────────────────────────────────────────
-# Dark palette — unified base so content area matches sidebar.
+# Dark palette inspired by Linear / Raycast / macOS-native — strong layer
+# differentiation through background tints rather than visible borders.
 
-BG_DEEPEST = "#0f0f11"
-BG_BASE = "#151517"
-BG_SIDEBAR = "#151517"
-BG_CARD = "#242426"
-BG_CARD_HOVER = "#2c2c2e"
-BG_ELEVATED = "#303032"
-BG_INPUT = "#1e1e20"
+# Background layers (each ~6% lighter than the one below it)
+BG_DEEPEST    = "#08080a"   # frame / behind everything
+BG_BASE       = "#0a0a0c"   # window background
+BG_SIDEBAR    = "#0f0f11"   # nav sidebar
+BG_SURFACE    = "#16161a"   # main content area
+BG_CARD       = "#1c1c20"   # cards / panels
+BG_CARD_HOVER = "#232328"   # card hover
+BG_ELEVATED   = "#2a2a30"   # raised controls (inputs, combos)
+BG_INPUT      = "#16161a"   # input fields (matches surface — subtle)
 
-BORDER_SUBTLE = "#38383c"
-BORDER_DEFAULT = "#48484e"
-BORDER_STRONG = "#636366"
+# Borders — used SPARINGLY. Most layering should come from BG tints.
+BORDER_SUBTLE  = "#1f1f23"   # almost invisible — for grouping only
+BORDER_DEFAULT = "#2a2a32"   # visible on hover
+BORDER_STRONG  = "#3a3a44"   # focus / active states
 
-TEXT_PRIMARY = "#f0f0f2"
-TEXT_SECONDARY = "#98989d"
-TEXT_MUTED = "#636366"
+# Text hierarchy
+TEXT_PRIMARY   = "#f5f5f7"   # high-contrast headings, primary content
+TEXT_SECONDARY = "#b8b8be"   # body text
+TEXT_MUTED     = "#7d7d85"   # captions, metadata
+TEXT_SUBTLE    = "#5a5a62"   # disabled, hints
 
-ACCENT_BLUE = "#5b8def"      # Primary accent
-ACCENT_BLUE_HOVER = "#4a7de0"
-ACCENT_BLUE_DIM = "#1e3a5f"
+# Brand accent — orange. Used SPARINGLY: active state, primary CTA only.
+ACCENT_ORANGE        = "#f97316"
+ACCENT_ORANGE_HOVER  = "#fb923c"
+ACCENT_ORANGE_WARM   = "#fb923c"   # alias kept for back-compat
+ACCENT_ORANGE_DIM    = "rgba(249, 115, 22, 0.12)"   # active backdrops
 
-SUCCESS = "#34d399"
+# Status colors — used sparingly (badges, error overlays)
+SUCCESS     = "#10b981"   # toned down from #34d399
 SUCCESS_DIM = "#0d3328"
-WARNING = "#fbbf24"
+WARNING     = "#f59e0b"
 WARNING_DIM = "#78350f"
-ERROR = "#f87171"
-ERROR_DIM = "#3b1111"
+ERROR       = "#ef4444"   # toned down from #f87171
+ERROR_DIM   = "#3b1111"
 
-ACCENT_ORANGE = "#f97316"    # Brand accent — lightning bolt
-ACCENT_ORANGE_WARM = "#fb923c"
-ACCENT_PURPLE = "#a78bfa"
-ACCENT_CYAN = "#22d3ee"
+# Secondary accents — kept for badges / family color cues but minimized
+ACCENT_BLUE         = "#5b8def"
+ACCENT_BLUE_HOVER   = "#4a7de0"
+ACCENT_BLUE_DIM     = "#1e3a5f"
+ACCENT_PURPLE       = "#a78bfa"
+ACCENT_CYAN         = "#22d3ee"
 
 # Pre-computed rgba() values for Qt stylesheet alpha colors
 ACCENT_BLUE_A10 = "rgba(91, 141, 239, 25)"

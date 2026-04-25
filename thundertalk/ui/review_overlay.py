@@ -118,11 +118,17 @@ class ReviewOverlay(QWidget):
         self._orig_text.setWordWrap(True)
         self._orig_text.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: 11px;"
-            " background: transparent; border: none;"
+            " background: transparent; border: none; padding-top: 2px;"
         )
-        # No setMaximumHeight — let it grow with content (we cap the
-        # overall window via _resize_to_fit).
         ly.addWidget(self._orig_text)
+
+        # Hairline separator between original and translated (1px, very faint)
+        sep = QWidget()
+        sep.setFixedHeight(1)
+        sep.setStyleSheet("background: rgba(255, 255, 255, 0.05);")
+        ly.addSpacing(2)
+        ly.addWidget(sep)
+        ly.addSpacing(2)
 
         # ── Translated text (primary) ──
         self._trans_text = QLabel("")
@@ -178,9 +184,15 @@ class ReviewOverlay(QWidget):
 
         self._set_combo_lang(tgt_lang)
         lang_display = self._lang_display(tgt_lang)
-        self._status_label.setText(f"↻  {t('review.translating')} → {lang_display}")
+        # Loading state — neutral muted text (no jittery icon)
+        self._status_label.setText(t("review.translating"))
+        self._status_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " font-weight: 500; background: transparent; border: none;"
+            " letter-spacing: 0.3px;"
+        )
         self._orig_text.setText(self._truncate(original, 240))
-        self._trans_text.setText("…")
+        self._trans_text.setText("")
         self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
         self._resize_to_fit()
@@ -198,8 +210,13 @@ class ReviewOverlay(QWidget):
             return
         self._translated_text = translated
         self._is_loading = False
-        lang_display = self._lang_display(tgt_lang)
-        self._status_label.setText(f"→  {lang_display}")
+        # Ready state — accent orange title
+        self._status_label.setText(t("review.translation_label"))
+        self._status_label.setStyleSheet(
+            f"color: {theme.ACCENT_ORANGE}; font-size: 11px;"
+            " font-weight: 600; background: transparent; border: none;"
+            " letter-spacing: 0.3px;"
+        )
         self._trans_text.setText(self._truncate(translated, 240))
         self._set_trans_ready_style()
         self._replace_btn.setEnabled(True)
@@ -325,9 +342,13 @@ class ReviewOverlay(QWidget):
         self._tgt_lang = new_code
         self._is_loading = True
         self._translated_text = ""
-        lang_display = self._lang_display(new_code)
-        self._status_label.setText(f"↻  {t('review.translating')} → {lang_display}")
-        self._trans_text.setText("…")
+        self._status_label.setText(t("review.translating"))
+        self._status_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " font-weight: 500; background: transparent; border: none;"
+            " letter-spacing: 0.3px;"
+        )
+        self._trans_text.setText("")
         self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
         self.lang_change_requested.emit(self._original_text, new_code)

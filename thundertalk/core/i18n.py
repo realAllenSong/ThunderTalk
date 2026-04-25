@@ -122,7 +122,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "review.translated": {"en": "Translated", "zh": "译文"},
     "review.keep": {"en": "Keep", "zh": "保留"},
     "review.replace": {"en": "Replace", "zh": "替换"},
-    "review.translating": {"en": "Translating", "zh": "翻译中"},
+    "review.translating": {"en": "TRANSLATING…", "zh": "翻译中…"},
+    "review.translation_label": {"en": "TRANSLATION", "zh": "译文"},
     "settings.translation.review_needs_asr": {
         "en": "Review mode needs an active ASR model. Activate Qwen3-ASR or SenseVoice in the Models page first.",
         "zh": "Review 模式需要先在 Models 页面激活一个 ASR 模型（Qwen3-ASR 或 SenseVoice）。",

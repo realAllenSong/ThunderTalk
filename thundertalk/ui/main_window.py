@@ -31,7 +31,7 @@ from thundertalk.ui.pages.hotwords_page import HotwordsPage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
 
-_SIDEBAR_W = 190
+_SIDEBAR_W = 208
 
 
 def _nav_items() -> list[str]:
@@ -40,16 +40,22 @@ def _nav_items() -> list[str]:
 
 
 class _NavButton(QPushButton):
-    """Sidebar nav button — active state shows left accent bar + bg fill."""
+    """Sidebar nav button.
+
+    Active state: 3px orange bar on the left + faint accent-tinted bg + the
+    icon takes on the accent color. Hover: subtle background tint.
+    """
 
     def __init__(self, index: int, label: str) -> None:
         super().__init__()
         self._index = index
         self._label = label
         self._active = False
-        self.setFixedHeight(44)
+        self._hover = False
+        self.setFixedHeight(40)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setCheckable(True)
+        # Stylesheet handles bg fill + text; we paint the bar + icon ourselves.
         self._update()
 
     def set_label(self, label: str) -> None:
@@ -61,32 +67,59 @@ class _NavButton(QPushButton):
         self.setChecked(active)
         self._update()
 
+    def enterEvent(self, ev) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(ev)
+
     def _update(self) -> None:
         if self._active:
+            # Faint accent backdrop, primary text
             self.setStyleSheet(
-                f"QPushButton {{ background: {theme.BG_CARD};"
+                "QPushButton { background: rgba(249, 115, 22, 0.10);"
                 f" color: {theme.TEXT_PRIMARY}; border: none;"
-                " text-align: left; padding-left: 38px;"
+                " text-align: left; padding-left: 44px;"
                 " font-size: 13px; font-weight: 600;"
-                f" border-radius: 8px; margin: 2px 14px; }}"
+                " border-radius: 8px; margin: 1px 10px; }"
             )
         else:
             self.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
-                " border: none; text-align: left; padding-left: 38px;"
-                " font-size: 13px; border-radius: 8px; margin: 2px 14px; }}"
+                " border: none; text-align: left; padding-left: 44px;"
+                " font-size: 13px; border-radius: 8px; margin: 1px 10px; }}"
                 f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-                f" background: rgba(255, 255, 255, 8); }}"
+                " background: rgba(255, 255, 255, 0.04); }}"
             )
-        self.setText(f"   {self._label}")
+        self.setText(self._label)
 
     def paintEvent(self, ev) -> None:
         super().paintEvent(ev)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        icon_rect = self.rect().adjusted(24, 0, 0, 0)
-        icon_rect.setWidth(22)
-        color = QColor(theme.TEXT_PRIMARY) if self._active else QColor(theme.TEXT_SECONDARY)
+
+        # Left accent bar (active state) — 3px wide, 18px tall, centered,
+        # painted in the 10px margin area.
+        if self._active:
+            bar_x = 4
+            bar_y = (self.height() - 18) // 2
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(QColor(theme.ACCENT_ORANGE))
+            p.drawRoundedRect(QRectF(bar_x, bar_y, 3, 18), 1.5, 1.5)
+
+        # Icon — adopts accent color when active for stronger emphasis.
+        icon_rect = self.rect().adjusted(20, 0, 0, 0)
+        icon_rect.setWidth(20)
+        if self._active:
+            color = QColor(theme.ACCENT_ORANGE)
+        elif self._hover:
+            color = QColor(theme.TEXT_PRIMARY)
+        else:
+            color = QColor(theme.TEXT_SECONDARY)
         p.setPen(QPen(color, 1.5))
         p.setBrush(Qt.BrushStyle.NoBrush)
         theme.ICON_PAINTERS[self._index](p, icon_rect)
@@ -135,7 +168,9 @@ class MainWindow(QMainWindow):
         sidebar = QFrame()
         sidebar.setFixedWidth(_SIDEBAR_W)
         sidebar.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_SIDEBAR}; border: none; }}"
+            f"QFrame {{ background: {theme.BG_SIDEBAR};"
+            "  border: none;"
+            "  border-right: 1px solid rgba(255, 255, 255, 0.04); }"
         )
         sb = QVBoxLayout(sidebar)
         sb.setContentsMargins(0, 0, 0, 0)
