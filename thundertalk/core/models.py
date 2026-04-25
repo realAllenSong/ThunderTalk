@@ -204,8 +204,11 @@ def is_downloaded(model_id: str) -> bool:
     d = get_models_dir() / model_id
     if not d.is_dir():
         return False
+    # SeamlessM4T (and other HF snapshot models) use .safetensors weights.
+    # ASR models (sherpa-onnx) use .onnx; some llama-cpp-style models use .gguf.
     return any(
-        f.suffix in (".onnx", ".gguf") for f in d.iterdir() if f.is_file()
+        f.suffix in (".onnx", ".gguf", ".safetensors")
+        for f in d.iterdir() if f.is_file()
     )
 
 
@@ -241,7 +244,8 @@ def download_model(
         raise ValueError("No download URL")
 
     is_tar = ".tar.bz2" in url or ".tar.gz" in url
-    is_hf = "huggingface.co" in url and not is_tar
+    is_hf_git = "huggingface.co" in url and not is_tar
+    is_hf_snapshot = url.startswith("hf://")
 
     if is_tar:
         ext = ".tar.bz2" if ".tar.bz2" in url else ".tar.gz"
@@ -275,7 +279,7 @@ def download_model(
                     d.rename(target)
                     break
 
-    elif is_hf:
+    elif is_hf_git:
         if progress_cb:
             progress_cb(10, "Cloning from HuggingFace...")
 
@@ -284,6 +288,22 @@ def download_model(
             check=True,
             capture_output=True,
         )
+
+    elif is_hf_snapshot:
+        repo_id = url[len("hf://"):]
+        if progress_cb:
+            progress_cb(5, f"Downloading {repo_id} from HuggingFace...")
+        from huggingface_hub import snapshot_download
+
+        # Download into target dir. snapshot_download is blocking; the GUI
+        # already calls download_model on a worker QThread.
+        snapshot_download(
+            repo_id=repo_id,
+            local_dir=str(target),
+            # Skip pytorch_model.bin variants — we use safetensors.
+            ignore_patterns=["*.bin", "*.h5", "*.msgpack", "*.ot", "*.gguf"],
+        )
+
     else:
         raise ValueError(f"Unsupported URL format: {url}")
 
