@@ -19,6 +19,7 @@ DEFAULTS: dict[str, Any] = {
     "save_to_clipboard": True,
     "hotwords": [],
     "active_model_id": "",
+    "translation_target": "off",
     "log_enabled": True,
 }
 
@@ -81,4 +82,8 @@ class Settings:
     @property
     def transcription_language(self) -> str:
         return self._data.get("transcription_language", "auto")
+
+    @property
+    def translation_target(self) -> str:
+        return self._data.get("translation_target", "off")
 
