@@ -102,6 +102,13 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.translation.target": {"en": "Translate to", "zh": "翻译为"},
     "settings.translation.off": {"en": "Off (pure transcription)", "zh": "关闭（纯转录）"},
 
+    # ── Translation Review popup ────────────────────────────────────
+    "review.title": {"en": "Translation: {lang}", "zh": "翻译为：{lang}"},
+    "review.original": {"en": "Original", "zh": "原文"},
+    "review.translated": {"en": "Translated", "zh": "译文"},
+    "review.keep": {"en": "Keep Original", "zh": "保留原文"},
+    "review.replace": {"en": "Replace", "zh": "替换为译文"},
+
     "settings.language": {"en": "Language", "zh": "语言"},
     "settings.language_desc": {
         "en": "Interface language (restart required).",

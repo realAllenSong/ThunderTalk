@@ -78,6 +78,59 @@ def paste_text(text: str, keep_clipboard: bool = False) -> None:
     threading.Thread(target=_do_paste, args=(text, keep_clipboard), daemon=True).start()
 
 
+def replace_pasted_text(new_text: str, keep_clipboard: bool = False) -> None:
+    """Undo the most recently pasted text, then paste *new_text*.
+
+    Used by Translation Review's "Replace" button to swap original →
+    translation without selection trickery. Relies on the active app
+    honoring standard Cmd+Z (undo). If the user has typed/clicked
+    between the original paste and clicking Replace, Cmd+Z will undo
+    the wrong action — the popup auto-dismisses after a few seconds
+    to keep this window narrow.
+
+    Runs in a background thread; non-blocking.
+    """
+    if not new_text:
+        return
+
+    def _undo_and_paste() -> None:
+        # Re-activate the previously focused app before sending Cmd+Z so
+        # the undo lands on the user's target app, not on ThunderTalk.
+        # _do_paste also re-activates, but we need it BEFORE the undo.
+        if _SYSTEM == "Darwin":
+            try:
+                _activate_previous_app()
+                with _lock:
+                    prev = _previous_app
+                if prev:
+                    _wait_for_frontmost_app(prev)
+            except Exception:
+                pass
+
+        # Send Cmd+Z to undo the original paste
+        try:
+            subprocess.run(
+                [
+                    "osascript",
+                    "-e",
+                    'tell application "System Events" to keystroke "z" using command down',
+                ],
+                check=False,
+                capture_output=True,
+                timeout=2,
+            )
+        except Exception:
+            pass
+
+        # Brief settle so the undo lands before we kick off the paste
+        time.sleep(0.05)
+
+        # Now paste the translation via the existing paste path
+        _do_paste(new_text, keep_clipboard)
+
+    threading.Thread(target=_undo_and_paste, daemon=True).start()
+
+
 def _clipboard_write_verified(text: str) -> bool:
     """Write to clipboard and verify. Returns True if verified."""
     for attempt in range(_MAX_CLIPBOARD_RETRIES):

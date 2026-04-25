@@ -229,6 +229,8 @@ def main() -> None:
     history = HistoryStore()
     pipe = Pipeline(settings)
     overlay = VoiceOverlay()
+    from thundertalk.ui.review_overlay import ReviewOverlay
+    review_overlay = ReviewOverlay()
     window = MainWindow(settings, history)
     tray = TrayIcon()
 
@@ -540,6 +542,16 @@ def main() -> None:
             print("[Toggle] Recording started")
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
+
+    # --- Review overlay (translation confirm popup) -------------------
+    pipe.review_ready.connect(review_overlay.show_review)
+
+    def _on_replace_clicked(translated: str) -> None:
+        from thundertalk.core.text_output import replace_pasted_text
+        keep_clipboard = not settings.get("save_to_clipboard")
+        replace_pasted_text(translated, keep_clipboard=keep_clipboard)
+
+    review_overlay.replace_clicked.connect(_on_replace_clicked)
 
     # Feed live mic level into the overlay waveform — only runs while
     # recording so idle CPU stays near zero.
