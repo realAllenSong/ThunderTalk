@@ -8,10 +8,18 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QRectF,
+    QPropertyAnimation,
+    QEasingCurve,
+    QTimer,
+)
 from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -252,7 +260,25 @@ class MainWindow(QMainWindow):
     def _select_nav(self, idx: int) -> None:
         for i, b in enumerate(self._nav_buttons):
             b.set_active(i == idx)
+        if idx == self._stack.currentIndex():
+            return
+        # Fade transition between pages — 160ms, ease-out.
+        target = self._stack.widget(idx)
+        # Reset any prior effect on the incoming widget so we always animate
+        # 0 → 1 cleanly (avoids stuck-invisible widgets after rapid clicks).
+        eff = QGraphicsOpacityEffect(target)
+        target.setGraphicsEffect(eff)
+        eff.setOpacity(0.0)
         self._stack.setCurrentIndex(idx)
+        anim = QPropertyAnimation(eff, b"opacity", self)
+        anim.setDuration(160)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.finished.connect(lambda w=target: w.setGraphicsEffect(None))
+        # Keep a strong ref until done so the QPropertyAnimation isn't GC'd.
+        self._page_anim = anim
+        anim.start()
 
     # ── Public API ───────────────────────────────────────────────
 

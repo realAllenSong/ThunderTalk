@@ -235,6 +235,17 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("ThunderTalk")
 
+    # PyQtDarkTheme: handles native widgets we don't custom-style
+    # (QScrollBar, QMenu, QToolTip, QMessageBox, QDialog, etc.). Our own
+    # APP_QSS on MainWindow takes precedence for the things we DO style.
+    # This is a graceful degradation — if the package isn't installed
+    # (older venv) we just skip it.
+    try:
+        import qdarktheme
+        app.setStyleSheet(qdarktheme.load_stylesheet("dark"))
+    except Exception as e:
+        print(f"[Theme] qdarktheme not available: {e}")
+
     from thundertalk.ui.tray import app_icon
     app.setWindowIcon(app_icon())
 

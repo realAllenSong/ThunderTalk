@@ -12,6 +12,7 @@ dependencies = [
     "pyperclip>=1.8",
     "sherpa-onnx-core>=1.12.38",
     "pyinstaller>=6.19.0",
+    "pyqtdarktheme>=0.1.7",
 ]
 
 [project.optional-dependencies]
