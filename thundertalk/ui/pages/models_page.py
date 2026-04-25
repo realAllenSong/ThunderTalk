@@ -189,11 +189,11 @@ class VariantRow(QFrame):
             self._progress.hide()
             self._progress.setRange(0, 100)
 
-    def _update_button(self, active_id: Optional[str]) -> None:
+    def _update_button(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
         if self._loading:
             return
         downloaded = is_downloaded(self.info.id)
-        is_active = active_id == self.info.id
+        is_active = active_id == self.info.id or translator_active == self.info.id
 
         if not self._compatible:
             plat = "Apple Silicon" if self.info.platform == "apple-silicon" else "NVIDIA GPU"
@@ -249,12 +249,12 @@ class VariantRow(QFrame):
         self._progress.show()
         self._progress.setValue(val)
 
-    def download_done(self, active_id: Optional[str]) -> None:
+    def download_done(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
         self._progress.hide()
-        self._update_button(active_id)
+        self._update_button(active_id, translator_active)
 
-    def refresh(self, active_id: Optional[str]) -> None:
-        self._update_button(active_id)
+    def refresh(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
+        self._update_button(active_id, translator_active)
 
 
 # ---------------------------------------------------------------------------
@@ -348,9 +348,9 @@ class FamilyCard(QFrame):
     def get_row(self, model_id: str) -> Optional[VariantRow]:
         return self._rows.get(model_id)
 
-    def refresh(self, active_id: Optional[str]) -> None:
+    def refresh(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
         for row in self._rows.values():
-            row.refresh(active_id)
+            row.refresh(active_id, translator_active)
 
 
 # ---------------------------------------------------------------------------
@@ -363,6 +363,9 @@ class ModelsPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         self._active_model: Optional[str] = None
+        # Translator (SeamlessM4T) is loaded into a separate engine; tracked
+        # independently of _active_model so both badges can co-exist.
+        self._translator_active: Optional[str] = None
         self._family_cards: dict[str, FamilyCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
 
@@ -446,7 +449,17 @@ class ModelsPage(QWidget):
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._active_model = model_id
         for card in self._family_cards.values():
-            card.refresh(self._active_model)
+            card.refresh(self._active_model, self._translator_active)
+
+    def set_translator_active(self, model_id: Optional[str]) -> None:
+        """Mark the SeamlessM4T translator model as active in the UI.
+
+        Independent of set_active_model: ASR and translator can both be
+        loaded simultaneously; both badges co-exist.
+        """
+        self._translator_active = model_id
+        for card in self._family_cards.values():
+            card.refresh(self._active_model, self._translator_active)
 
     def set_loading(self, model_id: str, loading: bool) -> None:
         """Show/hide loading indicator on a specific variant row."""
@@ -454,7 +467,7 @@ class ModelsPage(QWidget):
         if row:
             row.set_loading(loading)
             if not loading:
-                row.refresh(self._active_model)
+                row.refresh(self._active_model, self._translator_active)
 
     def show_load_error(self, msg: str) -> None:
         self._error_label.setText(msg)
@@ -482,7 +495,7 @@ class ModelsPage(QWidget):
     def _download_done(self, model_id: str) -> None:
         row = self._find_row(model_id)
         if row:
-            row.download_done(self._active_model)
+            row.download_done(self._active_model, self._translator_active)
         self._workers.pop(model_id, None)
 
     def _download_error(self, model_id: str, msg: str) -> None:

@@ -235,11 +235,20 @@ def main() -> None:
         family'). They simply become the loaded translator engine.
         """
         translator = pipe.get_translator()
+
+        # Idempotency: if already loaded with this model, just update UI.
+        if translator.is_loaded and translator.current_model == model_id:
+            print(f"[ModelLoad] Translator already loaded: {model_id}")
+            window.models_page.set_loading(model_id, False)
+            window.models_page.set_translator_active(model_id)
+            return
+
         worker = TranslatorLoadWorker(translator, model_id, path)
 
         def _on_translator_loaded(mid: str) -> None:
             print(f"[ModelLoad] Translator ready: {mid}")
             window.models_page.set_loading(mid, False)
+            window.models_page.set_translator_active(mid)
 
         def _on_translator_error(mid: str, msg: str) -> None:
             window.show_load_error(f"Failed to load {mid}: {msg}")
@@ -540,6 +549,13 @@ def main() -> None:
         def _load() -> None:
             try:
                 translator.load_model(model_path)
+                # Mark UI active on the main thread
+                QTimer.singleShot(
+                    0,
+                    lambda: window.models_page.set_translator_active(
+                        "seamless-m4t-v2-large"
+                    ),
+                )
             except Exception:
                 traceback.print_exc()
 
