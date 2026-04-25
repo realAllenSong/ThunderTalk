@@ -285,35 +285,38 @@ class HomePage(QWidget):
         root.setContentsMargins(32, 28, 32, 20)
         root.setSpacing(0)
 
-        # ── Heading + inline stats (no big stat cards) ──
-        # Single line: "Recent" + dot-separated stats on the right.
-        head_row = QHBoxLayout()
-        head_row.setSpacing(12)
+        # ── Hero Stats ──
+        stats_row = QHBoxLayout()
+        stats_row.setSpacing(12)
+
+        self._stat_time = _StatCard("clock", "0m", t("home.speaking_time"), theme.ACCENT_ORANGE)
+        self._stat_chars = _StatCard("text", "0", t("home.characters"), theme.ACCENT_BLUE)
+        self._stat_sessions = _StatCard("bolt", "0", t("home.sessions"), theme.ACCENT_ORANGE_WARM)
+
+        stats_row.addWidget(self._stat_time)
+        stats_row.addWidget(self._stat_chars)
+        stats_row.addWidget(self._stat_sessions)
+        root.addLayout(stats_row)
+
+        root.addSpacing(20)
+
+        # ── History header ──
+        hist_header = QHBoxLayout()
+        hist_header.setSpacing(8)
 
         self._recent_title = QLabel(t("home.recent"))
-        self._recent_title.setFont(theme.font(20, bold=True))
-        self._recent_title.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none;"
-        )
-        head_row.addWidget(self._recent_title)
-        head_row.addStretch()
+        self._recent_title.setFont(theme.font(14, bold=True))
+        self._recent_title.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        hist_header.addWidget(self._recent_title)
 
-        # Inline metrics (replaces three big stat cards)
-        self._stats_label = QLabel("")
-        self._stats_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 12px;"
-            " background: transparent; border: none;"
-        )
-        head_row.addWidget(self._stats_label)
-
-        head_row.addSpacing(8)
+        hist_header.addStretch()
 
         self._clear_btn = theme.pill_button(t("home.clear"), width=72, height=28)
         self._clear_btn.clicked.connect(self._on_clear)
-        head_row.addWidget(self._clear_btn)
-        root.addLayout(head_row)
+        hist_header.addWidget(self._clear_btn)
+        root.addLayout(hist_header)
 
-        root.addSpacing(20)
+        root.addSpacing(12)
 
         # ── History list ──
         scroll = QScrollArea()
@@ -343,10 +346,9 @@ class HomePage(QWidget):
         else:
             time_str = f"{mins}m"
 
-        self._stats_label.setText(
-            f"{time_str}  ·  {total_chars:,} {t('home.characters').lower()}"
-            f"  ·  {sessions} {t('home.sessions').lower()}"
-        )
+        self._stat_time.set_value(time_str)
+        self._stat_chars.set_value(f"{total_chars:,}")
+        self._stat_sessions.set_value(str(sessions))
 
         # Clear existing cards
         while self._history_layout.count() > 1:
@@ -410,6 +412,9 @@ class HomePage(QWidget):
         self.refresh()
 
     def retranslate(self) -> None:
+        self._stat_time.set_label(t("home.speaking_time"))
+        self._stat_chars.set_label(t("home.characters"))
+        self._stat_sessions.set_label(t("home.sessions"))
         self._recent_title.setText(t("home.recent"))
         self._clear_btn.setText(t("home.clear"))
         self.refresh()
