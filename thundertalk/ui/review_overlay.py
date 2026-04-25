@@ -64,6 +64,10 @@ class ReviewOverlay(QWidget):
         self._original_text = ""
         self._tgt_lang = "eng"
         self._is_loading = False
+        # Window-drag state
+        self._drag_pos = None
+        # Centered on first show; subsequent shows preserve user-dragged position.
+        self._has_been_positioned = False
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(18, 12, 18, 12)
@@ -176,7 +180,9 @@ class ReviewOverlay(QWidget):
         self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
 
-        self._center()
+        if not self._has_been_positioned:
+            self._center()
+            self._has_been_positioned = True
         self.show()
         self.raise_()
 
@@ -292,3 +298,30 @@ class ReviewOverlay(QWidget):
             self._on_replace()
         else:
             super().keyPressEvent(ev)
+
+    # ── window dragging ────────────────────────────────────────────────
+    # Clicks on QPushButton / QComboBox children are consumed by those
+    # widgets and never reach these handlers, so dragging only fires
+    # when the user grabs the empty/background area.
+
+    def mousePressEvent(self, ev) -> None:
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = (
+                ev.globalPosition().toPoint() - self.frameGeometry().topLeft()
+            )
+            self.setCursor(Qt.CursorShape.ClosedHandCursor)
+            ev.accept()
+
+    def mouseMoveEvent(self, ev) -> None:
+        if (
+            ev.buttons() & Qt.MouseButton.LeftButton
+            and self._drag_pos is not None
+        ):
+            self.move(ev.globalPosition().toPoint() - self._drag_pos)
+            ev.accept()
+
+    def mouseReleaseEvent(self, ev) -> None:
+        if self._drag_pos is not None:
+            self._drag_pos = None
+            self.unsetCursor()
+            ev.accept()
