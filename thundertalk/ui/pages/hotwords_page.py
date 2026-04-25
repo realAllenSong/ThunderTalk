@@ -32,9 +32,9 @@ class _WordChip(QFrame):
         super().__init__()
         self.word = word
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
-            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
+            f"QFrame {{ background: transparent;"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
+            f"QFrame:hover {{ border: 1px solid {theme.BORDER_STRONG}; }}"
         )
         self.setFixedHeight(28)
 
@@ -59,14 +59,14 @@ class _WordChip(QFrame):
 
     def enterEvent(self, ev) -> None:
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD_HOVER};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
+            f"QFrame {{ background: transparent;"
+            f" border: 1px solid {theme.BORDER_STRONG}; border-radius: 14px; }}"
         )
 
     def leaveEvent(self, ev) -> None:
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
+            f"QFrame {{ background: transparent;"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
         )
 
 
@@ -154,8 +154,9 @@ class HotwordsPage(QWidget):
 
         self._count_label = QLabel()
         self._count_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 8px; padding: 2px 10px;"
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            f" background: transparent; border: 1px solid {theme.BORDER_SUBTLE};"
+            " border-radius: 8px; padding: 2px 10px;"
         )
         header_row.addWidget(self._count_label)
         wc.addLayout(header_row)
