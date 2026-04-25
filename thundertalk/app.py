@@ -90,6 +90,43 @@ class TranslationWorker(QThread):
             self.error.emit(str(e))
 
 
+class TextTranslateWorker(QThread):
+    """Runs SeamlessM4T T2TT (text→text) off the main thread.
+
+    Used by Review mode: ASR produces the original-language text, then
+    this worker translates it through the same loaded SeamlessM4T model
+    using the T2TT path (no audio re-pass, much faster than S2TT).
+    """
+
+    done = Signal(str, str, str)  # original_text, translated_text, tgt_lang
+    error = Signal(str)
+
+    def __init__(
+        self,
+        engine,
+        original_text: str,
+        src_lang: str,
+        tgt_lang: str,
+    ) -> None:
+        super().__init__()
+        self._engine = engine
+        self._original_text = original_text
+        self._src_lang = src_lang
+        self._tgt_lang = tgt_lang
+
+    def run(self) -> None:
+        try:
+            result = self._engine.translate_text(
+                self._original_text,
+                src_lang=self._src_lang,
+                tgt_lang=self._tgt_lang,
+            )
+            self.done.emit(self._original_text, result.text, result.tgt_lang)
+        except Exception as e:
+            traceback.print_exc()
+            self.error.emit(str(e))
+
+
 class ModelLoadWorker(QThread):
     """Loads an ASR model off the main thread."""
 
@@ -149,6 +186,7 @@ class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
     toggle_signal = Signal()
+    review_ready = Signal(str, str, str)  # original, translated, tgt_lang
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -157,7 +195,7 @@ class Pipeline(QObject):
         self.asr = AsrEngine()
         self.translator = None  # lazy-instantiated TranslationEngine
         self._recording = False
-        self._worker: AsrWorker | TranslationWorker | None = None
+        self._worker: AsrWorker | TranslationWorker | TextTranslateWorker | None = None
         self._load_worker: ModelLoadWorker | TranslatorLoadWorker | None = None
         self._mic_device = None if mic == "auto" else mic
 
@@ -373,6 +411,30 @@ def main() -> None:
             # _do_paste activates the previous app.  Check after 500ms.
             if settings.get("mute_speakers"):
                 QTimer.singleShot(500, ensure_audio_restored)
+            # Review mode: kick off T2TT translation in parallel; the popup
+            # is shown when translated text comes back. Only triggers when
+            # the result we just got was an ASR pass (not S2TT translator).
+            is_asr_result = not backend.startswith("seamless-torch")
+            tgt = settings.get("translation_target")
+            mode = settings.get("translation_mode")
+            translator = pipe.translator
+            if (
+                is_asr_result
+                and tgt
+                and tgt != "off"
+                and mode == "review"
+                and translator
+                and translator.is_loaded
+            ):
+                from thundertalk.core.translate import detect_src_lang
+                src_lang = detect_src_lang(text)
+                print(f"[Review] T2TT {src_lang}→{tgt} on {len(text)} chars")
+                t2t_worker = TextTranslateWorker(translator, text, src_lang, tgt)
+                t2t_worker.done.connect(_on_t2tt_done)
+                t2t_worker.error.connect(_on_t2tt_error)
+                t2t_worker.finished.connect(_clear_asr_worker)
+                pipe._worker = t2t_worker
+                t2t_worker.start()
         else:
             overlay.show_error("No speech detected")
 
@@ -385,6 +447,17 @@ def main() -> None:
         # Runs on QThread's built-in finished signal, after run() has fully
         # exited. Safe to drop the last Python reference here.
         pipe._worker = None
+
+    def _on_t2tt_done(original: str, translated: str, tgt_lang: str) -> None:
+        print(
+            f'[Review] T2TT done: "{original[:30]}…" → "{translated[:30]}…" ({tgt_lang})'
+        )
+        pipe.review_ready.emit(original, translated, tgt_lang)
+
+    def _on_t2tt_error(msg: str) -> None:
+        print(f"[Review] T2TT error: {msg}")
+        # Original text is already pasted; silently drop the translation.
+        # No overlay needed — user has the original; the popup just doesn't appear.
 
     # Grace period (ms) between stop-requested and stream-closed so the
     # audio callback can capture trailing speech that is still being spoken
