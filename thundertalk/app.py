@@ -491,13 +491,16 @@ def main() -> None:
                     return
 
                 tgt = settings.get("translation_target")
-                if tgt and tgt != "off":
+                mode = settings.get("translation_mode") or "direct"
+
+                # Direct mode: SeamlessM4T S2TT (audio → translated text directly)
+                if tgt and tgt != "off" and mode == "direct":
                     translator = pipe.get_translator()
                     if not translator.is_loaded:
-                        print(f"[Toggle] Translation target {tgt!r} but model not loaded")
+                        print(f"[Toggle] Direct translation but model not loaded")
                         overlay.show_error("Translation model not loaded")
                         return
-                    print(f"[Toggle] Starting translation → {tgt} on {len(samples)} samples")
+                    print(f"[Toggle] Starting Direct translation → {tgt} on {len(samples)} samples")
                     worker = TranslationWorker(translator, samples, tgt)
                     worker.done.connect(_on_asr_done)
                     worker.error.connect(_on_asr_error)
@@ -506,13 +509,18 @@ def main() -> None:
                     worker.start()
                     return
 
-                # Existing ASR path, unchanged
+                # Off mode OR Review mode: route through ASR first.
+                # Review mode adds T2TT in _on_asr_done after the ASR result
+                # is pasted, then shows the review popup.
                 if not pipe.asr.is_loaded:
-                    print("[Toggle] No model (audio already restored on stop)")
+                    print("[Toggle] No ASR model (audio already restored on stop)")
                     overlay.show_error("No model loaded")
                     return
 
-                print(f"[Toggle] Starting ASR on {len(samples)} samples")
+                if tgt and tgt != "off" and mode == "review":
+                    print(f"[Toggle] Starting Review (ASR → T2TT → popup) on {len(samples)} samples")
+                else:
+                    print(f"[Toggle] Starting ASR on {len(samples)} samples")
                 worker = AsrWorker(pipe.asr, samples)
                 worker.done.connect(_on_asr_done)
                 worker.error.connect(_on_asr_error)
@@ -631,18 +639,24 @@ def main() -> None:
         if not model_path:
             return
 
+        # Visible spinner on the SeamlessM4T card so users understand
+        # the ~10s torch+MPS load isn't a stuck UI.
+        window.models_page.set_loading("seamless-m4t-v2-large", True)
+
+        def _on_done() -> None:
+            window.models_page.set_loading("seamless-m4t-v2-large", False)
+            window.models_page.set_translator_active("seamless-m4t-v2-large")
+
+        def _on_fail() -> None:
+            window.models_page.set_loading("seamless-m4t-v2-large", False)
+
         def _load() -> None:
             try:
                 translator.load_model(model_path)
-                # Mark UI active on the main thread
-                QTimer.singleShot(
-                    0,
-                    lambda: window.models_page.set_translator_active(
-                        "seamless-m4t-v2-large"
-                    ),
-                )
+                QTimer.singleShot(0, _on_done)
             except Exception:
                 traceback.print_exc()
+                QTimer.singleShot(0, _on_fail)
 
         threading.Thread(target=_load, daemon=True).start()
 
