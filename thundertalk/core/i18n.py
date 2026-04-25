@@ -65,6 +65,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "home.today": {"en": "Today", "zh": "今天"},
     "home.yesterday": {"en": "Yesterday", "zh": "昨天"},
     "home.copy": {"en": "Copy", "zh": "复制"},
+    "home.copy_translation": {"en": "Copy ↗", "zh": "复制译文"},
     "home.copied": {"en": "Copied!", "zh": "已复制！"},
 
     # ── Models ──────────────────────────────────────────────────────

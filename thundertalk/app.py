@@ -196,11 +196,20 @@ class Pipeline(QObject):
         self.asr = AsrEngine()
         self.translator = None  # lazy-instantiated TranslationEngine
         self._recording = False
-        self._worker: AsrWorker | TranslationWorker | TextTranslateWorker | None = None
+        # All in-flight QThread workers are kept alive in this list. Each
+        # worker's `.finished` signal removes it. Single-reference patterns
+        # (e.g. `self._worker = worker`) are unsafe because reassigning to a
+        # new worker drops the old QThread's Python wrapper while its C++
+        # thread may still be running, causing "QThread: Destroyed while
+        # thread is still running" SIGABRT.
+        self._workers: list = []
         self._load_worker: ModelLoadWorker | TranslatorLoadWorker | None = None
-        # Side workers (e.g. Review-popup language re-translate) kept alive
-        # here so Python doesn't GC the QThread before run() completes.
-        self._side_workers: list = []
+        # Re-entrancy guard for translator auto-load. Two rapid signal
+        # emissions (e.g. user clicks "Direct" → both translation_mode_changed
+        # and translation_target_changed fire) would otherwise spawn two
+        # parallel load threads, each calling load_model() which does
+        # unload+load — producing nondeterministic state and a stuck spinner.
+        self._translator_loading: bool = False
         self._mic_device = None if mic == "auto" else mic
 
     def toggle(self) -> None:
@@ -448,8 +457,7 @@ def main() -> None:
                 t2t_worker = TextTranslateWorker(translator, text, src_lang, tgt)
                 t2t_worker.done.connect(_on_t2tt_done)
                 t2t_worker.error.connect(_on_t2tt_error)
-                t2t_worker.finished.connect(_clear_asr_worker)
-                pipe._worker = t2t_worker
+                _track_worker(t2t_worker)
                 t2t_worker.start()
         else:
             overlay.show_error("No speech detected")
@@ -459,15 +467,30 @@ def main() -> None:
         print(f"[ASR] Error: {msg}")
         overlay.show_error(msg[:40])
 
-    def _clear_asr_worker() -> None:
-        # Runs on QThread's built-in finished signal, after run() has fully
-        # exited. Safe to drop the last Python reference here.
-        pipe._worker = None
+    def _track_worker(w) -> None:
+        """Keep `w` Python-side referenced until its QThread.finished fires.
+
+        Replaces the older `pipe._worker = w` single-ref pattern, which broke
+        when a second worker started before the first finished — assigning to
+        `pipe._worker` dropped the running thread's wrapper.
+        """
+        pipe._workers.append(w)
+        def _untrack() -> None:
+            try:
+                pipe._workers.remove(w)
+            except ValueError:
+                pass
+            w.deleteLater()
+        w.finished.connect(_untrack)
 
     def _on_t2tt_done(original: str, translated: str, tgt_lang: str) -> None:
         print(
             f'[Review] T2TT done: "{original[:30]}…" → "{translated[:30]}…" ({tgt_lang})'
         )
+        # Backfill the translation onto the existing history entry so the
+        # Home page can show / let the user copy it later.
+        history.update_translation(original, translated, tgt_lang)
+        QTimer.singleShot(50, window.home_page.refresh)
         pipe.review_ready.emit(original, translated, tgt_lang)
 
     def _on_t2tt_error(msg: str) -> None:
@@ -518,8 +541,7 @@ def main() -> None:
                     worker = TranslationWorker(translator, samples, tgt)
                     worker.done.connect(_on_asr_done)
                     worker.error.connect(_on_asr_error)
-                    worker.finished.connect(_clear_asr_worker)
-                    pipe._worker = worker
+                    _track_worker(worker)
                     worker.start()
                     return
 
@@ -538,8 +560,7 @@ def main() -> None:
                 worker = AsrWorker(pipe.asr, samples)
                 worker.done.connect(_on_asr_done)
                 worker.error.connect(_on_asr_error)
-                worker.finished.connect(_clear_asr_worker)
-                pipe._worker = worker
+                _track_worker(worker)
                 worker.start()
 
             QTimer.singleShot(TAIL_GRACE_MS, _finalize_stop)
@@ -599,19 +620,7 @@ def main() -> None:
         worker = TextTranslateWorker(translator, original, src_lang, new_lang)
         worker.done.connect(_on_t2tt_done)
         worker.error.connect(_on_t2tt_error)
-        # Strong-reference the worker until run() finishes; otherwise
-        # Python GCs the QThread mid-execution and Qt aborts with
-        # 'QThread: Destroyed while thread is still running'.
-        pipe._side_workers.append(worker)
-
-        def _cleanup_side_worker() -> None:
-            try:
-                pipe._side_workers.remove(worker)
-            except ValueError:
-                pass
-            worker.deleteLater()
-
-        worker.finished.connect(_cleanup_side_worker)
+        _track_worker(worker)
         worker.start()
 
     review_overlay.lang_change_requested.connect(_on_review_lang_changed)
@@ -689,20 +698,26 @@ def main() -> None:
         translator = pipe.get_translator()
         if translator.is_loaded:
             return
+        if pipe._translator_loading:
+            # Another load is already in flight; skip.
+            return
 
         model_path = get_model_path("seamless-m4t-v2-large")
         if not model_path:
             return
 
+        pipe._translator_loading = True
         # Visible spinner on the SeamlessM4T card so users understand
         # the ~10s torch+MPS load isn't a stuck UI.
         window.models_page.set_loading("seamless-m4t-v2-large", True)
 
         def _on_done() -> None:
+            pipe._translator_loading = False
             window.models_page.set_loading("seamless-m4t-v2-large", False)
             window.models_page.set_translator_active("seamless-m4t-v2-large")
 
         def _on_fail() -> None:
+            pipe._translator_loading = False
             window.models_page.set_loading("seamless-m4t-v2-large", False)
 
         def _load() -> None:

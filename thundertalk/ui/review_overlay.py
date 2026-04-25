@@ -8,7 +8,7 @@ user decides; no auto-dismiss.
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -66,8 +66,6 @@ class ReviewOverlay(QWidget):
         self._is_loading = False
         # Window-drag state
         self._drag_pos = None
-        # Centered on first show; subsequent shows preserve user-dragged position.
-        self._has_been_positioned = False
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(18, 12, 18, 12)
@@ -180,9 +178,10 @@ class ReviewOverlay(QWidget):
         self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
 
-        if not self._has_been_positioned:
-            self._center()
-            self._has_been_positioned = True
+        # Position near the cursor every show — gives the popup natural
+        # spatial context (your eyes are near where you typed). User can
+        # still drag during this popup session, but next show resets.
+        self._position_near_cursor()
         self.show()
         self.raise_()
 
@@ -265,6 +264,39 @@ class ReviewOverlay(QWidget):
             x = geo.x() + (geo.width() - _W) // 2
             y = geo.y() + geo.height() - _H - 80
             self.move(x, y)
+
+    def _position_near_cursor(self) -> None:
+        """Place the popup ABOVE the current cursor, horizontally centered
+        on cursor X. Falls back to below-cursor or screen-center if there's
+        no room above. Clamps to the visible screen geometry."""
+        cursor = QCursor.pos()
+        # Resolve which screen the cursor is on (may differ from self.screen()
+        # right after creation). QGuiApplication.screenAt is the right call.
+        from PySide6.QtGui import QGuiApplication
+        screen = QGuiApplication.screenAt(cursor) or self.screen()
+        if screen is None:
+            self._center()
+            return
+        geo = screen.availableGeometry()
+
+        gap = 24  # px between cursor and popup edge
+        # Center horizontally on cursor X, clamp into screen
+        x = cursor.x() - _W // 2
+        x = max(geo.x() + 12, min(x, geo.x() + geo.width() - _W - 12))
+
+        # Try above cursor first
+        y_above = cursor.y() - _H - gap
+        y_below = cursor.y() + gap
+
+        if y_above >= geo.y() + 12:
+            y = y_above
+        elif y_below + _H <= geo.y() + geo.height() - 12:
+            y = y_below
+        else:
+            # No good space — fallback to center vertically
+            y = geo.y() + (geo.height() - _H) // 2
+
+        self.move(x, y)
 
     def _on_lang_changed(self, idx: int) -> None:
         new_code = self._lang_combo.itemData(idx)
