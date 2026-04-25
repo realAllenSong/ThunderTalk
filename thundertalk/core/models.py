@@ -99,6 +99,21 @@ BUILTIN_MODELS: list[ModelInfo] = [
         platform="all",
         notes="CPU · Lightweight · Fast on all platforms",
     ),
+    # ── SeamlessM4T v2 (translation) ────────────────────────────────────
+    ModelInfo(
+        id="seamless-m4t-v2-large",
+        family="SeamlessM4T-v2",
+        name="SeamlessM4T v2 Large",
+        variant="PyTorch fp16",
+        backend="seamless-torch",
+        size_mb=8600,
+        language_count=96,
+        accuracy_stars=5,
+        download_url="hf://facebook/seamless-m4t-v2-large",
+        hotword_support=False,
+        platform="all",
+        notes="Direct speech→translated-text. Required for Translation feature.",
+    ),
 ]
 
 
