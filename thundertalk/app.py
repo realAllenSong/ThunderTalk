@@ -198,6 +198,9 @@ class Pipeline(QObject):
         self._recording = False
         self._worker: AsrWorker | TranslationWorker | TextTranslateWorker | None = None
         self._load_worker: ModelLoadWorker | TranslatorLoadWorker | None = None
+        # Side workers (e.g. Review-popup language re-translate) kept alive
+        # here so Python doesn't GC the QThread before run() completes.
+        self._side_workers: list = []
         self._mic_device = None if mic == "auto" else mic
 
     def toggle(self) -> None:
@@ -432,9 +435,16 @@ def main() -> None:
                 from thundertalk.core.translate import detect_src_lang
                 src_lang = detect_src_lang(text)
                 print(f"[Review] T2TT {src_lang}→{tgt} on {len(text)} chars")
-                # Pop the overlay IMMEDIATELY in loading state so the user
-                # gets feedback at the moment the original is pasted.
-                pipe.review_started.emit(text, tgt)
+                # Defer the popup briefly so the original paste actually
+                # lands in the user's app first. Without this, the popup
+                # races ahead of the async paste and the user sees the
+                # translation before their original is even visible.
+                _t2t_text = text
+                _t2t_tgt = tgt
+                QTimer.singleShot(
+                    300,
+                    lambda: pipe.review_started.emit(_t2t_text, _t2t_tgt),
+                )
                 t2t_worker = TextTranslateWorker(translator, text, src_lang, tgt)
                 t2t_worker.done.connect(_on_t2tt_done)
                 t2t_worker.error.connect(_on_t2tt_error)
@@ -538,6 +548,8 @@ def main() -> None:
             if not pipe.asr.is_loaded:
                 overlay.show_error("Load a model first")
                 return
+            # Dismiss any leftover Review popup from a previous round
+            review_overlay.hide_review()
             save_frontmost_app()
             # Show overlay immediately so user gets instant visual feedback
             overlay.show_recording()
@@ -587,10 +599,19 @@ def main() -> None:
         worker = TextTranslateWorker(translator, original, src_lang, new_lang)
         worker.done.connect(_on_t2tt_done)
         worker.error.connect(_on_t2tt_error)
-        # Don't reuse pipe._worker here; this is a side T2TT, not part of
-        # the main hotkey pipeline. Keep the worker referenced via the
-        # signal binding so it stays alive until done.
-        worker.finished.connect(worker.deleteLater)
+        # Strong-reference the worker until run() finishes; otherwise
+        # Python GCs the QThread mid-execution and Qt aborts with
+        # 'QThread: Destroyed while thread is still running'.
+        pipe._side_workers.append(worker)
+
+        def _cleanup_side_worker() -> None:
+            try:
+                pipe._side_workers.remove(worker)
+            except ValueError:
+                pass
+            worker.deleteLater()
+
+        worker.finished.connect(_cleanup_side_worker)
         worker.start()
 
     review_overlay.lang_change_requested.connect(_on_review_lang_changed)

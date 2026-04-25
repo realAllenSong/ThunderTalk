@@ -1,21 +1,18 @@
-"""Translation Review popup — appears immediately after the original is
-pasted (with a Translating… loading state) and updates with the
-translation when SeamlessM4T finishes. The user picks Replace (Cmd+Z
-the original, paste translation) or Keep Original (dismiss).
-
-Inline language combo lets the user switch target language without
-visiting Settings; changes persist.
+"""Translation Review popup — pill-styled floating window matching the
+VoiceOverlay aesthetic. Appears in loading state when the original is
+pasted; updates when SeamlessM4T T2TT finishes. User picks Replace
+(Cmd+Z + paste translation) or Keep Original. Stays open until the
+user decides; no auto-dismiss.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import Qt, QTimer, Signal
+from PySide6.QtCore import QRectF, Qt, Signal
+from PySide6.QtGui import QColor, QPainter, QPainterPath
 from PySide6.QtWidgets import (
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QPushButton,
     QVBoxLayout,
     QWidget,
@@ -24,11 +21,9 @@ from PySide6.QtWidgets import (
 from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
-REVIEW_TIMEOUT_MS = 8000
-_W, _H = 380, 138
+_W, _H = 380, 132
 
-# Inline language picker — same set as Settings TRANSLATION_TARGETS minus "off".
-# Keep tuple order: ISO-639-3 code, display label.
+# Inline language picker — matches Settings TRANSLATION_TARGETS minus "off".
 _REVIEW_LANGS: list[tuple[str, str]] = [
     ("eng", "English"),
     ("cmn", "中文"),
@@ -45,9 +40,11 @@ _REVIEW_LANGS: list[tuple[str, str]] = [
 
 
 class ReviewOverlay(QWidget):
-    """Compact floating popup for translation review."""
+    """Compact floating popup. Background is custom-painted to match the
+    VoiceOverlay's pill aesthetic (dark translucent, rounded, subtle
+    border — no harsh card frame)."""
 
-    replace_clicked = Signal(str)             # translated text
+    replace_clicked = Signal(str)
     keep_clicked = Signal()
     lang_change_requested = Signal(str, str)  # original, new_tgt_lang
 
@@ -68,21 +65,8 @@ class ReviewOverlay(QWidget):
         self._tgt_lang = "eng"
         self._is_loading = False
 
-        self._timeout = QTimer(self)
-        self._timeout.setSingleShot(True)
-        self._timeout.timeout.connect(self._on_timeout)
-
-        # ── Card frame ──
-        self._card = QFrame(self)
-        self._card.setGeometry(0, 0, _W, _H)
-        self._card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT};"
-            f" border-radius: 12px; }}"
-        )
-
-        ly = QVBoxLayout(self._card)
-        ly.setContentsMargins(14, 10, 14, 10)
+        ly = QVBoxLayout(self)
+        ly.setContentsMargins(18, 12, 18, 12)
         ly.setSpacing(6)
 
         # ── Top row: status + language combo ──
@@ -92,26 +76,28 @@ class ReviewOverlay(QWidget):
         self._status_label = QLabel("→")
         self._status_label.setStyleSheet(
             f"color: {theme.ACCENT_ORANGE}; font-size: 11px;"
-            " font-weight: 600; border: none; letter-spacing: 0.3px;"
+            " font-weight: 600; background: transparent; border: none;"
+            " letter-spacing: 0.3px;"
         )
         top.addWidget(self._status_label)
-
         top.addStretch()
 
         self._lang_combo = QComboBox()
         self._lang_combo.setFixedHeight(22)
-        self._lang_combo.setFixedWidth(120)
+        self._lang_combo.setFixedWidth(118)
         self._lang_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         self._lang_combo.setStyleSheet(
-            f"QComboBox {{ background: {theme.BG_ELEVATED};"
-            f" color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER_SUBTLE};"
-            f" border-radius: 6px; padding: 1px 6px; font-size: 11px; }}"
-            f"QComboBox:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
-            f"QComboBox::drop-down {{ border: none; width: 16px; }}"
-            f"QComboBox QAbstractItemView {{ background: {theme.BG_ELEVATED};"
+            f"QComboBox {{ background: rgba(255,255,255,0.06);"
+            f" color: {theme.TEXT_PRIMARY};"
+            " border: 1px solid rgba(255,255,255,0.10);"
+            " border-radius: 11px; padding: 1px 10px; font-size: 11px; }}"
+            "QComboBox:hover { background: rgba(255,255,255,0.10); }"
+            "QComboBox::drop-down { border: none; width: 14px; }"
+            "QComboBox QAbstractItemView { background: #1a1a1d;"
             f" color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 6px; padding: 4px; selection-background-color: "
-            f"{theme.ACCENT_ORANGE}; selection-color: #ffffff; }}"
+            " border-radius: 8px; padding: 4px;"
+            f" selection-background-color: {theme.ACCENT_ORANGE};"
+            " selection-color: #ffffff; }"
         )
         for code, display in _REVIEW_LANGS:
             self._lang_combo.addItem(display, code)
@@ -123,7 +109,8 @@ class ReviewOverlay(QWidget):
         self._orig_text = QLabel("")
         self._orig_text.setWordWrap(True)
         self._orig_text.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " background: transparent; border: none;"
         )
         self._orig_text.setMaximumHeight(28)
         ly.addWidget(self._orig_text)
@@ -131,28 +118,26 @@ class ReviewOverlay(QWidget):
         # ── Translated text (primary) ──
         self._trans_text = QLabel("")
         self._trans_text.setWordWrap(True)
-        self._trans_text.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px;"
-            " font-weight: 500; border: none;"
-        )
-        self._trans_text.setMaximumHeight(38)
+        self._trans_text.setMaximumHeight(36)
         ly.addWidget(self._trans_text)
+        self._set_trans_loading_style()
 
         ly.addStretch()
 
         # ── Buttons row ──
         btn_row = QHBoxLayout()
-        btn_row.setSpacing(6)
+        btn_row.setSpacing(8)
         btn_row.addStretch()
 
         self._keep_btn = QPushButton(t("review.keep"))
         self._keep_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         self._keep_btn.setFixedHeight(26)
         self._keep_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent;"
-            f" color: {theme.TEXT_MUTED}; border: 1px solid {theme.BORDER_SUBTLE};"
-            " border-radius: 6px; font-size: 11px; padding: 2px 12px; }}"
-            f"QPushButton:hover {{ background: {theme.BG_ELEVATED};"
+            "QPushButton { background: transparent;"
+            f" color: {theme.TEXT_MUTED};"
+            " border: 1px solid rgba(255,255,255,0.10);"
+            " border-radius: 13px; font-size: 11px; padding: 2px 14px; }"
+            "QPushButton:hover { background: rgba(255,255,255,0.06);"
             f" color: {theme.TEXT_SECONDARY}; }}"
         )
         self._keep_btn.clicked.connect(self._on_keep)
@@ -163,10 +148,10 @@ class ReviewOverlay(QWidget):
         self._replace_btn.setFixedHeight(26)
         self._replace_btn.setStyleSheet(
             f"QPushButton {{ background: {theme.ACCENT_ORANGE}; color: #ffffff;"
-            " border: none; border-radius: 6px; font-size: 11px;"
-            " font-weight: 600; padding: 2px 14px; }}"
+            " border: none; border-radius: 13px; font-size: 11px;"
+            " font-weight: 600; padding: 2px 16px; }}"
             f"QPushButton:hover {{ background: {theme.ACCENT_ORANGE_WARM}; }}"
-            f"QPushButton:disabled {{ background: {theme.BG_ELEVATED};"
+            "QPushButton:disabled { background: rgba(255,255,255,0.06);"
             f" color: {theme.TEXT_MUTED}; }}"
         )
         self._replace_btn.clicked.connect(self._on_replace)
@@ -174,26 +159,10 @@ class ReviewOverlay(QWidget):
 
         ly.addLayout(btn_row)
 
-        # ── Countdown progress bar (2px line at bottom) ──
-        self._progress = QProgressBar(self._card)
-        self._progress.setRange(0, REVIEW_TIMEOUT_MS)
-        self._progress.setTextVisible(False)
-        self._progress.setFixedHeight(2)
-        self._progress.setGeometry(14, _H - 5, _W - 28, 2)
-        self._progress.setStyleSheet(
-            f"QProgressBar {{ background: rgba(255,255,255,0.04); border: none;"
-            " border-radius: 1px; }}"
-            f"QProgressBar::chunk {{ background: {theme.ACCENT_ORANGE};"
-            " border-radius: 1px; }}"
-        )
-
-        self._tick_timer = QTimer(self)
-        self._tick_timer.timeout.connect(self._update_progress)
-
     # ── public API ──────────────────────────────────────────────────────
 
     def show_review_loading(self, original: str, tgt_lang: str) -> None:
-        """Show popup immediately with original; translation slot is loading."""
+        """Show popup immediately with original; translation is pending."""
         self._original_text = original
         self._tgt_lang = tgt_lang
         self._translated_text = ""
@@ -201,49 +170,68 @@ class ReviewOverlay(QWidget):
 
         self._set_combo_lang(tgt_lang)
         lang_display = self._lang_display(tgt_lang)
-        self._status_label.setText(f"↻ {t('review.translating')} → {lang_display}")
+        self._status_label.setText(f"↻  {t('review.translating')} → {lang_display}")
         self._orig_text.setText(self._truncate(original, 120))
         self._trans_text.setText("…")
-        self._trans_text.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 13px;"
-            " font-style: italic; border: none;"
-        )
+        self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
 
         self._center()
         self.show()
         self.raise_()
-        self._progress.setValue(REVIEW_TIMEOUT_MS)
-        self._timeout.start(REVIEW_TIMEOUT_MS)
-        self._tick_timer.start(40)
 
     def update_translation(self, translated: str, tgt_lang: str) -> None:
-        """Fill in the translation. Stale results (lang changed mid-flight) skipped."""
+        """Fill in the translation. Stale results (lang switched mid-flight) skipped."""
         if tgt_lang != self._tgt_lang:
             return
         self._translated_text = translated
         self._is_loading = False
         lang_display = self._lang_display(tgt_lang)
-        self._status_label.setText(f"→ {lang_display}")
+        self._status_label.setText(f"→  {lang_display}")
         self._trans_text.setText(self._truncate(translated, 120))
-        self._trans_text.setStyleSheet(
-            f"color: {theme.TEXT_PRIMARY}; font-size: 13px;"
-            " font-weight: 500; border: none;"
-        )
+        self._set_trans_ready_style()
         self._replace_btn.setEnabled(True)
 
-    # Backwards-compat: keep show_review() for any older call sites; it
-    # treats both texts as already-known.
+    # Back-compat shim for any older call sites that pass both texts at once.
     def show_review(self, original: str, translated: str, tgt_lang: str) -> None:
         self.show_review_loading(original, tgt_lang)
         self.update_translation(translated, tgt_lang)
 
     def hide_review(self) -> None:
-        self._timeout.stop()
-        self._tick_timer.stop()
         self.hide()
 
+    # ── painting (matches VoiceOverlay's pill style) ───────────────────
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        w, h = self.width(), self.height()
+        radius = 18
+
+        path = QPainterPath()
+        path.addRoundedRect(QRectF(0, 0, w, h), radius, radius)
+
+        # Dark glass background
+        p.fillPath(path, QColor(18, 18, 18, 240))
+        # Hairline edge
+        from PySide6.QtGui import QPen
+        p.setPen(QPen(QColor(255, 255, 255, 18), 1))
+        p.drawPath(path)
+        p.end()
+
     # ── internals ──────────────────────────────────────────────────────
+
+    def _set_trans_loading_style(self) -> None:
+        self._trans_text.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 13px;"
+            " font-style: italic; background: transparent; border: none;"
+        )
+
+    def _set_trans_ready_style(self) -> None:
+        self._trans_text.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px;"
+            " font-weight: 500; background: transparent; border: none;"
+        )
 
     @staticmethod
     def _lang_display(code: str) -> str:
@@ -257,7 +245,6 @@ class ReviewOverlay(QWidget):
         return text if len(text) <= limit else text[:limit].rstrip() + "…"
 
     def _set_combo_lang(self, code: str) -> None:
-        # Block signals to avoid firing lang_change_requested while restoring
         self._lang_combo.blockSignals(True)
         for i in range(self._lang_combo.count()):
             if self._lang_combo.itemData(i) == code:
@@ -273,29 +260,18 @@ class ReviewOverlay(QWidget):
             y = geo.y() + geo.height() - _H - 80
             self.move(x, y)
 
-    def _update_progress(self) -> None:
-        remaining = self._timeout.remainingTime()
-        self._progress.setValue(max(0, remaining))
-
     def _on_lang_changed(self, idx: int) -> None:
         new_code = self._lang_combo.itemData(idx)
         if not new_code or new_code == self._tgt_lang:
             return
         self._tgt_lang = new_code
-        # Reset to loading state for the new language
         self._is_loading = True
         self._translated_text = ""
         lang_display = self._lang_display(new_code)
-        self._status_label.setText(f"↻ {t('review.translating')} → {lang_display}")
+        self._status_label.setText(f"↻  {t('review.translating')} → {lang_display}")
         self._trans_text.setText("…")
-        self._trans_text.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 13px;"
-            " font-style: italic; border: none;"
-        )
+        self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
-        # Reset countdown
-        self._timeout.start(REVIEW_TIMEOUT_MS)
-        self._progress.setValue(REVIEW_TIMEOUT_MS)
         self.lang_change_requested.emit(self._original_text, new_code)
 
     def _on_replace(self) -> None:
@@ -306,10 +282,6 @@ class ReviewOverlay(QWidget):
         self.replace_clicked.emit(text)
 
     def _on_keep(self) -> None:
-        self.hide_review()
-        self.keep_clicked.emit()
-
-    def _on_timeout(self) -> None:
         self.hide_review()
         self.keep_clicked.emit()
 
