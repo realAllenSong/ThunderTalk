@@ -186,7 +186,8 @@ class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
     toggle_signal = Signal()
-    review_ready = Signal(str, str, str)  # original, translated, tgt_lang
+    review_ready = Signal(str, str, str)    # original, translated, tgt_lang
+    review_started = Signal(str, str)       # original, tgt_lang (popup loads now)
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -431,6 +432,9 @@ def main() -> None:
                 from thundertalk.core.translate import detect_src_lang
                 src_lang = detect_src_lang(text)
                 print(f"[Review] T2TT {src_lang}→{tgt} on {len(text)} chars")
+                # Pop the overlay IMMEDIATELY in loading state so the user
+                # gets feedback at the moment the original is pasted.
+                pipe.review_started.emit(text, tgt)
                 t2t_worker = TextTranslateWorker(translator, text, src_lang, tgt)
                 t2t_worker.done.connect(_on_t2tt_done)
                 t2t_worker.error.connect(_on_t2tt_error)
@@ -552,7 +556,15 @@ def main() -> None:
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 
     # --- Review overlay (translation confirm popup) -------------------
-    pipe.review_ready.connect(review_overlay.show_review)
+    # `review_started` fires the moment the original is pasted; popup
+    # appears in loading state. `review_ready` fires when T2TT finishes
+    # and fills in the translation.
+    pipe.review_started.connect(review_overlay.show_review_loading)
+    pipe.review_ready.connect(
+        lambda _orig, translated, tgt: review_overlay.update_translation(
+            translated, tgt
+        )
+    )
 
     def _on_replace_clicked(translated: str) -> None:
         from thundertalk.core.text_output import replace_pasted_text
@@ -560,6 +572,28 @@ def main() -> None:
         replace_pasted_text(translated, keep_clipboard=keep_clipboard)
 
     review_overlay.replace_clicked.connect(_on_replace_clicked)
+
+    def _on_review_lang_changed(original: str, new_lang: str) -> None:
+        """User picked a different target language in the popup.
+        Persist to settings and re-run T2TT immediately."""
+        settings.set("translation_target", new_lang)
+        translator = pipe.translator
+        if translator is None or not translator.is_loaded:
+            print(f"[Review] Lang change requested but translator not loaded")
+            return
+        from thundertalk.core.translate import detect_src_lang
+        src_lang = detect_src_lang(original)
+        print(f"[Review] Re-translate {src_lang}→{new_lang}")
+        worker = TextTranslateWorker(translator, original, src_lang, new_lang)
+        worker.done.connect(_on_t2tt_done)
+        worker.error.connect(_on_t2tt_error)
+        # Don't reuse pipe._worker here; this is a side T2TT, not part of
+        # the main hotkey pipeline. Keep the worker referenced via the
+        # signal binding so it stays alive until done.
+        worker.finished.connect(worker.deleteLater)
+        worker.start()
+
+    review_overlay.lang_change_requested.connect(_on_review_lang_changed)
 
     # Feed live mic level into the overlay waveform — only runs while
     # recording so idle CPU stays near zero.

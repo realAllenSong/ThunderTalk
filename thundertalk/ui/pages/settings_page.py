@@ -521,6 +521,7 @@ class SettingsPage(QWidget):
     def showEvent(self, event) -> None:
         super().showEvent(event)
         self._refresh_mic_list()
+        self._refresh_review_warning()
 
     def _on_mic_changed(self, idx: int) -> None:
         self._settings.set("microphone", "auto" if idx == 0 else self._mic_combo.currentText())
@@ -666,6 +667,20 @@ class SettingsPage(QWidget):
         self._translation_mode_caption.setWordWrap(True)
         cl.addWidget(self._translation_mode_caption)
 
+        # Warning shown when Review mode is selected but no ASR model is
+        # active — Review needs Qwen3-ASR / SenseVoice to produce the
+        # original-language text first.
+        self._translation_review_warning = QLabel(
+            t("settings.translation.review_needs_asr")
+        )
+        self._translation_review_warning.setStyleSheet(
+            f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
+            " padding: 4px 0;"
+        )
+        self._translation_review_warning.setWordWrap(True)
+        self._translation_review_warning.hide()
+        cl.addWidget(self._translation_review_warning)
+
         # ── Target row ──
         target_row, target_label = theme.setting_row(
             t("settings.translation.target"),
@@ -696,6 +711,8 @@ class SettingsPage(QWidget):
         ly.addWidget(card)
         ly.addStretch()
         self._add_page(page)
+        # Initial visibility check (mode may already be Review with no ASR)
+        self._refresh_review_warning()
 
     def _on_translation_target_changed(self, idx: int) -> None:
         code = self._translation_combo.itemData(idx)
@@ -709,6 +726,19 @@ class SettingsPage(QWidget):
         if not code:
             return
         self._settings.set("translation_mode", code)
+        self._refresh_review_warning()
+
+    def _refresh_review_warning(self) -> None:
+        """Show the 'Review needs an ASR model' warning when applicable.
+        Called on init, on mode change, and on every showEvent (so re-opening
+        Settings after activating an ASR model clears the warning)."""
+        if not hasattr(self, "_translation_review_warning"):
+            return
+        mode = self._settings.translation_mode
+        active_id = self._settings.active_model_id
+        is_asr_active = bool(active_id) and not active_id.startswith("seamless")
+        needs_warn = (mode == "review") and not is_asr_active
+        self._translation_review_warning.setVisible(needs_warn)
 
     # ── General tab ──
 
