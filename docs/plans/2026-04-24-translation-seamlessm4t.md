@@ -328,10 +328,10 @@ class TranslationEngine:
 
         t0 = time.perf_counter()
         # Processor expects sr=16000 raw audio.
-        # Note: transformers 5.x renamed `audios=` to `audio=`. Pin
-        # transformers<6.0 to keep this signature stable.
+        # NOTE: keyword is `audio=` (singular). transformers <=4.x accepted
+        # `audios=` (plural) but 5.x deprecated it with a hard error.
         inputs = self._processor(
-            audios=samples,
+            audio=samples,
             sampling_rate=sample_rate,
             return_tensors="pt",
         ).to(self._device, self._dtype)
