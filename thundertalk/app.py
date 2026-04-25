@@ -57,6 +57,39 @@ class AsrWorker(QThread):
             self.error.emit(str(e))
 
 
+class TranslationWorker(QThread):
+    """Runs SeamlessM4T translation off the main thread.
+
+    Emits the same `done` signature as AsrWorker so the existing
+    _on_asr_done handler can consume either result type without
+    changes. The 'backend' field is reused to carry an identifier
+    like 'seamless-torch:eng' for logging.
+    """
+
+    done = Signal(str, int, float, str, float)  # text, ms, dur, backend, rtf
+    error = Signal(str)
+
+    def __init__(self, engine, samples: np.ndarray, tgt_lang: str) -> None:
+        super().__init__()
+        self._engine = engine
+        self._samples = samples
+        self._tgt_lang = tgt_lang
+
+    def run(self) -> None:
+        try:
+            result = self._engine.translate(self._samples, self._tgt_lang)
+            rtf = (result.inference_ms / 1000.0) / result.duration_secs \
+                if result.duration_secs > 0 else 0.0
+            backend = f"seamless-torch:{result.tgt_lang}"
+            self.done.emit(
+                result.text, result.inference_ms, result.duration_secs,
+                backend, rtf,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            self.error.emit(str(e))
+
+
 class ModelLoadWorker(QThread):
     """Loads an ASR model off the main thread."""
 
@@ -92,13 +125,27 @@ class Pipeline(QObject):
         mic = settings.microphone
         self.recorder = AudioRecorder()
         self.asr = AsrEngine()
+        self.translator = None  # lazy-instantiated TranslationEngine
         self._recording = False
-        self._worker: AsrWorker | None = None
+        self._worker: AsrWorker | TranslationWorker | None = None
         self._load_worker: ModelLoadWorker | None = None
         self._mic_device = None if mic == "auto" else mic
 
     def toggle(self) -> None:
         self.toggle_signal.emit()
+
+    def get_translator(self):
+        """Return the TranslationEngine, creating it lazily on first call.
+
+        We do not import translate.py at module top because it transitively
+        triggers torch/transformers imports the moment its lazy load_model()
+        is called. The class itself is light, so it's OK to construct here
+        — the heavy imports happen inside load_model().
+        """
+        if self.translator is None:
+            from thundertalk.core.translate import TranslationEngine
+            self.translator = TranslationEngine()
+        return self.translator
 
 
 def main() -> None:
@@ -293,6 +340,23 @@ def main() -> None:
                     overlay.show_error("Too short")
                     return
 
+                tgt = settings.get("translation_target")
+                if tgt and tgt != "off":
+                    translator = pipe.get_translator()
+                    if not translator.is_loaded:
+                        print(f"[Toggle] Translation target {tgt!r} but model not loaded")
+                        overlay.show_error("Translation model not loaded")
+                        return
+                    print(f"[Toggle] Starting translation → {tgt} on {len(samples)} samples")
+                    worker = TranslationWorker(translator, samples, tgt)
+                    worker.done.connect(_on_asr_done)
+                    worker.error.connect(_on_asr_error)
+                    worker.finished.connect(_clear_asr_worker)
+                    pipe._worker = worker
+                    worker.start()
+                    return
+
+                # Existing ASR path, unchanged
                 if not pipe.asr.is_loaded:
                     print("[Toggle] No model (audio already restored on stop)")
                     overlay.show_error("No model loaded")
