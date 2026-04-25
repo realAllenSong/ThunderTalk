@@ -193,7 +193,8 @@ class VariantRow(QFrame):
         if self._loading:
             return
         downloaded = is_downloaded(self.info.id)
-        is_active = active_id == self.info.id or translator_active == self.info.id
+        is_asr_active = active_id == self.info.id
+        is_translator_active = translator_active == self.info.id
 
         if not self._compatible:
             plat = "Apple Silicon" if self.info.platform == "apple-silicon" else "NVIDIA GPU"
@@ -203,7 +204,16 @@ class VariantRow(QFrame):
                 f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-size: 10px; }}"
             )
             self._btn.setEnabled(False)
-        elif is_active:
+        elif is_translator_active:
+            # SeamlessM4T loaded into the TranslationEngine; visually distinct
+            # from the ASR Active badge so both engines can co-exist clearly.
+            self._btn.setText("✓ Translator")
+            self._btn.setStyleSheet(
+                f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.ACCENT_ORANGE};"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
+            )
+            self._btn.setEnabled(False)
+        elif is_asr_active:
             self._btn.setText("✓ Active")
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.SUCCESS};"
