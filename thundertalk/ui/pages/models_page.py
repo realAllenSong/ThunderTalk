@@ -137,10 +137,9 @@ class TranslationModeCard(QFrame):
         self._settings = settings
         self.setStyleSheet(
             f"QFrame#translationModeCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
+            "  border: none; border-radius: 10px; }"
         )
         self.setObjectName("translationModeCard")
-        self.setGraphicsEffect(theme.auto_shadow())
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(20, 14, 20, 14)
@@ -317,16 +316,18 @@ class VariantRow(QFrame):
         self._compatible = compatible
         self._loading = False
 
+        # Subtle row: transparent by default, slight bg tint on hover.
+        # No border — the row reads as a list item, not a card.
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 10px; }}"
-            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
+            "QFrame { background: transparent; border: none;"
+            " border-radius: 8px; }"
+            "QFrame:hover { background: rgba(255, 255, 255, 0.03); }"
         )
-        self.setMinimumHeight(52)
+        self.setMinimumHeight(48)
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(14, 10, 14, 10)
-        row.setSpacing(10)
+        row.setContentsMargins(0, 8, 0, 8)
+        row.setSpacing(12)
 
         # Variant name
         vlabel = QLabel(info.variant)
@@ -477,7 +478,13 @@ class VariantRow(QFrame):
 # ---------------------------------------------------------------------------
 
 class FamilyCard(QFrame):
-    """Card for one model family containing variant rows."""
+    """Flat group for one model family — header + variant rows.
+
+    No card frame: the family lives inline in the page, layered only
+    through internal spacing. Visual separation between families comes
+    from the parent ModelsPage which puts a hairline divider between
+    them.
+    """
 
     activate_clicked = Signal(str, str, str, str)
     download_clicked = Signal(str)
@@ -493,45 +500,36 @@ class FamilyCard(QFrame):
         self._accent = _FAMILY_COLORS.get(family, theme.ACCENT_BLUE)
         self._rows: dict[str, VariantRow] = {}
 
-        self.setStyleSheet(
-            f"QFrame#familyCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
-        )
-        self.setGraphicsEffect(theme.auto_shadow())
-        self.setObjectName("familyCard")
+        # Transparent — no card chrome.
+        self.setStyleSheet("background: transparent; border: none;")
 
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 18, 20, 18)
-        layout.setSpacing(10)
+        layout.setContentsMargins(0, 0, 0, 0)
+        layout.setSpacing(8)
 
-        # Header: name + family pill + metadata
+        # Header row: name + metadata (no family pill, no left accent bar)
         first = variants[0]
-        top = QHBoxLayout()
-        top.setSpacing(10)
+        head = QVBoxLayout()
+        head.setSpacing(2)
+
         name = QLabel(first.name)
         name.setFont(theme.font(15, bold=True))
-        name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        top.addWidget(name)
-
-        pill = QLabel(family)
-        pill.setStyleSheet(
-            f"color: {self._accent}; font-size: 10px;"
-            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 8px; padding: 2px 10px;"
+        name.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none;"
         )
-        top.addWidget(pill)
-        top.addStretch()
-        layout.addLayout(top)
+        head.addWidget(name)
 
-        # Metadata line
         stars = "★" * first.accuracy_stars + "☆" * (5 - first.accuracy_stars)
-        meta_parts = [f"{first.language_count} languages"]
+        meta_parts = [stars, f"{first.language_count} languages"]
         if any(v.hotword_support for v in variants):
             meta_parts.append("Hotwords")
-        meta_parts.append(f"{len(variants)} variants available")
-        meta = QLabel(f"{stars}   {'  ·  '.join(meta_parts)}")
-        meta.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
-        layout.addWidget(meta)
+        meta = QLabel("  ·  ".join(meta_parts))
+        meta.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " background: transparent; border: none;"
+        )
+        head.addWidget(meta)
+        layout.addLayout(head)
 
         layout.addSpacing(4)
 
@@ -544,21 +542,6 @@ class FamilyCard(QFrame):
             row.download_clicked.connect(self.download_clicked)
             layout.addWidget(row)
             self._rows[v.id] = row
-
-    def paintEvent(self, ev) -> None:
-        super().paintEvent(ev)
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Left accent bar
-        grad = QLinearGradient(1, 12, 1, 60)
-        grad.setColorAt(0, QColor(self._accent))
-        grad.setColorAt(1, QColor(0, 0, 0, 0))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(grad)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(1, 10, 3, 50), 1.5, 1.5)
-        p.drawPath(path)
-        p.end()
 
     def get_row(self, model_id: str) -> Optional[VariantRow]:
         return self._rows.get(model_id)
@@ -607,16 +590,15 @@ class ModelsPage(QWidget):
         self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         self._layout.addWidget(self._heading)
 
-        # Hardware info card
+        # Hardware info — flat, no card chrome
         hw_card = QFrame()
         hw_card.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
+            "  border: none; border-radius: 10px; }"
         )
-        hw_card.setGraphicsEffect(theme.auto_shadow())
         hw_ly = QHBoxLayout(hw_card)
-        hw_ly.setContentsMargins(20, 16, 20, 16)
-        hw_ly.setSpacing(14)
+        hw_ly.setContentsMargins(16, 12, 16, 12)
+        hw_ly.setSpacing(12)
         self._hw_icon = _DeviceIcon("mac")
         hw_ly.addWidget(self._hw_icon)
         self._hw_label = QLabel("Detecting hardware...")
@@ -644,15 +626,79 @@ class ModelsPage(QWidget):
         self._error_label.hide()
         self._layout.addWidget(self._error_label)
 
-        # Build family cards
-        for family, variants in get_families().items():
-            card = FamilyCard(family, variants, self._active_model)
-            card.activate_clicked.connect(self._on_activate)
-            card.download_clicked.connect(self._on_download)
-            self._layout.addWidget(card)
-            self._family_cards[family] = card
+        # Group families: ASR engines together, translator separately.
+        all_families = get_families()
+        asr_families = {
+            f: v for f, v in all_families.items()
+            if not any(x.backend == "seamless-torch" for x in v)
+        }
+        translator_families = {
+            f: v for f, v in all_families.items()
+            if any(x.backend == "seamless-torch" for x in v)
+        }
+
+        if asr_families:
+            self._layout.addSpacing(4)
+            self._layout.addWidget(self._make_section_header(
+                "ASR Engines",
+                "Speech-to-text recognition. Pick one as your active engine.",
+            ))
+            for i, (family, variants) in enumerate(asr_families.items()):
+                if i > 0:
+                    self._layout.addWidget(self._make_hairline_divider())
+                card = FamilyCard(family, variants, self._active_model)
+                card.activate_clicked.connect(self._on_activate)
+                card.download_clicked.connect(self._on_download)
+                self._layout.addWidget(card)
+                self._family_cards[family] = card
+
+        if translator_families:
+            self._layout.addSpacing(28)
+            self._layout.addWidget(self._make_section_header(
+                "Translator",
+                "Speech / text translation. Auto-loaded when Translation mode is enabled.",
+            ))
+            for family, variants in translator_families.items():
+                card = FamilyCard(family, variants, self._active_model)
+                card.activate_clicked.connect(self._on_activate)
+                card.download_clicked.connect(self._on_download)
+                self._layout.addWidget(card)
+                self._family_cards[family] = card
 
         self._layout.addStretch()
+
+    def _make_section_header(self, title: str, subtitle: str = "") -> QWidget:
+        """Compact section header — uppercase title + optional caption."""
+        wrap = QWidget()
+        wrap.setStyleSheet("background: transparent;")
+        ly = QVBoxLayout(wrap)
+        ly.setContentsMargins(0, 0, 0, 4)
+        ly.setSpacing(2)
+
+        title_lbl = QLabel(title.upper())
+        title_lbl.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 11px;"
+            " font-weight: 700; letter-spacing: 1.2px;"
+            " background: transparent; border: none;"
+        )
+        ly.addWidget(title_lbl)
+
+        if subtitle:
+            sub = QLabel(subtitle)
+            sub.setStyleSheet(
+                f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+                " background: transparent; border: none;"
+            )
+            sub.setWordWrap(True)
+            ly.addWidget(sub)
+        return wrap
+
+    def _make_hairline_divider(self) -> QWidget:
+        """1px ultra-faint line between groupings."""
+        line = QWidget()
+        line.setFixedHeight(1)
+        line.setStyleSheet("background: rgba(255, 255, 255, 0.04);")
+        return line
 
         self._detect_hw()
 

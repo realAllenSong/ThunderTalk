@@ -301,6 +301,12 @@ class SettingsPage(QWidget):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         self._settings = settings
+        # Section title labels we control so retranslate() can update them
+        # if the UI language switches at runtime.
+        self._section_titles: list[tuple[QLabel, str]] = []
+        # Track which section corresponds to which content widget so we can
+        # show/hide them as a single scrollable list (no tabs).
+        self._sections: list[tuple[QLabel, QWidget]] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 28, 32, 20)
@@ -310,51 +316,53 @@ class SettingsPage(QWidget):
         self._heading.setFont(theme.font_heading(20))
         self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         root.addWidget(self._heading)
-        root.addSpacing(16)
-
-        # ── Segment tab bar (centered) ──
-        tab_container = QHBoxLayout()
-        tab_container.setContentsMargins(0, 0, 0, 0)
-        tab_container.addStretch()
-
-        self._tabs = QTabBar()
-        self._tabs.setExpanding(False)
-        self._tabs.setDrawBase(False)
-        self._tabs.setStyleSheet(theme.segment_tab_qss())
-        for name in (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                     t("settings.tab_transcription"), t("settings.tab_general")):
-            self._tabs.addTab(name)
-        tab_container.addWidget(self._tabs)
-        tab_container.addStretch()
-        root.addLayout(tab_container)
         root.addSpacing(20)
 
-        self._pages: list[QWidget] = []
-        self._stack_area = QVBoxLayout()
-        root.addLayout(self._stack_area, stretch=1)
-
-        self._build_hotkey_tab()
-        self._build_audio_tab()
-        self._build_transcription_tab()
-        self._build_general_tab()
-
-        for i, page in enumerate(self._pages):
-            page.setVisible(i == 0)
-        self._tabs.currentChanged.connect(self._switch_tab)
-
-        i18n_bus.language_changed.connect(self.retranslate)
-
-    def _switch_tab(self, idx: int) -> None:
-        for i, page in enumerate(self._pages):
-            page.setVisible(i == idx)
-
-    def _add_page(self, widget: QWidget) -> None:
+        # Single scroll area — all settings live in one flat list.
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        scroll.setWidget(widget)
-        self._stack_area.addWidget(scroll)
-        self._pages.append(scroll)
+        root.addWidget(scroll, stretch=1)
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        self._stack_area = QVBoxLayout(container)
+        self._stack_area.setContentsMargins(0, 0, 0, 0)
+        self._stack_area.setSpacing(28)
+        scroll.setWidget(container)
+
+        self._next_section_title_key = "settings.tab_hotkey"
+        self._build_hotkey_tab()
+        self._next_section_title_key = "settings.tab_audio"
+        self._build_audio_tab()
+        self._next_section_title_key = "settings.tab_transcription"
+        self._build_transcription_tab()
+        self._next_section_title_key = "settings.tab_general"
+        self._build_general_tab()
+
+        self._stack_area.addStretch()
+
+        i18n_bus.language_changed.connect(self.retranslate)
+
+    def _add_page(self, widget: QWidget) -> None:
+        """Append `widget` as a section beneath an uppercase title header.
+
+        The "tab" name (e.g. settings.tab_hotkey) is now used as the
+        section heading. Tab bar removed — everything stacks vertically
+        in one scrollable list.
+        """
+        title_key = self._next_section_title_key
+        title_lbl = QLabel(t(title_key).upper())
+        title_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " font-weight: 700; letter-spacing: 1.4px;"
+            " background: transparent; border: none;"
+            " padding-bottom: 8px;"
+        )
+        self._section_titles.append((title_lbl, title_key))
+        self._stack_area.addWidget(title_lbl)
+        self._stack_area.addWidget(widget)
+        self._sections.append((title_lbl, widget))
 
     # ── Hotkey tab ──
 
@@ -698,10 +706,8 @@ class SettingsPage(QWidget):
 
     def retranslate(self) -> None:
         self._heading.setText(t("settings.title"))
-        tabs = (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                t("settings.tab_transcription"), t("settings.tab_general"))
-        for i, name in enumerate(tabs):
-            self._tabs.setTabText(i, name)
+        for label, key in self._section_titles:
+            label.setText(t(key).upper())
         self._ui_lang_label.setText(t("settings.language"))
 
     def _open_log_dir(self) -> None:
