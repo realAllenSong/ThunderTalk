@@ -18,6 +18,14 @@ dependencies = [
 mlx = [
     "mlx-qwen3-asr>=0.3",
 ]
+translation = [
+    "torch>=2.4",
+    "transformers>=4.40,<6.0",
+    "sentencepiece>=0.2",
+    "tiktoken>=0.7",
+    "protobuf>=4.25",
+    "soundfile>=0.12",
+]
 
 [project.scripts]
 thundertalk = "thundertalk.app:main"
