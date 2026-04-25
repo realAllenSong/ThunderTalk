@@ -101,6 +101,19 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "settings.translation.target": {"en": "Translate to", "zh": "翻译为"},
     "settings.translation.off": {"en": "Off (pure transcription)", "zh": "关闭（纯转录）"},
+    "settings.translation.mode": {"en": "Mode", "zh": "模式"},
+    "settings.translation.mode_direct": {
+        "en": "Direct (replace text)",
+        "zh": "直接（替换文本）",
+    },
+    "settings.translation.mode_review": {
+        "en": "Review (popup confirm)",
+        "zh": "确认（弹窗预览）",
+    },
+    "settings.translation.mode_desc": {
+        "en": "Direct: replaces text immediately. Review: pastes original first, shows a popup with the translation; click Replace to swap.",
+        "zh": "直接：直接替换文字。确认：先粘贴原文，弹窗显示译文；点击「替换」可切换到译文。",
+    },
 
     # ── Translation Review popup ────────────────────────────────────
     "review.title": {"en": "Translation: {lang}", "zh": "翻译为：{lang}"},

@@ -627,6 +627,46 @@ class SettingsPage(QWidget):
 
         cl.addWidget(theme.separator())
 
+        # ── Mode row ──
+        mode_row, mode_label = theme.setting_row(
+            t("settings.translation.mode"),
+            "",
+        )
+        self._translation_mode_label = mode_label
+
+        self._translation_mode_combo = QComboBox()
+        self._translation_mode_combo.setFixedWidth(220)
+        self._translation_mode_combo.setStyleSheet(theme.COMBO_QSS)
+        self._translation_mode_combo.addItem(
+            t("settings.translation.mode_direct"), "direct"
+        )
+        self._translation_mode_combo.addItem(
+            t("settings.translation.mode_review"), "review"
+        )
+
+        # Restore current selection
+        current_mode = self._settings.translation_mode
+        for i in range(self._translation_mode_combo.count()):
+            if self._translation_mode_combo.itemData(i) == current_mode:
+                self._translation_mode_combo.setCurrentIndex(i)
+                break
+
+        self._translation_mode_combo.currentIndexChanged.connect(
+            self._on_translation_mode_changed
+        )
+        mode_row.addWidget(self._translation_mode_combo)
+        cl.addLayout(mode_row)
+
+        # Mode caption (small, multi-line)
+        self._translation_mode_caption = QLabel(t("settings.translation.mode_desc"))
+        self._translation_mode_caption.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
+            f" padding-left: 0px;"
+        )
+        self._translation_mode_caption.setWordWrap(True)
+        cl.addWidget(self._translation_mode_caption)
+
+        # ── Target row ──
         target_row, target_label = theme.setting_row(
             t("settings.translation.target"),
             "",
@@ -663,6 +703,12 @@ class SettingsPage(QWidget):
             return
         self._settings.set("translation_target", code)
         self.translation_target_changed.emit(code)
+
+    def _on_translation_mode_changed(self, idx: int) -> None:
+        code = self._translation_mode_combo.itemData(idx)
+        if not code:
+            return
+        self._settings.set("translation_mode", code)
 
     # ── General tab ──
 
@@ -798,6 +844,12 @@ class SettingsPage(QWidget):
         # native-language labels and shouldn't change with UI language).
         if self._translation_combo.count() > 0:
             self._translation_combo.setItemText(0, t("settings.translation.off"))
+        # Mode combo
+        self._translation_mode_label.setText(t("settings.translation.mode"))
+        self._translation_mode_caption.setText(t("settings.translation.mode_desc"))
+        if self._translation_mode_combo.count() >= 2:
+            self._translation_mode_combo.setItemText(0, t("settings.translation.mode_direct"))
+            self._translation_mode_combo.setItemText(1, t("settings.translation.mode_review"))
 
     def _open_log_dir(self) -> None:
         log_dir = Path.home() / ".thundertalk"
