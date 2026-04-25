@@ -93,6 +93,14 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.tab_hotkey": {"en": "Hotkey", "zh": "快捷键"},
     "settings.tab_audio": {"en": "Audio", "zh": "音频"},
     "settings.tab_advanced": {"en": "Advanced", "zh": "高级"},
+    "settings.tab_translation": {"en": "Translation", "zh": "翻译"},
+    "settings.translation.title": {"en": "Speech Translation", "zh": "语音翻译"},
+    "settings.translation.desc": {
+        "en": "Speak in any supported language; output text is translated to your target language. Requires SeamlessM4T v2 model.",
+        "zh": "用任何支持的语言说话，输出文本会翻译为目标语言。需要下载 SeamlessM4T v2 模型。",
+    },
+    "settings.translation.target": {"en": "Translate to", "zh": "翻译为"},
+    "settings.translation.off": {"en": "Off (pure transcription)", "zh": "关闭（纯转录）"},
 
     "settings.language": {"en": "Language", "zh": "语言"},
     "settings.language_desc": {

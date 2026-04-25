@@ -35,6 +35,25 @@ if TYPE_CHECKING:
     from thundertalk.core.settings import Settings
 
 
+# Curated SeamlessM4T v2 target languages (ISO-639-3).
+# Korean (kor) intentionally excluded — model produces malformed output
+# for that target (see spike notes in docs/plans/2026-04-24-translation-seamlessm4t.md).
+TRANSLATION_TARGETS: list[tuple[str, str]] = [
+    ("off", "off"),  # display text fetched via i18n at runtime
+    ("eng", "English"),
+    ("cmn", "中文 (Chinese)"),
+    ("jpn", "日本語 (Japanese)"),
+    ("spa", "Español (Spanish)"),
+    ("fra", "Français (French)"),
+    ("deu", "Deutsch (German)"),
+    ("por", "Português (Portuguese)"),
+    ("rus", "Русский (Russian)"),
+    ("ita", "Italiano (Italian)"),
+    ("arb", "العربية (Arabic)"),
+    ("hin", "हिन्दी (Hindi)"),
+]
+
+
 # ── Hotkey Capture Widget ───────────────────────────────────────────────
 
 class HotkeyCapture(QWidget):
@@ -296,6 +315,7 @@ class SettingsPage(QWidget):
     settings_changed = Signal()
     capture_started = Signal()
     capture_ended = Signal()
+    translation_target_changed = Signal(str)   # NEW
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
@@ -321,7 +341,8 @@ class SettingsPage(QWidget):
         self._tabs.setDrawBase(False)
         self._tabs.setStyleSheet(theme.segment_tab_qss())
         for name in (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                     t("settings.tab_transcription"), t("settings.tab_general")):
+                     t("settings.tab_transcription"),
+                     t("settings.tab_translation"), t("settings.tab_general")):
             self._tabs.addTab(name)
         tab_container.addWidget(self._tabs)
         tab_container.addStretch()
@@ -335,6 +356,7 @@ class SettingsPage(QWidget):
         self._build_hotkey_tab()
         self._build_audio_tab()
         self._build_transcription_tab()
+        self._build_translation_tab()
         self._build_general_tab()
 
         for i, page in enumerate(self._pages):
@@ -576,6 +598,72 @@ class SettingsPage(QWidget):
         ly.addStretch()
         self._add_page(page)
 
+    # ── Translation tab ──
+
+    def _build_translation_tab(self) -> None:
+        page = QWidget()
+        ly = QVBoxLayout(page)
+        ly.setContentsMargins(0, 0, 0, 0)
+        ly.setSpacing(16)
+
+        card = theme.make_card()
+        cl = QVBoxLayout(card)
+        cl.setContentsMargins(20, 18, 20, 18)
+        cl.setSpacing(12)
+
+        self._translation_section_label = QLabel(t("settings.translation.title"))
+        self._translation_section_label.setFont(theme.font(14, bold=True))
+        self._translation_section_label.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; border: none;"
+        )
+        cl.addWidget(self._translation_section_label)
+
+        self._translation_desc_label = QLabel(t("settings.translation.desc"))
+        self._translation_desc_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;"
+        )
+        self._translation_desc_label.setWordWrap(True)
+        cl.addWidget(self._translation_desc_label)
+
+        cl.addWidget(theme.separator())
+
+        target_row, target_label = theme.setting_row(
+            t("settings.translation.target"),
+            "",
+        )
+        self._translation_target_label = target_label
+
+        self._translation_combo = QComboBox()
+        self._translation_combo.setFixedWidth(220)
+        self._translation_combo.setStyleSheet(theme.COMBO_QSS)
+        for code, display in TRANSLATION_TARGETS:
+            label = t("settings.translation.off") if code == "off" else display
+            self._translation_combo.addItem(label, code)
+
+        # Restore current selection
+        current = self._settings.translation_target
+        for i in range(self._translation_combo.count()):
+            if self._translation_combo.itemData(i) == current:
+                self._translation_combo.setCurrentIndex(i)
+                break
+
+        self._translation_combo.currentIndexChanged.connect(
+            self._on_translation_target_changed
+        )
+        target_row.addWidget(self._translation_combo)
+        cl.addLayout(target_row)
+
+        ly.addWidget(card)
+        ly.addStretch()
+        self._add_page(page)
+
+    def _on_translation_target_changed(self, idx: int) -> None:
+        code = self._translation_combo.itemData(idx)
+        if not code:
+            return
+        self._settings.set("translation_target", code)
+        self.translation_target_changed.emit(code)
+
     # ── General tab ──
 
     def _build_general_tab(self) -> None:
@@ -698,10 +786,18 @@ class SettingsPage(QWidget):
     def retranslate(self) -> None:
         self._heading.setText(t("settings.title"))
         tabs = (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                t("settings.tab_transcription"), t("settings.tab_general"))
+                t("settings.tab_transcription"),
+                t("settings.tab_translation"), t("settings.tab_general"))
         for i, name in enumerate(tabs):
             self._tabs.setTabText(i, name)
         self._ui_lang_label.setText(t("settings.language"))
+        self._translation_section_label.setText(t("settings.translation.title"))
+        self._translation_desc_label.setText(t("settings.translation.desc"))
+        self._translation_target_label.setText(t("settings.translation.target"))
+        # Re-translate the "Off" entry in the combo (other entries are
+        # native-language labels and shouldn't change with UI language).
+        if self._translation_combo.count() > 0:
+            self._translation_combo.setItemText(0, t("settings.translation.off"))
 
     def _open_log_dir(self) -> None:
         log_dir = Path.home() / ".thundertalk"
