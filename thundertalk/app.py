@@ -235,6 +235,17 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("ThunderTalk")
 
+    # PyQtDarkTheme: handles native widgets we don't custom-style
+    # (QScrollBar, QMenu, QToolTip, QMessageBox, QDialog, etc.). Our own
+    # APP_QSS on MainWindow takes precedence for the things we DO style.
+    # This is a graceful degradation — if the package isn't installed
+    # (older venv) we just skip it.
+    try:
+        import qdarktheme
+        app.setStyleSheet(qdarktheme.load_stylesheet("dark"))
+    except Exception as e:
+        print(f"[Theme] qdarktheme not available: {e}")
+
     from thundertalk.ui.tray import app_icon
     app.setWindowIcon(app_icon())
 
@@ -685,50 +696,40 @@ def main() -> None:
     def _maybe_load_translator() -> None:
         """Load SeamlessM4T into RAM if target language is set AND model is on disk.
 
-        Updates the inline translator-status row inside the TranslationModeCard
-        with one of: hidden / missing / loading / ready / error so the user
-        can see what's happening without guessing from spinners.
+        Skips if target == 'off' or model missing. Runs the heavy load on a
+        background thread so app startup / settings changes never block the UI.
         """
         tgt = settings.get("translation_target")
         if not tgt or tgt == "off":
-            window.models_page.set_translator_status("hidden")
             return
-
         from thundertalk.core.models import is_downloaded, get_model_path
         if not is_downloaded("seamless-m4t-v2-large"):
-            print("[Translate] Target set but model not downloaded")
-            window.models_page.set_translator_status("missing")
+            print("[Translate] Target set but model not downloaded; skipping load")
             return
-
         translator = pipe.get_translator()
         if translator.is_loaded:
-            window.models_page.set_translator_status("ready")
             return
         if pipe._translator_loading:
-            window.models_page.set_translator_status("loading")
+            # Another load is already in flight; skip.
             return
 
         model_path = get_model_path("seamless-m4t-v2-large")
         if not model_path:
-            window.models_page.set_translator_status("missing")
             return
 
         pipe._translator_loading = True
-        # Visible spinner on the SeamlessM4T card AND a status pill at the
-        # top so users understand the ~10s torch+MPS load isn't a stuck UI.
+        # Visible spinner on the SeamlessM4T card so users understand
+        # the ~10s torch+MPS load isn't a stuck UI.
         window.models_page.set_loading("seamless-m4t-v2-large", True)
-        window.models_page.set_translator_status("loading")
 
         def _on_done() -> None:
             pipe._translator_loading = False
             window.models_page.set_loading("seamless-m4t-v2-large", False)
             window.models_page.set_translator_active("seamless-m4t-v2-large")
-            window.models_page.set_translator_status("ready")
 
         def _on_fail() -> None:
             pipe._translator_loading = False
             window.models_page.set_loading("seamless-m4t-v2-large", False)
-            window.models_page.set_translator_status("error")
 
         def _load() -> None:
             try:
@@ -750,35 +751,6 @@ def main() -> None:
     )
     window.models_page.translation_mode_changed.connect(
         lambda _mode: _maybe_load_translator()
-    )
-
-    # User clicked the "Download" button on the translator-status row
-    # (only visible when target ≠ off and model is missing on disk).
-    def _on_download_translator_requested() -> None:
-        from thundertalk.core.models import BUILTIN_MODELS, is_downloaded
-        if is_downloaded("seamless-m4t-v2-large"):
-            # Already on disk — kick the loader instead.
-            _maybe_load_translator()
-            return
-        info = next(m for m in BUILTIN_MODELS if m.id == "seamless-m4t-v2-large")
-        # Reuse the Models-page download path so we get progress + completion.
-        window.models_page._on_download(info.id)
-        window.models_page.set_translator_status(
-            "loading", "Downloading translation model… this can take a while."
-        )
-
-    window.models_page.download_translator_requested.connect(
-        _on_download_translator_requested
-    )
-
-    # When the SeamlessM4T download finishes, auto-load it into the
-    # translator engine so the user doesn't need to know to click Activate.
-    def _on_model_download_completed(model_id: str) -> None:
-        if model_id == "seamless-m4t-v2-large":
-            _maybe_load_translator()
-
-    window.models_page.model_download_completed.connect(
-        _on_model_download_completed
     )
 
     # --- Tray ----------------------------------------------------------

@@ -22,36 +22,26 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLay
 # Dark palette inspired by Linear / Raycast / macOS-native — strong layer
 # differentiation through background tints rather than visible borders.
 
-# Translucent surfaces designed to sit on top of NSVisualEffectView
-# (real macOS blur). The window itself is "transparent" — Qt paints
-# nothing — and the cards use rgba so the blur shows through.
-#
-# Qt's QSS parser accepts rgba() with alpha as 0-1.0 float (the CSS
-# form). The integer-alpha form fails silently with "Could not parse
-# stylesheet" warnings, so always use the float form here.
-BG_DEEPEST    = "transparent"
-BG_BASE       = "transparent"                # window — NSVisualEffectView paints
-BG_SIDEBAR    = "transparent"                # sidebar — same
-BG_SURFACE    = "transparent"                # main content area
-BG_CARD       = "rgba(20, 20, 22, 0.55)"     # smoked-glass card
-BG_CARD_HOVER = "rgba(28, 28, 30, 0.65)"     # slight darken on hover
-BG_ELEVATED   = "rgba(34, 34, 38, 0.78)"     # painted interactive surfaces
-                                              # (ToggleSwitch track, HotkeyCapture)
-BG_INPUT      = "rgba(0, 0, 0, 0.35)"        # gentle wash for inputs
+# Background layers (each ~6% lighter than the one below it)
+BG_DEEPEST    = "#08080a"   # frame / behind everything
+BG_BASE       = "#0a0a0c"   # window background
+BG_SIDEBAR    = "#0f0f11"   # nav sidebar
+BG_SURFACE    = "#16161a"   # main content area
+BG_CARD       = "#1c1c20"   # cards / panels
+BG_CARD_HOVER = "#232328"   # card hover
+BG_ELEVATED   = "#2a2a30"   # raised controls (inputs, combos)
+BG_INPUT      = "#16161a"   # input fields (matches surface — subtle)
 
-# Borders — translucent white to act as the glass-rim highlight that
-# macOS HUD / Control Center cards have. On a frosted bg, an opaque
-# dark border looks dirty; a faint white edge reads as glass.
-BORDER_SUBTLE  = "rgba(255, 255, 255, 0.07)"  # grouping only
-BORDER_DEFAULT = "rgba(255, 255, 255, 0.13)"  # default card edge
-BORDER_STRONG  = "rgba(255, 255, 255, 0.25)"  # focus / active
+# Borders — used SPARINGLY. Most layering should come from BG tints.
+BORDER_SUBTLE  = "#1f1f23"   # almost invisible — for grouping only
+BORDER_DEFAULT = "#2a2a32"   # visible on hover
+BORDER_STRONG  = "#3a3a44"   # focus / active states
 
-# Text hierarchy — bumped to pure white for primary so contrast stays
-# readable on a translucent backdrop. Body / muted lift in tandem.
-TEXT_PRIMARY   = "#ffffff"   # high-contrast headings, primary content
-TEXT_SECONDARY = "#d4d4d8"   # body text
-TEXT_MUTED     = "#9c9ca5"   # captions, metadata
-TEXT_SUBTLE    = "#6c6c75"   # disabled, hints
+# Text hierarchy
+TEXT_PRIMARY   = "#f5f5f7"   # high-contrast headings, primary content
+TEXT_SECONDARY = "#b8b8be"   # body text
+TEXT_MUTED     = "#7d7d85"   # captions, metadata
+TEXT_SUBTLE    = "#5a5a62"   # disabled, hints
 
 # Brand accent — orange. Used SPARINGLY: active state, primary CTA only.
 ACCENT_ORANGE        = "#f97316"
@@ -105,23 +95,8 @@ def font_heading(size: int = 17) -> QFont:
 
 APP_QSS = f"""
 QMainWindow {{ background: {BG_BASE}; }}
-/* The QMainWindow's central QWidget would otherwise paint macOS
-   native gray on top of the NSVisualEffectView. Force transparent. */
-QMainWindow > QWidget {{ background: transparent; }}
 
-/* Pages inside the QStackedWidget — direct child QWidgets that Qt
-   otherwise paints with the macOS native window tint. Setting
-   transparent here lets the window-level NSVisualEffectView blur
-   show through every page's empty area. */
-QStackedWidget {{ background: {BG_BASE}; }}
-QStackedWidget > QWidget {{ background: {BG_BASE}; }}
-
-/* QScrollArea's viewport is a separate QWidget — styling QScrollArea
-   alone leaves the viewport painting its native gray. The ">QWidget"
-   here matches the viewport (the only direct QWidget child of a
-   QScrollArea). */
 QScrollArea {{ border: none; background: transparent; }}
-QScrollArea > QWidget {{ background: {BG_BASE}; }}
 QScrollBar:vertical {{
     background: transparent; width: 6px; margin: 0;
 }}
@@ -143,21 +118,26 @@ QToolTip {{
 # ── Reusable Card Frame ─────────────────────────────────────────────────
 
 CARD_QSS = (
-    f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_DEFAULT};"
+    f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE};"
     " border-radius: 12px; }"
 )
 
 
-def auto_shadow():
-    """No-op for the flat pure-black design; kept so existing call sites
-    don't need to be hunted down. Returning None means setGraphicsEffect(None)
-    which clears any prior effect."""
-    return None
+def auto_shadow() -> QGraphicsDropShadowEffect:
+    """Subtle shadow for cards to provide depth."""
+    from PySide6.QtWidgets import QGraphicsDropShadowEffect
+    shadow = QGraphicsDropShadowEffect()
+    shadow.setBlurRadius(16)
+    shadow.setXOffset(0)
+    shadow.setYOffset(4)
+    shadow.setColor(QColor(0, 0, 0, 40))
+    return shadow
 
 
 def make_card() -> QFrame:
     f = QFrame()
     f.setStyleSheet(CARD_QSS)
+    f.setGraphicsEffect(auto_shadow())
     return f
 
 
@@ -318,11 +298,9 @@ class ToggleSwitch(QWidget):
             p.setBrush(QColor("#48484e"))
             p.setPen(Qt.PenStyle.NoPen)
         else:
-            # OFF: translucent dark track + faint white rim. Painted
-            # widgets need explicit QColor(r,g,b,a) — Qt's QColor does
-            # NOT parse the CSS rgba() strings used by our QSS tokens.
-            p.setBrush(QColor(34, 34, 38, 200))
-            p.setPen(QPen(QColor(255, 255, 255, 18), 1))
+            # OFF: very dark track + gray knob
+            p.setBrush(QColor(BG_ELEVATED))
+            p.setPen(QPen(QColor(BORDER_SUBTLE), 1))
         p.drawRoundedRect(track, 12, 12)
 
         # Knob
@@ -331,9 +309,7 @@ class ToggleSwitch(QWidget):
         if self._checked:
             p.setBrush(QColor("#f0f0f2"))   # White knob when ON
         else:
-            # Mid-gray knob — must read as a control, not vanish into
-            # the translucent track behind it.
-            p.setBrush(QColor(140, 140, 145))
+            p.setBrush(QColor(BORDER_DEFAULT))   # Gray knob when OFF
         p.drawEllipse(knob)
 
         p.end()
@@ -375,9 +351,9 @@ def setting_row(label: str, description: str = "") -> tuple[QHBoxLayout, QLabel]
 
 def pill_button(
     text: str,
-    bg: str = "transparent",
+    bg: str = BG_ELEVATED,
     fg: str = TEXT_SECONDARY,
-    bg_hover: str = "rgba(255,255,255,0.05)",
+    bg_hover: str = BORDER_DEFAULT,
     fg_hover: str = TEXT_PRIMARY,
     border: str = BORDER_DEFAULT,
     width: int = 0,

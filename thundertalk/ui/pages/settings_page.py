@@ -140,11 +140,8 @@ class HotkeyCapture(QWidget):
         bg = QPainterPath()
         bg.addRoundedRect(rect, 14, 14)
 
-        # Painted backgrounds: cannot use the CSS-rgba theme tokens
-        # because QColor() doesn't parse those strings. Use explicit
-        # 4-arg QColor(r,g,b,a) for translucent fills.
         if self._capturing:
-            p.fillPath(bg, QColor(34, 34, 38, 200))
+            p.fillPath(bg, QColor(theme.BG_ELEVATED))
             p.setPen(QPen(QColor(theme.ACCENT_BLUE), 1.5))
             p.drawPath(bg)
             p.setFont(theme.font(14))
@@ -152,8 +149,8 @@ class HotkeyCapture(QWidget):
             label = self._display if self._held_modifiers else "Press keys…"
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
         else:
-            p.fillPath(bg, QColor(34, 34, 38, 200))
-            p.setPen(QPen(QColor(255, 255, 255, 18), 1))
+            p.fillPath(bg, QColor(theme.BG_ELEVATED))
+            p.setPen(QPen(QColor(theme.BORDER_SUBTLE), 1))
             p.drawPath(bg)
 
             # Draw key-cap badges
@@ -176,8 +173,8 @@ class HotkeyCapture(QWidget):
                 cap_rect = QRectF(start_x, cap_y, cw, cap_h)
                 cap_path = QPainterPath()
                 cap_path.addRoundedRect(cap_rect, 8, 8)
-                p.fillPath(cap_path, QColor(34, 34, 38, 200))
-                p.setPen(QPen(QColor(255, 255, 255, 32), 1))
+                p.fillPath(cap_path, QColor(theme.BG_ELEVATED))
+                p.setPen(QPen(QColor(theme.BORDER_DEFAULT), 1))
                 p.drawPath(cap_path)
                 p.setFont(theme.font_heading(13))
                 p.setPen(QColor(theme.TEXT_PRIMARY))

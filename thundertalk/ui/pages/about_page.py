@@ -93,7 +93,7 @@ class AboutPage(QWidget):
         version = QLabel(f"v{thundertalk.__version__}")
         version.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: 12px;"
-            f" background: transparent; border: 1px solid {theme.BORDER_DEFAULT};"
+            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_SUBTLE};"
             " border-radius: 12px; padding: 5px 16px;"
         )
         ver_row.addWidget(version)
@@ -102,10 +102,10 @@ class AboutPage(QWidget):
         check_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         check_btn.setStyleSheet(
             f"QPushButton {{ color: {theme.TEXT_SECONDARY}; font-size: 12px;"
-            f" background: transparent; border: 1px solid {theme.BORDER_DEFAULT};"
+            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_SUBTLE};"
             " border-radius: 12px; padding: 5px 16px; }}"
             f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER_STRONG}; }}"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; }}"
         )
         check_btn.clicked.connect(
             lambda: webbrowser.open("https://github.com/realAllenSong/ThunderTalk/releases")

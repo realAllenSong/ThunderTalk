@@ -8,10 +8,18 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import (
+    Qt,
+    Signal,
+    QRectF,
+    QPropertyAnimation,
+    QEasingCurve,
+    QTimer,
+)
 from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
     QFrame,
+    QGraphicsOpacityEffect,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -151,17 +159,8 @@ class MainWindow(QMainWindow):
     def __init__(self, settings: Settings, history: HistoryStore) -> None:
         super().__init__()
         self._settings = settings
-        self._vibrancy_applied = False
         self.setWindowTitle("ThunderTalk")
         self.setMinimumSize(820, 580)
-        # NOTE: do NOT set WA_TranslucentBackground here. Combined with
-        # QMainWindow on macOS it produces a fully-transparent window
-        # where Qt content never reaches the screen — only the
-        # NSVisualEffectView shows. The vibrancy helper instead REPLACES
-        # the NSWindow's contentView with an NSVisualEffectView and
-        # nests Qt's old contentView inside it; the QSS rule
-        # "QMainWindow > QWidget { background: transparent }" handles
-        # the rest of the see-through chain.
         self.setStyleSheet(theme.APP_QSS)
 
         from thundertalk.ui.tray import app_icon
@@ -261,7 +260,25 @@ class MainWindow(QMainWindow):
     def _select_nav(self, idx: int) -> None:
         for i, b in enumerate(self._nav_buttons):
             b.set_active(i == idx)
+        if idx == self._stack.currentIndex():
+            return
+        # Fade transition between pages — 160ms, ease-out.
+        target = self._stack.widget(idx)
+        # Reset any prior effect on the incoming widget so we always animate
+        # 0 → 1 cleanly (avoids stuck-invisible widgets after rapid clicks).
+        eff = QGraphicsOpacityEffect(target)
+        target.setGraphicsEffect(eff)
+        eff.setOpacity(0.0)
         self._stack.setCurrentIndex(idx)
+        anim = QPropertyAnimation(eff, b"opacity", self)
+        anim.setDuration(160)
+        anim.setStartValue(0.0)
+        anim.setEndValue(1.0)
+        anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+        anim.finished.connect(lambda w=target: w.setGraphicsEffect(None))
+        # Keep a strong ref until done so the QPropertyAnimation isn't GC'd.
+        self._page_anim = anim
+        anim.start()
 
     # ── Public API ───────────────────────────────────────────────
 
@@ -286,21 +303,6 @@ class MainWindow(QMainWindow):
 
     def show_load_error(self, msg: str) -> None:
         self._models_page.show_load_error(msg)
-
-    # ── Native macOS blur ────────────────────────────────────────
-
-    def showEvent(self, event) -> None:
-        """Install NSVisualEffectView once the native NSWindow exists.
-
-        Done in showEvent rather than __init__ because winId() only
-        becomes a valid native pointer after the widget is shown for
-        the first time. The helper is idempotent — re-shows after
-        hide-to-tray no-op.
-        """
-        super().showEvent(event)
-        if not self._vibrancy_applied:
-            from thundertalk.ui.macos_blur import apply_window_vibrancy
-            self._vibrancy_applied = apply_window_vibrancy(self, "under")
 
     # ── Close to tray ────────────────────────────────────────────
 

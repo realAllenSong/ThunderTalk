@@ -125,7 +125,6 @@ class TranslationModeCard(QFrame):
 
     mode_changed = Signal(str)        # "off" | "direct" | "review"
     target_changed = Signal(str)      # ISO-639-3
-    download_translator_clicked = Signal()  # user wants the Seamless model
 
     _MODES: list[tuple[str, str]] = [
         ("off", "Off"),
@@ -138,9 +137,10 @@ class TranslationModeCard(QFrame):
         self._settings = settings
         self.setStyleSheet(
             f"QFrame#translationModeCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 12px; }}"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
         )
         self.setObjectName("translationModeCard")
+        self.setGraphicsEffect(theme.auto_shadow())
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(20, 14, 20, 14)
@@ -177,8 +177,8 @@ class TranslationModeCard(QFrame):
         # Segmented control row
         seg_outer = QFrame()
         seg_outer.setStyleSheet(
-            "QFrame { background: transparent;"
-            f" border: 1px solid {theme.BORDER_DEFAULT};"
+            "QFrame { background: rgba(255,255,255,0.04);"
+            " border: 1px solid rgba(255,255,255,0.06);"
             " border-radius: 11px; }"
         )
         seg_outer.setFixedHeight(36)
@@ -215,10 +215,7 @@ class TranslationModeCard(QFrame):
         seg_row.addStretch()
         ly.addLayout(seg_row)
 
-        # Warning shown when Review is picked without an active ASR.
-        # MaximumWidth caps wrap to the card width — without it, the
-        # WordWrap label reports its unwrapped sizeHint and forces the
-        # whole card (and the window) to grow rightward.
+        # Warning shown when Review is picked without an active ASR
         self._warning = QLabel(
             "Review mode needs an active ASR model. "
             "Activate Qwen3-ASR or SenseVoice below."
@@ -228,55 +225,8 @@ class TranslationModeCard(QFrame):
             " padding-top: 2px;"
         )
         self._warning.setWordWrap(True)
-        self._warning.setMinimumWidth(0)
-        self._warning.setMaximumWidth(680)
         self._warning.hide()
         ly.addWidget(self._warning)
-
-        # Translator (SeamlessM4T) status: a single line beneath the
-        # segment control — the user previously had no way to see whether
-        # the translation engine was loading / ready / missing on disk.
-        # Visible only while a target is set (i.e. not Off).
-        self._translator_status_row = QWidget()
-        self._translator_status_row.setStyleSheet("background: transparent;")
-        ts_ly = QHBoxLayout(self._translator_status_row)
-        ts_ly.setContentsMargins(0, 2, 0, 0)
-        ts_ly.setSpacing(8)
-
-        self._translator_dot = QLabel("●")
-        self._translator_dot.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 10px;"
-            " background: transparent; border: none;"
-        )
-        ts_ly.addWidget(self._translator_dot)
-
-        self._translator_status_label = QLabel("")
-        self._translator_status_label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: 11px;"
-            " background: transparent; border: none;"
-        )
-        self._translator_status_label.setWordWrap(True)
-        self._translator_status_label.setMinimumWidth(0)
-        self._translator_status_label.setMaximumWidth(560)
-        ts_ly.addWidget(self._translator_status_label, stretch=1)
-
-        self._translator_action_btn = QPushButton("")
-        self._translator_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._translator_action_btn.setFixedHeight(24)
-        self._translator_action_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {theme.ACCENT_ORANGE};"
-            f" border: 1px solid {theme.ACCENT_ORANGE};"
-            " border-radius: 12px; padding: 0 12px; font-size: 11px; }}"
-            f"QPushButton:hover {{ color: #ffffff; background: {theme.ACCENT_ORANGE}; }}"
-        )
-        self._translator_action_btn.clicked.connect(
-            self.download_translator_clicked
-        )
-        self._translator_action_btn.hide()
-        ts_ly.addWidget(self._translator_action_btn)
-
-        self._translator_status_row.hide()
-        ly.addWidget(self._translator_status_row)
 
         self._restore_state()
 
@@ -291,40 +241,6 @@ class TranslationModeCard(QFrame):
         is_review = (target != "off") and (mode == "review")
         is_asr_active = bool(active_id) and not active_id.startswith("seamless")
         self._warning.setVisible(is_review and not is_asr_active)
-
-    def set_translator_status(self, state: str, message: str = "") -> None:
-        """Update the inline translator-engine status row.
-
-        state ∈ {"hidden", "missing", "loading", "ready", "error"}
-        - hidden     → row not shown (Off mode)
-        - missing    → orange dot + "Download required" + Download button
-        - loading    → orange dot + "Loading translator…"
-        - ready      → green dot  + "Translator ready"
-        - error      → red dot    + custom message
-        """
-        if state == "hidden":
-            self._translator_status_row.hide()
-            return
-
-        palette = {
-            "missing": (theme.ACCENT_ORANGE, "Translation model not downloaded."),
-            "loading": (theme.ACCENT_ORANGE, "Loading translation model…"),
-            "ready":   (theme.SUCCESS,       "Translation model ready."),
-            "error":   (theme.ERROR,         message or "Translation model failed to load."),
-        }
-        color, default_msg = palette.get(state, (theme.TEXT_MUTED, ""))
-        self._translator_dot.setStyleSheet(
-            f"color: {color}; font-size: 10px;"
-            " background: transparent; border: none;"
-        )
-        self._translator_status_label.setText(message or default_msg)
-        # Download button is only relevant in the "missing" state.
-        if state == "missing":
-            self._translator_action_btn.setText("Download")
-            self._translator_action_btn.show()
-        else:
-            self._translator_action_btn.hide()
-        self._translator_status_row.show()
 
     # ── internals ──────────────────────────────────────────────────────
 
@@ -402,7 +318,7 @@ class VariantRow(QFrame):
         self._loading = False
 
         self.setStyleSheet(
-            f"QFrame {{ background: transparent;"
+            f"QFrame {{ background: {theme.BG_CARD};"
             f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 10px; }}"
             f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
         )
@@ -468,8 +384,8 @@ class VariantRow(QFrame):
         if loading:
             self._btn.setText("Loading…")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
+                f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_MUTED};"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
             self._progress.show()
@@ -498,15 +414,15 @@ class VariantRow(QFrame):
             # from the ASR Active badge so both engines can co-exist clearly.
             self._btn.setText("✓ Translator")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.ACCENT_ORANGE};"
-                f" border: 1px solid {theme.ACCENT_ORANGE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
+                f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.ACCENT_ORANGE};"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
         elif is_asr_active:
             self._btn.setText("✓ Active")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.SUCCESS};"
-                f" border: 1px solid {theme.SUCCESS}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
+                f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.SUCCESS};"
+                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
         elif downloaded:
@@ -520,9 +436,9 @@ class VariantRow(QFrame):
         elif self.info.download_url:
             self._btn.setText("Download")
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
+                f"QPushButton {{ background: {theme.BG_CARD}; color: {theme.TEXT_SECONDARY};"
                 f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
-                f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER_STRONG}; }}"
+                f"QPushButton:hover {{ background: {theme.BORDER_DEFAULT}; color: {theme.TEXT_PRIMARY}; }}"
             )
             self._btn.setEnabled(True)
         else:
@@ -579,8 +495,9 @@ class FamilyCard(QFrame):
 
         self.setStyleSheet(
             f"QFrame#familyCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
         )
+        self.setGraphicsEffect(theme.auto_shadow())
         self.setObjectName("familyCard")
 
         layout = QVBoxLayout(self)
@@ -599,7 +516,7 @@ class FamilyCard(QFrame):
         pill = QLabel(family)
         pill.setStyleSheet(
             f"color: {self._accent}; font-size: 10px;"
-            f" background: transparent; border: 1px solid {self._accent};"
+            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_DEFAULT};"
             " border-radius: 8px; padding: 2px 10px;"
         )
         top.addWidget(pill)
@@ -659,8 +576,6 @@ class ModelsPage(QWidget):
     load_model_signal = Signal(str, str, str, str)  # model_id, path, family, backend
     translation_mode_changed = Signal(str)           # off | direct | review
     translation_target_changed = Signal(str)         # ISO-639-3 code or "off"
-    download_translator_requested = Signal()         # user clicked "Download" on the translator status row
-    model_download_completed = Signal(str)           # model_id — emitted after a successful download finishes
 
     def __init__(self, settings=None) -> None:
         super().__init__()
@@ -696,8 +611,9 @@ class ModelsPage(QWidget):
         hw_card = QFrame()
         hw_card.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 12px; }}"
+            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
         )
+        hw_card.setGraphicsEffect(theme.auto_shadow())
         hw_ly = QHBoxLayout(hw_card)
         hw_ly.setContentsMargins(20, 16, 20, 16)
         hw_ly.setSpacing(14)
@@ -716,9 +632,6 @@ class ModelsPage(QWidget):
             self._mode_card = TranslationModeCard(self._settings)
             self._mode_card.mode_changed.connect(self.translation_mode_changed)
             self._mode_card.target_changed.connect(self.translation_target_changed)
-            self._mode_card.download_translator_clicked.connect(
-                self.download_translator_requested
-            )
             self._layout.addWidget(self._mode_card)
 
         self._error_label = QLabel()
@@ -784,11 +697,6 @@ class ModelsPage(QWidget):
             if not loading:
                 row.refresh(self._active_model, self._translator_active)
 
-    def set_translator_status(self, state: str, message: str = "") -> None:
-        """Forward to the inline status row inside TranslationModeCard."""
-        if self._mode_card is not None:
-            self._mode_card.set_translator_status(state, message)
-
     def show_load_error(self, msg: str) -> None:
         self._error_label.setText(msg)
         self._error_label.show()
@@ -817,7 +725,6 @@ class ModelsPage(QWidget):
         if row:
             row.download_done(self._active_model, self._translator_active)
         self._workers.pop(model_id, None)
-        self.model_download_completed.emit(model_id)
 
     def _download_error(self, model_id: str, msg: str) -> None:
         row = self._find_row(model_id)
