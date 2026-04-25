@@ -24,7 +24,11 @@ from thundertalk.ui import theme
 _W = 420
 # Min/max height; the window auto-resizes to its content between these.
 _H_MIN = 132
-_H_MAX = 360
+_H_MAX = 640
+# Inner content width (must match contentsMargins(18, _, 18, _) on the
+# main layout). Word-wrap QLabels need their wrap width pinned so
+# heightForWidth() resolves to the correct multi-line height.
+_CONTENT_W = _W - 36
 
 # Inline language picker — matches Settings TRANSLATION_TARGETS minus "off".
 _REVIEW_LANGS: list[tuple[str, str]] = [
@@ -116,6 +120,9 @@ class ReviewOverlay(QWidget):
         # ── Original text (small, muted) ──
         self._orig_text = QLabel("")
         self._orig_text.setWordWrap(True)
+        # Pin wrap width so heightForWidth() returns correct multi-line height.
+        self._orig_text.setMaximumWidth(_CONTENT_W)
+        self._orig_text.setMinimumWidth(_CONTENT_W)
         self._orig_text.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: 11px;"
             " background: transparent; border: none; padding-top: 2px;"
@@ -133,6 +140,8 @@ class ReviewOverlay(QWidget):
         # ── Translated text (primary) ──
         self._trans_text = QLabel("")
         self._trans_text.setWordWrap(True)
+        self._trans_text.setMaximumWidth(_CONTENT_W)
+        self._trans_text.setMinimumWidth(_CONTENT_W)
         ly.addWidget(self._trans_text)
         self._set_trans_loading_style()
 
@@ -191,7 +200,7 @@ class ReviewOverlay(QWidget):
             " font-weight: 500; background: transparent; border: none;"
             " letter-spacing: 0.3px;"
         )
-        self._orig_text.setText(self._truncate(original, 240))
+        self._orig_text.setText(original)
         self._trans_text.setText("")
         self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
@@ -217,7 +226,7 @@ class ReviewOverlay(QWidget):
             " font-weight: 600; background: transparent; border: none;"
             " letter-spacing: 0.3px;"
         )
-        self._trans_text.setText(self._truncate(translated, 240))
+        self._trans_text.setText(translated)
         self._set_trans_ready_style()
         self._replace_btn.setEnabled(True)
         self._resize_to_fit()
@@ -291,13 +300,29 @@ class ReviewOverlay(QWidget):
             self.move(x, y)
 
     def _resize_to_fit(self) -> None:
-        """Auto-size the popup to fit content, bounded by [_H_MIN, _H_MAX]."""
-        layout = self.layout()
-        if layout is None:
-            return
-        layout.activate()
-        hint = layout.sizeHint().height()
-        new_h = max(_H_MIN, min(hint + 4, _H_MAX))
+        """Auto-size the popup to fit its full content, bounded by
+        [_H_MIN, _H_MAX]. We measure the two word-wrapped QLabels with
+        heightForWidth(_CONTENT_W) directly because QVBoxLayout.sizeHint()
+        with WordWrap labels does not always return the wrapped height
+        (the labels report their unwrapped sizeHint instead, which under-
+        estimates total height by hundreds of pixels for long text)."""
+        # Chrome height = top row (22) + spacings/separator + buttons row (26)
+        # + main contentsMargins (12 top + 12 bottom) + layout spacing (6)*5.
+        # Empirically ~94px; a small safety pad keeps a clean bottom edge.
+        CHROME = 22 + 1 + 26 + 24 + 6 * 4 + 8
+        orig_h = (
+            self._orig_text.heightForWidth(_CONTENT_W)
+            if self._orig_text.text() else 0
+        )
+        trans_h = (
+            self._trans_text.heightForWidth(_CONTENT_W)
+            if self._trans_text.text() else 0
+        )
+        # Loading state: reserve at least one line of trans text so the
+        # popup doesn't visibly jump when the translation arrives.
+        if self._is_loading and trans_h == 0:
+            trans_h = self._trans_text.fontMetrics().height()
+        new_h = max(_H_MIN, min(CHROME + orig_h + trans_h, _H_MAX))
         if new_h != self.height():
             self.resize(_W, new_h)
 

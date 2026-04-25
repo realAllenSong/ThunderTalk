@@ -22,15 +22,17 @@ from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLay
 # Dark palette inspired by Linear / Raycast / macOS-native — strong layer
 # differentiation through background tints rather than visible borders.
 
-# Background layers (each ~6% lighter than the one below it)
-BG_DEEPEST    = "#08080a"   # frame / behind everything
-BG_BASE       = "#0a0a0c"   # window background
-BG_SIDEBAR    = "#0f0f11"   # nav sidebar
-BG_SURFACE    = "#16161a"   # main content area
-BG_CARD       = "#1c1c20"   # cards / panels
-BG_CARD_HOVER = "#232328"   # card hover
-BG_ELEVATED   = "#2a2a30"   # raised controls (inputs, combos)
-BG_INPUT      = "#16161a"   # input fields (matches surface — subtle)
+# Pure-black surfaces. Layering comes from borders, not background tints.
+BG_DEEPEST    = "#000000"
+BG_BASE       = "#000000"   # window background
+BG_SIDEBAR    = "#000000"   # nav sidebar
+BG_SURFACE    = "#000000"   # main content area
+BG_CARD       = "#000000"   # cards — defined by border, not fill
+BG_CARD_HOVER = "#000000"   # cards stay flat on hover
+BG_ELEVATED   = "#16161a"   # ONLY for painted interactive surfaces
+                            # (ToggleSwitch track, HotkeyCapture pill).
+                            # Stylesheet pills/badges should use transparent.
+BG_INPUT      = "#000000"   # inputs — defined by border
 
 # Borders — used SPARINGLY. Most layering should come from BG tints.
 BORDER_SUBTLE  = "#1f1f23"   # almost invisible — for grouping only
@@ -96,7 +98,18 @@ def font_heading(size: int = 17) -> QFont:
 APP_QSS = f"""
 QMainWindow {{ background: {BG_BASE}; }}
 
+/* Pages inside the QStackedWidget — direct child QWidgets that Qt
+   otherwise paints with the macOS native window tint (gray). Force
+   pure black so cards/borders are the only visual structure. */
+QStackedWidget {{ background: {BG_BASE}; }}
+QStackedWidget > QWidget {{ background: {BG_BASE}; }}
+
+/* QScrollArea's viewport is a separate QWidget — styling QScrollArea
+   alone leaves the viewport painting its native gray. The ">QWidget"
+   here matches the viewport (the only direct QWidget child of a
+   QScrollArea). */
 QScrollArea {{ border: none; background: transparent; }}
+QScrollArea > QWidget {{ background: {BG_BASE}; }}
 QScrollBar:vertical {{
     background: transparent; width: 6px; margin: 0;
 }}
@@ -118,26 +131,21 @@ QToolTip {{
 # ── Reusable Card Frame ─────────────────────────────────────────────────
 
 CARD_QSS = (
-    f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE};"
+    f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_DEFAULT};"
     " border-radius: 12px; }"
 )
 
 
-def auto_shadow() -> QGraphicsDropShadowEffect:
-    """Subtle shadow for cards to provide depth."""
-    from PySide6.QtWidgets import QGraphicsDropShadowEffect
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(16)
-    shadow.setXOffset(0)
-    shadow.setYOffset(4)
-    shadow.setColor(QColor(0, 0, 0, 40))
-    return shadow
+def auto_shadow():
+    """No-op for the flat pure-black design; kept so existing call sites
+    don't need to be hunted down. Returning None means setGraphicsEffect(None)
+    which clears any prior effect."""
+    return None
 
 
 def make_card() -> QFrame:
     f = QFrame()
     f.setStyleSheet(CARD_QSS)
-    f.setGraphicsEffect(auto_shadow())
     return f
 
 
@@ -351,9 +359,9 @@ def setting_row(label: str, description: str = "") -> tuple[QHBoxLayout, QLabel]
 
 def pill_button(
     text: str,
-    bg: str = BG_ELEVATED,
+    bg: str = "transparent",
     fg: str = TEXT_SECONDARY,
-    bg_hover: str = BORDER_DEFAULT,
+    bg_hover: str = "rgba(255,255,255,0.05)",
     fg_hover: str = TEXT_PRIMARY,
     border: str = BORDER_DEFAULT,
     width: int = 0,

@@ -108,9 +108,8 @@ class _StatCard(QFrame):
         self.setObjectName("statCard")
         self.setStyleSheet(
             f"QFrame#statCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 16px; }}"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 16px; }}"
         )
-        self.setGraphicsEffect(theme.auto_shadow())
         self.setFixedHeight(150)
 
         ly = QVBoxLayout(self)
@@ -171,8 +170,8 @@ class _HistoryCard(QFrame):
         super().__init__()
         self.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
-            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 12px; }}"
+            f"QFrame:hover {{ border: 1px solid {theme.BORDER_STRONG}; }}"
         )
 
         ly = QVBoxLayout(self)
@@ -196,8 +195,9 @@ class _HistoryCard(QFrame):
             dur_text = f"{dur:.1f}s"
         dur_lbl = QLabel(dur_text)
         dur_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 10px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 4px; padding: 2px 6px;"
+            f"color: {theme.TEXT_MUTED}; font-size: 10px;"
+            f" background: transparent; border: 1px solid {theme.BORDER_SUBTLE};"
+            " border-radius: 4px; padding: 2px 6px;"
         )
         top.addWidget(dur_lbl)
 
@@ -209,10 +209,11 @@ class _HistoryCard(QFrame):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setFixedHeight(22)
             btn.setStyleSheet(
-                f"QPushButton {{ color: {theme.TEXT_MUTED}; font-size: 10px; border: none;"
-                f" background: {theme.BG_ELEVATED}; border-radius: 4px; padding: 2px 10px; }}"
+                f"QPushButton {{ color: {theme.TEXT_MUTED}; font-size: 10px;"
+                f" background: transparent; border: 1px solid {theme.BORDER_SUBTLE};"
+                " border-radius: 4px; padding: 2px 10px; }}"
                 f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-                f" background: {theme.BG_CARD_HOVER}; }}"
+                f" border: 1px solid {theme.BORDER_DEFAULT}; }}"
             )
             original_label = btn.text()
 
