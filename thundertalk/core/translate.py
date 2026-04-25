@@ -27,6 +27,37 @@ _IS_APPLE_SILICON = platform.system() == "Darwin" and platform.machine() == "arm
 _SILENCE_RMS_THRESHOLD = 0.003
 
 
+def detect_src_lang(text: str) -> str:
+    """Heuristic: guess SeamlessM4T src_lang ISO-639-3 code from text contents.
+
+    Used for T2TT when the upstream ASR doesn't expose a language code.
+    Detection is character-set based — fast and deterministic.
+    Returns "eng" as fallback (empty / Latin-only / unknown).
+    """
+    if not text:
+        return "eng"
+
+    hiragana = sum(1 for c in text if "぀" <= c <= "ゟ")
+    katakana = sum(1 for c in text if "゠" <= c <= "ヿ")
+    hangul = sum(1 for c in text if "가" <= c <= "힯")
+    cjk_ideo = sum(
+        1
+        for c in text
+        if "一" <= c <= "鿿" or "㐀" <= c <= "䶿"
+    )
+
+    # Hiragana/katakana presence is a strong signal for Japanese, even mixed
+    # with kanji. Threshold low (1 char) because Korean/Chinese never use kana.
+    if hiragana + katakana >= 1:
+        return "jpn"
+    if hangul >= 1:
+        return "kor"
+    # Pure CJK without kana → Mandarin (most common in our user base).
+    if cjk_ideo >= 1:
+        return "cmn"
+    return "eng"
+
+
 @dataclass
 class TranslationResult:
     """Mirrors AsrResult fields used downstream so the Pipeline's
@@ -190,6 +221,76 @@ class TranslationEngine:
         return TranslationResult(
             text=text,
             duration_secs=duration,
+            inference_ms=inference_ms,
+            model=self._model_id or "unknown",
+            tgt_lang=tgt_lang,
+        )
+
+    def translate_text(
+        self,
+        text: str,
+        src_lang: str,
+        tgt_lang: str,
+    ) -> TranslationResult:
+        """Text-to-text translation (T2TT) using the same loaded model.
+
+        Args:
+          text: input text in `src_lang`
+          src_lang: ISO-639-3 source language code (e.g. "cmn", "eng")
+          tgt_lang: ISO-639-3 target language code
+
+        The loaded SeamlessM4T v2 model handles both S2TT and T2TT — only
+        the processor input shape differs (text= + src_lang= for T2TT vs
+        audio= for S2TT). Returns the same TranslationResult shape, with
+        duration_secs set to 0.0 (no audio) and the result.tgt_lang set
+        to the target.
+        """
+        if not self.is_loaded:
+            raise RuntimeError("No translation model loaded")
+        stripped = text.strip()
+        if not stripped:
+            raise RuntimeError("Empty text")
+
+        import torch
+
+        t0 = time.perf_counter()
+        inputs = self._processor(
+            text=stripped,
+            src_lang=src_lang,
+            return_tensors="pt",
+        )
+        # Same float-only dtype move pattern as translate()
+        moved = {}
+        for k, v in inputs.items():
+            if hasattr(v, "to"):
+                if v.dtype == torch.float32 or v.dtype == torch.float16:
+                    moved[k] = v.to(self._device, self._dtype)
+                else:
+                    moved[k] = v.to(self._device)
+            else:
+                moved[k] = v
+        inputs = moved
+
+        with torch.no_grad():
+            output_tokens = self._model.generate(
+                **inputs,
+                tgt_lang=tgt_lang,
+                generate_speech=False,
+            )
+
+        token_ids = output_tokens[0].tolist()[0]
+        out_text = self._processor.decode(token_ids, skip_special_tokens=True)
+
+        inference_ms = int((time.perf_counter() - t0) * 1000)
+        print(
+            f"[Translate] T2TT {src_lang}→{tgt_lang}: "
+            f"{len(stripped)} chars → {len(out_text)} chars  "
+            f"{inference_ms}ms"
+        )
+
+        return TranslationResult(
+            text=out_text,
+            duration_secs=0.0,  # not applicable for text input
             inference_ms=inference_ms,
             model=self._model_id or "unknown",
             tgt_lang=tgt_lang,

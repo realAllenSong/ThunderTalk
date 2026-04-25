@@ -80,3 +80,53 @@ def test_translation_result_has_required_fields() -> None:
     )
     assert result.text == "hello"
     assert result.duration_secs == 1.5
+
+
+def test_translate_text_without_model_raises() -> None:
+    engine = TranslationEngine()
+    with pytest.raises(RuntimeError, match="No translation model loaded"):
+        engine.translate_text("hello", src_lang="eng", tgt_lang="cmn")
+
+
+def test_translate_text_empty_raises() -> None:
+    engine = TranslationEngine()
+    engine._model = MagicMock()
+    engine._processor = MagicMock()
+    engine._model_id = "seamless-m4t-v2-large"
+    engine._device = "cpu"
+    with pytest.raises(RuntimeError, match="Empty text"):
+        engine.translate_text("", src_lang="eng", tgt_lang="cmn")
+    with pytest.raises(RuntimeError, match="Empty text"):
+        engine.translate_text("   \n\t  ", src_lang="eng", tgt_lang="cmn")
+
+
+def test_detect_src_lang_chinese() -> None:
+    from thundertalk.core.translate import detect_src_lang
+    assert detect_src_lang("你好世界") == "cmn"
+    assert detect_src_lang("今天天气真好。") == "cmn"
+
+
+def test_detect_src_lang_japanese() -> None:
+    from thundertalk.core.translate import detect_src_lang
+    # Hiragana / Katakana presence → jpn
+    assert detect_src_lang("こんにちは") == "jpn"
+    assert detect_src_lang("カタカナ") == "jpn"
+    # Mixed kanji + hiragana
+    assert detect_src_lang("今日はいい天気です") == "jpn"
+
+
+def test_detect_src_lang_korean() -> None:
+    from thundertalk.core.translate import detect_src_lang
+    assert detect_src_lang("안녕하세요") == "kor"
+
+
+def test_detect_src_lang_english_default() -> None:
+    from thundertalk.core.translate import detect_src_lang
+    assert detect_src_lang("Hello world") == "eng"
+    assert detect_src_lang("") == "eng"  # empty falls back to eng
+
+
+def test_detect_src_lang_mixed_chinese_english() -> None:
+    """Mostly Chinese with some English words → still cmn."""
+    from thundertalk.core.translate import detect_src_lang
+    assert detect_src_lang("我用ThunderTalk做语音识别。") == "cmn"
