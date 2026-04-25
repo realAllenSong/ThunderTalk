@@ -81,9 +81,9 @@ def apply_window_vibrancy(widget, material: str = "under") -> bool:
         if ns_window is None:
             return False
 
-        # Make the Qt-painted NSWindow background see-through, so the
-        # NSVisualEffectView placed beneath the contentView is what
-        # actually paints the window backdrop.
+        # Make the Qt-painted NSWindow background see-through. Without
+        # this the NSWindow's own backgroundColor (opaque dark gray on
+        # macOS) would paint over the effect view.
         ns_window.setOpaque_(False)
         ns_window.setBackgroundColor_(NSColor.clearColor())
         # Title bar transparent so the blur extends under the traffic
@@ -108,13 +108,20 @@ def apply_window_vibrancy(widget, material: str = "under") -> bool:
         effect.setBlendingMode_(NSVisualEffectBlendingModeBehindWindow)
         effect.setState_(NSVisualEffectStateActive)
 
-        content = ns_window.contentView()
-        effect.setFrame_(content.bounds())
+        # The robust pattern is to REPLACE the NSWindow's contentView
+        # with the effect view, then make Qt's old contentView a
+        # subview of it. Inserting the effect view as a sibling under
+        # Qt's contentView is fragile — Qt's CALayer composition may
+        # paint opaque pixels on top, hiding the blur. With this
+        # arrangement the effect view always paints first (it IS the
+        # backdrop), and Qt's full subtree renders on top of it.
+        qt_content = ns_window.contentView()
+        effect.setFrame_(qt_content.frame())
         effect.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
-
-        # Drop it under every existing subview so Qt's view tree paints
-        # on top of the blur.
-        content.addSubview_positioned_relativeTo_(effect, NSWindowBelow, None)
+        ns_window.setContentView_(effect)
+        effect.addSubview_(qt_content)
+        qt_content.setFrame_(effect.bounds())
+        qt_content.setAutoresizingMask_(NSViewWidthSizable | NSViewHeightSizable)
 
         _APPLIED.add(win_id)
         return True

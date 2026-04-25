@@ -154,11 +154,14 @@ class MainWindow(QMainWindow):
         self._vibrancy_applied = False
         self.setWindowTitle("ThunderTalk")
         self.setMinimumSize(820, 580)
-        # WA_TranslucentBackground tells Qt not to paint the window's
-        # native bg, so the NSVisualEffectView attached in showEvent()
-        # actually shows through. Without this, Qt would paint an opaque
-        # rectangle on top of the blur.
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground, True)
+        # NOTE: do NOT set WA_TranslucentBackground here. Combined with
+        # QMainWindow on macOS it produces a fully-transparent window
+        # where Qt content never reaches the screen — only the
+        # NSVisualEffectView shows. The vibrancy helper instead REPLACES
+        # the NSWindow's contentView with an NSVisualEffectView and
+        # nests Qt's old contentView inside it; the QSS rule
+        # "QMainWindow > QWidget { background: transparent }" handles
+        # the rest of the see-through chain.
         self.setStyleSheet(theme.APP_QSS)
 
         from thundertalk.ui.tray import app_icon
