@@ -21,7 +21,10 @@ from PySide6.QtWidgets import (
 from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
-_W, _H = 380, 132
+_W = 420
+# Min/max height; the window auto-resizes to its content between these.
+_H_MIN = 132
+_H_MAX = 360
 
 # Inline language picker — matches Settings TRANSLATION_TARGETS minus "off".
 _REVIEW_LANGS: list[tuple[str, str]] = [
@@ -58,7 +61,10 @@ class ReviewOverlay(QWidget):
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)
-        self.setFixedSize(_W, _H)
+        self.setFixedWidth(_W)
+        # Height grows with content via _resize_to_fit() called after each
+        # text update; bounded by _H_MIN..._H_MAX.
+        self.resize(_W, _H_MIN)
 
         self._translated_text = ""
         self._original_text = ""
@@ -114,13 +120,13 @@ class ReviewOverlay(QWidget):
             f"color: {theme.TEXT_MUTED}; font-size: 11px;"
             " background: transparent; border: none;"
         )
-        self._orig_text.setMaximumHeight(28)
+        # No setMaximumHeight — let it grow with content (we cap the
+        # overall window via _resize_to_fit).
         ly.addWidget(self._orig_text)
 
         # ── Translated text (primary) ──
         self._trans_text = QLabel("")
         self._trans_text.setWordWrap(True)
-        self._trans_text.setMaximumHeight(36)
         ly.addWidget(self._trans_text)
         self._set_trans_loading_style()
 
@@ -173,10 +179,11 @@ class ReviewOverlay(QWidget):
         self._set_combo_lang(tgt_lang)
         lang_display = self._lang_display(tgt_lang)
         self._status_label.setText(f"↻  {t('review.translating')} → {lang_display}")
-        self._orig_text.setText(self._truncate(original, 120))
+        self._orig_text.setText(self._truncate(original, 240))
         self._trans_text.setText("…")
         self._set_trans_loading_style()
         self._replace_btn.setEnabled(False)
+        self._resize_to_fit()
 
         # Position near the cursor every show — gives the popup natural
         # spatial context (your eyes are near where you typed). User can
@@ -193,9 +200,10 @@ class ReviewOverlay(QWidget):
         self._is_loading = False
         lang_display = self._lang_display(tgt_lang)
         self._status_label.setText(f"→  {lang_display}")
-        self._trans_text.setText(self._truncate(translated, 120))
+        self._trans_text.setText(self._truncate(translated, 240))
         self._set_trans_ready_style()
         self._replace_btn.setEnabled(True)
+        self._resize_to_fit()
 
     # Back-compat shim for any older call sites that pass both texts at once.
     def show_review(self, original: str, translated: str, tgt_lang: str) -> None:
@@ -262,8 +270,19 @@ class ReviewOverlay(QWidget):
         if s:
             geo = s.availableGeometry()
             x = geo.x() + (geo.width() - _W) // 2
-            y = geo.y() + geo.height() - _H - 80
+            y = geo.y() + geo.height() - self.height() - 80
             self.move(x, y)
+
+    def _resize_to_fit(self) -> None:
+        """Auto-size the popup to fit content, bounded by [_H_MIN, _H_MAX]."""
+        layout = self.layout()
+        if layout is None:
+            return
+        layout.activate()
+        hint = layout.sizeHint().height()
+        new_h = max(_H_MIN, min(hint + 4, _H_MAX))
+        if new_h != self.height():
+            self.resize(_W, new_h)
 
     def _position_near_cursor(self) -> None:
         """Place the popup ABOVE the current cursor, horizontally centered
@@ -285,16 +304,17 @@ class ReviewOverlay(QWidget):
         x = max(geo.x() + 12, min(x, geo.x() + geo.width() - _W - 12))
 
         # Try above cursor first
-        y_above = cursor.y() - _H - gap
+        h = self.height()
+        y_above = cursor.y() - h - gap
         y_below = cursor.y() + gap
 
         if y_above >= geo.y() + 12:
             y = y_above
-        elif y_below + _H <= geo.y() + geo.height() - 12:
+        elif y_below + h <= geo.y() + geo.height() - 12:
             y = y_below
         else:
             # No good space — fallback to center vertically
-            y = geo.y() + (geo.height() - _H) // 2
+            y = geo.y() + (geo.height() - h) // 2
 
         self.move(x, y)
 
