@@ -143,45 +143,40 @@ class TranslationModeCard(QFrame):
         self.setObjectName("translationModeCard")
 
         ly = QVBoxLayout(self)
-        ly.setContentsMargins(20, 14, 20, 14)
-        ly.setSpacing(8)
+        ly.setContentsMargins(20, 16, 20, 16)
+        ly.setSpacing(10)
 
-        # Title row (with right-aligned target combo)
-        title_row = QHBoxLayout()
-        title_row.setSpacing(10)
-
+        # ── Heading: title on its own line, subtitle muted underneath.
+        # Mirrors the FamilyCard structure (name → pill → meta line) so
+        # this card sits in the same visual rhythm as the model cards
+        # below instead of looking like a different design.
         title = QLabel("Translation")
-        title.setFont(theme.font(14, bold=True))
+        title.setFont(theme.font(15, bold=True))
         title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        title_row.addWidget(title)
+        ly.addWidget(title)
 
-        subtitle = QLabel(
-            "Speech translation via SeamlessM4T v2"
-        )
+        subtitle = QLabel("Speech translation via SeamlessM4T v2")
         subtitle.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
+            f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;"
         )
-        title_row.addWidget(subtitle)
-        title_row.addStretch()
+        ly.addWidget(subtitle)
 
-        self._target_combo = QComboBox()
-        self._target_combo.setFixedHeight(36)
-        self._target_combo.setMinimumWidth(180)
-        self._target_combo.setStyleSheet(theme.COMBO_QSS)
-        for code, display in TRANSLATION_TARGETS_NEW:
-            self._target_combo.addItem(display, code)
-        self._target_combo.currentIndexChanged.connect(self._on_target_changed)
-        title_row.addWidget(self._target_combo)
-        ly.addLayout(title_row)
+        ly.addSpacing(2)
 
-        # Segmented control row
+        # ── Controls row: mode segment on the LEFT, target combo on the
+        # RIGHT, on the same horizontal axis. They're conceptually one
+        # control ("how to translate, into what language"); putting them
+        # on opposite ends of opposite rows broke that grouping.
+        controls_row = QHBoxLayout()
+        controls_row.setSpacing(12)
+
         seg_outer = QFrame()
         seg_outer.setStyleSheet(
             "QFrame { background: transparent;"
             f" border: 1px solid {theme.BORDER_DEFAULT};"
             " border-radius: 11px; }"
         )
-        seg_outer.setFixedHeight(36)
+        seg_outer.setFixedHeight(34)
         seg_inner = QHBoxLayout(seg_outer)
         seg_inner.setContentsMargins(3, 3, 3, 3)
         seg_inner.setSpacing(2)
@@ -209,11 +204,18 @@ class TranslationModeCard(QFrame):
             self._group.addButton(btn)
             seg_inner.addWidget(btn)
 
-        seg_row = QHBoxLayout()
-        seg_row.setSpacing(0)
-        seg_row.addWidget(seg_outer)
-        seg_row.addStretch()
-        ly.addLayout(seg_row)
+        controls_row.addWidget(seg_outer)
+        controls_row.addStretch()
+
+        self._target_combo = QComboBox()
+        self._target_combo.setFixedHeight(34)
+        self._target_combo.setMinimumWidth(170)
+        self._target_combo.setStyleSheet(theme.COMBO_QSS)
+        for code, display in TRANSLATION_TARGETS_NEW:
+            self._target_combo.addItem(display, code)
+        self._target_combo.currentIndexChanged.connect(self._on_target_changed)
+        controls_row.addWidget(self._target_combo)
+        ly.addLayout(controls_row)
 
         # Warning shown when Review is picked without an active ASR.
         # MaximumWidth caps wrap to the card width — without it, the
