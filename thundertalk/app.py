@@ -719,26 +719,33 @@ def main() -> None:
         window.models_page.set_loading("seamless-m4t-v2-large", True)
         window.models_page.set_translator_status("loading")
 
-        def _on_done() -> None:
+        # Use a QThread (TranslatorLoadWorker) instead of threading.Thread.
+        # The previous version called QTimer.singleShot(0, _on_done) from
+        # inside the worker thread; QTimer.singleShot binds the timer to
+        # the calling thread's event loop, and a raw threading.Thread has
+        # none, so the completion callback never fired and the UI stayed
+        # in "loading" forever even after the model was actually loaded.
+        # Qt signals from a QThread auto-marshal to the receiver's
+        # thread (main UI) without any timer dance.
+        worker = TranslatorLoadWorker(
+            translator, "seamless-m4t-v2-large", model_path
+        )
+
+        def _on_translator_loaded(mid: str) -> None:
             pipe._translator_loading = False
-            window.models_page.set_loading("seamless-m4t-v2-large", False)
-            window.models_page.set_translator_active("seamless-m4t-v2-large")
+            window.models_page.set_loading(mid, False)
+            window.models_page.set_translator_active(mid)
             window.models_page.set_translator_status("ready")
 
-        def _on_fail() -> None:
+        def _on_translator_failed(mid: str, msg: str) -> None:
             pipe._translator_loading = False
-            window.models_page.set_loading("seamless-m4t-v2-large", False)
-            window.models_page.set_translator_status("error")
+            window.models_page.set_loading(mid, False)
+            window.models_page.set_translator_status("error", msg[:80])
 
-        def _load() -> None:
-            try:
-                translator.load_model(model_path)
-                QTimer.singleShot(0, _on_done)
-            except Exception:
-                traceback.print_exc()
-                QTimer.singleShot(0, _on_fail)
-
-        threading.Thread(target=_load, daemon=True).start()
+        worker.loaded.connect(_on_translator_loaded)
+        worker.error.connect(_on_translator_failed)
+        _track_worker(worker)
+        worker.start()
 
     QTimer.singleShot(1500, _maybe_load_translator)
     # The Translation Mode card on the Models page is the canonical control

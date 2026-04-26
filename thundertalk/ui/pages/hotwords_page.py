@@ -180,29 +180,6 @@ class HotwordsPage(QWidget):
 
         self._layout.addWidget(words_card)
 
-        # --- Auto-learn info card ---
-        info_card = theme.make_card()
-        ic = QVBoxLayout(info_card)
-        ic.setContentsMargins(20, 18, 20, 18)
-        ic.setSpacing(10)
-
-        sec3 = QLabel("Auto-Learning")
-        sec3.setFont(theme.font(14, bold=True))
-        sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ic.addWidget(sec3)
-
-        ic.addWidget(theme.separator())
-
-        desc = QLabel(
-            "ThunderTalk automatically learns new words when you correct "
-            "transcription results. After pasting, if you select and copy "
-            "the corrected text, the new words will be added here."
-        )
-        desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;")
-        desc.setWordWrap(True)
-        ic.addWidget(desc)
-        self._layout.addWidget(info_card)
-
         self._layout.addStretch()
 
         self._rebuild_chips()

@@ -485,8 +485,14 @@ class VariantRow(QFrame):
                 f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
-            self._progress.show()
-            self._progress.setRange(0, 0)  # indeterminate
+            # Intentionally do NOT show the indeterminate progress bar
+            # here. _progress is a fixed-size 80x3 QWidget and toggling
+            # it visible adds 80+10px (spacing) to the row's
+            # minimumSizeHint, which jumps the SeamlessM4T card from
+            # ~558→648 px and forces a horizontal scrollbar on narrower
+            # windows. The "Loading…" button text is enough indicator;
+            # the progress bar stays reserved for actual download
+            # progress (set_progress), where the percentage matters.
         else:
             self._progress.hide()
             self._progress.setRange(0, 100)
