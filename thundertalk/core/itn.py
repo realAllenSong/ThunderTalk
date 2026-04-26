@@ -94,6 +94,19 @@ def _should_convert_zh(match: re.Match, original_text: str, title_ranges: list[t
         if not all(c in ("十", "拾") for c in core):
             return False
 
+    # Two-char "[unit][digit]" idioms (万一, 千一, 百一, 亿一) read in
+    # speech as fixed phrases — 万一 = "in case", not the number 1 —
+    # but _parse_zh_integer treats them as (current=0 × magnitude) +
+    # digit, dropping the unit entirely. Skip them.
+    # 十X is exempt: that IS how Chinese spells 11-19 and the parser
+    # handles it correctly via the bare-十 special case.
+    if (
+        len(core) == 2
+        and core[0] in ("百", "佰", "千", "仟", "万", "亿")
+        and core[1] in _ZH_DIGITS
+    ):
+        return False
+
     if any(c in _ZH_UNIT_CHARS for c in core):
         return True
 

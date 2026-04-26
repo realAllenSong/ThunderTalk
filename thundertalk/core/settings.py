@@ -22,6 +22,15 @@ DEFAULTS: dict[str, Any] = {
     "translation_target": "off",
     "translation_mode": "direct",  # "direct" (S2TT) or "review" (Pipeline + popup)
     "log_enabled": True,
+    # ASR memory profile.
+    #   "high" (default) — max_total_len=4096, max_new_tokens=2048, full
+    #     thread count. Supports very long single utterances and decoder
+    #     output. ~3.8 GB physical footprint on M3 Max.
+    #   "low" — max_total_len=1024, max_new_tokens=256, capped to 4 threads.
+    #     Sufficient for ~40s utterances and ~150-char outputs. ~1 GB
+    #     physical footprint.
+    # Takes effect on next ASR model load (typically next app launch).
+    "memory_mode": "high",
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"
@@ -87,6 +96,13 @@ class Settings:
     @property
     def translation_target(self) -> str:
         return self._data.get("translation_target", "off")
+
+    @property
+    def memory_mode(self) -> str:
+        """'high' (default) — bigger ONNX KV cache + full thread count.
+        'low' — slimmer KV cache + 4 threads, ~3 GB less RAM."""
+        m = self._data.get("memory_mode", "high")
+        return m if m in ("high", "low") else "high"
 
     @property
     def translation_mode(self) -> str:

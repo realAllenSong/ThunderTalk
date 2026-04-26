@@ -133,18 +133,30 @@ class ModelLoadWorker(QThread):
     loaded = Signal(str)      # model_id — emitted from run() on success
     error = Signal(str, str)    # model_id, error_message
 
-    def __init__(self, engine: AsrEngine, model_id: str, path: str, family: str, backend: str) -> None:
+    def __init__(
+        self,
+        engine: AsrEngine,
+        model_id: str,
+        path: str,
+        family: str,
+        backend: str,
+        memory_mode: str = "high",
+    ) -> None:
         super().__init__()
         self._engine = engine
         self._model_id = model_id
         self._path = path
         self._family = family
         self._backend = backend
+        self._memory_mode = memory_mode
 
     def run(self) -> None:
         try:
-            print(f"[ModelLoad] Loading {self._model_id} ({self._backend})...")
-            self._engine.load_model(self._path, self._family, self._backend)
+            print(f"[ModelLoad] Loading {self._model_id} ({self._backend}) memory={self._memory_mode}...")
+            self._engine.load_model(
+                self._path, self._family, self._backend,
+                memory_mode=self._memory_mode,
+            )
             print("[ModelLoad] load_model done")
             self.loaded.emit(self._model_id)
         except Exception as e:
@@ -328,7 +340,10 @@ def main() -> None:
             _start_translator_load(model_id, path)
             return
 
-        worker = ModelLoadWorker(pipe.asr, model_id, path, family, backend)
+        worker = ModelLoadWorker(
+            pipe.asr, model_id, path, family, backend,
+            memory_mode=settings.memory_mode,
+        )
 
         def _on_load_finished(mid: str) -> None:
             window.set_active_model(mid)
@@ -365,7 +380,10 @@ def main() -> None:
             return
         print(f"[Startup] Loading model sync: {last_model}")
         try:
-            pipe.asr.load_model(path, info.family, info.backend)
+            pipe.asr.load_model(
+                path, info.family, info.backend,
+                memory_mode=settings.memory_mode,
+            )
             window.set_active_model(last_model)
             tray.set_model_status(last_model)
             settings.set("active_model_id", last_model)

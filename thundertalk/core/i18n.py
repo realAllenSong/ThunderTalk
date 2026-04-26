@@ -285,6 +285,18 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.section.appearance": {"en": "Appearance", "zh": "外观"},
     "settings.section.startup": {"en": "Startup", "zh": "启动"},
     "settings.section.logs": {"en": "Logs", "zh": "日志"},
+    "settings.section.performance": {"en": "Performance", "zh": "性能"},
+    "settings.memory.label": {"en": "Memory profile", "zh": "内存模式"},
+    "settings.memory.desc": {
+        "en": "High keeps a 4096-token KV cache and full thread count for the longest possible single utterances; Low caps at 1024 tokens / 4 threads and saves ≈ 3 GB RAM. Takes effect on next app launch.",
+        "zh": "高质量保留 4096 个 token 的 KV 缓存与全部推理线程，支持最长的单次录音；省内存档限制为 1024 token / 4 线程，可省 3 GB 左右内存。下次启动应用时生效。",
+    },
+    "settings.memory.high": {"en": "High (default)", "zh": "高质量（默认）"},
+    "settings.memory.low": {"en": "Low (≈ 3 GB less RAM)", "zh": "省内存（少占 ~3 GB）"},
+    "settings.memory.restart_hint": {
+        "en": "Setting saved. Restart ThunderTalk for the new profile to take effect.",
+        "zh": "已保存，下次启动 ThunderTalk 时生效。",
+    },
     "settings.mode.toggle_click": {"en": "Toggle (Click)", "zh": "切换（点击）"},
     "settings.mode.hold_record": {"en": "Hold to Record", "zh": "按住录音"},
     "settings.mic.auto": {

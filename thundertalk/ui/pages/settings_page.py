@@ -668,6 +668,50 @@ class SettingsPage(QWidget):
         c2.addLayout(r2)
         ly.addWidget(card2)
 
+        # -- Performance card --
+        perf_card = theme.make_card()
+        cp = QVBoxLayout(perf_card)
+        cp.setContentsMargins(20, 18, 20, 18)
+        cp.setSpacing(12)
+
+        secp = QLabel(t("settings.section.performance"))
+        secp.setFont(theme.font(14, bold=True))
+        secp.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        cp.addWidget(secp)
+        cp.addWidget(theme.separator())
+
+        mem_row, _ = theme.setting_row(
+            t("settings.memory.label"),
+            t("settings.memory.desc"),
+        )
+        self._mem_combo = QComboBox()
+        self._mem_combo.setFixedWidth(220)
+        theme.style_combo(self._mem_combo)
+        self._mem_combo.addItem(t("settings.memory.high"), "high")
+        self._mem_combo.addItem(t("settings.memory.low"), "low")
+        # Restore saved value
+        cur_mem = self._settings.memory_mode
+        for i in range(self._mem_combo.count()):
+            if self._mem_combo.itemData(i) == cur_mem:
+                self._mem_combo.setCurrentIndex(i)
+                break
+        self._mem_combo.currentIndexChanged.connect(self._on_memory_mode_changed)
+        mem_row.addWidget(self._mem_combo)
+        cp.addLayout(mem_row)
+
+        # Restart-required hint, hidden until the user actually changes
+        # the value — picks up its own font + accent color so it reads
+        # as "important" rather than just a description.
+        self._mem_restart_hint = QLabel(t("settings.memory.restart_hint"))
+        self._mem_restart_hint.setStyleSheet(
+            f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
+            " padding-top: 4px;"
+        )
+        self._mem_restart_hint.setWordWrap(True)
+        self._mem_restart_hint.hide()
+        cp.addWidget(self._mem_restart_hint)
+        ly.addWidget(perf_card)
+
         # -- Logs card --
         card3 = theme.make_card()
         c3 = QVBoxLayout(card3)
@@ -719,6 +763,17 @@ class SettingsPage(QWidget):
         for label, key in self._section_titles:
             label.setText(t(key).upper())
         self._ui_lang_label.setText(t("settings.language"))
+
+    def _on_memory_mode_changed(self, idx: int) -> None:
+        mode = self._mem_combo.itemData(idx)
+        if mode not in ("high", "low"):
+            return
+        if mode == self._settings.memory_mode:
+            return
+        self._settings.set("memory_mode", mode)
+        # ASR is already loaded with the previous setting; new value
+        # only takes effect on next load_model. Surface that fact.
+        self._mem_restart_hint.show()
 
     def _open_log_dir(self) -> None:
         log_dir = Path.home() / ".thundertalk"

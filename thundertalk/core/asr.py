@@ -68,7 +68,15 @@ if _SYSTEM in ("Linux", "Windows"):
 # sherpa-onnx helpers
 # ---------------------------------------------------------------------------
 
-def _detect_threads() -> int:
+def _detect_threads(memory_mode: str = "high") -> int:
+    """Inference thread count.
+
+    "low" memory mode caps to 4 threads. ONNX Runtime allocates a
+    ~128 MB arena per thread; capping saves ~half a GB on a 14-core
+    M-series chip vs the default 0.65×cores.
+    """
+    if memory_mode == "low":
+        return 4
     n = os.cpu_count() or 4
     if _IS_APPLE_SILICON:
         return max(4, int(n * 0.65))
@@ -167,8 +175,19 @@ class AsrEngine:
 
     # -- Loading ----------------------------------------------------------
 
-    def load_model(self, model_dir: str, family: str, backend: str = "onnx") -> None:
-        """Load model using the specified backend (from ModelInfo.backend)."""
+    def load_model(
+        self,
+        model_dir: str,
+        family: str,
+        backend: str = "onnx",
+        memory_mode: str = "high",
+    ) -> None:
+        """Load model using the specified backend (from ModelInfo.backend).
+
+        memory_mode = "low" trims KV-cache buffers and thread count
+        to cut runtime RAM by roughly 3 GB on Apple Silicon, at the
+        cost of shorter max-utterance length and slightly higher RTF.
+        """
         self.unload()
         self._model_dir = model_dir
         self._model_family = family
@@ -179,9 +198,9 @@ class AsrEngine:
                 raise RuntimeError("MLX is not available on this system")
             self._load_mlx_qwen3(model_dir)
         elif family == "SenseVoice":
-            self._load_sherpa_sensevoice(model_dir, backend)
+            self._load_sherpa_sensevoice(model_dir, backend, memory_mode)
         elif family in ("Qwen3-ASR", "Qwen3-ASR-1.7B"):
-            self._load_sherpa_qwen3(model_dir, backend)
+            self._load_sherpa_qwen3(model_dir, backend, memory_mode)
         else:
             raise ValueError(f"Unknown model family: {family}")
 
@@ -209,12 +228,14 @@ class AsrEngine:
         print(f"[ASR] Loaded {hf_repo} via MLX (Metal GPU)  "
               f"hotwords={len(self._hotwords.split('/')) if self._hotwords else 0}")
 
-    def _load_sherpa_sensevoice(self, model_dir: str, backend: str) -> None:
+    def _load_sherpa_sensevoice(
+        self, model_dir: str, backend: str, memory_mode: str = "high"
+    ) -> None:
         import sherpa_onnx
         model_file = _find(model_dir, "model", ".onnx")
         tokens_file = os.path.join(model_dir, "tokens.txt")
         provider = self._onnx_provider(backend)
-        threads = _detect_threads()
+        threads = _detect_threads(memory_mode)
 
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_sense_voice(
             model=model_file,
@@ -225,16 +246,32 @@ class AsrEngine:
             provider=provider,
         )
         self._model_id = os.path.basename(model_dir)
-        print(f"[ASR] Loaded SenseVoice  threads={threads}  provider={provider}")
+        print(
+            f"[ASR] Loaded SenseVoice  threads={threads}  "
+            f"provider={provider}  memory_mode={memory_mode}"
+        )
 
-    def _load_sherpa_qwen3(self, model_dir: str, backend: str) -> None:
+    def _load_sherpa_qwen3(
+        self, model_dir: str, backend: str, memory_mode: str = "high"
+    ) -> None:
         import sherpa_onnx
         encoder = _find(model_dir, "encoder", ".onnx")
         decoder = _find(model_dir, "decoder", ".onnx")
         conv_frontend = _find(model_dir, "conv_frontend", ".onnx")
         tokenizer_dir = os.path.join(model_dir, "tokenizer")
         provider = self._onnx_provider(backend)
-        threads = _detect_threads()
+        threads = _detect_threads(memory_mode)
+
+        # KV-cache + decoder-output limits. The "high" preset is what
+        # the project shipped in 1.0 and supports very long single
+        # utterances; the "low" preset trims them by 4× and saves
+        # roughly 1 GB of pre-allocated decoder state.
+        if memory_mode == "low":
+            max_total_len = 1024
+            max_new_tokens = 256
+        else:
+            max_total_len = 4096
+            max_new_tokens = 2048
 
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
             encoder=encoder,
@@ -244,11 +281,15 @@ class AsrEngine:
             num_threads=threads,
             provider=provider,
             hotwords=self._hotwords,
-            max_total_len=4096,
-            max_new_tokens=2048,
+            max_total_len=max_total_len,
+            max_new_tokens=max_new_tokens,
         )
         self._model_id = os.path.basename(model_dir)
-        print(f"[ASR] Loaded Qwen3-ASR (sherpa-onnx)  threads={threads}  provider={provider}")
+        print(
+            f"[ASR] Loaded Qwen3-ASR (sherpa-onnx)  threads={threads}  "
+            f"provider={provider}  memory_mode={memory_mode}  "
+            f"max_total_len={max_total_len}  max_new_tokens={max_new_tokens}"
+        )
 
     # -- Inference --------------------------------------------------------
 

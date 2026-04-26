@@ -109,3 +109,47 @@ def test_digit_plus_unit_still_converts(spoken: str, expected: str) -> None:
 )
 def test_ten_special_case_unchanged(spoken: str, expected: str) -> None:
     assert normalize_numbers(spoken) == expected
+
+
+# ── "万一" idiom (and friends): unit + bare digit must NOT collapse ──
+# User report: speaking "万一" came out as "1" — the 万 was dropped
+# entirely. _parse_zh_integer treats 万一 as (current=0)*10000 + 1 = 1
+# because there's no leading digit before the unit. The phrase 万一
+# means "in case", not the number 1; 千一/百一/亿一 are similar
+# patterns that should also be left alone. 十X stays special-cased to
+# 1X (十一=11, 十六=16) since that IS how Chinese spells 11-19.
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        ("万一", "万一"),
+        ("千一", "千一"),
+        ("百一", "百一"),
+        ("亿一", "亿一"),
+        ("万一发生", "万一发生"),
+        ("假如万一", "假如万一"),
+        ("万一中奖了", "万一中奖了"),
+    ],
+)
+def test_unit_plus_bare_digit_idiom_not_converted(
+    spoken: str, expected: str
+) -> None:
+    assert normalize_numbers(spoken) == expected
+
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        # 十X must STILL convert (10s family is real number spelling)
+        ("十一", "11"),
+        ("十二", "12"),
+        ("十六还是六十四", "16还是64"),
+        # And longer compounds still work
+        ("一万", "10000"),
+        ("一万一", "10001"),  # preserves existing behavior
+    ],
+)
+def test_ten_family_and_compounds_still_convert(
+    spoken: str, expected: str
+) -> None:
+    assert normalize_numbers(spoken) == expected

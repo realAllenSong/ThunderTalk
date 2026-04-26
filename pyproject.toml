@@ -1,6 +1,6 @@
 [project]
 name = "thundertalk"
-version = "1.0.1"
+version = "1.0.2"
 description = "Lightning-fast voice-to-text for every desktop"
 requires-python = ">=3.12"
 dependencies = [
