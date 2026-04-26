@@ -415,9 +415,19 @@ COMBO_QSS = (
     f" border-radius: 10px; padding: 10px 16px; font-size: 13px; }}"
     f"QComboBox:hover {{ border: 1px solid {BORDER_DEFAULT}; }}"
     f"QComboBox::drop-down {{ border: none; width: 28px; }}"
-    f"QComboBox QAbstractItemView {{ background: {BG_CARD}; color: {TEXT_PRIMARY};"
-    f" selection-background-color: {BORDER_DEFAULT}; border: 1px solid {BORDER_DEFAULT};"
-    f" border-radius: 8px; padding: 4px; }}"
+    # Popup list — explicitly style the view AND the items so no
+    # macOS native gray bleeds through anywhere. outline:0 removes
+    # the dotted focus ring Qt paints on the active item, which
+    # reads as a faint gray rectangle inside the popup.
+    f"QComboBox QAbstractItemView {{ background: #000000; color: {TEXT_PRIMARY};"
+    f" border: 1px solid {BORDER_DEFAULT}; border-radius: 8px;"
+    f" padding: 4px; outline: 0; }}"
+    f"QComboBox QAbstractItemView::item {{ background: #000000; color: {TEXT_PRIMARY};"
+    f" padding: 6px 12px; min-height: 22px; border: none; }}"
+    f"QComboBox QAbstractItemView::item:selected {{"
+    f" background: {ACCENT_BLUE}; color: #ffffff; }}"
+    f"QComboBox QAbstractItemView::item:hover {{"
+    f" background: rgba(91, 141, 239, 0.18); color: {TEXT_PRIMARY}; }}"
 )
 
 # ── Line edit style ─────────────────────────────────────────────────────

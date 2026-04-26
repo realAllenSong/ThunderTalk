@@ -93,6 +93,29 @@ The app's **Models** page shows your detected hardware and tags each model with 
 | Speech translation (e.g. talk in Chinese, paste English) | **Direct mode** — picks SeamlessM4T directly |
 | Speak in your own language, see a translation alongside | **Review mode** — ASR transcribes, then translates; you choose Replace or Keep Original |
 
+### Author's pick — what I actually use
+
+- **Pure transcription:** **Qwen3-ASR-0.6B (ONNX int8) + Hotwords**.
+  Fast, accurate, runs on every Mac (no GPU needed). The ONNX build
+  is ~940 MB and starts in well under a second. Adding domain
+  hotwords (`onnx`, `MLX`, your team's product names, etc.) on the
+  Hotwords page keeps technical jargon from getting mis-transcribed.
+
+- **Occasional translation:** **Review mode** with **Qwen3-ASR-0.6B
+  (ONNX int8) + Hotwords** as the recognizer, plus **SeamlessM4T v2
+  Large** as the translator. The ASR transcribes the original
+  language perfectly, SeamlessM4T translates it via T2TT (text →
+  text — no second audio pass, much faster than Direct mode), and
+  the Review popup lets you accept or skip the translation per
+  utterance. Best of both worlds: you keep the verbatim original
+  if you want, and one click swaps it for the translation when you
+  do.
+
+  Direct mode skips the ASR step entirely (audio → translated text
+  in one pass via SeamlessM4T). It's simpler but you lose the
+  original transcript and can't choose model+hotwords for
+  recognition, so I default to Review.
+
 ## Troubleshooting
 
 ### A model download was interrupted (network drop, app quit, machine slept)

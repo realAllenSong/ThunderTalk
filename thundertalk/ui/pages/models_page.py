@@ -497,12 +497,52 @@ class VariantRow(QFrame):
             self._progress.hide()
             self._progress.setRange(0, 100)
 
-    def _update_button(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
+    def _update_button(
+        self,
+        active_id: Optional[str],
+        translator_active: Optional[str] = None,
+        mode: str = "off",
+    ) -> None:
         if self._loading:
             return
         downloaded = is_downloaded(self.info.id)
-        is_asr_active = active_id == self.info.id
-        is_translator_active = translator_active == self.info.id
+        is_seamless = self.info.backend == "seamless-torch"
+        is_asr_active = (active_id == self.info.id) and not is_seamless
+        # Translator badge is only meaningful when translation is on.
+        # In Off mode we keep the engine in RAM (so re-enabling is
+        # instant) but suppress the visual badge — the user shouldn't
+        # see "✓ Translator" on Facebook when translation is disabled.
+        is_translator_active = (
+            translator_active == self.info.id
+            and is_seamless
+            and mode in ("direct", "review")
+        )
+
+        # Mode gating — some rows aren't activatable in some modes:
+        #   Direct mode is "audio → translated text in one pass"; only
+        #     SeamlessM4T can do that, so every other row is disabled.
+        #   Off mode doesn't use the translator engine; SeamlessM4T as
+        #     a pure ASR isn't supported yet, so its row is disabled
+        #     with a hint that it belongs to Direct/Review modes.
+        if self._compatible and not self._loading:
+            if mode == "direct" and not is_seamless and downloaded:
+                self._btn.setText("Direct uses SeamlessM4T")
+                self._btn.setStyleSheet(
+                    f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+                    f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
+                    " font-size: 10px; }}"
+                )
+                self._btn.setEnabled(False)
+                return
+            if mode == "off" and is_seamless and downloaded:
+                self._btn.setText("Direct / Review only")
+                self._btn.setStyleSheet(
+                    f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
+                    f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
+                    " font-size: 10px; }}"
+                )
+                self._btn.setEnabled(False)
+                return
 
         if not self._compatible:
             plat = "Apple Silicon" if self.info.platform == "apple-silicon" else "NVIDIA GPU"
@@ -567,12 +607,22 @@ class VariantRow(QFrame):
         self._progress.show()
         self._progress.setValue(val)
 
-    def download_done(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
+    def download_done(
+        self,
+        active_id: Optional[str],
+        translator_active: Optional[str] = None,
+        mode: str = "off",
+    ) -> None:
         self._progress.hide()
-        self._update_button(active_id, translator_active)
+        self._update_button(active_id, translator_active, mode)
 
-    def refresh(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
-        self._update_button(active_id, translator_active)
+    def refresh(
+        self,
+        active_id: Optional[str],
+        translator_active: Optional[str] = None,
+        mode: str = "off",
+    ) -> None:
+        self._update_button(active_id, translator_active, mode)
 
 
 # ---------------------------------------------------------------------------
@@ -665,9 +715,14 @@ class FamilyCard(QFrame):
     def get_row(self, model_id: str) -> Optional[VariantRow]:
         return self._rows.get(model_id)
 
-    def refresh(self, active_id: Optional[str], translator_active: Optional[str] = None) -> None:
+    def refresh(
+        self,
+        active_id: Optional[str],
+        translator_active: Optional[str] = None,
+        mode: str = "off",
+    ) -> None:
         for row in self._rows.values():
-            row.refresh(active_id, translator_active)
+            row.refresh(active_id, translator_active, mode)
 
 
 # ---------------------------------------------------------------------------
@@ -688,6 +743,9 @@ class ModelsPage(QWidget):
         # Translator (SeamlessM4T) is loaded into a separate engine; tracked
         # independently of _active_model so both badges can co-exist.
         self._translator_active: Optional[str] = None
+        # Translation mode drives which rows are activatable. Initial value
+        # matches whatever the user had set last session.
+        self._current_mode: str = self._compute_current_mode(settings)
         self._family_cards: dict[str, FamilyCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
         self._mode_card: Optional[TranslationModeCard] = None
@@ -738,6 +796,12 @@ class ModelsPage(QWidget):
             self._mode_card.download_translator_clicked.connect(
                 self.download_translator_requested
             )
+            # Mode card drives which rows are activatable in this page.
+            # Off → only ASR rows enabled, Facebook row reads "Direct /
+            # Review only".  Direct → only the Facebook row enabled.
+            # Review → ASR rows enabled, Facebook row shows Translator
+            # badge once loaded.
+            self._mode_card.mode_changed.connect(self._on_mode_changed)
             self._layout.addWidget(self._mode_card)
 
         self._error_label = QLabel()
@@ -778,10 +842,34 @@ class ModelsPage(QWidget):
         self._error_label.hide()
         self.load_model_signal.emit(model_id, path, family, backend)
 
+    @staticmethod
+    def _compute_current_mode(settings) -> str:
+        """Derive 'off' / 'direct' / 'review' from raw settings — mirrors
+        TranslationModeCard._restore_state's logic so the page-level
+        mode tracker matches the UI segment selection on first paint."""
+        if settings is None:
+            return "off"
+        target = settings.translation_target
+        mode = settings.translation_mode
+        if not target or target == "off":
+            return "off"
+        return mode if mode in ("direct", "review") else "direct"
+
+    def _on_mode_changed(self, mode: str) -> None:
+        """User flipped the segment control. Re-render every row with
+        the new mode so disabled-rows update immediately."""
+        self._current_mode = mode
+        self._refresh_all_rows()
+
+    def _refresh_all_rows(self) -> None:
+        for card in self._family_cards.values():
+            card.refresh(
+                self._active_model, self._translator_active, self._current_mode
+            )
+
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._active_model = model_id
-        for card in self._family_cards.values():
-            card.refresh(self._active_model, self._translator_active)
+        self._refresh_all_rows()
         if self._mode_card is not None:
             self._mode_card.refresh_warning()
 
@@ -792,8 +880,7 @@ class ModelsPage(QWidget):
         loaded simultaneously; both badges co-exist.
         """
         self._translator_active = model_id
-        for card in self._family_cards.values():
-            card.refresh(self._active_model, self._translator_active)
+        self._refresh_all_rows()
 
     def set_loading(self, model_id: str, loading: bool) -> None:
         """Show/hide loading indicator on a specific variant row."""
@@ -801,7 +888,9 @@ class ModelsPage(QWidget):
         if row:
             row.set_loading(loading)
             if not loading:
-                row.refresh(self._active_model, self._translator_active)
+                row.refresh(
+                    self._active_model, self._translator_active, self._current_mode
+                )
 
     def set_translator_status(self, state: str, message: str = "") -> None:
         """Forward to the inline status row inside TranslationModeCard."""
@@ -834,7 +923,9 @@ class ModelsPage(QWidget):
     def _download_done(self, model_id: str) -> None:
         row = self._find_row(model_id)
         if row:
-            row.download_done(self._active_model, self._translator_active)
+            row.download_done(
+                self._active_model, self._translator_active, self._current_mode
+            )
         self._workers.pop(model_id, None)
         self.model_download_completed.emit(model_id)
 
