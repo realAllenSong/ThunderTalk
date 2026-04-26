@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="README.zh.md">🇨🇳 中文文档</a>
+  <a href="README.zh.md">中文文档</a>
 </p>
 
 <p align="center">
