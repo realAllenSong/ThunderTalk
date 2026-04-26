@@ -57,6 +57,76 @@ class AsrWorker(QThread):
             self.error.emit(str(e))
 
 
+class TranslationWorker(QThread):
+    """Runs SeamlessM4T translation off the main thread.
+
+    Emits the same `done` signature as AsrWorker so the existing
+    _on_asr_done handler can consume either result type without
+    changes. The 'backend' field is reused to carry an identifier
+    like 'seamless-torch:eng' for logging.
+    """
+
+    done = Signal(str, int, float, str, float)  # text, ms, dur, backend, rtf
+    error = Signal(str)
+
+    def __init__(self, engine, samples: np.ndarray, tgt_lang: str) -> None:
+        super().__init__()
+        self._engine = engine
+        self._samples = samples
+        self._tgt_lang = tgt_lang
+
+    def run(self) -> None:
+        try:
+            result = self._engine.translate(self._samples, self._tgt_lang)
+            rtf = (result.inference_ms / 1000.0) / result.duration_secs \
+                if result.duration_secs > 0 else 0.0
+            backend = f"seamless-torch:{result.tgt_lang}"
+            self.done.emit(
+                result.text, result.inference_ms, result.duration_secs,
+                backend, rtf,
+            )
+        except Exception as e:
+            traceback.print_exc()
+            self.error.emit(str(e))
+
+
+class TextTranslateWorker(QThread):
+    """Runs SeamlessM4T T2TT (text→text) off the main thread.
+
+    Used by Review mode: ASR produces the original-language text, then
+    this worker translates it through the same loaded SeamlessM4T model
+    using the T2TT path (no audio re-pass, much faster than S2TT).
+    """
+
+    done = Signal(str, str, str)  # original_text, translated_text, tgt_lang
+    error = Signal(str)
+
+    def __init__(
+        self,
+        engine,
+        original_text: str,
+        src_lang: str,
+        tgt_lang: str,
+    ) -> None:
+        super().__init__()
+        self._engine = engine
+        self._original_text = original_text
+        self._src_lang = src_lang
+        self._tgt_lang = tgt_lang
+
+    def run(self) -> None:
+        try:
+            result = self._engine.translate_text(
+                self._original_text,
+                src_lang=self._src_lang,
+                tgt_lang=self._tgt_lang,
+            )
+            self.done.emit(self._original_text, result.text, result.tgt_lang)
+        except Exception as e:
+            traceback.print_exc()
+            self.error.emit(str(e))
+
+
 class ModelLoadWorker(QThread):
     """Loads an ASR model off the main thread."""
 
@@ -82,23 +152,81 @@ class ModelLoadWorker(QThread):
             self.error.emit(self._model_id, str(e))
 
 
+class TranslatorLoadWorker(QThread):
+    """Loads a TranslationEngine model off the main thread.
+
+    Mirrors ModelLoadWorker's signal shape so the UI loading-state plumbing
+    (set_loading / show_load_error) can reuse the same handlers, but the
+    underlying engine and load_model() signature are different
+    (single-arg path, no family/backend).
+    """
+
+    loaded = Signal(str)
+    error = Signal(str, str)
+
+    def __init__(self, engine, model_id: str, path: str) -> None:
+        super().__init__()
+        self._engine = engine
+        self._model_id = model_id
+        self._path = path
+
+    def run(self) -> None:
+        try:
+            print(f"[ModelLoad] Loading {self._model_id} (seamless-torch translator)...")
+            self._engine.load_model(self._path)
+            print("[ModelLoad] translator load_model done")
+            self.loaded.emit(self._model_id)
+        except Exception as e:
+            print(f"[ModelLoad] ERROR: {e}")
+            traceback.print_exc()
+            self.error.emit(self._model_id, str(e))
+
+
 class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
     toggle_signal = Signal()
+    review_ready = Signal(str, str, str)    # original, translated, tgt_lang
+    review_started = Signal(str, str)       # original, tgt_lang (popup loads now)
 
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         mic = settings.microphone
         self.recorder = AudioRecorder()
         self.asr = AsrEngine()
+        self.translator = None  # lazy-instantiated TranslationEngine
         self._recording = False
-        self._worker: AsrWorker | None = None
-        self._load_worker: ModelLoadWorker | None = None
+        # All in-flight QThread workers are kept alive in this list. Each
+        # worker's `.finished` signal removes it. Single-reference patterns
+        # (e.g. `self._worker = worker`) are unsafe because reassigning to a
+        # new worker drops the old QThread's Python wrapper while its C++
+        # thread may still be running, causing "QThread: Destroyed while
+        # thread is still running" SIGABRT.
+        self._workers: list = []
+        self._load_worker: ModelLoadWorker | TranslatorLoadWorker | None = None
+        # Re-entrancy guard for translator auto-load. Two rapid signal
+        # emissions (e.g. user clicks "Direct" → both translation_mode_changed
+        # and translation_target_changed fire) would otherwise spawn two
+        # parallel load threads, each calling load_model() which does
+        # unload+load — producing nondeterministic state and a stuck spinner.
+        self._translator_loading: bool = False
         self._mic_device = None if mic == "auto" else mic
 
     def toggle(self) -> None:
         self.toggle_signal.emit()
+
+    def get_translator(self):
+        """Return the TranslationEngine, creating it lazily on first call.
+
+        We do not import translate.py at module top because it transitively
+        triggers torch/transformers imports the moment its lazy load_model()
+        is called. The class itself is light, so it's OK to construct here
+        — the heavy imports happen inside load_model().
+        """
+        if self.translator is None:
+            from thundertalk.core.translate import TranslationEngine
+            self.translator = TranslationEngine()
+        return self.translator
 
 
 def main() -> None:
@@ -114,6 +242,8 @@ def main() -> None:
     history = HistoryStore()
     pipe = Pipeline(settings)
     overlay = VoiceOverlay()
+    from thundertalk.ui.review_overlay import ReviewOverlay
+    review_overlay = ReviewOverlay()
     window = MainWindow(settings, history)
     tray = TrayIcon()
 
@@ -145,6 +275,44 @@ def main() -> None:
     pipe.asr.set_language(settings.transcription_language)
 
     # --- Model loading helpers -----------------------------------------
+    def _clear_load_worker() -> None:
+        # Runs on QThread's built-in finished signal, AFTER run() has fully
+        # exited — so dropping the last Python ref here is safe.
+        pipe._load_worker = None
+
+    def _start_translator_load(model_id: str, path: str) -> None:
+        """Load SeamlessM4T into the TranslationEngine on a background thread.
+
+        Translation models are NOT set as active_model_id (that's ASR-specific
+        and would crash _restore_model on next launch with 'Unknown model
+        family'). They simply become the loaded translator engine.
+        """
+        translator = pipe.get_translator()
+
+        # Idempotency: if already loaded with this model, just update UI.
+        if translator.is_loaded and translator.current_model == model_id:
+            print(f"[ModelLoad] Translator already loaded: {model_id}")
+            window.models_page.set_loading(model_id, False)
+            window.models_page.set_translator_active(model_id)
+            return
+
+        worker = TranslatorLoadWorker(translator, model_id, path)
+
+        def _on_translator_loaded(mid: str) -> None:
+            print(f"[ModelLoad] Translator ready: {mid}")
+            window.models_page.set_loading(mid, False)
+            window.models_page.set_translator_active(mid)
+
+        def _on_translator_error(mid: str, msg: str) -> None:
+            window.show_load_error(f"Failed to load {mid}: {msg}")
+            window.models_page.set_loading(mid, False)
+
+        worker.loaded.connect(_on_translator_loaded)
+        worker.error.connect(_on_translator_error)
+        worker.finished.connect(_clear_load_worker)
+        pipe._load_worker = worker
+        worker.start()
+
     def _start_model_load(model_id: str, path: str, family: str, backend: str) -> None:
         """Start loading a model in a background thread."""
         if pipe._load_worker and pipe._load_worker.isRunning():
@@ -152,6 +320,14 @@ def main() -> None:
             return
 
         window.models_page.set_loading(model_id, True)
+
+        # Translation models load into TranslationEngine, not AsrEngine.
+        # AsrEngine.load_model() does not understand the SeamlessM4T-v2 family
+        # and would raise ValueError("Unknown model family").
+        if backend == "seamless-torch":
+            _start_translator_load(model_id, path)
+            return
+
         worker = ModelLoadWorker(pipe.asr, model_id, path, family, backend)
 
         def _on_load_finished(mid: str) -> None:
@@ -164,11 +340,6 @@ def main() -> None:
             window.show_load_error(f"Failed to load {mid}: {msg}")
             window.models_page.set_loading(mid, False)
             traceback.print_exc()
-
-        def _clear_load_worker() -> None:
-            # Runs on QThread's built-in finished signal, AFTER run() has fully
-            # exited — so dropping the last Python ref here is safe.
-            pipe._load_worker = None
 
         worker.loaded.connect(_on_load_finished)
         worker.error.connect(_on_load_error)
@@ -187,6 +358,10 @@ def main() -> None:
         path = get_model_path(last_model)
         info = next((m for m in BUILTIN_MODELS if m.id == last_model), None)
         if not (path and info):
+            return
+        # Skip translation engine models — they go through _maybe_load_translator,
+        # not the ASR active-model restore path.
+        if info.backend == "seamless-torch":
             return
         print(f"[Startup] Loading model sync: {last_model}")
         try:
@@ -251,6 +426,39 @@ def main() -> None:
             # _do_paste activates the previous app.  Check after 500ms.
             if settings.get("mute_speakers"):
                 QTimer.singleShot(500, ensure_audio_restored)
+            # Review mode: kick off T2TT translation in parallel; the popup
+            # is shown when translated text comes back. Only triggers when
+            # the result we just got was an ASR pass (not S2TT translator).
+            is_asr_result = not backend.startswith("seamless-torch")
+            tgt = settings.get("translation_target")
+            mode = settings.get("translation_mode")
+            translator = pipe.translator
+            if (
+                is_asr_result
+                and tgt
+                and tgt != "off"
+                and mode == "review"
+                and translator
+                and translator.is_loaded
+            ):
+                from thundertalk.core.translate import detect_src_lang
+                src_lang = detect_src_lang(text)
+                print(f"[Review] T2TT {src_lang}→{tgt} on {len(text)} chars")
+                # Defer the popup briefly so the original paste actually
+                # lands in the user's app first. Without this, the popup
+                # races ahead of the async paste and the user sees the
+                # translation before their original is even visible.
+                _t2t_text = text
+                _t2t_tgt = tgt
+                QTimer.singleShot(
+                    300,
+                    lambda: pipe.review_started.emit(_t2t_text, _t2t_tgt),
+                )
+                t2t_worker = TextTranslateWorker(translator, text, src_lang, tgt)
+                t2t_worker.done.connect(_on_t2tt_done)
+                t2t_worker.error.connect(_on_t2tt_error)
+                _track_worker(t2t_worker)
+                t2t_worker.start()
         else:
             overlay.show_error("No speech detected")
 
@@ -259,10 +467,36 @@ def main() -> None:
         print(f"[ASR] Error: {msg}")
         overlay.show_error(msg[:40])
 
-    def _clear_asr_worker() -> None:
-        # Runs on QThread's built-in finished signal, after run() has fully
-        # exited. Safe to drop the last Python reference here.
-        pipe._worker = None
+    def _track_worker(w) -> None:
+        """Keep `w` Python-side referenced until its QThread.finished fires.
+
+        Replaces the older `pipe._worker = w` single-ref pattern, which broke
+        when a second worker started before the first finished — assigning to
+        `pipe._worker` dropped the running thread's wrapper.
+        """
+        pipe._workers.append(w)
+        def _untrack() -> None:
+            try:
+                pipe._workers.remove(w)
+            except ValueError:
+                pass
+            w.deleteLater()
+        w.finished.connect(_untrack)
+
+    def _on_t2tt_done(original: str, translated: str, tgt_lang: str) -> None:
+        print(
+            f'[Review] T2TT done: "{original[:30]}…" → "{translated[:30]}…" ({tgt_lang})'
+        )
+        # Backfill the translation onto the existing history entry so the
+        # Home page can show / let the user copy it later.
+        history.update_translation(original, translated, tgt_lang)
+        QTimer.singleShot(50, window.home_page.refresh)
+        pipe.review_ready.emit(original, translated, tgt_lang)
+
+    def _on_t2tt_error(msg: str) -> None:
+        print(f"[Review] T2TT error: {msg}")
+        # Original text is already pasted; silently drop the translation.
+        # No overlay needed — user has the original; the popup just doesn't appear.
 
     # Grace period (ms) between stop-requested and stream-closed so the
     # audio callback can capture trailing speech that is still being spoken
@@ -293,17 +527,40 @@ def main() -> None:
                     overlay.show_error("Too short")
                     return
 
+                tgt = settings.get("translation_target")
+                mode = settings.get("translation_mode") or "direct"
+
+                # Direct mode: SeamlessM4T S2TT (audio → translated text directly)
+                if tgt and tgt != "off" and mode == "direct":
+                    translator = pipe.get_translator()
+                    if not translator.is_loaded:
+                        print(f"[Toggle] Direct translation but model not loaded")
+                        overlay.show_error("Translation model not loaded")
+                        return
+                    print(f"[Toggle] Starting Direct translation → {tgt} on {len(samples)} samples")
+                    worker = TranslationWorker(translator, samples, tgt)
+                    worker.done.connect(_on_asr_done)
+                    worker.error.connect(_on_asr_error)
+                    _track_worker(worker)
+                    worker.start()
+                    return
+
+                # Off mode OR Review mode: route through ASR first.
+                # Review mode adds T2TT in _on_asr_done after the ASR result
+                # is pasted, then shows the review popup.
                 if not pipe.asr.is_loaded:
-                    print("[Toggle] No model (audio already restored on stop)")
+                    print("[Toggle] No ASR model (audio already restored on stop)")
                     overlay.show_error("No model loaded")
                     return
 
-                print(f"[Toggle] Starting ASR on {len(samples)} samples")
+                if tgt and tgt != "off" and mode == "review":
+                    print(f"[Toggle] Starting Review (ASR → T2TT → popup) on {len(samples)} samples")
+                else:
+                    print(f"[Toggle] Starting ASR on {len(samples)} samples")
                 worker = AsrWorker(pipe.asr, samples)
                 worker.done.connect(_on_asr_done)
                 worker.error.connect(_on_asr_error)
-                worker.finished.connect(_clear_asr_worker)
-                pipe._worker = worker
+                _track_worker(worker)
                 worker.start()
 
             QTimer.singleShot(TAIL_GRACE_MS, _finalize_stop)
@@ -312,6 +569,8 @@ def main() -> None:
             if not pipe.asr.is_loaded:
                 overlay.show_error("Load a model first")
                 return
+            # Dismiss any leftover Review popup from a previous round
+            review_overlay.hide_review()
             save_frontmost_app()
             # Show overlay immediately so user gets instant visual feedback
             overlay.show_recording()
@@ -328,6 +587,43 @@ def main() -> None:
             print("[Toggle] Recording started")
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
+
+    # --- Review overlay (translation confirm popup) -------------------
+    # `review_started` fires the moment the original is pasted; popup
+    # appears in loading state. `review_ready` fires when T2TT finishes
+    # and fills in the translation.
+    pipe.review_started.connect(review_overlay.show_review_loading)
+    pipe.review_ready.connect(
+        lambda _orig, translated, tgt: review_overlay.update_translation(
+            translated, tgt
+        )
+    )
+
+    def _on_replace_clicked(translated: str) -> None:
+        from thundertalk.core.text_output import replace_pasted_text
+        keep_clipboard = not settings.get("save_to_clipboard")
+        replace_pasted_text(translated, keep_clipboard=keep_clipboard)
+
+    review_overlay.replace_clicked.connect(_on_replace_clicked)
+
+    def _on_review_lang_changed(original: str, new_lang: str) -> None:
+        """User picked a different target language in the popup.
+        Persist to settings and re-run T2TT immediately."""
+        settings.set("translation_target", new_lang)
+        translator = pipe.translator
+        if translator is None or not translator.is_loaded:
+            print(f"[Review] Lang change requested but translator not loaded")
+            return
+        from thundertalk.core.translate import detect_src_lang
+        src_lang = detect_src_lang(original)
+        print(f"[Review] Re-translate {src_lang}→{new_lang}")
+        worker = TextTranslateWorker(translator, original, src_lang, new_lang)
+        worker.done.connect(_on_t2tt_done)
+        worker.error.connect(_on_t2tt_error)
+        _track_worker(worker)
+        worker.start()
+
+    review_overlay.lang_change_requested.connect(_on_review_lang_changed)
 
     # Feed live mic level into the overlay waveform — only runs while
     # recording so idle CPU stays near zero.
@@ -384,6 +680,113 @@ def main() -> None:
         pipe.asr.set_language(settings.transcription_language)
 
     window.settings_page.settings_changed.connect(_on_settings_changed)
+
+    # --- Translation engine (lazy load) --------------------------------
+    def _maybe_load_translator() -> None:
+        """Load SeamlessM4T into RAM if target language is set AND model is on disk.
+
+        Updates the inline translator-status row inside the TranslationModeCard
+        with one of: hidden / missing / loading / ready / error so the user
+        can see what's happening without guessing from spinners.
+        """
+        tgt = settings.get("translation_target")
+        if not tgt or tgt == "off":
+            window.models_page.set_translator_status("hidden")
+            return
+
+        from thundertalk.core.models import is_downloaded, get_model_path
+        if not is_downloaded("seamless-m4t-v2-large"):
+            print("[Translate] Target set but model not downloaded")
+            window.models_page.set_translator_status("missing")
+            return
+
+        translator = pipe.get_translator()
+        if translator.is_loaded:
+            window.models_page.set_translator_status("ready")
+            return
+        if pipe._translator_loading:
+            window.models_page.set_translator_status("loading")
+            return
+
+        model_path = get_model_path("seamless-m4t-v2-large")
+        if not model_path:
+            window.models_page.set_translator_status("missing")
+            return
+
+        pipe._translator_loading = True
+        # Visible spinner on the SeamlessM4T card AND a status pill at the
+        # top so users understand the ~10s torch+MPS load isn't a stuck UI.
+        window.models_page.set_loading("seamless-m4t-v2-large", True)
+        window.models_page.set_translator_status("loading")
+
+        # Use a QThread (TranslatorLoadWorker) instead of threading.Thread.
+        # The previous version called QTimer.singleShot(0, _on_done) from
+        # inside the worker thread; QTimer.singleShot binds the timer to
+        # the calling thread's event loop, and a raw threading.Thread has
+        # none, so the completion callback never fired and the UI stayed
+        # in "loading" forever even after the model was actually loaded.
+        # Qt signals from a QThread auto-marshal to the receiver's
+        # thread (main UI) without any timer dance.
+        worker = TranslatorLoadWorker(
+            translator, "seamless-m4t-v2-large", model_path
+        )
+
+        def _on_translator_loaded(mid: str) -> None:
+            pipe._translator_loading = False
+            window.models_page.set_loading(mid, False)
+            window.models_page.set_translator_active(mid)
+            window.models_page.set_translator_status("ready")
+
+        def _on_translator_failed(mid: str, msg: str) -> None:
+            pipe._translator_loading = False
+            window.models_page.set_loading(mid, False)
+            window.models_page.set_translator_status("error", msg[:80])
+
+        worker.loaded.connect(_on_translator_loaded)
+        worker.error.connect(_on_translator_failed)
+        _track_worker(worker)
+        worker.start()
+
+    QTimer.singleShot(1500, _maybe_load_translator)
+    # The Translation Mode card on the Models page is the canonical control
+    # for translation_target / translation_mode. Either signal triggers a
+    # translator-load check (loads SeamlessM4T into RAM if user just turned
+    # translation on, no-ops otherwise).
+    window.models_page.translation_target_changed.connect(
+        lambda _code: _maybe_load_translator()
+    )
+    window.models_page.translation_mode_changed.connect(
+        lambda _mode: _maybe_load_translator()
+    )
+
+    # User clicked the "Download" button on the translator-status row
+    # (only visible when target ≠ off and model is missing on disk).
+    def _on_download_translator_requested() -> None:
+        from thundertalk.core.models import BUILTIN_MODELS, is_downloaded
+        if is_downloaded("seamless-m4t-v2-large"):
+            # Already on disk — kick the loader instead.
+            _maybe_load_translator()
+            return
+        info = next(m for m in BUILTIN_MODELS if m.id == "seamless-m4t-v2-large")
+        # Reuse the Models-page download path so we get progress + completion.
+        window.models_page._on_download(info.id)
+        window.models_page.set_translator_status(
+            "loading", "Downloading translation model… this can take a while."
+        )
+
+    window.models_page.download_translator_requested.connect(
+        _on_download_translator_requested
+    )
+
+    # When the SeamlessM4T download finishes, auto-load it into the
+    # translator engine so the user doesn't need to know to click Activate.
+    def _on_model_download_completed(model_id: str) -> None:
+        if model_id == "seamless-m4t-v2-large":
+            _maybe_load_translator()
+
+    window.models_page.model_download_completed.connect(
+        _on_model_download_completed
+    )
 
     # --- Tray ----------------------------------------------------------
     def _show_settings_window() -> None:

@@ -19,6 +19,10 @@ class HistoryEntry:
     duration_secs: float
     inference_ms: int
     model: str
+    # Optional translation (Review-mode result). Empty string when no
+    # translation was produced for this entry.
+    translation: str = ""
+    translation_lang: str = ""
 
 
 class HistoryStore:
@@ -27,13 +31,29 @@ class HistoryStore:
         self.load()
 
     def load(self) -> None:
-        if _PATH.exists():
+        if not _PATH.exists():
+            return
+        try:
+            with open(_PATH, "r", encoding="utf-8") as f:
+                raw = json.load(f)
+            self._entries = [HistoryEntry(**e) for e in raw]
+        except (json.JSONDecodeError, OSError, TypeError) as e:
+            # Don't silently wipe history on a parse error — that's how
+            # months of entries vanish without trace. Side-step the
+            # corrupt file by renaming it; the next save() writes a fresh
+            # one, but the old bytes are still on disk for recovery.
+            backup = _PATH.with_name(
+                f"history.broken-{int(time.time())}.json"
+            )
             try:
-                with open(_PATH, "r", encoding="utf-8") as f:
-                    raw = json.load(f)
-                self._entries = [HistoryEntry(**e) for e in raw]
-            except (json.JSONDecodeError, OSError, TypeError):
-                self._entries = []
+                os.replace(_PATH, backup)
+                print(
+                    f"[History] Could not parse {_PATH.name}: {e}. "
+                    f"Preserved as {backup.name} so it isn't overwritten."
+                )
+            except OSError:
+                pass
+            self._entries = []
 
     def save(self) -> None:
         """Atomic write: a crash mid-save cannot corrupt the existing file."""
@@ -46,7 +66,15 @@ class HistoryStore:
             os.fsync(f.fileno())
         os.replace(tmp, _PATH)
 
-    def add(self, text: str, duration_secs: float, inference_ms: int, model: str) -> None:
+    def add(
+        self,
+        text: str,
+        duration_secs: float,
+        inference_ms: int,
+        model: str,
+        translation: str = "",
+        translation_lang: str = "",
+    ) -> None:
         self._entries.append(
             HistoryEntry(
                 text=text,
@@ -54,11 +82,29 @@ class HistoryStore:
                 duration_secs=duration_secs,
                 inference_ms=inference_ms,
                 model=model,
+                translation=translation,
+                translation_lang=translation_lang,
             )
         )
         if len(self._entries) > _MAX_ENTRIES:
             self._entries = self._entries[-_MAX_ENTRIES:]
         self.save()
+
+    def update_translation(
+        self,
+        original_text: str,
+        translation: str,
+        translation_lang: str,
+    ) -> None:
+        """Backfill the translation onto the most recent matching entry.
+        Used because Review-mode T2TT completes AFTER the original entry
+        was already added to history."""
+        for entry in reversed(self._entries):
+            if entry.text == original_text and not entry.translation:
+                entry.translation = translation
+                entry.translation_lang = translation_lang
+                self.save()
+                return
 
     def clear(self) -> None:
         self._entries.clear()

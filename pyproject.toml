@@ -1,6 +1,6 @@
 [project]
 name = "thundertalk"
-version = "0.3.1"
+version = "1.0.0"
 description = "Lightning-fast voice-to-text for every desktop"
 requires-python = ">=3.12"
 dependencies = [
@@ -12,11 +12,20 @@ dependencies = [
     "pyperclip>=1.8",
     "sherpa-onnx-core>=1.12.38",
     "pyinstaller>=6.19.0",
+    "pyqtdarktheme>=0.1.7",
 ]
 
 [project.optional-dependencies]
 mlx = [
     "mlx-qwen3-asr>=0.3",
+]
+translation = [
+    "torch>=2.4",
+    "transformers>=4.40,<6.0",
+    "sentencepiece>=0.2",
+    "tiktoken>=0.7",
+    "protobuf>=4.25",
+    "soundfile>=0.12",
 ]
 
 [project.scripts]

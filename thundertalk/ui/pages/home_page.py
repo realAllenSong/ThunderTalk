@@ -108,9 +108,8 @@ class _StatCard(QFrame):
         self.setObjectName("statCard")
         self.setStyleSheet(
             f"QFrame#statCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 16px; }}"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 16px; }}"
         )
-        self.setGraphicsEffect(theme.auto_shadow())
         self.setFixedHeight(150)
 
         ly = QVBoxLayout(self)
@@ -171,8 +170,8 @@ class _HistoryCard(QFrame):
         super().__init__()
         self.setStyleSheet(
             f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 12px; }}"
-            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 12px; }}"
+            f"QFrame:hover {{ border: 1px solid {theme.BORDER_STRONG}; }}"
         )
 
         ly = QVBoxLayout(self)
@@ -196,28 +195,37 @@ class _HistoryCard(QFrame):
             dur_text = f"{dur:.1f}s"
         dur_lbl = QLabel(dur_text)
         dur_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 10px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 4px; padding: 2px 6px;"
+            f"color: {theme.TEXT_MUTED}; font-size: 10px;"
+            f" background: transparent; border: 1px solid {theme.BORDER_SUBTLE};"
+            " border-radius: 4px; padding: 2px 6px;"
         )
         top.addWidget(dur_lbl)
 
         from PySide6.QtWidgets import QPushButton
         from PySide6.QtWidgets import QApplication
-        copy_btn = QPushButton(t("home.copy"))
-        copy_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        copy_btn.setFixedHeight(22)
-        copy_btn.setStyleSheet(
-            f"QPushButton {{ color: {theme.TEXT_MUTED}; font-size: 10px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 4px; padding: 2px 10px; }}"
-            f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-            f" background: {theme.BG_CARD_HOVER}; }}"
-        )
-        _text = entry.text
-        def _copy(checked=False, _t=_text, b=copy_btn):
-            QApplication.clipboard().setText(_t)
-            b.setText(t("home.copied"))
-            QTimer.singleShot(1500, lambda: b.setText(t("home.copy")))
-        copy_btn.clicked.connect(_copy)
+
+        def _make_copy_btn(payload_text: str, label: str = None) -> QPushButton:
+            btn = QPushButton(label or t("home.copy"))
+            btn.setCursor(Qt.CursorShape.PointingHandCursor)
+            btn.setFixedHeight(22)
+            btn.setStyleSheet(
+                f"QPushButton {{ color: {theme.TEXT_MUTED}; font-size: 10px;"
+                f" background: transparent; border: 1px solid {theme.BORDER_SUBTLE};"
+                " border-radius: 4px; padding: 2px 10px; }}"
+                f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
+                f" border: 1px solid {theme.BORDER_DEFAULT}; }}"
+            )
+            original_label = btn.text()
+
+            def _copy(_checked=False, _t=payload_text, b=btn, _orig=original_label):
+                QApplication.clipboard().setText(_t)
+                b.setText(t("home.copied"))
+                QTimer.singleShot(1500, lambda: b.setText(_orig))
+
+            btn.clicked.connect(_copy)
+            return btn
+
+        copy_btn = _make_copy_btn(entry.text)
         top.addSpacing(8)
         top.addWidget(copy_btn)
 
@@ -227,6 +235,36 @@ class _HistoryCard(QFrame):
         text_lbl.setWordWrap(True)
         text_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; border: none;")
         ly.addWidget(text_lbl)
+
+        # If a translation was attached (Review-mode entry), render it in
+        # a smaller, accent-colored row with its own Copy button.
+        if entry.translation:
+            tr_row = QWidget()
+            tr_row.setStyleSheet("background: transparent;")
+            tr_ly = QHBoxLayout(tr_row)
+            tr_ly.setContentsMargins(0, 4, 0, 0)
+            tr_ly.setSpacing(8)
+
+            arrow = QLabel(f"→ {entry.translation_lang or ''}".strip())
+            arrow.setStyleSheet(
+                f"color: {theme.ACCENT_ORANGE}; font-size: 10px;"
+                " font-weight: 600; border: none; background: transparent;"
+            )
+            tr_ly.addWidget(arrow, alignment=Qt.AlignmentFlag.AlignTop)
+
+            tr_text = QLabel(entry.translation)
+            tr_text.setWordWrap(True)
+            tr_text.setStyleSheet(
+                f"color: {theme.TEXT_SECONDARY}; font-size: 12px;"
+                " border: none; background: transparent;"
+            )
+            tr_ly.addWidget(tr_text, stretch=1)
+
+            tr_copy_btn = _make_copy_btn(
+                entry.translation, label=t("home.copy_translation")
+            )
+            tr_ly.addWidget(tr_copy_btn, alignment=Qt.AlignmentFlag.AlignTop)
+            ly.addWidget(tr_row)
 
 
 class _DayHeader(QLabel):

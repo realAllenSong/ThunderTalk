@@ -56,3 +56,8 @@ promo/
 
 # === Resource screenshots / assets ===
 thundertalk_resources/
+
+# Local build artifacts — uploaded to GitHub Releases instead
+ThunderTalk-v*-macOS.zip
+/dist/
+/build/

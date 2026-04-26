@@ -19,39 +19,52 @@ from PySide6.QtGui import (
 from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
 
 # ── Color Tokens ─────────────────────────────────────────────────────────
-# Dark palette — unified base so content area matches sidebar.
+# Dark palette inspired by Linear / Raycast / macOS-native — strong layer
+# differentiation through background tints rather than visible borders.
 
-BG_DEEPEST = "#0f0f11"
-BG_BASE = "#151517"
-BG_SIDEBAR = "#151517"
-BG_CARD = "#242426"
-BG_CARD_HOVER = "#2c2c2e"
-BG_ELEVATED = "#303032"
-BG_INPUT = "#1e1e20"
+# Pure-black surfaces. Layering comes from borders, not background tints.
+BG_DEEPEST    = "#000000"
+BG_BASE       = "#000000"   # window background
+BG_SIDEBAR    = "#000000"   # nav sidebar
+BG_SURFACE    = "#000000"   # main content area
+BG_CARD       = "#000000"   # cards — defined by border, not fill
+BG_CARD_HOVER = "#000000"   # cards stay flat on hover
+BG_ELEVATED   = "#16161a"   # ONLY for painted interactive surfaces
+                            # (ToggleSwitch track, HotkeyCapture pill).
+                            # Stylesheet pills/badges should use transparent.
+BG_INPUT      = "#000000"   # inputs — defined by border
 
-BORDER_SUBTLE = "#38383c"
-BORDER_DEFAULT = "#48484e"
-BORDER_STRONG = "#636366"
+# Borders — used SPARINGLY. Most layering should come from BG tints.
+BORDER_SUBTLE  = "#1f1f23"   # almost invisible — for grouping only
+BORDER_DEFAULT = "#2a2a32"   # visible on hover
+BORDER_STRONG  = "#3a3a44"   # focus / active states
 
-TEXT_PRIMARY = "#f0f0f2"
-TEXT_SECONDARY = "#98989d"
-TEXT_MUTED = "#636366"
+# Text hierarchy
+TEXT_PRIMARY   = "#f5f5f7"   # high-contrast headings, primary content
+TEXT_SECONDARY = "#b8b8be"   # body text
+TEXT_MUTED     = "#7d7d85"   # captions, metadata
+TEXT_SUBTLE    = "#5a5a62"   # disabled, hints
 
-ACCENT_BLUE = "#5b8def"      # Primary accent
-ACCENT_BLUE_HOVER = "#4a7de0"
-ACCENT_BLUE_DIM = "#1e3a5f"
+# Brand accent — orange. Used SPARINGLY: active state, primary CTA only.
+ACCENT_ORANGE        = "#f97316"
+ACCENT_ORANGE_HOVER  = "#fb923c"
+ACCENT_ORANGE_WARM   = "#fb923c"   # alias kept for back-compat
+ACCENT_ORANGE_DIM    = "rgba(249, 115, 22, 0.12)"   # active backdrops
 
-SUCCESS = "#34d399"
+# Status colors — used sparingly (badges, error overlays)
+SUCCESS     = "#10b981"   # toned down from #34d399
 SUCCESS_DIM = "#0d3328"
-WARNING = "#fbbf24"
+WARNING     = "#f59e0b"
 WARNING_DIM = "#78350f"
-ERROR = "#f87171"
-ERROR_DIM = "#3b1111"
+ERROR       = "#ef4444"   # toned down from #f87171
+ERROR_DIM   = "#3b1111"
 
-ACCENT_ORANGE = "#f97316"    # Brand accent — lightning bolt
-ACCENT_ORANGE_WARM = "#fb923c"
-ACCENT_PURPLE = "#a78bfa"
-ACCENT_CYAN = "#22d3ee"
+# Secondary accents — kept for badges / family color cues but minimized
+ACCENT_BLUE         = "#5b8def"
+ACCENT_BLUE_HOVER   = "#4a7de0"
+ACCENT_BLUE_DIM     = "#1e3a5f"
+ACCENT_PURPLE       = "#a78bfa"
+ACCENT_CYAN         = "#22d3ee"
 
 # Pre-computed rgba() values for Qt stylesheet alpha colors
 ACCENT_BLUE_A10 = "rgba(91, 141, 239, 25)"
@@ -85,7 +98,24 @@ def font_heading(size: int = 17) -> QFont:
 APP_QSS = f"""
 QMainWindow {{ background: {BG_BASE}; }}
 
+/* Pages inside the QStackedWidget — direct child QWidgets that Qt
+   otherwise paints with the macOS native window tint (gray). Force
+   pure black so cards/borders are the only visual structure. */
+QStackedWidget {{ background: {BG_BASE}; }}
+QStackedWidget > QWidget {{ background: {BG_BASE}; }}
+
+/* QScrollArea viewport is a separate QWidget. Two rules: ">QWidget"
+   catches the viewport (direct child of scrollarea); the two-level
+   "> QWidget > QWidget" catches the inner container that pages
+   register via scroll.setWidget(container). Without the second rule
+   that container paints macOS native #323232 gray wherever it isn't
+   covered by an explicitly-styled card (page heading row, left of
+   card edges, gap above first card). Cards keep their own fill
+   because the QFrame stylesheet set directly on each card outranks
+   this descendant rule. */
 QScrollArea {{ border: none; background: transparent; }}
+QScrollArea > QWidget {{ background: {BG_BASE}; }}
+QScrollArea > QWidget > QWidget {{ background: {BG_BASE}; }}
 QScrollBar:vertical {{
     background: transparent; width: 6px; margin: 0;
 }}
@@ -107,26 +137,21 @@ QToolTip {{
 # ── Reusable Card Frame ─────────────────────────────────────────────────
 
 CARD_QSS = (
-    f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_SUBTLE};"
+    f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_DEFAULT};"
     " border-radius: 12px; }"
 )
 
 
-def auto_shadow() -> QGraphicsDropShadowEffect:
-    """Subtle shadow for cards to provide depth."""
-    from PySide6.QtWidgets import QGraphicsDropShadowEffect
-    shadow = QGraphicsDropShadowEffect()
-    shadow.setBlurRadius(16)
-    shadow.setXOffset(0)
-    shadow.setYOffset(4)
-    shadow.setColor(QColor(0, 0, 0, 40))
-    return shadow
+def auto_shadow():
+    """No-op for the flat pure-black design; kept so existing call sites
+    don't need to be hunted down. Returning None means setGraphicsEffect(None)
+    which clears any prior effect."""
+    return None
 
 
 def make_card() -> QFrame:
     f = QFrame()
     f.setStyleSheet(CARD_QSS)
-    f.setGraphicsEffect(auto_shadow())
     return f
 
 
@@ -340,9 +365,9 @@ def setting_row(label: str, description: str = "") -> tuple[QHBoxLayout, QLabel]
 
 def pill_button(
     text: str,
-    bg: str = BG_ELEVATED,
+    bg: str = "transparent",
     fg: str = TEXT_SECONDARY,
-    bg_hover: str = BORDER_DEFAULT,
+    bg_hover: str = "rgba(255,255,255,0.05)",
     fg_hover: str = TEXT_PRIMARY,
     border: str = BORDER_DEFAULT,
     width: int = 0,
@@ -390,10 +415,53 @@ COMBO_QSS = (
     f" border-radius: 10px; padding: 10px 16px; font-size: 13px; }}"
     f"QComboBox:hover {{ border: 1px solid {BORDER_DEFAULT}; }}"
     f"QComboBox::drop-down {{ border: none; width: 28px; }}"
-    f"QComboBox QAbstractItemView {{ background: {BG_CARD}; color: {TEXT_PRIMARY};"
-    f" selection-background-color: {BORDER_DEFAULT}; border: 1px solid {BORDER_DEFAULT};"
-    f" border-radius: 8px; padding: 4px; }}"
+    # Popup list — explicitly style the view AND the items so no
+    # macOS native gray bleeds through anywhere. outline:0 removes
+    # the dotted focus ring Qt paints on the active item, which
+    # reads as a faint gray rectangle inside the popup.
+    f"QComboBox QAbstractItemView {{ background: #000000; color: {TEXT_PRIMARY};"
+    f" border: 1px solid {BORDER_DEFAULT}; border-radius: 8px;"
+    f" padding: 4px; outline: 0; }}"
+    f"QComboBox QAbstractItemView::item {{ background: #000000; color: {TEXT_PRIMARY};"
+    f" padding: 6px 12px; min-height: 22px; border: none; }}"
+    f"QComboBox QAbstractItemView::item:selected {{"
+    f" background: {ACCENT_BLUE}; color: #ffffff; }}"
+    f"QComboBox QAbstractItemView::item:hover {{"
+    f" background: rgba(91, 141, 239, 0.18); color: {TEXT_PRIMARY}; }}"
 )
+
+
+def style_combo(combo) -> None:
+    """Apply COMBO_QSS to the box AND force the popup-window-level
+    background to pure black.
+
+    Why this exists: the QComboBox dropdown is implemented as a
+    separate top-level QWidget (QComboBoxPrivateContainer holding a
+    QListView). On macOS, that container's NSWindow draws its own
+    backdrop that QSS rules attached to the QComboBox can't reach,
+    so the user still sees a 1-2 px gray frame around the popup
+    even with `QComboBox QAbstractItemView { background: #000 }`
+    set. Styling combo.view() (the QListView) and its window()
+    closes that gap.
+
+    Must be called AFTER the combo is added to a parent widget;
+    combo.view() creates the view lazily on first access, so calling
+    too early can produce a popup that's partially un-styled.
+    """
+    combo.setStyleSheet(COMBO_QSS)
+    view = combo.view()
+    if view is None:
+        return
+    view.setStyleSheet(
+        "QListView, QAbstractItemView {"
+        " background: #000000; border: none; outline: 0; }"
+    )
+    win = view.window()
+    if win is not None and win is not view:
+        win.setStyleSheet(
+            f"background: #000000; border: 1px solid {BORDER_DEFAULT};"
+            " border-radius: 8px;"
+        )
 
 # ── Line edit style ─────────────────────────────────────────────────────
 

@@ -19,6 +19,8 @@ DEFAULTS: dict[str, Any] = {
     "save_to_clipboard": True,
     "hotwords": [],
     "active_model_id": "",
+    "translation_target": "off",
+    "translation_mode": "direct",  # "direct" (S2TT) or "review" (Pipeline + popup)
     "log_enabled": True,
 }
 
@@ -81,4 +83,17 @@ class Settings:
     @property
     def transcription_language(self) -> str:
         return self._data.get("transcription_language", "auto")
+
+    @property
+    def translation_target(self) -> str:
+        return self._data.get("translation_target", "off")
+
+    @property
+    def translation_mode(self) -> str:
+        """'direct' — S2TT, paste translated text directly.
+        'review' — Pipeline (Qwen3-ASR + SeamlessM4T T2TT), popup for confirm.
+        Only meaningful when translation_target != 'off'.
+        """
+        mode = self._data.get("translation_mode", "direct")
+        return mode if mode in ("direct", "review") else "direct"
 

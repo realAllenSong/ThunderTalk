@@ -35,6 +35,7 @@ if TYPE_CHECKING:
     from thundertalk.core.settings import Settings
 
 
+# Curated SeamlessM4T v2 target languages (ISO-639-3).
 # ── Hotkey Capture Widget ───────────────────────────────────────────────
 
 class HotkeyCapture(QWidget):
@@ -145,7 +146,7 @@ class HotkeyCapture(QWidget):
             p.drawPath(bg)
             p.setFont(theme.font(14))
             p.setPen(QColor(theme.ACCENT_BLUE))
-            label = self._display if self._held_modifiers else "Press keys…"
+            label = self._display if self._held_modifiers else t("settings.hotkey.press_keys")
             p.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
         else:
             p.fillPath(bg, QColor(theme.BG_ELEVATED))
@@ -184,7 +185,7 @@ class HotkeyCapture(QWidget):
             p.setFont(theme.font(11))
             p.setPen(QColor(theme.TEXT_MUTED))
             hint_rect = QRectF(0, cap_y + cap_h + 6, self.width(), 20)
-            p.drawText(hint_rect, Qt.AlignmentFlag.AlignCenter, "✏ Click to change")
+            p.drawText(hint_rect, Qt.AlignmentFlag.AlignCenter, t("settings.hotkey.click_to_change"))
 
         p.end()
 
@@ -300,6 +301,12 @@ class SettingsPage(QWidget):
     def __init__(self, settings: Settings) -> None:
         super().__init__()
         self._settings = settings
+        # Section title labels we control so retranslate() can update them
+        # if the UI language switches at runtime.
+        self._section_titles: list[tuple[QLabel, str]] = []
+        # Track which section corresponds to which content widget so we can
+        # show/hide them as a single scrollable list (no tabs).
+        self._sections: list[tuple[QLabel, QWidget]] = []
 
         root = QVBoxLayout(self)
         root.setContentsMargins(32, 28, 32, 20)
@@ -309,51 +316,53 @@ class SettingsPage(QWidget):
         self._heading.setFont(theme.font_heading(20))
         self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         root.addWidget(self._heading)
-        root.addSpacing(16)
-
-        # ── Segment tab bar (centered) ──
-        tab_container = QHBoxLayout()
-        tab_container.setContentsMargins(0, 0, 0, 0)
-        tab_container.addStretch()
-
-        self._tabs = QTabBar()
-        self._tabs.setExpanding(False)
-        self._tabs.setDrawBase(False)
-        self._tabs.setStyleSheet(theme.segment_tab_qss())
-        for name in (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                     t("settings.tab_transcription"), t("settings.tab_general")):
-            self._tabs.addTab(name)
-        tab_container.addWidget(self._tabs)
-        tab_container.addStretch()
-        root.addLayout(tab_container)
         root.addSpacing(20)
 
-        self._pages: list[QWidget] = []
-        self._stack_area = QVBoxLayout()
-        root.addLayout(self._stack_area, stretch=1)
-
-        self._build_hotkey_tab()
-        self._build_audio_tab()
-        self._build_transcription_tab()
-        self._build_general_tab()
-
-        for i, page in enumerate(self._pages):
-            page.setVisible(i == 0)
-        self._tabs.currentChanged.connect(self._switch_tab)
-
-        i18n_bus.language_changed.connect(self.retranslate)
-
-    def _switch_tab(self, idx: int) -> None:
-        for i, page in enumerate(self._pages):
-            page.setVisible(i == idx)
-
-    def _add_page(self, widget: QWidget) -> None:
+        # Single scroll area — all settings live in one flat list.
         scroll = QScrollArea()
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        scroll.setWidget(widget)
-        self._stack_area.addWidget(scroll)
-        self._pages.append(scroll)
+        root.addWidget(scroll, stretch=1)
+
+        container = QWidget()
+        container.setStyleSheet("background: transparent;")
+        self._stack_area = QVBoxLayout(container)
+        self._stack_area.setContentsMargins(0, 0, 0, 0)
+        self._stack_area.setSpacing(28)
+        scroll.setWidget(container)
+
+        self._next_section_title_key = "settings.tab_hotkey"
+        self._build_hotkey_tab()
+        self._next_section_title_key = "settings.tab_audio"
+        self._build_audio_tab()
+        self._next_section_title_key = "settings.tab_transcription"
+        self._build_transcription_tab()
+        self._next_section_title_key = "settings.tab_general"
+        self._build_general_tab()
+
+        self._stack_area.addStretch()
+
+        i18n_bus.language_changed.connect(self.retranslate)
+
+    def _add_page(self, widget: QWidget) -> None:
+        """Append `widget` as a section beneath an uppercase title header.
+
+        The "tab" name (e.g. settings.tab_hotkey) is now used as the
+        section heading. Tab bar removed — everything stacks vertically
+        in one scrollable list.
+        """
+        title_key = self._next_section_title_key
+        title_lbl = QLabel(t(title_key).upper())
+        title_lbl.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " font-weight: 700; letter-spacing: 1.4px;"
+            " background: transparent; border: none;"
+            " padding-bottom: 8px;"
+        )
+        self._section_titles.append((title_lbl, title_key))
+        self._stack_area.addWidget(title_lbl)
+        self._stack_area.addWidget(widget)
+        self._sections.append((title_lbl, widget))
 
     # ── Hotkey tab ──
 
@@ -368,7 +377,7 @@ class SettingsPage(QWidget):
         cl.setContentsMargins(20, 18, 20, 18)
         cl.setSpacing(16)
 
-        header = QLabel("Activation hotkey")
+        header = QLabel(t("settings.section.activation_hotkey"))
         header.setFont(theme.font(14, bold=False))
         header.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
         cl.addWidget(header)
@@ -384,14 +393,14 @@ class SettingsPage(QWidget):
         cl.addSpacing(4)
 
         mode_row, _ = theme.setting_row(
-            "Activation Mode",
-            "Choose between toggle (click to start/stop) or hold-to-record."
+            t("settings.section.activation_mode"),
+            t("settings.section.activation_mode_desc"),
         )
-        
+
         self._mode_combo = QComboBox()
-        self._mode_combo.setStyleSheet(theme.COMBO_QSS)
-        self._mode_combo.addItem("Toggle (Click)")
-        self._mode_combo.addItem("Hold to Record")
+        theme.style_combo(self._mode_combo)
+        self._mode_combo.addItem(t("settings.mode.toggle_click"))
+        self._mode_combo.addItem(t("settings.mode.hold_record"))
         self._mode_combo.setFixedWidth(160)
         
         idx = 1 if self._settings.press_mode == "hold" else 0
@@ -429,7 +438,7 @@ class SettingsPage(QWidget):
         c1.setContentsMargins(20, 18, 20, 18)
         c1.setSpacing(12)
 
-        sec1 = QLabel("Input Device")
+        sec1 = QLabel(t("settings.section.input_device"))
         sec1.setFont(theme.font(14, bold=True))
         sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c1.addWidget(sec1)
@@ -437,13 +446,13 @@ class SettingsPage(QWidget):
         c1.addWidget(theme.separator())
 
         mic_row, _ = theme.setting_row(
-            "Microphone",
-            "Select recording device. Auto follows macOS system default.",
+            t("settings.mic.label"),
+            t("settings.mic.desc"),
         )
         self._mic_combo = QComboBox()
         self._mic_combo.setFixedWidth(220)
-        self._mic_combo.setStyleSheet(theme.COMBO_QSS)
-        self._mic_combo.addItem("Auto (System Default)")
+        theme.style_combo(self._mic_combo)
+        self._mic_combo.addItem(t("settings.mic.auto"))
         self._refresh_mic_list()
         self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
         mic_row.addWidget(self._mic_combo)
@@ -456,7 +465,7 @@ class SettingsPage(QWidget):
         c2.setContentsMargins(20, 18, 20, 18)
         c2.setSpacing(12)
 
-        sec2 = QLabel("Recording")
+        sec2 = QLabel(t("settings.section.recording"))
         sec2.setFont(theme.font(14, bold=True))
         sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c2.addWidget(sec2)
@@ -464,8 +473,8 @@ class SettingsPage(QWidget):
         c2.addWidget(theme.separator())
 
         mute_row, _ = theme.setting_row(
-            "Mute Speakers During Recording",
-            "Automatically mute system speakers to avoid feedback from playback",
+            t("settings.mute.label"),
+            t("settings.mute.desc"),
         )
         self._mute_toggle = theme.ToggleSwitch(self._settings.get("mute_speakers"))
         self._mute_toggle.toggled_signal.connect(lambda v: self._settings.set("mute_speakers", v))
@@ -517,7 +526,7 @@ class SettingsPage(QWidget):
         c1.setContentsMargins(20, 18, 20, 18)
         c1.setSpacing(12)
 
-        sec1 = QLabel("Language")
+        sec1 = QLabel(t("settings.section.language"))
         sec1.setFont(theme.font(14, bold=True))
         sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c1.addWidget(sec1)
@@ -525,18 +534,28 @@ class SettingsPage(QWidget):
         c1.addWidget(theme.separator())
 
         lang_row, _ = theme.setting_row(
-            "Recognition Language",
-            "Force a specific language or let the model auto-detect",
+            t("settings.recog.label"),
+            t("settings.recog.desc"),
         )
         self._lang_combo = QComboBox()
         self._lang_combo.setFixedWidth(180)
-        self._lang_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._lang_combo)
         langs = [
-            ("Auto Detect", "auto"), ("English", "en"), ("Chinese", "zh"),
-            ("Japanese", "ja"), ("Korean", "ko"), ("Spanish", "es"),
-            ("French", "fr"), ("German", "de"), ("Arabic", "ar"),
-            ("Hindi", "hi"), ("Italian", "it"), ("Portuguese", "pt"),
-            ("Russian", "ru"), ("Dutch", "nl"), ("Turkish", "tr"),
+            (t("settings.recog.auto"), "auto"),
+            (t("settings.recog.en"), "en"),
+            (t("settings.recog.zh"), "zh"),
+            (t("settings.recog.ja"), "ja"),
+            (t("settings.recog.ko"), "ko"),
+            (t("settings.recog.es"), "es"),
+            (t("settings.recog.fr"), "fr"),
+            (t("settings.recog.de"), "de"),
+            (t("settings.recog.ar"), "ar"),
+            (t("settings.recog.hi"), "hi"),
+            (t("settings.recog.it"), "it"),
+            (t("settings.recog.pt"), "pt"),
+            (t("settings.recog.ru"), "ru"),
+            (t("settings.recog.nl"), "nl"),
+            (t("settings.recog.tr"), "tr"),
         ]
         for display, code in langs:
             self._lang_combo.addItem(display, code)
@@ -556,7 +575,7 @@ class SettingsPage(QWidget):
         c2.setContentsMargins(20, 18, 20, 18)
         c2.setSpacing(12)
 
-        sec2 = QLabel("Output")
+        sec2 = QLabel(t("settings.section.output"))
         sec2.setFont(theme.font(14, bold=True))
         sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c2.addWidget(sec2)
@@ -564,8 +583,8 @@ class SettingsPage(QWidget):
         c2.addWidget(theme.separator())
 
         clip_row, _ = theme.setting_row(
-            "Save to Clipboard",
-            "Copy transcribed text to clipboard automatically",
+            t("settings.clipboard.label"),
+            t("settings.clipboard.desc"),
         )
         ct = theme.ToggleSwitch(self._settings.get("save_to_clipboard"))
         ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
@@ -590,7 +609,7 @@ class SettingsPage(QWidget):
         c1.setContentsMargins(20, 18, 20, 18)
         c1.setSpacing(12)
 
-        sec1 = QLabel("Appearance")
+        sec1 = QLabel(t("settings.section.appearance"))
         sec1.setFont(theme.font(14, bold=True))
         sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c1.addWidget(sec1)
@@ -604,7 +623,7 @@ class SettingsPage(QWidget):
         self._ui_lang_label = lang_label
         self._ui_lang_combo = QComboBox()
         self._ui_lang_combo.setFixedWidth(160)
-        self._ui_lang_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._ui_lang_combo)
         self._ui_lang_combo.addItem("English", "en")
         self._ui_lang_combo.addItem("中文", "zh")
         cur_lang = self._settings.get("language") or "en"
@@ -621,7 +640,7 @@ class SettingsPage(QWidget):
         c2.setContentsMargins(20, 18, 20, 18)
         c2.setSpacing(12)
 
-        sec2 = QLabel("Startup")
+        sec2 = QLabel(t("settings.section.startup"))
         sec2.setFont(theme.font(14, bold=True))
         sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c2.addWidget(sec2)
@@ -629,8 +648,8 @@ class SettingsPage(QWidget):
         c2.addWidget(theme.separator())
 
         r1, _ = theme.setting_row(
-            "Launch at Login",
-            "ThunderTalk will start automatically when you log in",
+            t("settings.startup.launch.label"),
+            t("settings.startup.launch.desc"),
         )
         t1 = theme.ToggleSwitch(self._settings.get("launch_at_startup"))
         t1.toggled_signal.connect(lambda v: self._settings.set("launch_at_startup", v))
@@ -640,8 +659,8 @@ class SettingsPage(QWidget):
         c2.addWidget(theme.separator())
 
         r2, _ = theme.setting_row(
-            "Start Minimized",
-            "Open to system tray without showing the main window",
+            t("settings.startup.silent.label"),
+            t("settings.startup.silent.desc"),
         )
         t2 = theme.ToggleSwitch(self._settings.get("silent_launch"))
         t2.toggled_signal.connect(lambda v: self._settings.set("silent_launch", v))
@@ -655,7 +674,7 @@ class SettingsPage(QWidget):
         c3.setContentsMargins(20, 18, 20, 18)
         c3.setSpacing(12)
 
-        sec3 = QLabel("Logs")
+        sec3 = QLabel(t("settings.section.logs"))
         sec3.setFont(theme.font(14, bold=True))
         sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
         c3.addWidget(sec3)
@@ -663,8 +682,8 @@ class SettingsPage(QWidget):
         c3.addWidget(theme.separator())
 
         log_row, _ = theme.setting_row(
-            "Enable Logging",
-            "Save debug logs to disk for troubleshooting",
+            t("settings.logs.enable.label"),
+            t("settings.logs.enable.desc"),
         )
         lt = theme.ToggleSwitch(self._settings.get("log_enabled"))
         lt.toggled_signal.connect(lambda v: self._settings.set("log_enabled", v))
@@ -673,8 +692,8 @@ class SettingsPage(QWidget):
 
         c3.addWidget(theme.separator())
 
-        dir_row, _ = theme.setting_row("Data Directory")
-        open_btn = theme.pill_button("Open Folder", width=110, height=32)
+        dir_row, _ = theme.setting_row(t("settings.logs.dir"))
+        open_btn = theme.pill_button(t("settings.logs.open"), width=110, height=32)
         open_btn.clicked.connect(self._open_log_dir)
         dir_row.addWidget(open_btn)
         c3.addLayout(dir_row)
@@ -697,10 +716,8 @@ class SettingsPage(QWidget):
 
     def retranslate(self) -> None:
         self._heading.setText(t("settings.title"))
-        tabs = (t("settings.tab_hotkey"), t("settings.tab_audio"),
-                t("settings.tab_transcription"), t("settings.tab_general"))
-        for i, name in enumerate(tabs):
-            self._tabs.setTabText(i, name)
+        for label, key in self._section_titles:
+            label.setText(t(key).upper())
         self._ui_lang_label.setText(t("settings.language"))
 
     def _open_log_dir(self) -> None:

@@ -32,9 +32,9 @@ class _WordChip(QFrame):
         super().__init__()
         self.word = word
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
-            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
+            f"QFrame {{ background: transparent;"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
+            f"QFrame:hover {{ border: 1px solid {theme.BORDER_STRONG}; }}"
         )
         self.setFixedHeight(28)
 
@@ -59,14 +59,14 @@ class _WordChip(QFrame):
 
     def enterEvent(self, ev) -> None:
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD_HOVER};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
+            f"QFrame {{ background: transparent;"
+            f" border: 1px solid {theme.BORDER_STRONG}; border-radius: 14px; }}"
         )
 
     def leaveEvent(self, ev) -> None:
         self.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_ELEVATED};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 14px; }}"
+            f"QFrame {{ background: transparent;"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
         )
 
 
@@ -112,10 +112,10 @@ class HotwordsPage(QWidget):
         ac.setContentsMargins(20, 18, 20, 18)
         ac.setSpacing(12)
 
-        sec = QLabel("Add Word")
-        sec.setFont(theme.font(14, bold=True))
-        sec.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ac.addWidget(sec)
+        self._sec_add = QLabel(t("hotwords.add_word"))
+        self._sec_add.setFont(theme.font(14, bold=True))
+        self._sec_add.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        ac.addWidget(self._sec_add)
 
         ac.addWidget(theme.separator())
 
@@ -133,9 +133,9 @@ class HotwordsPage(QWidget):
         add_row.addWidget(self._add_btn)
         ac.addLayout(add_row)
 
-        hint = QLabel("Press Enter or click Add. Words are saved automatically.")
-        hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
-        ac.addWidget(hint)
+        self._add_hint = QLabel(t("hotwords.add_hint"))
+        self._add_hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
+        ac.addWidget(self._add_hint)
         self._layout.addWidget(add_card)
 
         # --- Words card ---
@@ -145,17 +145,18 @@ class HotwordsPage(QWidget):
         wc.setSpacing(12)
 
         header_row = QHBoxLayout()
-        sec2 = QLabel("Custom Vocabulary")
-        sec2.setFont(theme.font(14, bold=True))
-        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        header_row.addWidget(sec2)
+        self._sec_vocab = QLabel(t("hotwords.custom_vocab"))
+        self._sec_vocab.setFont(theme.font(14, bold=True))
+        self._sec_vocab.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        header_row.addWidget(self._sec_vocab)
 
         header_row.addStretch()
 
         self._count_label = QLabel()
         self._count_label.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;"
-            f" background: {theme.BG_ELEVATED}; border-radius: 8px; padding: 2px 10px;"
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            f" background: transparent; border: 1px solid {theme.BORDER_SUBTLE};"
+            " border-radius: 8px; padding: 2px 10px;"
         )
         header_row.addWidget(self._count_label)
         wc.addLayout(header_row)
@@ -170,7 +171,7 @@ class HotwordsPage(QWidget):
         self._chips_layout.setSpacing(8)
         wc.addWidget(self._chips_container)
 
-        self._empty_label = QLabel("No hotwords added yet. Add words above to get started.")
+        self._empty_label = QLabel(t("hotwords.empty"))
         self._empty_label.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none; padding: 20px 0;"
         )
@@ -178,29 +179,6 @@ class HotwordsPage(QWidget):
         wc.addWidget(self._empty_label)
 
         self._layout.addWidget(words_card)
-
-        # --- Auto-learn info card ---
-        info_card = theme.make_card()
-        ic = QVBoxLayout(info_card)
-        ic.setContentsMargins(20, 18, 20, 18)
-        ic.setSpacing(10)
-
-        sec3 = QLabel("Auto-Learning")
-        sec3.setFont(theme.font(14, bold=True))
-        sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ic.addWidget(sec3)
-
-        ic.addWidget(theme.separator())
-
-        desc = QLabel(
-            "ThunderTalk automatically learns new words when you correct "
-            "transcription results. After pasting, if you select and copy "
-            "the corrected text, the new words will be added here."
-        )
-        desc.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;")
-        desc.setWordWrap(True)
-        ic.addWidget(desc)
-        self._layout.addWidget(info_card)
 
         self._layout.addStretch()
 
@@ -214,7 +192,7 @@ class HotwordsPage(QWidget):
                 item.widget().deleteLater()
 
         words = self._settings.hotwords
-        self._count_label.setText(f"{len(words)} words")
+        self._count_label.setText(t("hotwords.count").format(n=len(words)))
         self._empty_label.setVisible(len(words) == 0)
         self._chips_container.setVisible(len(words) > 0)
 
@@ -288,3 +266,8 @@ class HotwordsPage(QWidget):
         self._subtitle.setText(t("hotwords.desc"))
         self._input.setPlaceholderText(t("hotwords.placeholder"))
         self._add_btn.setText(t("hotwords.add"))
+        self._sec_add.setText(t("hotwords.add_word"))
+        self._add_hint.setText(t("hotwords.add_hint"))
+        self._sec_vocab.setText(t("hotwords.custom_vocab"))
+        self._empty_label.setText(t("hotwords.empty"))
+        self._rebuild_chips()  # refreshes the count label
