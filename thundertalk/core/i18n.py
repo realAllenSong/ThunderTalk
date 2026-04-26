@@ -59,6 +59,16 @@ _STRINGS: dict[str, dict[str, str]] = {
     "home.sessions": {"en": "Sessions", "zh": "次数"},
     "home.recent": {"en": "Recent", "zh": "最近"},
     "home.clear": {"en": "Clear", "zh": "清空"},
+    "home.clear.confirm_title": {
+        "en": "Clear all history?",
+        "zh": "确认清空全部历史记录？",
+    },
+    "home.clear.confirm_body": {
+        "en": "This permanently deletes every transcription on this page and the totals above. This can't be undone.",
+        "zh": "此操作会永久删除上方统计与下方所有转录记录，无法恢复。",
+    },
+    "home.clear.confirm_yes": {"en": "Clear", "zh": "清空"},
+    "home.clear.confirm_cancel": {"en": "Cancel", "zh": "取消"},
     "home.ready": {"en": "Ready to go", "zh": "准备就绪"},
     "home.ready_sub": {"en": "Press your hotkey to start recording",
                        "zh": "按下快捷键开始录音"},
