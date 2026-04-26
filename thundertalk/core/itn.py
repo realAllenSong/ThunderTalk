@@ -60,6 +60,23 @@ def _is_cjk(ch: str) -> bool:
     return "一" <= ch <= "鿿"
 
 
+def _has_digit_only_adjacency(s: str) -> bool:
+    """True if `s` contains two consecutive _ZH_DIGITS chars with no
+    unit separator between.
+
+    Real Chinese numbers always have a unit between digits at any
+    place above the singles (三十五 has 十 between 三 and 五; 一百二十
+    has 百 then 十). Bare adjacency — 三七 / 一五 / 三三 / 七零 — is
+    almost never a number; it signals an idiom (三七二十一, 一五一十,
+    三三两两, 七零八落) or a math-result phrase that the literal
+    integer parser silently mangles.
+    """
+    for i in range(len(s) - 1):
+        if s[i] in _ZH_DIGITS and s[i + 1] in _ZH_DIGITS:
+            return True
+    return False
+
+
 def _cjk_density_around(text: str, start: int, end: int) -> int:
     """Total contiguous CJK chars within 3 positions on each side of
     a single-char number match. Used as a 4-char-idiom (成语) signal:
@@ -146,6 +163,22 @@ def _should_convert_zh(match: re.Match, original_text: str, title_ranges: list[t
         len(core) == 2
         and core[0] in ("百", "佰", "千", "仟", "万", "亿")
         and core[1] in _ZH_DIGITS
+    ):
+        return False
+
+    # Multi-char number-run idiom guard: a digit-only adjacency
+    # (consecutive 一-九 with no unit between) embedded in CJK
+    # context. _parse_zh_integer silently overwrites `current` when
+    # the second digit lands without a magnitude separator —
+    # 三七二十一 parses as (0+0+0+20+1)=21, dropping the 三七 head.
+    # Adjacency itself is the dominant signal (real Chinese numbers
+    # never have it — see _has_digit_only_adjacency); just one CJK
+    # char on either side is enough to call it idiomatic. Catches
+    # 三七二十一, 一五一十, 三三两两, 七零八落 …
+    if (
+        len(core) >= 2
+        and _has_digit_only_adjacency(core)
+        and _cjk_density_around(original_text, match.start(), match.end()) >= 1
     ):
         return False
 

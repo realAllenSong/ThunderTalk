@@ -272,6 +272,10 @@ class MainWindow(QMainWindow):
     def settings_page(self) -> SettingsPage:
         return self._settings_page
 
+    @property
+    def about_page(self) -> AboutPage:
+        return self._about_page
+
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._models_page.set_active_model(model_id)
 

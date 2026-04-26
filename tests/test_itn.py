@@ -189,6 +189,50 @@ def test_idiom_protection(spoken: str, expected: str) -> None:
     assert normalize_numbers(spoken) == expected
 
 
+# ── Multi-char digit-only-adjacency idioms ─────────────────────────
+# User report: "不管三七二十一" → "不管21". Class of bugs:
+# multi-char number runs that contain adjacent digit chars with NO
+# unit between them — real Chinese numbers always have a unit
+# separator (三十五, 一百二十), so adjacent digits + CJK context
+# strongly signal an idiom or set phrase.
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        # The user's report
+        ("不管三七二十一", "不管三七二十一"),
+        ("他不管三七二十一就冲", "他不管三七二十一就冲"),
+        ("管它三七二十一", "管它三七二十一"),
+        ("别管三七二十一就上", "别管三七二十一就上"),
+        # Same defect in other set phrases
+        ("一五一十地说", "一五一十地说"),
+        ("他们三三两两走着", "他们三三两两走着"),
+        ("七零八落", "七零八落"),
+    ],
+)
+def test_multichar_idiom_adjacency(spoken: str, expected: str) -> None:
+    assert normalize_numbers(spoken) == expected
+
+
+# ── Real numbers MUST still convert (no digit-only adjacency) ──────
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        ("我有三十五岁", "我有35岁"),
+        ("他三十二岁", "他32岁"),
+        ("二十一岁", "21岁"),
+        ("三百五十二", "352"),
+        ("一百二十块", "120块"),
+        ("两万五千", "25000"),
+    ],
+)
+def test_unit_separated_numbers_still_convert(
+    spoken: str, expected: str
+) -> None:
+    assert normalize_numbers(spoken) == expected
+
+
 # ── Counters / measure words / numeric predicates STILL convert ──
 # The idiom-density heuristic must defer to clear "this is a number"
 # signals so the user keeps getting "1次" / "1年" / "1是不是太低".

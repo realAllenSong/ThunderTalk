@@ -371,6 +371,52 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "settings.hotkey.press_keys": {"en": "Press keys…", "zh": "按下按键…"},
 
+    # ── About page — update flow ────────────────────────────────────
+    "about.update.checking": {
+        "en": "Checking for updates…",
+        "zh": "正在检查更新…",
+    },
+    "about.update.up_to_date": {
+        "en": "You're on the latest version.",
+        "zh": "当前已是最新版本。",
+    },
+    "about.update.available": {
+        "en": "Update available: v{version}",
+        "zh": "发现新版本：v{version}",
+    },
+    "about.update.notes_link": {
+        "en": "Release notes",
+        "zh": "发布说明",
+    },
+    "about.update.download": {
+        "en": "Download Update",
+        "zh": "下载更新",
+    },
+    "about.update.downloading": {
+        "en": "Downloading… {pct}%",
+        "zh": "下载中…  {pct}%",
+    },
+    "about.update.download_failed": {
+        "en": "Download failed. Try again, or download manually from Releases.",
+        "zh": "下载失败，请稍后重试或前往 Releases 手动下载。",
+    },
+    "about.update.install_restart": {
+        "en": "Quit & Install",
+        "zh": "退出并安装",
+    },
+    "about.update.installing": {
+        "en": "Installing — ThunderTalk will relaunch in a moment.",
+        "zh": "正在安装，ThunderTalk 将自动重启。",
+    },
+    "about.update.dev_mode": {
+        "en": "Auto-update disabled (running from source).",
+        "zh": "开发模式：自动更新已禁用。",
+    },
+    "about.update.check_failed": {
+        "en": "Couldn't reach GitHub. Check your network and try again.",
+        "zh": "无法连接 GitHub，请检查网络后重试。",
+    },
+
     # ── About page ──────────────────────────────────────────────────
     "about.tagline": {
         "en": "« Lightning-fast, privacy-first voice-to-text »",
