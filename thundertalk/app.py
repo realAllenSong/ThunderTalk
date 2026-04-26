@@ -858,11 +858,13 @@ def main() -> None:
 
     QTimer.singleShot(1500, _maybe_show_post_update_notice)
 
-    # Silent update probe 10 s after launch — by then the model has
-    # loaded and the user isn't waiting on a slow startup. The probe
-    # only flips the About page's button to "Download Update" if a
-    # newer release is published; never raises a popup, never blocks.
-    QTimer.singleShot(10_000, window.about_page.trigger_background_check)
+    # Silent update probe shortly after launch. 4 s is long enough
+    # that startup feels responsive but short enough that, by the
+    # time the user lands on the About page, the action button has
+    # already flipped to "Download Update" if a new release exists.
+    # Probe only changes the About page state — never raises a
+    # popup, never blocks.
+    QTimer.singleShot(4_000, window.about_page.trigger_background_check)
 
     import atexit
     atexit.register(force_unmute)

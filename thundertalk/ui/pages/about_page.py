@@ -135,7 +135,13 @@ class AboutPage(QWidget):
         ly.addWidget(title)
         ly.addSpacing(10)
 
-        # ── Version + Check update (side by side like 闪电说) ──
+        # ── Version pill, alone on its row ──
+        # Earlier the Check-for-Updates button sat next to the
+        # version pill, but once it cycles to "Download Update" /
+        # "Quit & Install" the layout got cramped — width pulses as
+        # the label changes ("Downloading… 49%"), pushing the
+        # version pill around. Stacking the action below the version
+        # keeps the horizontal axis stable.
         ver_row = QHBoxLayout()
         ver_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ver_row.setSpacing(4)
@@ -147,6 +153,12 @@ class AboutPage(QWidget):
             " border-radius: 12px; padding: 5px 16px;"
         )
         ver_row.addWidget(version)
+        ly.addLayout(ver_row)
+        ly.addSpacing(8)
+
+        # ── Action button on its own row directly below the version ──
+        action_row = QHBoxLayout()
+        action_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
 
         self._action_btn = QPushButton(t("about.check_updates"))
         self._action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -169,8 +181,8 @@ class AboutPage(QWidget):
         )
         self._action_btn.setStyleSheet(self._action_btn_base_qss)
         self._action_btn.clicked.connect(self._on_action)
-        ver_row.addWidget(self._action_btn)
-        ly.addLayout(ver_row)
+        action_row.addWidget(self._action_btn)
+        ly.addLayout(action_row)
 
         # Status row + progress bar — empty / hidden in idle state.
         ly.addSpacing(10)
