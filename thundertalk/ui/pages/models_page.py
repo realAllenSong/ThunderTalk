@@ -127,11 +127,14 @@ class TranslationModeCard(QFrame):
     target_changed = Signal(str)      # ISO-639-3
     download_translator_clicked = Signal()  # user wants the Seamless model
 
-    _MODES: list[tuple[str, str]] = [
-        ("off", "Off"),
-        ("direct", "Direct"),
-        ("review", "Review"),
-    ]
+    @staticmethod
+    def _modes() -> list[tuple[str, str]]:
+        # Re-evaluated each call so a language switch updates labels.
+        return [
+            ("off", t("models.mode_off")),
+            ("direct", t("models.mode_direct")),
+            ("review", t("models.mode_review")),
+        ]
 
     def __init__(self, settings) -> None:
         super().__init__()
@@ -150,16 +153,16 @@ class TranslationModeCard(QFrame):
         # Mirrors the FamilyCard structure (name → pill → meta line) so
         # this card sits in the same visual rhythm as the model cards
         # below instead of looking like a different design.
-        title = QLabel("Translation")
-        title.setFont(theme.font(15, bold=True))
-        title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ly.addWidget(title)
+        self._title_lbl = QLabel(t("models.translation"))
+        self._title_lbl.setFont(theme.font(15, bold=True))
+        self._title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        ly.addWidget(self._title_lbl)
 
-        subtitle = QLabel("Speech translation via SeamlessM4T v2")
-        subtitle.setStyleSheet(
+        self._subtitle_lbl = QLabel(t("models.translation_subtitle"))
+        self._subtitle_lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;"
         )
-        ly.addWidget(subtitle)
+        ly.addWidget(self._subtitle_lbl)
 
         ly.addSpacing(2)
 
@@ -184,7 +187,7 @@ class TranslationModeCard(QFrame):
         self._buttons: dict[str, QPushButton] = {}
         self._group = QButtonGroup(self)
         self._group.setExclusive(True)
-        for code, label in self._MODES:
+        for code, label in self._modes():
             btn = QPushButton(label)
             btn.setCheckable(True)
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -221,10 +224,7 @@ class TranslationModeCard(QFrame):
         # MaximumWidth caps wrap to the card width — without it, the
         # WordWrap label reports its unwrapped sizeHint and forces the
         # whole card (and the window) to grow rightward.
-        self._warning = QLabel(
-            "Review mode needs an active ASR model. "
-            "Activate Qwen3-ASR or SenseVoice below."
-        )
+        self._warning = QLabel(t("models.review_needs_asr"))
         self._warning.setStyleSheet(
             f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
             " padding-top: 2px;"
@@ -320,10 +320,11 @@ class TranslationModeCard(QFrame):
             return
 
         palette = {
-            "missing": (theme.ACCENT_ORANGE, "Translation model not downloaded."),
-            "loading": (theme.ACCENT_ORANGE, "Loading translation model…"),
-            "ready":   (theme.SUCCESS,       "Translation model ready."),
-            "error":   (theme.ERROR,         message or "Translation model failed to load."),
+            "missing": (theme.ACCENT_ORANGE, t("models.translator.missing")),
+            "loading": (theme.ACCENT_ORANGE, t("models.translator.loading")),
+            "ready":   (theme.SUCCESS,       t("models.translator.ready")),
+            "error":   (theme.ERROR,
+                        message or t("models.translator.error")),
         }
         color, default_msg = palette.get(state, (theme.TEXT_MUTED, ""))
         self._translator_dot.setStyleSheet(
@@ -333,7 +334,7 @@ class TranslationModeCard(QFrame):
         self._translator_status_label.setText(message or default_msg)
         # Download button is only relevant in the "missing" state.
         if state == "missing":
-            self._translator_action_btn.setText("Download")
+            self._translator_action_btn.setText(t("models.btn.download"))
             self._translator_action_btn.show()
         else:
             self._translator_action_btn.hide()
@@ -433,7 +434,7 @@ class VariantRow(QFrame):
 
         # Recommended badge
         if is_recommended and compatible:
-            badge = QLabel("Recommended")
+            badge = QLabel(t("models.recommended"))
             badge.setStyleSheet(
                 f"color: {theme.SUCCESS}; font-size: 10px; font-weight: bold;"
                 " background: transparent; border: none; padding: 2px 8px;"
@@ -479,7 +480,7 @@ class VariantRow(QFrame):
     def set_loading(self, loading: bool) -> None:
         self._loading = loading
         if loading:
-            self._btn.setText("Loading…")
+            self._btn.setText(t("models.btn.loading"))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
                 f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
@@ -526,7 +527,7 @@ class VariantRow(QFrame):
         #     with a hint that it belongs to Direct/Review modes.
         if self._compatible and not self._loading:
             if mode == "direct" and not is_seamless and downloaded:
-                self._btn.setText("Direct uses SeamlessM4T")
+                self._btn.setText(t("models.btn.direct_uses_seamless"))
                 self._btn.setStyleSheet(
                     f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
                     f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
@@ -535,7 +536,7 @@ class VariantRow(QFrame):
                 self._btn.setEnabled(False)
                 return
             if mode == "off" and is_seamless and downloaded:
-                self._btn.setText("Direct / Review only")
+                self._btn.setText(t("models.btn.direct_review_only"))
                 self._btn.setStyleSheet(
                     f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
                     f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
@@ -545,8 +546,10 @@ class VariantRow(QFrame):
                 return
 
         if not self._compatible:
-            plat = "Apple Silicon" if self.info.platform == "apple-silicon" else "NVIDIA GPU"
-            self._btn.setText(f"Needs {plat}")
+            plat_key = ("models.btn.needs_apple_silicon"
+                        if self.info.platform == "apple-silicon"
+                        else "models.btn.needs_nvidia")
+            self._btn.setText(t(plat_key))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
                 f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-size: 10px; }}"
@@ -555,21 +558,21 @@ class VariantRow(QFrame):
         elif is_translator_active:
             # SeamlessM4T loaded into the TranslationEngine; visually distinct
             # from the ASR Active badge so both engines can co-exist clearly.
-            self._btn.setText("✓ Translator")
+            self._btn.setText(t("models.btn.translator"))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.ACCENT_ORANGE};"
                 f" border: 1px solid {theme.ACCENT_ORANGE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
         elif is_asr_active:
-            self._btn.setText("✓ Active")
+            self._btn.setText(t("models.btn.active"))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.SUCCESS};"
                 f" border: 1px solid {theme.SUCCESS}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
             )
             self._btn.setEnabled(False)
         elif downloaded:
-            self._btn.setText("Activate")
+            self._btn.setText(t("models.btn.activate"))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: {theme.ACCENT_BLUE}; color: #ffffff; border: none;"
                 " border-radius: 15px; font-weight: 500; font-size: 11px; }}"
@@ -577,7 +580,7 @@ class VariantRow(QFrame):
             )
             self._btn.setEnabled(True)
         elif self.info.download_url:
-            self._btn.setText("Download")
+            self._btn.setText(t("models.btn.download"))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
                 f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
@@ -585,7 +588,7 @@ class VariantRow(QFrame):
             )
             self._btn.setEnabled(True)
         else:
-            self._btn.setText("Coming Soon")
+            self._btn.setText(t("models.btn.coming_soon"))
             self._btn.setStyleSheet(
                 f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
                 f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
@@ -677,10 +680,10 @@ class FamilyCard(QFrame):
 
         # Metadata line
         stars = "★" * first.accuracy_stars + "☆" * (5 - first.accuracy_stars)
-        meta_parts = [f"{first.language_count} languages"]
+        meta_parts = [f"{first.language_count} {t('models.languages')}"]
         if any(v.hotword_support for v in variants):
-            meta_parts.append("Hotwords")
-        meta_parts.append(f"{len(variants)} variants available")
+            meta_parts.append(t("models.hotwords_supported"))
+        meta_parts.append(t("models.variants_available").format(n=len(variants)))
         meta = QLabel(f"{stars}   {'  ·  '.join(meta_parts)}")
         meta.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
         layout.addWidget(meta)
@@ -780,7 +783,7 @@ class ModelsPage(QWidget):
         hw_ly.setSpacing(14)
         self._hw_icon = _DeviceIcon("mac")
         hw_ly.addWidget(self._hw_icon)
-        self._hw_label = QLabel("Detecting hardware...")
+        self._hw_label = QLabel(t("models.detecting_hw"))
         self._hw_label.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
         )

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (
 )
 
 import thundertalk
+from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 
 
@@ -98,7 +99,7 @@ class AboutPage(QWidget):
         )
         ver_row.addWidget(version)
 
-        check_btn = QPushButton("Check for Updates")
+        check_btn = QPushButton(t("about.check_updates"))
         check_btn.setCursor(Qt.CursorShape.PointingHandCursor)
         check_btn.setStyleSheet(
             f"QPushButton {{ color: {theme.TEXT_SECONDARY}; font-size: 12px;"
@@ -116,7 +117,7 @@ class AboutPage(QWidget):
         ly.addSpacing(24)
 
         # ── Tagline ──
-        tagline = QLabel("«  Lightning-fast, privacy-first voice-to-text  »")
+        tagline = QLabel(t("about.tagline"))
         tagline.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 14px; font-style: italic;")
         tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(tagline)
@@ -144,17 +145,17 @@ class AboutPage(QWidget):
             d.setStyleSheet(f"color: {theme.BORDER_DEFAULT}; font-size: 12px; padding: 0 4px;")
             return d
 
-        footer_links.addWidget(_link("Website", "https://github.com/realAllenSong/ThunderTalk"))
+        footer_links.addWidget(_link(t("about.website"), "https://github.com/realAllenSong/ThunderTalk"))
         footer_links.addWidget(_divider())
-        footer_links.addWidget(_link("Report Issue", "https://github.com/realAllenSong/ThunderTalk/issues"))
+        footer_links.addWidget(_link(t("about.report_issue"), "https://github.com/realAllenSong/ThunderTalk/issues"))
         footer_links.addWidget(_divider())
-        footer_links.addWidget(_link("License", "https://github.com/realAllenSong/ThunderTalk/blob/main/LICENSE"))
+        footer_links.addWidget(_link(t("about.license"), "https://github.com/realAllenSong/ThunderTalk/blob/main/LICENSE"))
         ly.addLayout(footer_links)
 
         ly.addSpacing(8)
 
         # ── Copyright ──
-        copyright = QLabel("© 2026 Allen Song · Open Source · Apache-2.0")
+        copyright = QLabel(t("about.copyright"))
         copyright.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(copyright)

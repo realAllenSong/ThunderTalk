@@ -71,11 +71,74 @@ _STRINGS: dict[str, dict[str, str]] = {
     # ── Models ──────────────────────────────────────────────────────
     "models.title": {"en": "Models", "zh": "模型"},
     "models.hardware": {"en": "Hardware", "zh": "硬件"},
+    "models.detecting_hw": {"en": "Detecting hardware…", "zh": "正在检测硬件…"},
     "models.active": {"en": "Active", "zh": "当前"},
     "models.use": {"en": "Use", "zh": "使用"},
     "models.download": {"en": "Download", "zh": "下载"},
     "models.delete": {"en": "Delete", "zh": "删除"},
     "models.downloading": {"en": "Downloading…", "zh": "下载中…"},
+    # Translation card (top of Models page)
+    "models.translation": {"en": "Translation", "zh": "翻译"},
+    "models.translation_subtitle": {
+        "en": "Speech translation via SeamlessM4T v2",
+        "zh": "通过 SeamlessM4T v2 进行语音翻译",
+    },
+    "models.mode_off": {"en": "Off", "zh": "关闭"},
+    "models.mode_direct": {"en": "Direct", "zh": "直译"},
+    "models.mode_review": {"en": "Review", "zh": "审阅"},
+    # Translator status row
+    "models.translator.missing": {
+        "en": "Translation model not downloaded.",
+        "zh": "翻译模型未下载。",
+    },
+    "models.translator.loading": {
+        "en": "Loading translation model…",
+        "zh": "正在加载翻译模型…",
+    },
+    "models.translator.downloading": {
+        "en": "Downloading translation model… this can take a while.",
+        "zh": "正在下载翻译模型…可能需要一段时间。",
+    },
+    "models.translator.ready": {
+        "en": "Translation model ready.",
+        "zh": "翻译模型已就绪。",
+    },
+    "models.translator.error": {
+        "en": "Translation model failed to load.",
+        "zh": "翻译模型加载失败。",
+    },
+    # Variant row buttons / labels
+    "models.recommended": {"en": "Recommended", "zh": "推荐"},
+    "models.languages": {"en": "languages", "zh": "种语言"},
+    "models.hotwords_supported": {"en": "Hotwords", "zh": "支持热词"},
+    "models.variants_available": {
+        "en": "{n} variants available",
+        "zh": "可用变体 {n} 个",
+    },
+    "models.btn.activate": {"en": "Activate", "zh": "激活"},
+    "models.btn.active": {"en": "✓ Active", "zh": "✓ 当前"},
+    "models.btn.translator": {"en": "✓ Translator", "zh": "✓ 翻译器"},
+    "models.btn.loading": {"en": "Loading…", "zh": "加载中…"},
+    "models.btn.download": {"en": "Download", "zh": "下载"},
+    "models.btn.coming_soon": {"en": "Coming Soon", "zh": "即将推出"},
+    "models.btn.needs_apple_silicon": {
+        "en": "Needs Apple Silicon",
+        "zh": "需要 Apple Silicon",
+    },
+    "models.btn.needs_nvidia": {"en": "Needs NVIDIA GPU", "zh": "需要 NVIDIA GPU"},
+    "models.btn.direct_uses_seamless": {
+        "en": "Direct uses SeamlessM4T",
+        "zh": "直译需 SeamlessM4T",
+    },
+    "models.btn.direct_review_only": {
+        "en": "Direct / Review only",
+        "zh": "仅直译 / 审阅模式",
+    },
+    "models.review_needs_asr": {
+        "en": "Review mode needs an active ASR model. "
+              "Activate Qwen3-ASR or SenseVoice below.",
+        "zh": "审阅模式需要先激活一个 ASR 模型，请在下方激活 Qwen3-ASR 或 SenseVoice。",
+    },
 
     # ── Hotwords ────────────────────────────────────────────────────
     "hotwords.title": {"en": "Hotwords", "zh": "热词"},
@@ -86,6 +149,17 @@ _STRINGS: dict[str, dict[str, str]] = {
     "hotwords.add": {"en": "Add", "zh": "添加"},
     "hotwords.placeholder": {"en": "Type a word and press Add",
                               "zh": "输入词汇后点击添加"},
+    "hotwords.add_word": {"en": "Add Word", "zh": "添加词汇"},
+    "hotwords.add_hint": {
+        "en": "Press Enter or click Add. Words are saved automatically.",
+        "zh": "按回车或点击添加，词汇会自动保存。",
+    },
+    "hotwords.custom_vocab": {"en": "Custom Vocabulary", "zh": "自定义词汇表"},
+    "hotwords.empty": {
+        "en": "No hotwords added yet. Add words above to get started.",
+        "zh": "还没有热词，请在上方添加。",
+    },
+    "hotwords.count": {"en": "{n} words", "zh": "{n} 个词"},
 
     # ── Settings ────────────────────────────────────────────────────
     "settings.title": {"en": "Settings", "zh": "设置"},
@@ -191,6 +265,112 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.log_enabled_desc": {
         "en": "Save logs to ~/.thundertalk/thundertalk.log for debugging.",
         "zh": "将日志保存到 ~/.thundertalk/thundertalk.log 用于调试。",
+    },
+
+    # ── Settings page sections / fields ─────────────────────────────
+    "settings.section.activation_hotkey": {
+        "en": "Activation hotkey", "zh": "激活快捷键",
+    },
+    "settings.section.activation_mode": {
+        "en": "Activation Mode", "zh": "激活模式",
+    },
+    "settings.section.activation_mode_desc": {
+        "en": "Choose between toggle (click to start/stop) or hold-to-record.",
+        "zh": "选择切换模式（按一次启停）或按住录音模式。",
+    },
+    "settings.section.input_device": {"en": "Input Device", "zh": "输入设备"},
+    "settings.section.recording": {"en": "Recording", "zh": "录音"},
+    "settings.section.language": {"en": "Language", "zh": "语言"},
+    "settings.section.output": {"en": "Output", "zh": "输出"},
+    "settings.section.appearance": {"en": "Appearance", "zh": "外观"},
+    "settings.section.startup": {"en": "Startup", "zh": "启动"},
+    "settings.section.logs": {"en": "Logs", "zh": "日志"},
+    "settings.mode.toggle_click": {"en": "Toggle (Click)", "zh": "切换（点击）"},
+    "settings.mode.hold_record": {"en": "Hold to Record", "zh": "按住录音"},
+    "settings.mic.auto": {
+        "en": "Auto (System Default)", "zh": "自动（系统默认）",
+    },
+    "settings.mic.label": {"en": "Microphone", "zh": "麦克风"},
+    "settings.mic.desc": {
+        "en": "Select recording device. Auto follows macOS system default.",
+        "zh": "选择录音设备，自动模式跟随系统默认。",
+    },
+    "settings.mute.label": {
+        "en": "Mute Speakers During Recording", "zh": "录音时静音扬声器",
+    },
+    "settings.mute.desc": {
+        "en": "Automatically mute system speakers to avoid feedback from playback.",
+        "zh": "录音时自动静音系统扬声器，防止扬声器声音被麦克风拾取。",
+    },
+    "settings.recog.label": {
+        "en": "Recognition Language", "zh": "识别语言",
+    },
+    "settings.recog.desc": {
+        "en": "Force a specific language or let the model auto-detect.",
+        "zh": "指定识别语言，或让模型自动检测。",
+    },
+    "settings.recog.auto": {"en": "Auto Detect", "zh": "自动检测"},
+    "settings.recog.en": {"en": "English", "zh": "英文"},
+    "settings.recog.zh": {"en": "Chinese", "zh": "中文"},
+    "settings.recog.ja": {"en": "Japanese", "zh": "日文"},
+    "settings.recog.ko": {"en": "Korean", "zh": "韩文"},
+    "settings.recog.es": {"en": "Spanish", "zh": "西班牙文"},
+    "settings.recog.fr": {"en": "French", "zh": "法文"},
+    "settings.recog.de": {"en": "German", "zh": "德文"},
+    "settings.recog.ar": {"en": "Arabic", "zh": "阿拉伯文"},
+    "settings.recog.hi": {"en": "Hindi", "zh": "印地文"},
+    "settings.recog.it": {"en": "Italian", "zh": "意大利文"},
+    "settings.recog.pt": {"en": "Portuguese", "zh": "葡萄牙文"},
+    "settings.recog.ru": {"en": "Russian", "zh": "俄文"},
+    "settings.recog.nl": {"en": "Dutch", "zh": "荷兰文"},
+    "settings.recog.tr": {"en": "Turkish", "zh": "土耳其文"},
+    "settings.clipboard.label": {
+        "en": "Save to Clipboard", "zh": "保存到剪贴板",
+    },
+    "settings.clipboard.desc": {
+        "en": "Copy transcribed text to clipboard automatically.",
+        "zh": "转录完成后自动将文本复制到剪贴板。",
+    },
+    "settings.startup.launch.label": {
+        "en": "Launch at Login", "zh": "登录时启动",
+    },
+    "settings.startup.launch.desc": {
+        "en": "ThunderTalk will start automatically when you log in.",
+        "zh": "登录系统时自动启动 ThunderTalk。",
+    },
+    "settings.startup.silent.label": {
+        "en": "Start Minimized", "zh": "静默启动",
+    },
+    "settings.startup.silent.desc": {
+        "en": "Open to system tray without showing the main window.",
+        "zh": "启动到状态栏，不打开主窗口。",
+    },
+    "settings.logs.enable.label": {
+        "en": "Enable Logging", "zh": "启用日志",
+    },
+    "settings.logs.enable.desc": {
+        "en": "Save debug logs to disk for troubleshooting.",
+        "zh": "将调试日志保存到磁盘，便于排查问题。",
+    },
+    "settings.logs.dir": {"en": "Data Directory", "zh": "数据目录"},
+    "settings.logs.open": {"en": "Open Folder", "zh": "打开文件夹"},
+    "settings.hotkey.click_to_change": {
+        "en": "✏ Click to change", "zh": "✏ 点击修改",
+    },
+    "settings.hotkey.press_keys": {"en": "Press keys…", "zh": "按下按键…"},
+
+    # ── About page ──────────────────────────────────────────────────
+    "about.tagline": {
+        "en": "« Lightning-fast, privacy-first voice-to-text »",
+        "zh": "« 极速本地化、隐私优先的语音转文字 »",
+    },
+    "about.check_updates": {"en": "Check for Updates", "zh": "检查更新"},
+    "about.website": {"en": "Website", "zh": "官网"},
+    "about.report_issue": {"en": "Report Issue", "zh": "反馈问题"},
+    "about.license": {"en": "License", "zh": "许可证"},
+    "about.copyright": {
+        "en": "© 2026 Allen Song · Open Source · Apache-2.0",
+        "zh": "© 2026 Allen Song · 开源 · Apache-2.0",
     },
 
     # ── Tray ────────────────────────────────────────────────────────
