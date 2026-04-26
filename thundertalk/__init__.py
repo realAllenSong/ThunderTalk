@@ -3,7 +3,7 @@
 import os
 import sys
 
-__version__ = "1.0.2"
+__version__ = "1.0.3"
 
 
 def asset_path(filename: str) -> str:

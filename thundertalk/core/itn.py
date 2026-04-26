@@ -42,6 +42,43 @@ _ZH_NO_CONVERT_SUFFIXES = frozenset(
 
 _ZH_NO_CONVERT_PREFIXES = frozenset("第统")
 
+# Counter / measure-word characters that strongly mark "the digit
+# before me is a real number". When a single digit char is followed
+# by one of these, conversion is forced through even if the broader
+# idiom-density heuristic would otherwise skip — "上一次" → "上1次"
+# / "一年" → "1年". Intentionally excludes 个/张/块/本/etc., which
+# are already in _ZH_NO_CONVERT_SUFFIXES (preserve colloquial 一X
+# spelling).
+_ZH_MEASURE_WORDS = frozenset("次年月日号周岁元倍")
+
+# "X 是 Y" reads as a numeric predication ("1 is not too low?") and
+# the user expects digit form. Keep this small — only the copula 是.
+_ZH_NUMERIC_PREDICATE_NEXT = frozenset("是")
+
+
+def _is_cjk(ch: str) -> bool:
+    return "一" <= ch <= "鿿"
+
+
+def _cjk_density_around(text: str, start: int, end: int) -> int:
+    """Total contiguous CJK chars within 3 positions on each side of
+    a single-char number match. Used as a 4-char-idiom (成语) signal:
+    if the match is wedged in 3+ CJK runs, it's almost always part of
+    a fixed phrase rather than a real number."""
+    cjk_after = 0
+    for i in range(end, min(end + 3, len(text))):
+        if _is_cjk(text[i]):
+            cjk_after += 1
+        else:
+            break
+    cjk_before = 0
+    for i in range(start - 1, max(start - 4, -1), -1):
+        if _is_cjk(text[i]):
+            cjk_before += 1
+        else:
+            break
+    return cjk_before + cjk_after
+
 _ZH_NUM_RE = re.compile(
     r"[负負]?"
     r"[零〇一二两三四五六七八九十拾百佰千仟万亿]+"
@@ -91,7 +128,12 @@ def _should_convert_zh(match: re.Match, original_text: str, title_ranges: list[t
     has_digit = any(c in _ZH_DIGITS for c in core)
     has_decimal = "点" in core
     if not has_digit and not has_decimal:
-        if not all(c in ("十", "拾") for c in core):
+        # 十 alone is idiomatically "ten" (十块 / 数十). 拾 was previously
+        # included here too, but in modern Chinese 拾 only appears in
+        # words like 收拾 / 拾遗 / 拾级, never as a standalone "10"
+        # (the formal 10 is 壹拾, not 拾). Letting it through made
+        # "一发不可收拾" emit "一发不可收10".
+        if not all(c == "十" for c in core):
             return False
 
     # Two-char "[unit][digit]" idioms (万一, 千一, 百一, 亿一) read in
@@ -116,6 +158,28 @@ def _should_convert_zh(match: re.Match, original_text: str, title_ranges: list[t
     digit_count = sum(1 for c in core if c in _ZH_DIGITS)
     if digit_count >= 2:
         return True
+
+    # Single Chinese digit char in 4-char-idiom (成语) context.
+    # User report: "一发不可收拾" → "1发不可收10". Generalising:
+    # almost any single 一-九 wedged in a CJK run of 3+ surrounding
+    # chars is part of a fixed phrase, not a literal number —
+    # 一鸣惊人 / 一蹴而就 / 一帆风顺 / 万无一失 / 一举两得 …
+    # Two escape hatches preserve the user's existing conversions:
+    #   * Next char is a clear measure word → "上一次" / "一年" / "一日".
+    #   * Next char is the copula 是, signalling the predicate
+    #     pattern "X 是 Y" ("1 is not too low?") — rare construction
+    #     but the user uses it for config-value questions.
+    if digit_count == 1 and len(core) == 1:
+        next_idx = match.end()
+        next_char = original_text[next_idx] if next_idx < len(original_text) else ""
+        if (
+            next_char not in _ZH_MEASURE_WORDS
+            and next_char not in _ZH_NUMERIC_PREDICATE_NEXT
+            and _cjk_density_around(
+                original_text, match.start(), match.end()
+            ) >= 3
+        ):
+            return False
 
     end = match.end()
     if end < len(original_text):

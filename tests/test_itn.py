@@ -33,7 +33,11 @@ from thundertalk.core.itn import normalize_numbers
         ("百姓", "百姓"),
         ("千克", "千克"),
         ("千万别这样", "千万别这样"),
-        ("万分之一", "万分之1"),
+        # "万分之一" is itself a 4-char idiom ("extremely small chance");
+        # the new idiom-density rule preserves the trailing 一 along
+        # with the bare 万. Both stay Chinese, matching the phrase's
+        # idiomatic reading.
+        ("万分之一", "万分之一"),
         ("百", "百"),
         ("千", "千"),
         ("万", "万"),
@@ -150,6 +154,72 @@ def test_unit_plus_bare_digit_idiom_not_converted(
     ],
 )
 def test_ten_family_and_compounds_still_convert(
+    spoken: str, expected: str
+) -> None:
+    assert normalize_numbers(spoken) == expected
+
+
+# ── 4-char 成语 (idioms): single digit chars wedged in CJK runs ─────
+# User report: "一发不可收拾" came out as "1发不可收10" — both the
+# leading 一 and the trailing 拾 (which gets parsed as 10 like 十)
+# were converted. Generalizing: any single-char number embedded in
+# 3+ surrounding CJK chars is almost certainly part of a Chinese
+# idiom, not a digit. Bare 拾 is also never modern 10 — only 十 is.
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        # The user's report
+        ("一发不可收拾", "一发不可收拾"),
+        # Other common 4-char idioms with leading 一
+        ("一鸣惊人", "一鸣惊人"),
+        ("一蹴而就", "一蹴而就"),
+        ("一帆风顺", "一帆风顺"),
+        ("一目了然", "一目了然"),
+        ("一举两得", "一举两得"),  # both 一 and 两 must be skipped
+        # Idiom with the digit in the middle
+        ("万无一失", "万无一失"),
+        # Bare 拾 (modern Chinese — 10 is 十, not 拾)
+        ("拾", "拾"),
+        ("收拾", "收拾"),
+        ("打扫收拾", "打扫收拾"),
+    ],
+)
+def test_idiom_protection(spoken: str, expected: str) -> None:
+    assert normalize_numbers(spoken) == expected
+
+
+# ── Counters / measure words / numeric predicates STILL convert ──
+# The idiom-density heuristic must defer to clear "this is a number"
+# signals so the user keeps getting "1次" / "1年" / "1是不是太低".
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        ("一次", "1次"),
+        ("上一次", "上1次"),
+        ("一年", "1年"),
+        ("一月", "1月"),
+        ("一日", "1日"),
+        ("一号", "1号"),
+        ("一岁", "1岁"),
+        ("一倍", "1倍"),
+        # Predicate "X 是 Y" — the user often says "1 is not too low?"
+        ("一是不是太低", "1是不是太低"),
+        ("一是不是有点太低了", "1是不是有点太低了"),
+        # Stop-suffix list still wins (preserve colloquial form)
+        ("一个", "一个"),
+        ("三个苹果", "三个苹果"),
+        ("一块钱", "一块钱"),
+        # Multi-char compounds keep working
+        ("三十五", "35"),
+        ("一百", "100"),
+        ("三百五十二", "352"),
+        # 二拾 (formal-ish, with leading digit) — still 20
+        ("二拾", "20"),
+    ],
+)
+def test_counter_and_compounds_unchanged(
     spoken: str, expected: str
 ) -> None:
     assert normalize_numbers(spoken) == expected
