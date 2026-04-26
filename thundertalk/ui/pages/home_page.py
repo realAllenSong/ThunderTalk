@@ -410,24 +410,17 @@ class HomePage(QWidget):
 
     def _on_clear(self) -> None:
         # Two-step confirm — Clear sits one click away from the user's
-        # entire transcription history and there's no undo. Default
-        # button is Cancel so an accidental Enter / Return doesn't
-        # silently wipe.
-        from PySide6.QtWidgets import QMessageBox
-        box = QMessageBox(self)
-        box.setIcon(QMessageBox.Icon.Warning)
-        box.setWindowTitle(t("home.clear.confirm_title"))
-        box.setText(t("home.clear.confirm_title"))
-        box.setInformativeText(t("home.clear.confirm_body"))
-        clear_btn = box.addButton(
-            t("home.clear.confirm_yes"), QMessageBox.ButtonRole.DestructiveRole
+        # entire transcription history and there's no undo.
+        from thundertalk.ui.styled_dialog import StyledDialog
+        confirmed = StyledDialog.confirm(
+            self.window(),
+            title=t("home.clear.confirm_title"),
+            body=t("home.clear.confirm_body"),
+            accept_label=t("home.clear.confirm_yes"),
+            cancel_label=t("home.clear.confirm_cancel"),
+            destructive=True,
         )
-        cancel_btn = box.addButton(
-            t("home.clear.confirm_cancel"), QMessageBox.ButtonRole.RejectRole
-        )
-        box.setDefaultButton(cancel_btn)
-        box.exec()
-        if box.clickedButton() is not clear_btn:
+        if not confirmed:
             return
         self._history.clear()
         self.refresh()

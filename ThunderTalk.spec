@@ -12,17 +12,32 @@ hidden_imports += ["mlx", "mlx.core", "mlx.nn", "mlx._reprlib_fix"]
 hidden_imports += ["mlx_qwen3_asr"]
 # huggingface_hub: needed by mlx_qwen3_asr for model downloads
 hidden_imports += ["huggingface_hub"]
+# torch + transformers: needed by the SeamlessM4T translation engine
+# (Direct / Review modes). User report: bundling without these gives
+# "No module named 'torch'" when activating the Facebook model.
+# These are heavy (~700 MB on macOS arm64) but the only realistic path
+# for the in-app translator since pip-installing into a frozen runtime
+# is impractical. Excluding tensorflow / keras / scipy / matplotlib /
+# pandas keeps the size from getting truly absurd.
+hidden_imports += collect_submodules("torch")
+hidden_imports += collect_submodules("transformers")
+hidden_imports += collect_submodules("safetensors")
+hidden_imports += collect_submodules("tokenizers")
+hidden_imports += collect_submodules("sentencepiece")
 
 custom_datas = [('assets', 'assets')]
 custom_datas += collect_data_files("mlx")
 custom_datas += collect_data_files("mlx_qwen3_asr")
 custom_datas += collect_data_files("huggingface_hub")
 custom_datas += collect_data_files("sherpa_onnx")
+custom_datas += collect_data_files("torch")
+custom_datas += collect_data_files("transformers")
 
 custom_binaries = []
 custom_binaries += collect_dynamic_libs("mlx")
 custom_binaries += collect_dynamic_libs("sherpa_onnx")
 custom_binaries += collect_dynamic_libs("sounddevice")
+custom_binaries += collect_dynamic_libs("torch")
 
 a = Analysis(
     ['thundertalk/__main__.py'],
@@ -33,7 +48,7 @@ a = Analysis(
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['transformers', 'torch', 'tensorflow', 'keras', 'scipy', 'matplotlib', 'pandas'],
+    excludes=['tensorflow', 'keras', 'scipy', 'matplotlib', 'pandas'],
     noarchive=False,
     optimize=0,
 )

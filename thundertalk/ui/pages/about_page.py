@@ -369,28 +369,20 @@ class AboutPage(QWidget):
             self._prompt_silent_update(info)
 
     def _prompt_silent_update(self, info: UpdateInfo) -> None:
-        """System-level dialog asking the user whether to update
-        right now. Accepting kicks off download + install + relaunch
-        as one continuous action — single user consent, fully
-        unattended afterwards."""
-        from PySide6.QtWidgets import QMessageBox
-        box = QMessageBox(self.window())
-        box.setIcon(QMessageBox.Icon.Information)
-        box.setWindowTitle(t("update.prompt.title"))
-        box.setText(t("update.prompt.title"))
-        box.setInformativeText(
-            t("update.prompt.body").format(version=info.version)
+        """Modal dialog asking the user whether to update right now.
+        Accepting kicks off download + install + relaunch as one
+        continuous action — single user consent, fully unattended
+        afterwards."""
+        from thundertalk.ui.styled_dialog import StyledDialog
+        confirmed = StyledDialog.confirm(
+            self.window(),
+            title=t("update.prompt.title"),
+            body=t("update.prompt.body").format(version=info.version),
+            accept_label=t("update.prompt.update_now"),
+            cancel_label=t("update.prompt.later"),
         )
-        update_btn = box.addButton(
-            t("update.prompt.update_now"), QMessageBox.ButtonRole.AcceptRole
-        )
-        box.addButton(
-            t("update.prompt.later"), QMessageBox.ButtonRole.RejectRole
-        )
-        box.setDefaultButton(update_btn)
-        box.exec()
-        if box.clickedButton() is update_btn:
-            # Single-consent flow: skip the manual "Quit & Install"
+        if confirmed:
+            # Single-consent flow: skip the manual "Install & Restart"
             # confirmation after download — the user already said yes.
             self._auto_install_after_download = True
             self._start_download()

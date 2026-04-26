@@ -411,8 +411,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "zh": "下载失败，请稍后重试或前往 Releases 手动下载。",
     },
     "about.update.install_restart": {
-        "en": "Quit & Install",
-        "zh": "退出并安装",
+        "en": "Install & Restart",
+        "zh": "安装并重启",
     },
     "about.update.installing": {
         "en": "Installing — ThunderTalk will relaunch in a moment.",
