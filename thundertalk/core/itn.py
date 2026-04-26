@@ -67,6 +67,20 @@ def _should_convert_zh(match: re.Match, original_text: str, title_ranges: list[t
     text = match.group()
     core = text.lstrip("负負")
 
+    # Bare unit-only matches like "百" / "千" / "万" / "亿" (no digits,
+    # no decimal point) are almost always parts of fixed phrases —
+    # 百分之, 百年, 百货, 千克, 千万, 万分之 — rather than standalone
+    # numbers. Without a leading digit, _parse_zh_integer returns 0
+    # (because current * 100 = 0 * 100), so passing them through
+    # would corrupt "百分之五" into "0分之5". 十/拾 IS the exception
+    # because it's idiomatically spoken as the number 10
+    # (十块钱 / 数十), and _parse_zh_integer special-cases it.
+    has_digit = any(c in _ZH_DIGITS for c in core)
+    has_decimal = "点" in core
+    if not has_digit and not has_decimal:
+        if not all(c in ("十", "拾") for c in core):
+            return False
+
     if any(c in _ZH_UNIT_CHARS for c in core):
         return True
 
