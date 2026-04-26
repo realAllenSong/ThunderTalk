@@ -258,6 +258,17 @@ class TranslationModeCard(QFrame):
         self._translator_status_label.setWordWrap(True)
         self._translator_status_label.setMinimumWidth(0)
         self._translator_status_label.setMaximumWidth(560)
+        # WordWrap labels report their unwrapped 1-line sizeHint; in a
+        # QHBoxLayout that bleeds upward into the parent card's
+        # preferredSize and pushes the whole Models page (and the
+        # window) wider when a longer status string lands. Telling the
+        # layout to ignore our horizontal sizeHint pins the width to
+        # whatever the row gives us, so the card never grows just
+        # because the status text changes.
+        from PySide6.QtWidgets import QSizePolicy
+        self._translator_status_label.setSizePolicy(
+            QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred
+        )
         ts_ly.addWidget(self._translator_status_label, stretch=1)
 
         self._translator_action_btn = QPushButton("")

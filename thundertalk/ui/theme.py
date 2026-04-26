@@ -104,12 +104,18 @@ QMainWindow {{ background: {BG_BASE}; }}
 QStackedWidget {{ background: {BG_BASE}; }}
 QStackedWidget > QWidget {{ background: {BG_BASE}; }}
 
-/* QScrollArea's viewport is a separate QWidget — styling QScrollArea
-   alone leaves the viewport painting its native gray. The ">QWidget"
-   here matches the viewport (the only direct QWidget child of a
-   QScrollArea). */
+/* QScrollArea viewport is a separate QWidget. Two rules: ">QWidget"
+   catches the viewport (direct child of scrollarea); the two-level
+   "> QWidget > QWidget" catches the inner container that pages
+   register via scroll.setWidget(container). Without the second rule
+   that container paints macOS native #323232 gray wherever it isn't
+   covered by an explicitly-styled card (page heading row, left of
+   card edges, gap above first card). Cards keep their own fill
+   because the QFrame stylesheet set directly on each card outranks
+   this descendant rule. */
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget {{ background: {BG_BASE}; }}
+QScrollArea > QWidget > QWidget {{ background: {BG_BASE}; }}
 QScrollBar:vertical {{
     background: transparent; width: 6px; margin: 0;
 }}
