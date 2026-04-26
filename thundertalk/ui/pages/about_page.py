@@ -226,6 +226,15 @@ class AboutPage(QWidget):
         self._zip_path: Optional[pathlib.Path] = None
         self._check_worker: Optional[_CheckWorker] = None
         self._download_worker: Optional[_DownloadWorker] = None
+        # Pop the proactive prompt at most once per session so a slow
+        # network on second background poll doesn't double-nag.
+        self._silent_prompt_shown_this_session = False
+        # When the user accepts the proactive popup, we treat the
+        # whole flow as "consent already given" — download finishes,
+        # install runs, app relaunches, all without further prompts.
+        # Manually clicking the About page button still keeps the
+        # two-step (Download → Quit & Install) flow.
+        self._auto_install_after_download = False
 
         ly.addSpacing(14)
 
@@ -347,6 +356,44 @@ class AboutPage(QWidget):
                 lambda _=False, url=info.release_url: webbrowser.open(url)
             )
             self._notes_btn.show()
+        # Proactive popup — only on the silent background check (the
+        # one that fires on launch). Manual "Check for Updates"
+        # clicks deliberately don't pop a separate dialog because
+        # the user is already on the About page expecting to see
+        # the result inline.
+        if (
+            self._silent_when_uptodate
+            and not self._silent_prompt_shown_this_session
+        ):
+            self._silent_prompt_shown_this_session = True
+            self._prompt_silent_update(info)
+
+    def _prompt_silent_update(self, info: UpdateInfo) -> None:
+        """System-level dialog asking the user whether to update
+        right now. Accepting kicks off download + install + relaunch
+        as one continuous action — single user consent, fully
+        unattended afterwards."""
+        from PySide6.QtWidgets import QMessageBox
+        box = QMessageBox(self.window())
+        box.setIcon(QMessageBox.Icon.Information)
+        box.setWindowTitle(t("update.prompt.title"))
+        box.setText(t("update.prompt.title"))
+        box.setInformativeText(
+            t("update.prompt.body").format(version=info.version)
+        )
+        update_btn = box.addButton(
+            t("update.prompt.update_now"), QMessageBox.ButtonRole.AcceptRole
+        )
+        box.addButton(
+            t("update.prompt.later"), QMessageBox.ButtonRole.RejectRole
+        )
+        box.setDefaultButton(update_btn)
+        box.exec()
+        if box.clickedButton() is update_btn:
+            # Single-consent flow: skip the manual "Quit & Install"
+            # confirmation after download — the user already said yes.
+            self._auto_install_after_download = True
+            self._start_download()
 
     def _start_download(self) -> None:
         info = self._update_info
@@ -386,6 +433,13 @@ class AboutPage(QWidget):
         self._action_btn.setEnabled(True)
         self._action_btn.setText(t("about.update.install_restart"))
         self._action_btn.setStyleSheet(self._action_btn_accent_qss)
+        # Proactive-popup flow: user already consented; install now
+        # without forcing a second click. Reset the flag immediately
+        # so a future cycle in this session falls back to the
+        # two-step manual flow.
+        if self._auto_install_after_download:
+            self._auto_install_after_download = False
+            self._start_install()
 
     def _on_download_failed(self, msg: str) -> None:
         print(f"[Updater] download failed: {msg}")

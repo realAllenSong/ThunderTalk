@@ -427,6 +427,26 @@ _STRINGS: dict[str, dict[str, str]] = {
         "zh": "无法连接 GitHub，请检查网络后重试。",
     },
 
+    # Proactive update prompt — shown by the silent background
+    # checker when a new version is found, so the user doesn't have
+    # to wander into About to see the colored button.
+    "update.prompt.title": {
+        "en": "ThunderTalk update available",
+        "zh": "ThunderTalk 有新版本",
+    },
+    "update.prompt.body": {
+        "en": "Version {version} is available. Update now? ThunderTalk will download, install, and relaunch automatically.",
+        "zh": "新版本 {version} 已发布。是否立刻更新？ThunderTalk 会自动下载、安装并重启。",
+    },
+    "update.prompt.update_now": {
+        "en": "Update Now",
+        "zh": "立刻更新",
+    },
+    "update.prompt.later": {
+        "en": "Later",
+        "zh": "稍后",
+    },
+
     # Post-update permission hint — shown ONCE on first launch
     # after the version on disk changes. Ad-hoc code signing
     # changes the cdhash on every build, which resets macOS
