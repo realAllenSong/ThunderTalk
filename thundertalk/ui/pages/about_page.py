@@ -180,9 +180,16 @@ class AboutPage(QWidget):
         self._status_lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: 12px;"
         )
-        self._status_lbl.setWordWrap(True)
-        self._status_lbl.setMinimumWidth(0)
-        self._status_lbl.setMaximumWidth(560)
+        # WordWrap + a 560 px cap was clipping "You're on the latest
+        # version." in half — Qt's QVBoxLayout under stretches doesn't
+        # always grant a wrapped QLabel its full heightForWidth, and
+        # the second line bled outside the visible area. Status
+        # messages are short single sentences; rendering them as a
+        # single line that elides if absurdly long is the calmer fit.
+        self._status_lbl.setWordWrap(False)
+        self._status_lbl.setTextInteractionFlags(
+            Qt.TextInteractionFlag.NoTextInteraction
+        )
         ly.addWidget(self._status_lbl, alignment=Qt.AlignmentFlag.AlignCenter)
 
         self._progress = QProgressBar()

@@ -417,6 +417,44 @@ _STRINGS: dict[str, dict[str, str]] = {
         "zh": "无法连接 GitHub，请检查网络后重试。",
     },
 
+    # Post-update permission hint — shown ONCE on first launch
+    # after the version on disk changes. Ad-hoc code signing
+    # changes the cdhash on every build, which resets macOS
+    # permission grants tied to the old bundle.
+    "post_update.title": {
+        "en": "Updated to ThunderTalk v{version}",
+        "zh": "已更新到 ThunderTalk v{version}",
+    },
+    "post_update.body": {
+        "en": (
+            "macOS may have cleared this version's permissions "
+            "because the app signature changed.\n\n"
+            "If the hotkey doesn't trigger recording or you see "
+            "\"no audio\", open System Settings → Privacy & "
+            "Security and:\n"
+            "  • Remove the old ThunderTalk entry under "
+            "Accessibility, then re-add this one.\n"
+            "  • Re-grant Microphone access on the next recording "
+            "attempt."
+        ),
+        "zh": (
+            "由于应用签名变化，macOS 可能已经清除了上一版的权限授权。\n\n"
+            "如果按下快捷键没反应或者录音报 \"no audio\"，"
+            "请打开「系统设置」→「隐私与安全性」：\n"
+            "  • 在「辅助功能」里删掉旧的 ThunderTalk 条目，"
+            "再把当前这个版本添加进去。\n"
+            "  • 下次录音时按提示重新授予「麦克风」权限。"
+        ),
+    },
+    "post_update.open_settings": {
+        "en": "Open System Settings",
+        "zh": "打开系统设置",
+    },
+    "post_update.dismiss": {
+        "en": "Got it",
+        "zh": "知道了",
+    },
+
     # ── About page ──────────────────────────────────────────────────
     "about.tagline": {
         "en": "« Lightning-fast, privacy-first voice-to-text »",

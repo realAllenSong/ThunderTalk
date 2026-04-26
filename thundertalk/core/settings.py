@@ -31,6 +31,11 @@ DEFAULTS: dict[str, Any] = {
     #     physical footprint.
     # Takes effect on next ASR model load (typically next app launch).
     "memory_mode": "high",
+    # Last running version, recorded each launch. When this differs
+    # from the current __version__ we know the user just upgraded
+    # (likely via the in-app updater) and surface a one-time hint
+    # about macOS permissions resetting under ad-hoc code signing.
+    "last_run_version": "",
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

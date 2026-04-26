@@ -15,7 +15,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-1.1.0-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.1-orange" alt="Version" />
 </p>
 
 https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
@@ -145,6 +145,38 @@ macOS sometimes ties the permission to a specific binary path. After a Gatekeepe
 ### Hotkey doesn't trigger recording
 
 ThunderTalk needs **Accessibility** permission to read global key events. Open **System Settings → Privacy & Security → Accessibility**, toggle ThunderTalk off, then on again. Restart the app.
+
+### First launch from Releases — "ThunderTalk can't be opened" / "Move to Trash"
+
+ThunderTalk is signed ad-hoc rather than with an Apple Developer ID (this avoids the $99/year Apple Developer Program fee), so on first launch macOS Gatekeeper shows a warning. To allow it:
+
+1. Drag `ThunderTalk.app` into `/Applications` as usual.
+2. Try to open it once — macOS will refuse and show the warning.
+3. Open **System Settings → Privacy & Security**, scroll near the bottom, and click **"Open Anyway"** next to the *"ThunderTalk was blocked from use"* line.
+4. Confirm in the next dialog.
+
+Or from Terminal in a single command:
+
+```bash
+xattr -dr com.apple.quarantine /Applications/ThunderTalk.app
+open /Applications/ThunderTalk.app
+```
+
+macOS remembers the choice — subsequent launches open without prompting. The in-app updater (introduced in v1.1.0) strips the quarantine attribute automatically, so updates downloaded *through* ThunderTalk skip this step. Only the first *browser* download from Releases needs the override.
+
+### After an auto-update, hotkey or microphone stops working
+
+Ad-hoc code signing means every build has a different cdhash, and macOS's TCC database keys permissions to that hash. After the in-app updater swaps the bundle, the new binary is "a different app" to macOS even though the bundle ID is identical, so the existing **Accessibility** entry silently stops applying and **Microphone** access has to be re-granted on the next recording.
+
+ThunderTalk shows a one-time dialog explaining this on the first launch after an update. To fix it:
+
+1. Open **System Settings → Privacy & Security → Accessibility**.
+2. Remove the old `ThunderTalk` entry (the one whose toggle is on but greyed-out, or whose path looks stale).
+3. Click `+`, navigate to `/Applications/ThunderTalk.app`, and add it back.
+4. Toggle it on.
+5. Try the hotkey again. The first recording after that may also prompt for microphone — allow it.
+
+This is a fundamental constraint of running unnotarized apps on modern macOS. Buying an Apple Developer ID and code-signing + notarizing each release would eliminate it (the cdhash changes between builds but the team identifier stays stable, so TCC preserves grants), at the cost of $99/year and a few extra build steps.
 
 ### My machine is below the table — what's the minimum?
 
