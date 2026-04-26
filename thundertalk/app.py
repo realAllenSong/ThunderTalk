@@ -820,43 +820,16 @@ def main() -> None:
     window.show()
     window.raise_()
 
-    # Post-update permission hint. Ad-hoc code signing changes the
-    # cdhash on every build, which causes macOS to treat the
-    # post-update binary as a different app for TCC purposes —
-    # Accessibility entries silently stop working and Microphone
-    # access has to be re-granted. We can't fix this without a
-    # Developer ID; the next-best UX is a clear one-time dialog
-    # the first time a new version starts up.
-    def _maybe_show_post_update_notice() -> None:
+    # Track the last running version in settings (used previously
+    # to show a post-update permission hint dialog; the dialog was
+    # too intrusive on every minor update so it's now silent).
+    # Marker persists in case a less-intrusive surface is added
+    # later — e.g. a one-line banner on the About page.
+    def _record_run_version() -> None:
         import thundertalk
-        last = settings.get("last_run_version") or ""
-        current = thundertalk.__version__
-        # Always update the marker, even if no notice is needed,
-        # so a fresh install never shows the post-update dialog.
-        settings.set("last_run_version", current)
-        # First-ever launch on this machine has last == "" — skip.
-        # Same-version restart skips. Only differ-from-stored fires.
-        if not last or last == current:
-            return
-        from PySide6.QtWidgets import QMessageBox
-        from thundertalk.core.i18n import t as _t
-        from thundertalk.core.platform_utils import open_accessibility_settings
-        box = QMessageBox(window)
-        box.setWindowTitle(_t("post_update.title").format(version=current))
-        box.setText(_t("post_update.title").format(version=current))
-        box.setInformativeText(_t("post_update.body"))
-        open_btn = box.addButton(
-            _t("post_update.open_settings"), QMessageBox.ButtonRole.AcceptRole
-        )
-        box.addButton(_t("post_update.dismiss"), QMessageBox.ButtonRole.RejectRole)
-        box.exec()
-        if box.clickedButton() == open_btn:
-            try:
-                open_accessibility_settings()
-            except Exception:
-                pass
+        settings.set("last_run_version", thundertalk.__version__)
 
-    QTimer.singleShot(1500, _maybe_show_post_update_notice)
+    QTimer.singleShot(1500, _record_run_version)
 
     # Silent update probe shortly after launch. 4 s is long enough
     # that startup feels responsive but short enough that, by the
