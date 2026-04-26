@@ -66,13 +66,23 @@ coll = COLLECT(
     upx_exclude=[],
     name='ThunderTalk',
 )
+# Read app version from thundertalk/__init__.py so spec stays in sync.
+import re as _re_for_spec
+with open('thundertalk/__init__.py', 'r') as _vf:
+    _APP_VERSION = _re_for_spec.search(
+        r'^__version__\s*=\s*[\'"]([^\'"]+)[\'"]', _vf.read(), _re_for_spec.M
+    ).group(1)
+
 app = BUNDLE(
     coll,
     name='ThunderTalk.app',
     icon='assets/icon.icns',
     bundle_identifier='com.thundertalk.app',
+    version=_APP_VERSION,
     info_plist={
         'NSMicrophoneUsageDescription': 'ThunderTalk needs microphone access for voice-to-text transcription.',
         'NSAppleEventsUsageDescription': 'ThunderTalk needs accessibility access to paste transcribed text.',
+        'CFBundleShortVersionString': _APP_VERSION,
+        'CFBundleVersion': _APP_VERSION,
     },
 )
