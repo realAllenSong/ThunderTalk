@@ -430,6 +430,39 @@ COMBO_QSS = (
     f" background: rgba(91, 141, 239, 0.18); color: {TEXT_PRIMARY}; }}"
 )
 
+
+def style_combo(combo) -> None:
+    """Apply COMBO_QSS to the box AND force the popup-window-level
+    background to pure black.
+
+    Why this exists: the QComboBox dropdown is implemented as a
+    separate top-level QWidget (QComboBoxPrivateContainer holding a
+    QListView). On macOS, that container's NSWindow draws its own
+    backdrop that QSS rules attached to the QComboBox can't reach,
+    so the user still sees a 1-2 px gray frame around the popup
+    even with `QComboBox QAbstractItemView { background: #000 }`
+    set. Styling combo.view() (the QListView) and its window()
+    closes that gap.
+
+    Must be called AFTER the combo is added to a parent widget;
+    combo.view() creates the view lazily on first access, so calling
+    too early can produce a popup that's partially un-styled.
+    """
+    combo.setStyleSheet(COMBO_QSS)
+    view = combo.view()
+    if view is None:
+        return
+    view.setStyleSheet(
+        "QListView, QAbstractItemView {"
+        " background: #000000; border: none; outline: 0; }"
+    )
+    win = view.window()
+    if win is not None and win is not view:
+        win.setStyleSheet(
+            f"background: #000000; border: 1px solid {BORDER_DEFAULT};"
+            " border-radius: 8px;"
+        )
+
 # ── Line edit style ─────────────────────────────────────────────────────
 
 INPUT_QSS = (

@@ -398,7 +398,7 @@ class SettingsPage(QWidget):
         )
 
         self._mode_combo = QComboBox()
-        self._mode_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._mode_combo)
         self._mode_combo.addItem(t("settings.mode.toggle_click"))
         self._mode_combo.addItem(t("settings.mode.hold_record"))
         self._mode_combo.setFixedWidth(160)
@@ -451,7 +451,7 @@ class SettingsPage(QWidget):
         )
         self._mic_combo = QComboBox()
         self._mic_combo.setFixedWidth(220)
-        self._mic_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._mic_combo)
         self._mic_combo.addItem(t("settings.mic.auto"))
         self._refresh_mic_list()
         self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
@@ -539,7 +539,7 @@ class SettingsPage(QWidget):
         )
         self._lang_combo = QComboBox()
         self._lang_combo.setFixedWidth(180)
-        self._lang_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._lang_combo)
         langs = [
             (t("settings.recog.auto"), "auto"),
             (t("settings.recog.en"), "en"),
@@ -623,7 +623,7 @@ class SettingsPage(QWidget):
         self._ui_lang_label = lang_label
         self._ui_lang_combo = QComboBox()
         self._ui_lang_combo.setFixedWidth(160)
-        self._ui_lang_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._ui_lang_combo)
         self._ui_lang_combo.addItem("English", "en")
         self._ui_lang_combo.addItem("中文", "zh")
         cur_lang = self._settings.get("language") or "en"

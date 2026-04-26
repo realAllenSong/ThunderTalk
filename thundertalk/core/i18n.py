@@ -369,8 +369,8 @@ _STRINGS: dict[str, dict[str, str]] = {
     "about.report_issue": {"en": "Report Issue", "zh": "反馈问题"},
     "about.license": {"en": "License", "zh": "许可证"},
     "about.copyright": {
-        "en": "© 2026 Allen Song · Open Source · Apache-2.0",
-        "zh": "© 2026 Allen Song · 开源 · Apache-2.0",
+        "en": "© 2026 realAllenSong · PolyForm Noncommercial 1.0.0",
+        "zh": "© 2026 realAllenSong · PolyForm Noncommercial 1.0.0",
     },
 
     # ── Tray ────────────────────────────────────────────────────────

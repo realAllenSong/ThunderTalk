@@ -213,7 +213,7 @@ class TranslationModeCard(QFrame):
         self._target_combo = QComboBox()
         self._target_combo.setFixedHeight(34)
         self._target_combo.setMinimumWidth(170)
-        self._target_combo.setStyleSheet(theme.COMBO_QSS)
+        theme.style_combo(self._target_combo)
         for code, display in TRANSLATION_TARGETS_NEW:
             self._target_combo.addItem(display, code)
         self._target_combo.currentIndexChanged.connect(self._on_target_changed)
