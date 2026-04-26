@@ -276,6 +276,15 @@ class MainWindow(QMainWindow):
     def about_page(self) -> AboutPage:
         return self._about_page
 
+    def show_about(self) -> None:
+        """Switch the side-nav selection to About. Used by the
+        proactive update popup so the download progress is visible
+        immediately after the user clicks Update Now, instead of
+        forcing them to manually find the About tab."""
+        idx = self._stack.indexOf(self._about_page)
+        if idx >= 0:
+            self._select_nav(idx)
+
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._models_page.set_active_model(model_id)
 

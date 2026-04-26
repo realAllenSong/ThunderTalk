@@ -385,6 +385,12 @@ class AboutPage(QWidget):
             # Single-consent flow: skip the manual "Install & Restart"
             # confirmation after download — the user already said yes.
             self._auto_install_after_download = True
+            # Navigate to the About page so the user sees the live
+            # progress bar instead of staring at Home wondering
+            # whether anything is happening.
+            mw = self.window()
+            if hasattr(mw, "show_about"):
+                mw.show_about()
             self._start_download()
 
     def _start_download(self) -> None:
