@@ -50,6 +50,19 @@ _ZH_NUM_RE = re.compile(
 
 _ZH_TITLE_RE = re.compile(r"《[^》]*》")
 
+# "百分之X" → "X%". Handled BEFORE the general number sub so the
+# whole spoken phrase is treated as one unit ("百分之百" must collapse
+# to "100%", not be fragmented into "百" + "分之" + "百"). The
+# numerator can be either Chinese spelled-out (with optional decimal
+# part) OR already-digitized form that the ASR may emit.
+_ZH_PERCENT_RE = re.compile(
+    r"百分之("
+    r"[负負]?"
+    r"(?:[零〇一二两三四五六七八九十拾百佰千仟万亿]+(?:点[零〇一二两三四五六七八九]+)?"
+    r"|\d+(?:\.\d+)?)"
+    r")"
+)
+
 
 def _build_title_ranges(text: str) -> list[tuple[int, int]]:
     """Find all 《…》 spans so we can skip number conversion inside titles."""
@@ -149,6 +162,55 @@ def _parse_zh_integer(s: str) -> int | None:
 
     result += current
     return yi_part + wan_part + result
+
+
+_DIGIT_NUM_RE = re.compile(r"\d+(?:\.\d+)?")
+
+
+def _convert_percent(match: re.Match) -> str:
+    """Turn '百分之X' (X = Chinese number or digit) into 'X%'.
+
+    Special case: in this fixed phrase the *value* of a bare unit
+    char like 百 is its literal magnitude — '百分之百' means 100%, not
+    0%. Without that override the bare-unit fix from the previous
+    patch would emit '0%' here.
+    """
+    body = match.group(1)
+
+    if _DIGIT_NUM_RE.fullmatch(body):
+        return f"{body}%"
+
+    negative = False
+    if body and body[0] in ("负", "負"):
+        negative = True
+        body = body[1:]
+
+    if "点" in body:
+        int_part, _, dec_part = body.partition("点")
+        int_val = _parse_zh_integer(int_part) if int_part else 0
+        if int_val is None:
+            return match.group()
+        decimal_str = "".join(
+            str(_ZH_DIGITS[c]) for c in dec_part if c in _ZH_DIGITS
+        )
+        out = f"{int_val}.{decimal_str}" if decimal_str else str(int_val)
+    else:
+        val = _parse_zh_integer(body)
+        if val is None:
+            return match.group()
+        # Bare-unit override (only meaningful in percent context).
+        if val == 0:
+            if body in ("百", "佰"):
+                val = 100
+            elif body in ("千", "仟"):
+                val = 1000
+            elif body in ("万",):
+                val = 10000
+        out = str(val)
+
+    if negative:
+        out = "-" + out
+    return f"{out}%"
 
 
 def _convert_zh_number(match: re.Match, original_text: str) -> str:
@@ -331,12 +393,28 @@ def normalize_numbers(text: str) -> str:
 
     title_ranges = _build_title_ranges(text)
 
+    # Percent first — "百分之X" collapses to "X%" as one unit. Done
+    # before the general number sub so the whole phrase is matched
+    # against the original input (so "百分之百" reaches _convert_percent
+    # intact instead of being fragmented by the bare-unit number sub).
+    def _percent_replacer(m: re.Match) -> str:
+        if _in_title(m.start(), title_ranges):
+            return m.group()
+        return _convert_percent(m)
+
+    result = _ZH_PERCENT_RE.sub(_percent_replacer, text)
+
+    # Title ranges may have shifted after the percent substitution
+    # (replaced span widths differ from original); recompute against
+    # the post-percent string before the main number pass.
+    title_ranges = _build_title_ranges(result)
+
     def _zh_replacer(m: re.Match) -> str:
-        if _should_convert_zh(m, text, title_ranges):
-            return _convert_zh_number(m, text)
+        if _should_convert_zh(m, result, title_ranges):
+            return _convert_zh_number(m, result)
         return m.group()
 
-    result = _ZH_NUM_RE.sub(_zh_replacer, text)
+    result = _ZH_NUM_RE.sub(_zh_replacer, result)
     result = _EN_NUM_RE.sub(_convert_en_number, result)
     result = _merge_spaced_letters(result)
 

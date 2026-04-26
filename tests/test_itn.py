@@ -22,13 +22,12 @@ from thundertalk.core.itn import normalize_numbers
 
 
 # ── Bug repro: bare unit chars must NOT collapse to 0 ──────────────
+# (百分之X cases removed from this panel — they're now expected to
+# convert all the way to "X%"; see test_percent_conversion below.)
 
 @pytest.mark.parametrize(
     "spoken, expected",
     [
-        ("百分之五", "百分之5"),
-        ("百分之十", "百分之10"),
-        ("百分之二十五", "百分之25"),
         ("百年", "百年"),
         ("百货", "百货"),
         ("百姓", "百姓"),
@@ -41,6 +40,42 @@ from thundertalk.core.itn import normalize_numbers
     ],
 )
 def test_bare_unit_not_converted(spoken: str, expected: str) -> None:
+    assert normalize_numbers(spoken) == expected
+
+
+# ── 百分之X → X% (full conversion, not just "百分之5") ─────────────
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        # Plain Chinese numerator
+        ("百分之五", "5%"),
+        ("百分之十", "10%"),
+        ("百分之二十五", "25%"),
+        ("百分之零", "0%"),
+        # Unit-only numerator (special case: 百 in denominator-position
+        # of 百分之百 means 100, not 0)
+        ("百分之百", "100%"),
+        ("百分之一百", "100%"),
+        # Decimal numerator
+        ("百分之零点五", "0.5%"),
+        ("百分之八十一点五", "81.5%"),
+        # ASR pre-digitized (some models emit digits already)
+        ("百分之5", "5%"),
+        ("百分之100", "100%"),
+        ("百分之0.5", "0.5%"),
+        # In a sentence
+        ("我有百分之百的把握", "我有100%的把握"),
+        ("增长了百分之五", "增长了5%"),
+        ("百分之十五的概率", "15%的概率"),
+        # Two separate occurrences
+        ("百分之十和百分之二十", "10%和20%"),
+        # Non-numeric tail must NOT match (no number after 之)
+        ("百分之多少", "百分之多少"),
+        ("百分之几", "百分之几"),
+    ],
+)
+def test_percent_conversion(spoken: str, expected: str) -> None:
     assert normalize_numbers(spoken) == expected
 
 
