@@ -143,8 +143,24 @@ def install_update(zip_path: pathlib.Path, app_path: pathlib.Path) -> None:
     """
     tmpdir = pathlib.Path(tempfile.mkdtemp(prefix="thundertalk-update-"))
     try:
-        with zipfile.ZipFile(zip_path) as zf:
-            zf.extractall(tmpdir)
+        # IMPORTANT: don't use zipfile.extractall here. Python's zipfile
+        # ignores the Unix permission bits stored in the ZIP's extra
+        # data, so it strips the +x bit on Contents/MacOS/ThunderTalk
+        # and silently drops the AppleDouble (._*) sidecars that carry
+        # resource forks for signed Qt frameworks. The result was a
+        # bundle that the helper's `ditto` copy faithfully reproduced
+        # — broken — at /Applications, with errors:
+        #   "code object is not signed at all"
+        #   NSPOSIXErrorDomain Code=111 "Launch failed"
+        # ditto -x -k is the symmetric Mac-aware extractor for the
+        # same archive format we use to create the zip on the build
+        # side; it preserves perms, xattrs, and AppleDouble metadata.
+        subprocess.run(
+            ["/usr/bin/ditto", "-x", "-k", str(zip_path), str(tmpdir)],
+            check=True,
+            stdout=subprocess.DEVNULL,
+            stderr=subprocess.DEVNULL,
+        )
     except Exception:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise
@@ -158,6 +174,19 @@ def install_update(zip_path: pathlib.Path, app_path: pathlib.Path) -> None:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise RuntimeError("ThunderTalk.app not found in update zip")
     new_app = candidates[0]
+
+    # Sanity-check: the extracted binary must be executable, else the
+    # spawn helper will faithfully reproduce a broken bundle. If the
+    # +x bit is missing we'd rather fail in-process — the user still
+    # has the running binary intact — than commit to a broken swap.
+    new_binary = new_app / "Contents" / "MacOS" / "ThunderTalk"
+    if not new_binary.is_file() or not os.access(new_binary, os.X_OK):
+        shutil.rmtree(tmpdir, ignore_errors=True)
+        raise RuntimeError(
+            "Extracted bundle's executable is missing or not +x — refusing "
+            "to install a broken bundle. Check /tmp/thundertalk-install.log "
+            "or re-download manually from Releases."
+        )
 
     helper = tmpdir / "install.sh"
     helper.write_text(

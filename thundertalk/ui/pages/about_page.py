@@ -135,30 +135,20 @@ class AboutPage(QWidget):
         ly.addWidget(title)
         ly.addSpacing(10)
 
-        # ── Version pill, alone on its row ──
-        # Earlier the Check-for-Updates button sat next to the
-        # version pill, but once it cycles to "Download Update" /
-        # "Quit & Install" the layout got cramped — width pulses as
-        # the label changes ("Downloading… 49%"), pushing the
-        # version pill around. Stacking the action below the version
-        # keeps the horizontal axis stable.
-        ver_row = QHBoxLayout()
-        ver_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
-        ver_row.setSpacing(4)
-
+        # ── Version pill, then the action button directly below ──
+        # Adding via addWidget+AlignHCenter rather than wrapping each
+        # in its own QHBoxLayout — those intermediate layouts pulled
+        # in macOS's default (11,11,11,11) contentsMargins on top of
+        # the parent VBox spacing, ballooning the gap between
+        # "v1.1.2" and the "Download Update" button to ~40 px.
         version = QLabel(f"v{thundertalk.__version__}")
         version.setStyleSheet(
             f"color: {theme.TEXT_SECONDARY}; font-size: 12px;"
             f" background: transparent; border: 1px solid {theme.BORDER_DEFAULT};"
             " border-radius: 12px; padding: 5px 16px;"
         )
-        ver_row.addWidget(version)
-        ly.addLayout(ver_row)
-        ly.addSpacing(8)
-
-        # ── Action button on its own row directly below the version ──
-        action_row = QHBoxLayout()
-        action_row.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        ly.addWidget(version, alignment=Qt.AlignmentFlag.AlignHCenter)
+        ly.addSpacing(6)
 
         self._action_btn = QPushButton(t("about.check_updates"))
         self._action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -181,11 +171,12 @@ class AboutPage(QWidget):
         )
         self._action_btn.setStyleSheet(self._action_btn_base_qss)
         self._action_btn.clicked.connect(self._on_action)
-        action_row.addWidget(self._action_btn)
-        ly.addLayout(action_row)
+        ly.addWidget(
+            self._action_btn, alignment=Qt.AlignmentFlag.AlignHCenter
+        )
 
         # Status row + progress bar — empty / hidden in idle state.
-        ly.addSpacing(10)
+        ly.addSpacing(6)
 
         self._status_lbl = QLabel("")
         self._status_lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
