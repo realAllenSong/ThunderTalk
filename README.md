@@ -28,8 +28,11 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 - **100% local & private** — your voice never leaves your device. No cloud, no subscription.
 - **Multiple ASR backends** — MLX (Metal GPU on Apple Silicon) and ONNX (CPU).
 - **Multiple ASR models** — SenseVoice and Qwen3-ASR in various sizes.
+- **Built-in speech translation** — Direct and Review modes via SeamlessM4T v2 (100+ languages). The engine ships inside the app; only the model file is fetched on demand.
 - **Hotwords** — custom vocabulary for domain-specific terms.
 - **Smart hardware detection** — identifies your CPU, RAM, and GPU to recommend the best model.
+- **Memory profile** — Settings → Performance lets you trade KV-cache size + thread count for ~3 GB less RAM if you don't need the longest single utterances.
+- **In-app auto-updater** — a popup appears on launch when a new version is published; one click downloads, installs, and relaunches.
 - **Speaker mute** — optionally mutes system audio during recording to avoid feedback.
 - **English & 中文 UI** — switch the interface language in Settings (instant, no restart).
 
@@ -50,13 +53,13 @@ Download the latest **ThunderTalk.app** from [Releases](https://github.com/realA
 | Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-1.7B | ~3.4 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 
-### Translation (optional)
+### Translation
 
 | Model | Size | Backend | Languages | Use case |
 |-------|------|---------|-----------|----------|
 | SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | Speech & text translation in **Direct** and **Review** modes |
 
-Models are downloaded on-demand from the app's **Models** page and stored at `~/.thundertalk/models/`.
+The translation **engine** (PyTorch + Transformers) is bundled inside `ThunderTalk.app`, so you don't need to install anything to use translation features — only the SeamlessM4T model file itself is fetched on demand. ASR models and the translation model are downloaded from the app's **Models** page and stored at `~/.thundertalk/models/`.
 
 ## System Requirements
 
@@ -77,12 +80,13 @@ CPU-only ONNX is the only path. Expect:
 
 - **SenseVoice-Small** (241 MB) — works on any Mac from the last 5 years; transcription is fast but only 5 languages and no hotwords.
 - **Qwen3-ASR-0.6B (ONNX int8)** — works on any Apple Silicon; ~RTF 0.3 on M3 Max CPU. Slower on Intel Macs.
-- **No translation.** SeamlessM4T needs MPS or a discrete GPU; on Intel CPU it's too slow to be usable.
+- **Translation is unrealistic on Intel.** The engine ships inside the app, but SeamlessM4T needs MPS (Apple Silicon GPU) to run at usable speed; on Intel CPU each utterance takes tens of seconds.
 
 ### Disk space
 
-- **Minimum** to run the app at all: ~250 MB (SenseVoice-Small).
-- **Recommended** if you want translation: ~12 GB free (Qwen3-ASR-0.6B + SeamlessM4T + working files).
+- **App bundle:** ~820 MB on disk. The translation engine (PyTorch + Transformers) is bundled in, which is what makes the bundle this size — but it also means translation works out of the box once the model is downloaded.
+- **Minimum** to actually run: ~1.1 GB (.app + SenseVoice-Small).
+- **Recommended** if you want translation: ~13 GB free (.app + Qwen3-ASR-0.6B + SeamlessM4T + working files).
 
 The app's **Models** page shows your detected hardware and tags each model with **Recommended** / **Needs Apple Silicon** / **Needs MLX** so you don't have to memorize the table above.
 
@@ -119,6 +123,18 @@ The app's **Models** page shows your detected hardware and tags each model with 
   in one pass via SeamlessM4T). It's simpler but you lose the
   original transcript and can't choose model+hotwords for
   recognition, so I default to Review.
+
+## Updates
+
+ThunderTalk checks for new releases on launch (a few seconds after the window appears) and surfaces a small popup if one is available. Click **Update Now** and the app will:
+
+1. Switch to the **About** page so you can watch download progress.
+2. Download the new `.zip` from GitHub Releases.
+3. Quit, swap the bundle in `/Applications/ThunderTalk.app`, strip the quarantine attribute, and relaunch automatically.
+
+If you'd rather defer, click **Later** — the popup won't reappear during this session, but it will check again on the next launch. You can also manually trigger a check from **About → Check for Updates**.
+
+After a successful update you may need to re-grant **Accessibility** and **Microphone** permissions once. See the *"After an auto-update, hotkey or microphone stops working"* entry below for why.
 
 ## Troubleshooting
 

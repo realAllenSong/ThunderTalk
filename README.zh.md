@@ -28,10 +28,13 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 - **100% 本地、完全私密** — 录音永不离开设备，无云端、无订阅。
 - **多种 ASR 后端** — 支持 MLX（Apple Silicon Metal GPU）和 ONNX（CPU）。
 - **多种 ASR 模型** — 支持 SenseVoice 与 Qwen3-ASR 的多个尺寸。
-- **热词** — 自定义词汇表，专业术语再也不会识别错。
+- **内置语音翻译** — 通过 SeamlessM4T v2（100+ 语言）实现「直译」和「审阅」两种模式。翻译引擎已打包在 App 内，仅模型文件按需下载。
+- **热词** — 自定义词汇表,专业术语再也不会识别错。
 - **智能硬件检测** — 自动识别 CPU / 内存 / GPU 并推荐最优模型。
+- **内存模式可选** — 「设置 → 性能」中可在「高」「低」之间切换,牺牲一些 KV 缓存与线程数,换取约 3 GB 的内存占用降低,适合不需要超长单句的场景。
+- **应用内自动更新** — 启动时若发现新版本会弹出提示,一键即可下载、替换、自动重启。
 - **录音时静音扬声器** — 防止扬声器声被麦克风拾取造成回声。
-- **中英双语界面** — 在「设置」中即时切换，无需重启。
+- **中英双语界面** — 在「设置」中即时切换,无需重启。
 
 ## 下载
 
@@ -50,13 +53,13 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 | Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-1.7B | ~3.4 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 
-### 翻译（可选）
+### 翻译
 
 | 模型 | 大小 | 后端 | 语言 | 用途 |
 |------|------|------|------|------|
 | SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | 在「直译」「审阅」模式下进行语音与文本翻译 |
 
-模型按需在「模型」页面下载，存储路径为 `~/.thundertalk/models/`。
+翻译**引擎**（PyTorch + Transformers）已直接打包在 `ThunderTalk.app` 内,无需另装任何依赖,只有 SeamlessM4T 的模型文件本身按需下载。ASR 模型和翻译模型都从「模型」页面下载,统一存储路径为 `~/.thundertalk/models/`。
 
 ## 系统要求
 
@@ -77,12 +80,13 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 
 - **SenseVoice-Small**（241 MB）— 近 5 年的 Mac 都能跑；速度快但只支持 5 种语言、无热词。
 - **Qwen3-ASR-0.6B (ONNX int8)** — 任意 Apple Silicon 都能跑；M3 Max CPU 下 RTF ≈ 0.3，Intel Mac 慢一些。
-- **不支持翻译。** SeamlessM4T 需要 MPS 或独立 GPU；Intel CPU 上跑不动。
+- **翻译在 Intel Mac 上不实用。** 翻译引擎已经随 App 打包,但 SeamlessM4T 需要 MPS（Apple Silicon GPU）才能跑出可用速度;在 Intel CPU 上每句要花数十秒。
 
 ### 磁盘空间
 
-- **最低**（仅运行）：约 250 MB（SenseVoice-Small）。
-- **推荐**（含翻译）：约 12 GB 空闲（Qwen3-ASR-0.6B + SeamlessM4T + 工作文件）。
+- **App 本体:** 约 820 MB。翻译引擎(PyTorch + Transformers)已打包在内,这也是体积偏大的原因——但好处是模型下载完之后翻译功能开箱即用。
+- **最低**(仅运行 App + ASR):约 1.1 GB(.app + SenseVoice-Small)。
+- **推荐**(含翻译):约 13 GB 空闲(.app + Qwen3-ASR-0.6B + SeamlessM4T + 工作文件)。
 
 「模型」页面会显示检测到的硬件，并为每个模型标注「推荐」/「需要 Apple Silicon」/「需要 MLX」，无需记忆上表。
 
@@ -106,6 +110,18 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
   ASR 完美转录原文，SeamlessM4T 走 T2TT（文本→文本，不再过一次音频，比直译模式快得多），审阅弹窗让你逐句决定是否替换。两全其美：原文随时可保留，需要译文时一键替换。
 
   直译模式跳过 ASR（音频→译文一步到位，全靠 SeamlessM4T），更简单但失去原始转录文本，也无法配合热词。所以我默认用审阅模式。
+
+## 自动更新
+
+ThunderTalk 启动后会在几秒内自动检查 GitHub Releases 是否有新版本,如果有就会弹出一个小弹窗。点「立即更新」之后 App 会:
+
+1. 自动跳转到「关于」页面,方便你实时看下载进度。
+2. 从 GitHub Releases 下载新版本的 `.zip`。
+3. 退出当前实例,替换 `/Applications/ThunderTalk.app`,自动剥掉 quarantine 属性,然后重新打开新版本。
+
+如果不想现在更新,点「以后再说」即可——本次会话不会再弹,下次启动时还会再问。也可以在「关于 → 检查更新」中手动触发。
+
+更新成功后,可能需要重新授予一次「辅助功能」和「麦克风」权限。原因见下文「自动更新后快捷键 / 麦克风失灵」一节。
 
 ## 故障排查
 
