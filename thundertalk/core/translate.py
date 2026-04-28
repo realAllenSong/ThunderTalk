@@ -95,9 +95,37 @@ class TranslationEngine:
         return self._model_id
 
     def unload(self) -> None:
+        """Release the model and free GPU/MPS allocator caches.
+
+        Setting the attributes to None alone is not enough on macOS:
+        PyTorch's MPS (and CUDA) caching allocator keeps freed buffers in
+        its pool, so the ~4 GB of GPU memory stays bound to this process
+        until the cache is explicitly emptied. Without `empty_cache()` the
+        translator's footprint persists for the rest of the session even
+        after a user switches translation off.
+        """
+        was_loaded = self._model is not None
         self._model = None
         self._processor = None
         self._model_id = None
+
+        if not was_loaded:
+            return
+
+        import gc
+        import sys
+
+        gc.collect()
+        torch = sys.modules.get("torch")
+        if torch is None:
+            return
+        try:
+            if self._device == "mps" and hasattr(torch, "mps"):
+                torch.mps.empty_cache()
+            elif self._device == "cuda" and torch.cuda.is_available():
+                torch.cuda.empty_cache()
+        except Exception as e:
+            print(f"[Translate] empty_cache failed: {e}")
 
     def load_model(self, model_dir_or_repo: str) -> None:
         """Load SeamlessM4T v2 from a local dir OR an `hf://` repo ID.

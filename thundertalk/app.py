@@ -709,6 +709,14 @@ def main() -> None:
         """
         tgt = settings.get("translation_target")
         if not tgt or tgt == "off":
+            # Free SeamlessM4T if it was previously loaded. Without this
+            # the translator engine sits in RAM (~4 GB MPS + ~5 GB CPU)
+            # until app quit even though the user has explicitly turned
+            # translation off.
+            if pipe.translator is not None and pipe.translator.is_loaded:
+                print("[Translate] Target=off — unloading SeamlessM4T")
+                pipe.translator.unload()
+                window.models_page.set_translator_active(None)
             window.models_page.set_translator_status("hidden")
             return
 
