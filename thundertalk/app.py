@@ -839,6 +839,16 @@ def main() -> None:
 
     QTimer.singleShot(1500, _record_run_version)
 
+    # Reconcile macOS Login Item state with the stored toggle. The
+    # toggle was a no-op in v1.1.9 and earlier, so users who flipped
+    # it on saw nothing register; this catches them up on first launch
+    # of a build that includes thundertalk/core/autostart.py.
+    def _sync_autostart() -> None:
+        from thundertalk.core import autostart
+        autostart.sync_with_setting(bool(settings.get("launch_at_startup")))
+
+    QTimer.singleShot(2000, _sync_autostart)
+
     # Silent update probe shortly after launch. 4 s is long enough
     # that startup feels responsive but short enough that, by the
     # time the user lands on the About page, the action button has

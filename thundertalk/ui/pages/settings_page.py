@@ -652,7 +652,15 @@ class SettingsPage(QWidget):
             t("settings.startup.launch.desc"),
         )
         t1 = theme.ToggleSwitch(self._settings.get("launch_at_startup"))
-        t1.toggled_signal.connect(lambda v: self._settings.set("launch_at_startup", v))
+
+        def _on_launch_toggled(v: bool) -> None:
+            self._settings.set("launch_at_startup", v)
+            from thundertalk.core import autostart
+            ok, err = autostart.set_enabled(v)
+            if not ok:
+                print(f"[Settings] autostart.set_enabled({v}) failed: {err}")
+
+        t1.toggled_signal.connect(_on_launch_toggled)
         r1.addWidget(t1)
         c2.addLayout(r1)
 
