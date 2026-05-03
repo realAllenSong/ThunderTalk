@@ -14,11 +14,37 @@ import os
 os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 import platform
+import re
 import time
 from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+
+
+# Strip leaked model special tokens from ASR output. Qwen3-ASR was
+# trained with a chat-template wrapper (`<asr_text>...</asr_text>`,
+# `<|im_start|>`, `<|im_end|>`) and a language-tag scheme (`<|zh|>`),
+# and on short or noisy audio its inference wrapper occasionally lets
+# one of those control markers reach us. Likewise SenseVoice has its
+# own `<|HAPPY|>`, `<|Speech|>`, `<|withitn|>` event tags.
+#
+# The two patterns deliberately require something tag-like:
+#   - `<|...|>` — pipe-wrapped special tokens
+#   - `</?<letter>...>` — XML-ish tags whose name STARTS with a letter
+#
+# So legitimate dictation like "x < 5", "<3", "if a<b" is left alone —
+# `5`, `3`, `b` (well, `b` is a letter, but "a<b" has no `>`) don't
+# match a full tag. Only well-formed tag tokens get stripped.
+_RX_PIPE_TOKEN = re.compile(r"<\|[^|>\s]*\|>")
+_RX_XML_TAG = re.compile(r"</?[a-zA-Z][a-zA-Z0-9_]*(\s+[^>]*)?>")
+
+
+def _strip_special_tokens(text: str) -> str:
+    """Remove model-special tokens that occasionally leak into output."""
+    out = _RX_PIPE_TOKEN.sub("", text)
+    out = _RX_XML_TAG.sub("", out)
+    return out.strip()
 
 
 # ---------------------------------------------------------------------------
@@ -362,6 +388,11 @@ class AsrEngine:
 
         text = result.text.strip()
 
+        cleaned = _strip_special_tokens(text)
+        if cleaned != text:
+            print(f"[ASR-CLEAN] '{text}' → '{cleaned}'")
+            text = cleaned
+
         if self._itn_enabled and text:
             raw = text
             text = normalize_numbers(text)
@@ -392,6 +423,11 @@ class AsrEngine:
 
         text = stream.result.text.strip()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
+
+        cleaned = _strip_special_tokens(text)
+        if cleaned != text:
+            print(f"[ASR-CLEAN] '{text}' → '{cleaned}'")
+            text = cleaned
 
         if self._itn_enabled and text:
             from thundertalk.core.itn import normalize_numbers
