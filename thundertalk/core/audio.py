@@ -18,6 +18,7 @@ CHANNELS = 1
 
 _FADE_SAMPLES = int(SAMPLE_RATE * 0.010)  # 10ms fade
 _SKIP_CHUNKS = 5                           # discard first N callback chunks (~50ms)
+_STREAM_CLOSE_TIMEOUT_S = 2.0              # GUI watchdog for Pa_StopStream
 
 
 def _refresh_devices() -> None:
@@ -39,6 +40,33 @@ def _resolve_device(name: Optional[str]) -> Optional[int]:
 
     print(f"[Audio] Device '{name}' not found, falling back to system default")
     return None
+
+
+def _close_stream_with_watchdog(stream: sd.InputStream) -> None:
+    # Pa_StopStream goes through CoreAudio's HAL which can deadlock on a
+    # kernel mutex when the device changed state mid-session (Bluetooth
+    # A2DP↔HFP profile switch, hot-unplug, sample-rate change). Calling it
+    # synchronously on the GUI thread freezes the whole app. Run it on a
+    # daemon thread; if it doesn't return in time, leak the stream object
+    # rather than blocking the UI forever.
+    done = threading.Event()
+
+    def _close() -> None:
+        try:
+            stream.stop()
+            stream.close()
+        except Exception as exc:
+            print(f"[Audio] stream close raised: {exc!r}")
+        finally:
+            done.set()
+
+    threading.Thread(target=_close, daemon=True, name="audio-close").start()
+    if not done.wait(timeout=_STREAM_CLOSE_TIMEOUT_S):
+        print(
+            f"[Audio] WARNING: Pa_StopStream did not return within "
+            f"{_STREAM_CLOSE_TIMEOUT_S:.1f}s — abandoning stream to avoid GUI "
+            f"deadlock. CoreAudio device likely changed mid-stop."
+        )
 
 
 class AudioRecorder:
@@ -85,10 +113,11 @@ class AudioRecorder:
     def stop(self) -> Optional[np.ndarray]:
         with self._lock:
             self._recording = False
-            if self._stream is not None:
-                self._stream.stop()
-                self._stream.close()
-                self._stream = None
+            stream = self._stream
+            self._stream = None
+
+            if stream is not None:
+                _close_stream_with_watchdog(stream)
 
             if not self._chunks:
                 return None
