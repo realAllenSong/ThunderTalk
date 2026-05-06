@@ -1,8 +1,11 @@
 """Microphone recording — only holds the device while actively recording.
 
+All PortAudio interactions are routed through ``AudioExecutor`` so a
+hung CoreAudio HAL can never freeze the GUI thread.
+
 Anti-pop measures:
-  - Discards first 5 chunks (~50ms) to skip device-activation transients.
-  - Applies short linear fade-in/fade-out (10ms) on returned samples.
+  - Discards first 5 chunks (~50 ms) to skip device-activation transients.
+  - Applies short linear fade-in/fade-out (10 ms) on returned samples.
 """
 
 from __future__ import annotations
@@ -13,60 +16,47 @@ from typing import Optional
 import numpy as np
 import sounddevice as sd
 
+from thundertalk.core.audio_executor import AudioCallTimeout, get_executor
+
 SAMPLE_RATE = 16_000
 CHANNELS = 1
 
 _FADE_SAMPLES = int(SAMPLE_RATE * 0.010)  # 10ms fade
 _SKIP_CHUNKS = 5                           # discard first N callback chunks (~50ms)
-_STREAM_CLOSE_TIMEOUT_S = 2.0              # GUI watchdog for Pa_StopStream
+
+# Watchdog budgets (seconds). Generous enough that healthy CoreAudio
+# completes in well under each, tight enough that the GUI never feels
+# hung. All numbers are wall-clock on the GUI thread.
+_OPEN_TIMEOUT_S = 3.0
+_CLOSE_TIMEOUT_S = 2.0
+_QUERY_TIMEOUT_S = 2.0
+_REINIT_TIMEOUT_S = 4.0
 
 
-def _refresh_devices() -> None:
-    """Force PortAudio to re-scan devices so we pick up hot-plugged hardware."""
-    sd._terminate()
-    sd._initialize()
+def _query_input_device_names() -> list[str]:
+    """MUST run on the executor thread."""
+    return [
+        d["name"]
+        for d in sd.query_devices()
+        if d["max_input_channels"] > 0
+    ]
 
 
-def _resolve_device(name: Optional[str]) -> Optional[int]:
-    """Resolve a device name to an index, or None for system default."""
-    _refresh_devices()
-
+def _resolve_device_idx(name: Optional[str]) -> Optional[int]:
+    """MUST run on the executor thread. Returns device index or None for default."""
     if not name:
         return None
-
     for i, d in enumerate(sd.query_devices()):
         if d["name"] == name and d["max_input_channels"] > 0:
             return i
-
     print(f"[Audio] Device '{name}' not found, falling back to system default")
     return None
 
 
-def _close_stream_with_watchdog(stream: sd.InputStream) -> None:
-    # Pa_StopStream goes through CoreAudio's HAL which can deadlock on a
-    # kernel mutex when the device changed state mid-session (Bluetooth
-    # A2DP↔HFP profile switch, hot-unplug, sample-rate change). Calling it
-    # synchronously on the GUI thread freezes the whole app. Run it on a
-    # daemon thread; if it doesn't return in time, leak the stream object
-    # rather than blocking the UI forever.
-    done = threading.Event()
-
-    def _close() -> None:
-        try:
-            stream.stop()
-            stream.close()
-        except Exception as exc:
-            print(f"[Audio] stream close raised: {exc!r}")
-        finally:
-            done.set()
-
-    threading.Thread(target=_close, daemon=True, name="audio-close").start()
-    if not done.wait(timeout=_STREAM_CLOSE_TIMEOUT_S):
-        print(
-            f"[Audio] WARNING: Pa_StopStream did not return within "
-            f"{_STREAM_CLOSE_TIMEOUT_S:.1f}s — abandoning stream to avoid GUI "
-            f"deadlock. CoreAudio device likely changed mid-stop."
-        )
+def _full_reinit() -> None:
+    """MUST run on the executor thread. Catches hot-plugged hardware."""
+    sd._terminate()
+    sd._initialize()
 
 
 class AudioRecorder:
@@ -77,15 +67,36 @@ class AudioRecorder:
         self._recording = False
         self._skip_counter = 0
         self._current_rms: float = 0.0
+        self._exec = get_executor()
 
     @staticmethod
     def list_devices() -> list[str]:
-        _refresh_devices()
-        return [
-            d["name"]
-            for d in sd.query_devices()
-            if d["max_input_channels"] > 0
-        ]
+        """Return current input device names. Uses PortAudio's cached list
+        from the most recent ``Pa_Initialize``; call ``refresh_devices()``
+        first if you need to pick up freshly-plugged hardware."""
+        try:
+            return get_executor().call(
+                _query_input_device_names, timeout=_QUERY_TIMEOUT_S
+            )
+        except AudioCallTimeout:
+            print("[Audio] list_devices timed out — CoreAudio HAL wedged")
+            return []
+
+    @staticmethod
+    def refresh_devices() -> list[str]:
+        """Force PortAudio to re-scan hardware (Pa_Terminate + Pa_Initialize),
+        then return the new input device list. Heavy operation — only call
+        in response to explicit user intent (e.g. a Refresh button)."""
+        ex = get_executor()
+        try:
+            ex.call(_full_reinit, timeout=_REINIT_TIMEOUT_S)
+        except AudioCallTimeout:
+            print("[Audio] refresh_devices: re-init timed out — CoreAudio wedged")
+            return []
+        try:
+            return ex.call(_query_input_device_names, timeout=_QUERY_TIMEOUT_S)
+        except AudioCallTimeout:
+            return []
 
     def start(self, device: Optional[str] = None) -> None:
         with self._lock:
@@ -94,21 +105,38 @@ class AudioRecorder:
             self._skip_counter = 0
             self._recording = True
 
-            dev_idx = _resolve_device(device)
+            def _open() -> sd.InputStream:
+                dev_idx = _resolve_device_idx(device)
+                stream = sd.InputStream(
+                    samplerate=SAMPLE_RATE,
+                    channels=CHANNELS,
+                    dtype="float32",
+                    device=dev_idx,
+                    callback=self._audio_cb,
+                )
+                stream.start()
+                return stream
 
-            self._stream = sd.InputStream(
-                samplerate=SAMPLE_RATE,
-                channels=CHANNELS,
-                dtype="float32",
-                device=dev_idx,
-                callback=self._audio_cb,
-            )
-            self._stream.start()
+            try:
+                self._stream = self._exec.call(_open, timeout=_OPEN_TIMEOUT_S)
+            except AudioCallTimeout:
+                print("[Audio] start: open stream timed out — CoreAudio wedged")
+                self._stream = None
+                self._recording = False
+                return
 
-            actual = sd.query_devices(self._stream.device)
-            print(f"[Audio] Recording on: {actual['name']}  "
-                  f"sr={actual['default_samplerate']}  "
-                  f"channels={actual['max_input_channels']}")
+            try:
+                actual = self._exec.call(
+                    lambda: sd.query_devices(self._stream.device),
+                    timeout=_QUERY_TIMEOUT_S,
+                )
+                print(
+                    f"[Audio] Recording on: {actual['name']}  "
+                    f"sr={actual['default_samplerate']}  "
+                    f"channels={actual['max_input_channels']}"
+                )
+            except AudioCallTimeout:
+                pass  # Logging is best-effort; not worth failing the start.
 
     def stop(self) -> Optional[np.ndarray]:
         with self._lock:
@@ -117,7 +145,18 @@ class AudioRecorder:
             self._stream = None
 
             if stream is not None:
-                _close_stream_with_watchdog(stream)
+                def _close() -> None:
+                    stream.stop()
+                    stream.close()
+
+                try:
+                    self._exec.call(_close, timeout=_CLOSE_TIMEOUT_S)
+                except AudioCallTimeout:
+                    print(
+                        f"[Audio] stop: close timed out after "
+                        f"{_CLOSE_TIMEOUT_S:.1f}s — abandoning stream "
+                        "to avoid GUI deadlock."
+                    )
 
             if not self._chunks:
                 return None
@@ -126,8 +165,11 @@ class AudioRecorder:
 
             peak = float(np.max(np.abs(samples)))
             rms = float(np.sqrt(np.mean(samples ** 2)))
-            print(f"[Audio] Recorded {len(samples)} samples ({len(samples)/SAMPLE_RATE:.1f}s)  "
-                  f"peak={peak:.4f}  rms={rms:.4f}")
+            print(
+                f"[Audio] Recorded {len(samples)} samples "
+                f"({len(samples)/SAMPLE_RATE:.1f}s)  "
+                f"peak={peak:.4f}  rms={rms:.4f}"
+            )
 
             if len(samples) < _FADE_SAMPLES * 2:
                 return samples

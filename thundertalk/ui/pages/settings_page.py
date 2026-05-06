@@ -26,8 +26,6 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-import sounddevice as sd
-
 from thundertalk.core.i18n import bus as i18n_bus, set_language, t
 from thundertalk.ui import theme
 
@@ -485,19 +483,23 @@ class SettingsPage(QWidget):
         ly.addStretch()
         self._add_page(page)
 
-    def _refresh_mic_list(self) -> None:
-        """Re-scan audio devices and rebuild the mic dropdown."""
+    def _refresh_mic_list(self, *, force_rescan: bool = False) -> None:
+        """Rebuild the mic dropdown from AudioRecorder's executor-backed
+        device list. ``force_rescan=True`` triggers a Pa_Terminate+Initialize
+        cycle on the audio worker thread (with watchdog) — only used when
+        the user explicitly asks for a refresh."""
+        from thundertalk.core.audio import AudioRecorder
+
         self._mic_combo.blockSignals(True)
         while self._mic_combo.count() > 1:
             self._mic_combo.removeItem(1)
-        try:
-            sd._terminate()
-            sd._initialize()
-            for d in sd.query_devices():
-                if d["max_input_channels"] > 0:
-                    self._mic_combo.addItem(d["name"])
-        except Exception:
-            pass
+        names = (
+            AudioRecorder.refresh_devices()
+            if force_rescan
+            else AudioRecorder.list_devices()
+        )
+        for name in names:
+            self._mic_combo.addItem(name)
         current = self._settings.microphone
         if current != "auto":
             idx = self._mic_combo.findText(current)
