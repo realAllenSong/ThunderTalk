@@ -15,9 +15,12 @@ from __future__ import annotations
 import ctypes
 import ctypes.util
 import platform
+import queue
 import subprocess
 import threading
 import time
+import traceback
+from typing import Callable, Optional
 
 _we_muted: bool = False
 # macOS: device_id -> (volume_scalar_or_None, muted_or_None) captured before ducking
@@ -28,6 +31,51 @@ _darwin_osascript_snapshot: tuple[int, bool] | None = None
 _last_unmute_target: tuple[int, bool] | None = None
 _lock = threading.Lock()
 _SYSTEM = platform.system()
+_executor_lock = threading.Lock()
+
+
+class _SystemAudioExecutor:
+    """Single worker that owns all system audio side effects.
+
+    CoreAudio and AppleScript can block indefinitely when macOS audio devices
+    wedge. Public entrypoints enqueue work here and return immediately so the
+    Qt event loop never waits on those calls or on this module's state lock.
+    """
+
+    def __init__(self) -> None:
+        self._q: "queue.Queue[Optional[Callable[[], None]]]" = queue.Queue()
+        self._thread = threading.Thread(
+            target=self._loop, name="system-audio-executor", daemon=True
+        )
+        self._thread.start()
+
+    def _loop(self) -> None:
+        while True:
+            job = self._q.get()
+            if job is None:
+                return
+            try:
+                job()
+            except BaseException:
+                traceback.print_exc()
+
+    def submit(self, fn: Callable[[], None]) -> None:
+        self._q.put(fn)
+
+    def shutdown(self) -> None:
+        self._q.put(None)
+
+
+_system_audio_executor: Optional[_SystemAudioExecutor] = None
+
+
+def _get_system_audio_executor() -> _SystemAudioExecutor:
+    global _system_audio_executor
+    with _executor_lock:
+        if _system_audio_executor is None:
+            _system_audio_executor = _SystemAudioExecutor()
+    return _system_audio_executor
+
 
 # ---------------------------------------------------------------------------
 # macOS — CoreAudio helpers
@@ -323,7 +371,12 @@ if _SYSTEM == "Darwin":
 
 
 def mute_system_audio() -> None:
-    """Mute system output. SYNCHRONOUS so mic doesn't pick up residual audio."""
+    """Request speaker muting without blocking the caller."""
+    _get_system_audio_executor().submit(_mute_system_audio_sync)
+
+
+def _mute_system_audio_sync() -> None:
+    """Mute system output. Runs only on the system audio worker."""
     global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted, _last_unmute_target
     print("[Audio] mute_system_audio() called")
     with _lock:
@@ -413,7 +466,12 @@ def mute_system_audio() -> None:
 
 
 def unmute_system_audio() -> None:
-    """Unmute system output. SYNCHRONOUS for reliability."""
+    """Request speaker restoration without blocking the caller."""
+    _get_system_audio_executor().submit(_unmute_system_audio_sync)
+
+
+def _unmute_system_audio_sync() -> None:
+    """Unmute system output. Runs only on the system audio worker."""
     global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted, _last_unmute_target
     print(f"[Audio] unmute_system_audio() called  "
           f"(_we_muted={_we_muted}, devices={len(_darwin_duck_snapshots)})")
@@ -497,7 +555,13 @@ def unmute_system_audio() -> None:
         except Exception:
             pass
 
+
 def ensure_audio_restored() -> None:
+    """Request a post-paste audio restoration check without blocking."""
+    _get_system_audio_executor().submit(_ensure_audio_restored_sync)
+
+
+def _ensure_audio_restored_sync() -> None:
     """Post-paste watchdog: if macOS silently re-muted after app activation,
     re-apply the last unmute target.
 
@@ -535,7 +599,13 @@ def ensure_audio_restored() -> None:
     with _lock:
         _last_unmute_target = None
 
+
 def force_unmute() -> None:
+    """Request an emergency unmute without blocking the caller."""
+    _get_system_audio_executor().submit(_force_unmute_sync)
+
+
+def _force_unmute_sync() -> None:
     """Emergency unmute — ignores flags, just unmutes."""
     global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted
     with _lock:
