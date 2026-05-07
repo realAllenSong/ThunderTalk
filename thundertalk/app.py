@@ -3,7 +3,6 @@
 from __future__ import annotations
 
 import sys
-import threading
 import time
 import traceback
 
@@ -411,10 +410,6 @@ def main() -> None:
         paste_text(text, keep_clipboard=keep_clipboard)
         notify_auto_learn(text)
 
-    def _unmute_bg() -> None:
-        time.sleep(0.02)
-        unmute_system_audio()
-
     # --- Voice pipeline ------------------------------------------------
     def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float) -> None:
         # Audio is restored when recording stops (before ASR), not here.
@@ -538,7 +533,7 @@ def main() -> None:
                 stop_ms = int((time.perf_counter() - t_stop) * 1000)
                 if settings.get("mute_speakers"):
                     print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
-                    threading.Thread(target=_unmute_bg, daemon=True).start()
+                    QTimer.singleShot(20, unmute_system_audio)
 
                 if samples is None or len(samples) < 800:
                     print("[Toggle] Too short (audio already restored on stop)")
@@ -600,7 +595,7 @@ def main() -> None:
             mic = settings.microphone
             pipe.recorder.start(device=None if mic == "auto" else mic)
             if mute_on:
-                threading.Thread(target=mute_system_audio, daemon=True).start()
+                mute_system_audio()
             pipe._recording = True
             print("[Toggle] Recording started")
 
