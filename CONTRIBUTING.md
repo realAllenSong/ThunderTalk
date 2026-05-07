@@ -15,7 +15,7 @@ contribution to this repository, **you agree that:**
    prepare derivative works of, publicly display, publicly perform,
    sublicense, and distribute your contribution as part of ThunderTalk
    under **any license terms**, including but not limited to the
-   PolyForm Noncommercial License 1.0.0 that applies to this repository
+   Business Source License 1.1 that applies to this repository
    and any separate commercial licenses the author may grant to third
    parties.
 3. Your contribution is provided "as is", without warranty of any kind.

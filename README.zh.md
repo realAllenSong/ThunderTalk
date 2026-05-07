@@ -13,9 +13,9 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue.svg" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-1.1.9-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.14-orange" alt="Version" />
 </p>
 
 https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
@@ -225,11 +225,11 @@ uv run python run.py
 
 ## 许可证
 
-ThunderTalk 是 **源码可见**（source-available）软件，遵循 [PolyForm Noncommercial License 1.0.0](LICENSE)。
+ThunderTalk 是 **源码可见**（source-available）软件，遵循 [Business Source License 1.1](LICENSE)（`BUSL-1.1`）。本版本将在 **2030-05-06** 自动转换为 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)。
 
-- ✅ **个人非商业使用免费** — 个人、爱好者、学生、研究人员，以及慈善机构、学校、公益组织等的非商业使用均可免费。
-- ✅ **可自由修改与分享**，前提是用于非商业目的。
-- 💼 **商业使用需要单独授权**，由作者酌情授予。这包括捆绑入付费产品、提供托管服务、营利组织内部使用等。
+- **个人、教育、研究、非营利使用免费。**
+- **公司和其他组织的内部使用免费**，包括员工在工作设备上将 ThunderTalk 用于内部工作流。
+- **BSL 期间需要单独商业授权的场景：** 将 ThunderTalk 或实质基于 ThunderTalk 的产品/服务作为面向第三方的托管/SaaS 转写、翻译、语音转文字、语音转语音或相关语音 AI 服务提供；或将其捆绑、嵌入、集成到面向第三方销售的付费/商业产品中。
 
 商业授权请联系 **zysong@seas.upenn.edu**。
 
