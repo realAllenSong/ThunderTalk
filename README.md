@@ -13,9 +13,9 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-PolyForm%20Noncommercial-blue.svg" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-1.1.9-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.15-orange" alt="Version" />
 </p>
 
 https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
@@ -239,11 +239,13 @@ uv run python run.py
 ## License
 
 ThunderTalk is **source-available** under the
-[PolyForm Noncommercial License 1.0.0](LICENSE).
+[Business Source License 1.1](LICENSE) (`BUSL-1.1`). This version
+automatically converts to the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
+on **2030-05-06**.
 
-- ✅ **Free for personal use** — individuals, hobbyists, students, researchers, and non-commercial use by charities, schools, and public-interest organizations.
-- ✅ **Free to modify and share** for any noncommercial purpose.
-- 💼 **Commercial use requires a separate license** from the author, granted at the author's discretion. This includes bundling into paid products, offering as a hosted service, or internal use by for-profit organizations.
+- **Free for personal, educational, research, and non-profit use.**
+- **Free for internal business use** by companies and other organizations, including employees using ThunderTalk on work devices for internal workflows.
+- **Separate commercial licensing is required during the BSL period** to offer ThunderTalk, or a product or service substantially based on ThunderTalk, to third parties as a hosted/SaaS transcription, translation, speech-to-text, speech-to-speech, or related voice AI service; or to bundle, embed, or integrate it into paid or commercial products offered to third parties.
 
 For commercial licensing inquiries, contact **zysong@seas.upenn.edu**.
 
