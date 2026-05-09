@@ -15,7 +15,7 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-1.1.15-orange" alt="Version" />
+  <img src="https://img.shields.io/badge/version-1.1.16-orange" alt="Version" />
 </p>
 
 https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21

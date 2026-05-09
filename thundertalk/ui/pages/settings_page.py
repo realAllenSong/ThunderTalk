@@ -342,6 +342,14 @@ class SettingsPage(QWidget):
 
         i18n_bus.language_changed.connect(self.retranslate)
 
+        # Live mic dropdown: react to hot-plug, BT pairing, and BT profile
+        # transitions surfaced by DeviceWatcher. Connecting here is safe
+        # even when the watcher hasn't been started yet — get_watcher()
+        # lazily constructs the QObject and emissions only begin after
+        # app.main() calls watcher.start().
+        from thundertalk.core.device_watcher import get_watcher
+        get_watcher().devices_changed.connect(self._apply_device_names)
+
     def _add_page(self, widget: QWidget) -> None:
         """Append `widget` as a section beneath an uppercase title header.
 
@@ -490,14 +498,21 @@ class SettingsPage(QWidget):
         the user explicitly asks for a refresh."""
         from thundertalk.core.audio import AudioRecorder
 
-        self._mic_combo.blockSignals(True)
-        while self._mic_combo.count() > 1:
-            self._mic_combo.removeItem(1)
         names = (
             AudioRecorder.refresh_devices()
             if force_rescan
             else AudioRecorder.list_devices()
         )
+        self._apply_device_names(names)
+
+    def _apply_device_names(self, names: list[str]) -> None:
+        """Repopulate the mic combo from a pre-fetched list. Used both by
+        ``_refresh_mic_list`` and by ``DeviceWatcher.devices_changed`` —
+        the latter has already paid the Pa_Terminate cost on a worker
+        thread, so we must NOT call back into AudioRecorder here."""
+        self._mic_combo.blockSignals(True)
+        while self._mic_combo.count() > 1:
+            self._mic_combo.removeItem(1)
         for name in names:
             self._mic_combo.addItem(name)
         current = self._settings.microphone

@@ -16,6 +16,7 @@ def _suppress_style_warnings(mode, context, message) -> None:
 
 from thundertalk.core.asr import AsrEngine
 from thundertalk.core.audio import AudioRecorder
+from thundertalk.core.device_watcher import get_watcher
 from thundertalk.core.history import HistoryStore
 from thundertalk.core.hotkey import HotkeyListener
 from thundertalk.core.settings import Settings
@@ -661,6 +662,12 @@ def main() -> None:
         _level_timer.stop()
         _orig_hide()
     overlay.hide_overlay = _hide_wrapped
+
+    # --- Audio device watcher -----------------------------------------
+    # Listens for hot-plug, BT pairing, and A2DP↔HFP profile transitions
+    # so the mic dropdown stays live and the saved input device is
+    # rediscovered if it appears after launch (login-launch race).
+    get_watcher().start(recorder=pipe.recorder)
 
     # --- Hotkey --------------------------------------------------------
     hotkey = HotkeyListener(on_toggle=pipe.toggle, key_name=settings.hotkey)

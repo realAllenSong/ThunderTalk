@@ -27,7 +27,11 @@ _SKIP_CHUNKS = 5                           # discard first N callback chunks (~5
 # Watchdog budgets (seconds). Generous enough that healthy CoreAudio
 # completes in well under each, tight enough that the GUI never feels
 # hung. All numbers are wall-clock on the GUI thread.
-_OPEN_TIMEOUT_S = 3.0
+#
+# _OPEN_TIMEOUT_S covers the worst-case start path:
+# Pa_Terminate + Pa_Initialize (~100-300ms typical) + InputStream open
+# (~50-200ms). 5.0s leaves headroom for slow USB / Bluetooth handshake.
+_OPEN_TIMEOUT_S = 5.0
 _CLOSE_TIMEOUT_S = 2.0
 _QUERY_TIMEOUT_S = 2.0
 _REINIT_TIMEOUT_S = 4.0
@@ -42,14 +46,46 @@ def _query_input_device_names() -> list[str]:
     ]
 
 
-def _resolve_device_idx(name: Optional[str]) -> Optional[int]:
-    """MUST run on the executor thread. Returns device index or None for default."""
-    if not name:
-        return None
+def _lookup_device_idx(name: str) -> Optional[int]:
+    """Search the cached PortAudio device list for an input device by exact
+    name match. MUST run on the executor thread. Returns None if not found."""
     for i, d in enumerate(sd.query_devices()):
         if d["name"] == name and d["max_input_channels"] > 0:
             return i
-    print(f"[Audio] Device '{name}' not found, falling back to system default")
+    return None
+
+
+def _resolve_device_idx(name: Optional[str]) -> Optional[int]:
+    """Resolve a saved device name to a PortAudio index.
+
+    MUST run on the executor thread. Returns None for system default.
+
+    On a cache miss with a non-empty name, runs a single Pa_Terminate +
+    Pa_Initialize cycle and retries — this catches the very common case
+    where the saved device (USB mic, Bluetooth headset) wasn't yet
+    registered with CoreAudio when the app first imported sounddevice
+    (e.g. login-launch racing against Bluetooth pairing). Without the
+    retry, every subsequent recording would silently use the system
+    default mic and the user has no way to recover short of toggling
+    the input device by hand.
+    """
+    if not name:
+        return None
+    idx = _lookup_device_idx(name)
+    if idx is not None:
+        return idx
+    print(f"[Audio] Device '{name}' not in PortAudio cache; refreshing...")
+    _full_reinit()
+    idx = _lookup_device_idx(name)
+    if idx is not None:
+        print(f"[Audio] Device '{name}' found after refresh (idx={idx})")
+        return idx
+    print(
+        f"[Audio] Device '{name}' STILL not found after refresh — "
+        "falling back to system default. The device may be in an "
+        "output-only Bluetooth profile (A2DP) with no microphone, or "
+        "the OS hasn't enumerated it yet."
+    )
     return None
 
 
