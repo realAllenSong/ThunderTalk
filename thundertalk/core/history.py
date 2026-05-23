@@ -12,7 +12,6 @@ from pathlib import Path
 _DIR = Path.home() / ".thundertalk"
 _JSONL_PATH = _DIR / "history.jsonl"
 _LEGACY_PATH = _DIR / "history.json"
-_MAX_ENTRIES = 1000
 
 
 def _generate_id() -> str:
@@ -173,9 +172,6 @@ class HistoryStore:
                     skipped.append(stripped)
 
         self._entries = [entries_by_id[i] for i in order]
-        # In-memory view cap; disk is never trimmed.
-        if len(self._entries) > _MAX_ENTRIES:
-            self._entries = self._entries[-_MAX_ENTRIES:]
 
         if skipped:
             sidecar = _DIR / f"history.skipped-{int(time.time())}.jsonl"
@@ -235,8 +231,6 @@ class HistoryStore:
             "translation_lang": entry.translation_lang,
         })
         self._entries.append(entry)
-        if len(self._entries) > _MAX_ENTRIES:
-            self._entries = self._entries[-_MAX_ENTRIES:]
 
     def update_translation(
         self,
