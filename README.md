@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-blue.svg" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
   <img src="https://img.shields.io/badge/version-1.1.16-orange" alt="Version" />
 </p>
@@ -238,18 +238,11 @@ uv run python run.py
 
 ## License
 
-ThunderTalk is **source-available** under the
-[Business Source License 1.1](LICENSE) (`BUSL-1.1`). This version
-automatically converts to the [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)
-on **2030-05-06**.
+ThunderTalk is open source under the [MIT License](LICENSE).
 
-- **Free for personal, educational, research, and non-profit use.**
-- **Free for internal business use** by companies and other organizations, including employees using ThunderTalk on work devices for internal workflows.
-- **Separate commercial licensing is required during the BSL period** to offer ThunderTalk, or a product or service substantially based on ThunderTalk, to third parties as a hosted/SaaS transcription, translation, speech-to-text, speech-to-speech, or related voice AI service; or to bundle, embed, or integrate it into paid or commercial products offered to third parties.
+Do whatever you want with it — use it, fork it, ship it in your own product. A star or a PR is always appreciated.
 
-For commercial licensing inquiries, contact **zysong@seas.upenn.edu**.
-
-Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md) for the CLA that accompanies every pull request.
+Contributions are welcome — see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## Acknowledgments
 

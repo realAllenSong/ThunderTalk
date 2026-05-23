@@ -13,7 +13,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-BSL%201.1-blue.svg" alt="License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
   <img src="https://img.shields.io/badge/version-1.1.16-orange" alt="Version" />
 </p>
@@ -225,15 +225,11 @@ uv run python run.py
 
 ## 许可证
 
-ThunderTalk 是 **源码可见**（source-available）软件，遵循 [Business Source License 1.1](LICENSE)（`BUSL-1.1`）。本版本将在 **2030-05-06** 自动转换为 [Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0)。
+ThunderTalk 基于 [MIT License](LICENSE) 开源。
 
-- **个人、教育、研究、非营利使用免费。**
-- **公司和其他组织的内部使用免费**，包括员工在工作设备上将 ThunderTalk 用于内部工作流。
-- **BSL 期间需要单独商业授权的场景：** 将 ThunderTalk 或实质基于 ThunderTalk 的产品/服务作为面向第三方的托管/SaaS 转写、翻译、语音转文字、语音转语音或相关语音 AI 服务提供；或将其捆绑、嵌入、集成到面向第三方销售的付费/商业产品中。
+随意使用、Fork、在自己的产品中集成——没有任何限制。给个 Star 或提个 PR 就是对项目最好的支持。
 
-商业授权请联系 **zysong@seas.upenn.edu**。
-
-欢迎贡献代码——每个 PR 需附带 [CONTRIBUTING.md](CONTRIBUTING.md) 中的 CLA。
+欢迎贡献代码，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
 ## 致谢
 

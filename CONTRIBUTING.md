@@ -1,40 +1,30 @@
 # Contributing to ThunderTalk
 
-Thanks for your interest in improving ThunderTalk!
+Thanks for your interest in improving ThunderTalk! All contributions are
+welcome — bug reports, feature suggestions, code, docs, translations.
 
-## Contributor License Agreement (CLA)
+## Getting started
 
-By submitting a pull request, an issue with a code patch, or any other
-contribution to this repository, **you agree that:**
+```bash
+git clone https://github.com/realAllenSong/ThunderTalk.git
+cd ThunderTalk
+uv sync --extra mlx --extra translation
+uv run python run.py
+```
 
-1. You are the author of the contribution, or you have the right to
-   submit it under the terms below.
-2. You grant **realAllenSong** (the ThunderTalk project author and
-   copyright holder) a **perpetual, worldwide, royalty-free,
-   non-exclusive, irrevocable license** to use, reproduce, modify,
-   prepare derivative works of, publicly display, publicly perform,
-   sublicense, and distribute your contribution as part of ThunderTalk
-   under **any license terms**, including but not limited to the
-   Business Source License 1.1 that applies to this repository
-   and any separate commercial licenses the author may grant to third
-   parties.
-3. Your contribution is provided "as is", without warranty of any kind.
-
-This arrangement lets the project remain source-available for
-noncommercial users while enabling commercial licensing when
-appropriate. You retain copyright to your contribution and may
-continue to use it however you wish elsewhere.
-
-If you cannot agree to these terms, please do not submit a
-contribution.
-
-## How to contribute
+## Pull requests
 
 - Open an issue first to discuss larger changes before writing code.
 - Keep pull requests focused and small when possible.
 - Follow the existing code style (PySide6 / Qt6, Python 3.12+).
 - Include a short description of what the change does and why.
 
+## License
+
+By contributing you agree that your changes will be released under the same
+[MIT License](LICENSE) that covers the project. You retain copyright to your
+contribution.
+
 ## Questions
 
-Reach out: zysong@seas.upenn.edu
+Open an issue or reach out: zysong@seas.upenn.edu
