@@ -5,7 +5,7 @@ Usage (ad-hoc, no Developer ID):
 
 Usage (Developer ID + notarization):
     SIGN_IDENTITY="Developer ID Application: Allen Song (XXXXXXXXXX)" \
-    APPLE_ID="zysong@seas.upenn.edu" \
+    APPLE_ID="your-apple-id@example.com" \
     APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx" \
     TEAM_ID="XXXXXXXXXX" \
     python build_macos.py

@@ -27,4 +27,4 @@ contribution.
 
 ## Questions
 
-Open an issue or reach out: zysong@seas.upenn.edu
+Open an issue on GitHub.
