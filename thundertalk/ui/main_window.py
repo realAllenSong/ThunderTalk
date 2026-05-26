@@ -8,10 +8,9 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QRectF
+from PySide6.QtCore import Qt, Signal, QRectF, QPoint
 from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPen
 from PySide6.QtWidgets import (
-    QFrame,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -145,14 +144,40 @@ class _LogoBolt(QLabel):
             self.setPixmap(pm)
 
 
+class _DragArea(QWidget):
+    """Sidebar header — drags the window on press+move on macOS."""
+
+    def __init__(self, parent=None) -> None:
+        super().__init__(parent)
+        self._drag_pos: Optional[QPoint] = None
+
+    def mousePressEvent(self, ev) -> None:
+        if ev.button() == Qt.MouseButton.LeftButton:
+            self._drag_pos = (
+                ev.globalPosition().toPoint() - self.window().frameGeometry().topLeft()
+            )
+        super().mousePressEvent(ev)
+
+    def mouseMoveEvent(self, ev) -> None:
+        if self._drag_pos is not None and ev.buttons() & Qt.MouseButton.LeftButton:
+            self.window().move(ev.globalPosition().toPoint() - self._drag_pos)
+        super().mouseMoveEvent(ev)
+
+    def mouseReleaseEvent(self, ev) -> None:
+        self._drag_pos = None
+        super().mouseReleaseEvent(ev)
+
+
 class MainWindow(QMainWindow):
     load_model_signal = Signal(str, str, str, str)
 
     def __init__(self, settings: Settings, history: HistoryStore) -> None:
         super().__init__()
         self._settings = settings
+        self._titlebar_configured = False
         self.setWindowTitle("ThunderTalk")
         self.setMinimumSize(820, 580)
+        self.resize(1060, 720)
         self.setStyleSheet(theme.APP_QSS)
 
         from thundertalk.ui.tray import app_icon
@@ -164,24 +189,34 @@ class MainWindow(QMainWindow):
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
+        # Full-width transparent drag strip that hovers over the top 28px
+        # (macOS title-bar zone). Sits outside the layout so it doesn't push
+        # content down; resizeEvent keeps it sized to the window width.
+        self._title_strip = _DragArea(central)
+        self._title_strip.setFixedHeight(28)
+        self._title_strip.setStyleSheet("background: transparent;")
+        self._title_strip.raise_()
+
         # ── Sidebar ──────────────────────────────────────────────
-        sidebar = QFrame()
+        sidebar = QWidget()
         sidebar.setFixedWidth(_SIDEBAR_W)
         sidebar.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_SIDEBAR};"
+            f"QWidget#sidebar {{ background: {theme.BG_SIDEBAR};"
             "  border: none;"
-            "  border-right: 1px solid rgba(255, 255, 255, 0.04); }"
+            "  border-right: 1px solid rgba(255, 255, 255, 0.08); }}"
         )
+        sidebar.setObjectName("sidebar")
         sb = QVBoxLayout(sidebar)
         sb.setContentsMargins(0, 0, 0, 0)
         sb.setSpacing(0)
 
-        # Logo area
-        logo_area = QWidget()
-        logo_area.setFixedHeight(64)
+        # Logo area — also the window drag handle; top 28 px reserved for
+        # macOS traffic-light buttons when titlebar is hidden.
+        logo_area = _DragArea()
+        logo_area.setFixedHeight(72)
         logo_area.setStyleSheet("background: transparent;")
         logo_ly = QHBoxLayout(logo_area)
-        logo_ly.setContentsMargins(18, 0, 16, 0)
+        logo_ly.setContentsMargins(18, 28, 16, 0)
         logo_ly.setSpacing(10)
 
         bolt = _LogoBolt()
@@ -253,6 +288,9 @@ class MainWindow(QMainWindow):
         for i, b in enumerate(self._nav_buttons):
             b.set_active(i == idx)
         self._stack.setCurrentIndex(idx)
+        page = self._stack.currentWidget()
+        if page:
+            theme.fade_in(page, duration=200)
 
     # ── Public API ───────────────────────────────────────────────
 
@@ -290,6 +328,146 @@ class MainWindow(QMainWindow):
 
     def show_load_error(self, msg: str) -> None:
         self._models_page.show_load_error(msg)
+
+    # ── macOS frameless title bar ─────────────────────────────────
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._title_strip.resize(self.centralWidget().width(), 28)
+        self._title_strip.raise_()
+
+    def showEvent(self, ev) -> None:
+        super().showEvent(ev)
+        if not self._titlebar_configured:
+            self._titlebar_configured = True
+            self._setup_macos_titlebar()
+
+    def _setup_macos_titlebar(self) -> None:
+        """Hide the system title bar text while keeping traffic-light buttons.
+
+        Uses NSWindowStyleMaskFullSizeContentView so the content view extends
+        under the (now transparent) title bar — giving a frameless look while
+        macOS still owns shadow, rounded corners, and window management.
+        """
+        import sys
+        if sys.platform != "darwin":
+            return
+        try:
+            import ctypes
+            import ctypes.util
+
+            lib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+
+            def _sel(name: bytes) -> int:
+                lib.sel_registerName.restype = ctypes.c_void_p
+                lib.sel_registerName.argtypes = [ctypes.c_char_p]
+                return lib.sel_registerName(name)
+
+            def _msg(obj, sel, *args, restype=ctypes.c_void_p, argtypes=None):
+                lib.objc_msgSend.restype = restype
+                lib.objc_msgSend.argtypes = [ctypes.c_void_p, ctypes.c_void_p] + (
+                    argtypes or []
+                )
+                return lib.objc_msgSend(obj, sel, *args)
+
+            view = int(self.winId())
+            window = _msg(view, _sel(b"window"))
+            if not window:
+                return
+
+            # Add NSWindowStyleMaskFullSizeContentView (1 << 15 = 32768)
+            current = _msg(window, _sel(b"styleMask"), restype=ctypes.c_ulong)
+            _msg(
+                window, _sel(b"setStyleMask:"),
+                ctypes.c_ulong(current | 32768),
+                argtypes=[ctypes.c_ulong],
+            )
+
+            # Make the title bar transparent so our sidebar bg shows through
+            _msg(
+                window, _sel(b"setTitlebarAppearsTransparent:"),
+                ctypes.c_bool(True),
+                argtypes=[ctypes.c_bool],
+            )
+
+            # Hide the title text (NSWindowTitleHidden = 1)
+            _msg(
+                window, _sel(b"setTitleVisibility:"),
+                ctypes.c_long(1),
+                argtypes=[ctypes.c_long],
+            )
+
+            # Allow dragging from any non-widget background area
+            _msg(
+                window, _sel(b"setMovableByWindowBackground:"),
+                ctypes.c_bool(True),
+                argtypes=[ctypes.c_bool],
+            )
+
+            # Set NSWindow backgroundColor to match our sidebar (#0c0c14) so
+            # macOS draws the 1px window border in a dark tone — making it
+            # invisible against the near-black sidebar instead of appearing
+            # as a bright white line.
+            lib.objc_getClass.restype = ctypes.c_void_p
+            lib.objc_getClass.argtypes = [ctypes.c_char_p]
+            ns_color = lib.objc_getClass(b"NSColor")
+            if ns_color:
+                dark_bg = _msg(
+                    ns_color,
+                    _sel(b"colorWithRed:green:blue:alpha:"),
+                    ctypes.c_double(12 / 255),
+                    ctypes.c_double(12 / 255),
+                    ctypes.c_double(20 / 255),
+                    ctypes.c_double(1.0),
+                    argtypes=[
+                        ctypes.c_double, ctypes.c_double,
+                        ctypes.c_double, ctypes.c_double,
+                    ],
+                )
+                _msg(
+                    window, _sel(b"setBackgroundColor:"),
+                    dark_bg,
+                    argtypes=[ctypes.c_void_p],
+                )
+
+            # Mark window as non-opaque — macOS stops drawing the 1px bright
+            # border highlight on non-opaque windows, eliminating the white line
+            # visible on near-black dark UI surfaces.
+            _msg(
+                window, _sel(b"setOpaque:"),
+                ctypes.c_bool(False),
+                argtypes=[ctypes.c_bool],
+            )
+
+            # Qt's NSView returns NO from mouseDownCanMoveWindow by default,
+            # blocking setMovableByWindowBackground for the traffic-light row
+            # (macOS y=0–28, above Qt's centralWidget). Swizzle the method to
+            # return YES so macOS handles native window drag in that zone.
+            content_view = _msg(window, _sel(b"contentView"))
+            if content_view:
+                lib.object_getClass.restype = ctypes.c_void_p
+                lib.object_getClass.argtypes = [ctypes.c_void_p]
+                view_class = lib.object_getClass(content_view)
+
+                _IMP_T = ctypes.CFUNCTYPE(ctypes.c_bool, ctypes.c_void_p, ctypes.c_void_p)
+                _imp = _IMP_T(lambda s, c: True)
+                # Store on the class to prevent the IMP from being GC'd
+                MainWindow._mousedown_imp = _imp
+
+                lib.class_replaceMethod.restype = ctypes.c_void_p
+                lib.class_replaceMethod.argtypes = [
+                    ctypes.c_void_p, ctypes.c_void_p,
+                    ctypes.c_void_p, ctypes.c_char_p,
+                ]
+                lib.class_replaceMethod(
+                    view_class,
+                    _sel(b"mouseDownCanMoveWindow"),
+                    _imp,
+                    b"c@:",
+                )
+
+        except Exception:
+            pass
 
     # ── Close to tray ────────────────────────────────────────────
 

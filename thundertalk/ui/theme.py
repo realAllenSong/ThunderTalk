@@ -1,65 +1,78 @@
 """Design system — colors, fonts, shared QSS, and reusable painted widgets.
 
-Inspired by macOS-native dark UI conventions with warm tonal depth.
-Reference: ShandianShuo UI (闪电说).
+Raycast / Linear inspired: cool near-black surfaces, rgba borders,
+orange accent with animated hover glow, page fade-in transitions.
 """
 
 from __future__ import annotations
 
-from PySide6.QtCore import QRect, QRectF, Qt, Signal, QSize, QPropertyAnimation, QEasingCurve, Property
-from PySide6.QtGui import (
-    QColor,
-    QFont,
-    QLinearGradient,
-    QPainter,
-    QPainterPath,
-    QPen,
-    QPixmap,
+from PySide6.QtCore import (
+    QRect, QRectF, Qt, Signal, QSize,
+    QPropertyAnimation, QEasingCurve, Property, QTimer,
 )
-from PySide6.QtWidgets import QFrame, QHBoxLayout, QLabel, QPushButton, QVBoxLayout, QWidget
+from PySide6.QtGui import (
+    QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen, QPixmap,
+)
+from PySide6.QtWidgets import (
+    QFrame,
+    QGraphicsDropShadowEffect,
+    QGraphicsOpacityEffect,
+    QHBoxLayout,
+    QLabel,
+    QPushButton,
+    QVBoxLayout,
+    QWidget,
+)
 
 # ── Color Tokens ─────────────────────────────────────────────────────────
-# Dark palette inspired by Linear / Raycast / macOS-native — strong layer
-# differentiation through background tints rather than visible borders.
+# Raycast/Linear dark palette — cool near-black base, surface depth via
+# background tints, refined rgba borders, orange accent glow.
 
-# Pure-black surfaces. Layering comes from borders, not background tints.
-BG_DEEPEST    = "#000000"
-BG_BASE       = "#000000"   # window background
-BG_SIDEBAR    = "#000000"   # nav sidebar
-BG_SURFACE    = "#000000"   # main content area
-BG_CARD       = "#000000"   # cards — defined by border, not fill
-BG_CARD_HOVER = "#000000"   # cards stay flat on hover
-BG_ELEVATED   = "#16161a"   # ONLY for painted interactive surfaces
-                            # (ToggleSwitch track, HotkeyCapture pill).
-                            # Stylesheet pills/badges should use transparent.
-BG_INPUT      = "#000000"   # inputs — defined by border
+BG_DEEPEST    = "#04040a"   # reserve for deepest sunken surfaces
+BG_BASE       = "#08080e"   # window background
+BG_SIDEBAR    = "#0c0c14"   # nav sidebar — slightly lifted from base
+BG_SURFACE    = "#08080e"   # main content area
+BG_CARD       = "#111118"   # cards — filled surface, visible against base
+BG_CARD_HOVER = "#161622"   # card hover lift
+BG_ELEVATED   = "#1c1c28"   # ToggleSwitch track, dropdowns, pills
+BG_INPUT      = "#0e0e16"   # inputs
 
-# Borders — used SPARINGLY. Most layering should come from BG tints.
-BORDER_SUBTLE  = "#1f1f23"   # almost invisible — for grouping only
-BORDER_DEFAULT = "#2a2a32"   # visible on hover
-BORDER_STRONG  = "#3a3a44"   # focus / active states
+# Borders — rgba so they respect dark surfaces naturally.
+# NOTE: These are QSS strings. For QPainter use the _PAINT constants below.
+BORDER_SUBTLE   = "rgba(255,255,255,0.06)"
+BORDER_DEFAULT  = "rgba(255,255,255,0.10)"
+BORDER_STRONG   = "rgba(255,255,255,0.18)"
+
+# QPainter equivalents (QColor-compatible)
+_BORDER_SUBTLE_C  = QColor(255, 255, 255, 15)
+_BORDER_DEFAULT_C = QColor(255, 255, 255, 26)
+_BORDER_STRONG_C  = QColor(255, 255, 255, 46)
 
 # Text hierarchy
-TEXT_PRIMARY   = "#f5f5f7"   # high-contrast headings, primary content
-TEXT_SECONDARY = "#b8b8be"   # body text
-TEXT_MUTED     = "#7d7d85"   # captions, metadata
-TEXT_SUBTLE    = "#5a5a62"   # disabled, hints
+TEXT_PRIMARY   = "#f0f0f5"   # slightly cool white — crisper on dark bg
+TEXT_SECONDARY = "#b0b0b8"
+TEXT_MUTED     = "#72727c"
+TEXT_SUBTLE    = "#4e4e58"
 
-# Brand accent — orange. Used SPARINGLY: active state, primary CTA only.
+# Brand accent — orange
 ACCENT_ORANGE        = "#f97316"
 ACCENT_ORANGE_HOVER  = "#fb923c"
-ACCENT_ORANGE_WARM   = "#fb923c"   # alias kept for back-compat
-ACCENT_ORANGE_DIM    = "rgba(249, 115, 22, 0.12)"   # active backdrops
+ACCENT_ORANGE_WARM   = "#fb923c"
+ACCENT_ORANGE_DIM    = "rgba(249,115,22,0.12)"
 
-# Status colors — used sparingly (badges, error overlays)
-SUCCESS     = "#10b981"   # toned down from #34d399
+# Glow tokens
+GLOW_ACCENT   = "rgba(249,115,22,0.20)"
+GLOW_ACCENT_S = "rgba(249,115,22,0.08)"
+
+# Status colors
+SUCCESS     = "#10b981"
 SUCCESS_DIM = "#0d3328"
 WARNING     = "#f59e0b"
 WARNING_DIM = "#78350f"
-ERROR       = "#ef4444"   # toned down from #f87171
+ERROR       = "#ef4444"
 ERROR_DIM   = "#3b1111"
 
-# Secondary accents — kept for badges / family color cues but minimized
+# Secondary accents
 ACCENT_BLUE         = "#5b8def"
 ACCENT_BLUE_HOVER   = "#4a7de0"
 ACCENT_BLUE_DIM     = "#1e3a5f"
@@ -67,12 +80,12 @@ ACCENT_PURPLE       = "#a78bfa"
 ACCENT_CYAN         = "#22d3ee"
 
 # Pre-computed rgba() values for Qt stylesheet alpha colors
-ACCENT_BLUE_A10 = "rgba(91, 141, 239, 25)"
-ACCENT_BLUE_A20 = "rgba(91, 141, 239, 50)"
-ACCENT_BLUE_A30 = "rgba(91, 141, 239, 76)"
-SUCCESS_A20 = "rgba(52, 211, 153, 50)"
-SUCCESS_A40 = "rgba(52, 211, 153, 100)"
-ERROR_A40 = "rgba(248, 113, 113, 100)"
+ACCENT_BLUE_A10 = "rgba(91,141,239,25)"
+ACCENT_BLUE_A20 = "rgba(91,141,239,50)"
+ACCENT_BLUE_A30 = "rgba(91,141,239,76)"
+SUCCESS_A20 = "rgba(52,211,153,50)"
+SUCCESS_A40 = "rgba(52,211,153,100)"
+ERROR_A40   = "rgba(248,113,113,100)"
 
 # ── Font Helpers ─────────────────────────────────────────────────────────
 
@@ -98,21 +111,9 @@ def font_heading(size: int = 17) -> QFont:
 APP_QSS = f"""
 QMainWindow {{ background: {BG_BASE}; }}
 
-/* Pages inside the QStackedWidget — direct child QWidgets that Qt
-   otherwise paints with the macOS native window tint (gray). Force
-   pure black so cards/borders are the only visual structure. */
 QStackedWidget {{ background: {BG_BASE}; }}
 QStackedWidget > QWidget {{ background: {BG_BASE}; }}
 
-/* QScrollArea viewport is a separate QWidget. Two rules: ">QWidget"
-   catches the viewport (direct child of scrollarea); the two-level
-   "> QWidget > QWidget" catches the inner container that pages
-   register via scroll.setWidget(container). Without the second rule
-   that container paints macOS native #323232 gray wherever it isn't
-   covered by an explicitly-styled card (page heading row, left of
-   card edges, gap above first card). Cards keep their own fill
-   because the QFrame stylesheet set directly on each card outranks
-   this descendant rule. */
 QScrollArea {{ border: none; background: transparent; }}
 QScrollArea > QWidget {{ background: {BG_BASE}; }}
 QScrollArea > QWidget > QWidget {{ background: {BG_BASE}; }}
@@ -120,9 +121,9 @@ QScrollBar:vertical {{
     background: transparent; width: 6px; margin: 0;
 }}
 QScrollBar::handle:vertical {{
-    background: {BORDER_DEFAULT}; min-height: 30px; border-radius: 3px;
+    background: rgba(255,255,255,0.12); min-height: 30px; border-radius: 3px;
 }}
-QScrollBar::handle:vertical:hover {{ background: {BORDER_STRONG}; }}
+QScrollBar::handle:vertical:hover {{ background: rgba(255,255,255,0.22); }}
 QScrollBar::add-line:vertical, QScrollBar::sub-line:vertical {{ height: 0; }}
 QScrollBar::add-page:vertical, QScrollBar::sub-page:vertical {{ background: none; }}
 QScrollBar:horizontal {{ height: 0; }}
@@ -139,30 +140,101 @@ QToolTip {{
 CARD_QSS = (
     f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_DEFAULT};"
     " border-radius: 12px; }"
+    f"QFrame:hover {{ background: {BG_CARD_HOVER}; border: 1px solid {BORDER_STRONG}; }}"
 )
 
 
 def auto_shadow():
-    """No-op for the flat pure-black design; kept so existing call sites
-    don't need to be hunted down. Returning None means setGraphicsEffect(None)
-    which clears any prior effect."""
+    """No-op kept so existing call sites don't need to change."""
     return None
 
 
 def make_card() -> QFrame:
     f = QFrame()
+    f.setFrameShape(QFrame.Shape.NoFrame)
     f.setStyleSheet(CARD_QSS)
     return f
 
 
+# ── Glow Card ───────────────────────────────────────────────────────────
+
+class GlowCard(QFrame):
+    """Card with animated Raycast-style orange hover glow.
+
+    Drop-in for QFrame + CARD_QSS where hover glow is desired.
+    The QGraphicsDropShadowEffect animates blurRadius 0 → 24 on hover.
+    """
+
+    def __init__(self, glow_alpha: int = 55, radius: int = 12,
+                 parent: QWidget | None = None) -> None:
+        super().__init__(parent)
+        self.setStyleSheet(
+            f"QFrame {{ background: {BG_CARD}; border: 1px solid {BORDER_DEFAULT};"
+            f" border-radius: {radius}px; }}"
+            f"QFrame:hover {{ background: {BG_CARD_HOVER}; border: 1px solid {BORDER_STRONG}; }}"
+        )
+        self._glow = QGraphicsDropShadowEffect()
+        self._glow.setBlurRadius(0)
+        self._glow.setColor(QColor(249, 115, 22, glow_alpha))
+        self._glow.setOffset(0, 0)
+        self.setGraphicsEffect(self._glow)
+
+        self._glow_anim = QPropertyAnimation(self._glow, b"blurRadius")
+        self._glow_anim.setDuration(220)
+        self._glow_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+
+    def enterEvent(self, e) -> None:
+        self._glow_anim.stop()
+        self._glow_anim.setStartValue(int(self._glow.blurRadius()))
+        self._glow_anim.setEndValue(24)
+        self._glow_anim.start()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e) -> None:
+        self._glow_anim.stop()
+        self._glow_anim.setStartValue(int(self._glow.blurRadius()))
+        self._glow_anim.setEndValue(0)
+        self._glow_anim.start()
+        super().leaveEvent(e)
+
+
+# ── Page Fade-in ────────────────────────────────────────────────────────
+
+def fade_in(widget: QWidget, duration: int = 220) -> None:
+    # Disable (not detach) child graphics effects for the animation window.
+    # Detaching via setGraphicsEffect(None) causes Qt C++ to delete the effect
+    # object immediately, leaving a dangling Python wrapper → crash on restore.
+    # setEnabled(False) keeps ownership intact and prevents the nested-effect
+    # flicker on macOS without touching C++ lifetime.
+    child_effects = []
+    for child in widget.findChildren(QWidget):
+        eff = child.graphicsEffect()
+        if eff is not None:
+            child_effects.append(eff)
+            eff.setEnabled(False)
+
+    effect = QGraphicsOpacityEffect(widget)
+    widget.setGraphicsEffect(effect)
+    effect.setOpacity(0.0)
+    anim = QPropertyAnimation(effect, b"opacity", widget)
+    anim.setDuration(duration)
+    anim.setEasingCurve(QEasingCurve.Type.OutCubic)
+    anim.setStartValue(0.0)
+    anim.setEndValue(1.0)
+
+    def _done(w=widget, effects=child_effects):
+        w.setGraphicsEffect(None)
+        for eff in effects:
+            eff.setEnabled(True)
+
+    anim.finished.connect(_done)
+    anim.start()
+
+
 # ── Painted Sidebar Icons ───────────────────────────────────────────────
-# Cleaner, bolder vector icons drawn with QPainterPath
 
 def _draw_icon_home(p: QPainter, r: QRect) -> None:
-    """House icon — clean outlined shape."""
     cx, cy = r.center().x(), r.center().y()
-    from PySide6.QtCore import QPointF
-    from PySide6.QtGui import QPolygonF
     path = QPainterPath()
     path.moveTo(cx, cy - 6)
     path.lineTo(cx + 7, cy)
@@ -178,7 +250,6 @@ def _draw_icon_home(p: QPainter, r: QRect) -> None:
 
 
 def _draw_icon_models(p: QPainter, r: QRect) -> None:
-    """Chip/model icon — outlined rounded rect with inner details."""
     cx, cy = r.center().x(), r.center().y()
     p.drawRoundedRect(QRectF(cx - 6, cy - 6, 12, 12), 2, 2)
     p.drawPoint(int(cx - 2), int(cy - 2))
@@ -188,7 +259,6 @@ def _draw_icon_models(p: QPainter, r: QRect) -> None:
 
 
 def _draw_icon_settings(p: QPainter, r: QRect) -> None:
-    """Gear icon — cleaner stroke design."""
     cx, cy = r.center().x(), r.center().y()
     p.drawEllipse(QRectF(cx - 3, cy - 3, 6, 6))
     import math
@@ -200,7 +270,6 @@ def _draw_icon_settings(p: QPainter, r: QRect) -> None:
 
 
 def _draw_icon_hotwords(p: QPainter, r: QRect) -> None:
-    """Star/sparkle icon for hotwords."""
     cx, cy = r.center().x(), r.center().y()
     import math
     path = QPainterPath()
@@ -219,7 +288,6 @@ def _draw_icon_hotwords(p: QPainter, r: QRect) -> None:
 
 
 def _draw_icon_about(p: QPainter, r: QRect) -> None:
-    """Info icon — elegant circle with 'i'."""
     cx, cy = r.center().x(), r.center().y()
     p.drawEllipse(QRectF(cx - 7, cy - 7, 14, 14))
     f = QFont("Helvetica Neue", 10)
@@ -228,25 +296,16 @@ def _draw_icon_about(p: QPainter, r: QRect) -> None:
 
 
 def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:
-    """Draws a clean, dynamic lightning bolt symbol centered in the rect."""
     path = QPainterPath()
-    # A classic bolt: wide at top, jutting left, narrowing to a point.
     cx, cy = rect.center().x(), rect.center().y()
     w, h = min(rect.width(), 20), min(rect.height(), 24)
-    # Start top right
     path.moveTo(cx + w*0.15, cy - h*0.45)
-    # angle down left
     path.lineTo(cx - w*0.35, cy + h*0.05)
-    # horizontal right
     path.lineTo(cx + w*0.15, cy + h*0.05)
-    # jut down
     path.lineTo(cx - w*0.15, cy + h*0.45)
-    # angle up right
     path.lineTo(cx + w*0.35, cy - h*0.15)
-    # horizontal left
     path.lineTo(cx - w*0.15, cy - h*0.15)
     path.closeSubpath()
-
     old_pen = p.pen()
     old_brush = p.brush()
     p.setPen(Qt.PenStyle.NoPen)
@@ -259,9 +318,7 @@ def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:
 ICON_PAINTERS = [_draw_icon_home, _draw_icon_models, _draw_icon_hotwords, _draw_icon_settings, _draw_icon_about]
 
 
-# ── Custom Toggle Switch (QPainter-based) ───────────────────────────────
-# Matches 闪电说 style: dark gray track + white knob when ON
-#                       darker track + gray knob when OFF
+# ── Custom Toggle Switch ────────────────────────────────────────────────
 
 class ToggleSwitch(QWidget):
     toggled_signal = Signal(bool)
@@ -308,24 +365,23 @@ class ToggleSwitch(QWidget):
 
         track = QRectF(0, 0, 44, 24)
         if self._checked:
-            # ON: darker fill track + white knob (like 闪电说)
-            p.setBrush(QColor("#48484e"))
-            p.setPen(Qt.PenStyle.NoPen)
+            # ON: warm orange track — brand color, clearly active
+            p.setBrush(QColor(249, 115, 22, 90))
+            p.setPen(QPen(QColor(249, 115, 22, 50), 1))
         else:
-            # OFF: very dark track + gray knob
+            # OFF: dark elevated surface
             p.setBrush(QColor(BG_ELEVATED))
-            p.setPen(QPen(QColor(BORDER_SUBTLE), 1))
+            p.setPen(QPen(_BORDER_SUBTLE_C, 1))
         p.drawRoundedRect(track, 12, 12)
 
         # Knob
         knob = QRectF(self._knob_x, 2, 20, 20)
         p.setPen(Qt.PenStyle.NoPen)
         if self._checked:
-            p.setBrush(QColor("#f0f0f2"))   # White knob when ON
+            p.setBrush(QColor("#f0f0f2"))       # bright white knob on orange
         else:
-            p.setBrush(QColor(BORDER_DEFAULT))   # Gray knob when OFF
+            p.setBrush(_BORDER_DEFAULT_C)       # muted gray knob off
         p.drawEllipse(knob)
-
         p.end()
 
 
@@ -334,9 +390,7 @@ class ToggleSwitch(QWidget):
 def section_heading(title: str) -> QLabel:
     lbl = QLabel(title)
     lbl.setFont(font(14, bold=True))
-    lbl.setStyleSheet(
-        f"color: {TEXT_PRIMARY}; padding-top: 4px;"
-    )
+    lbl.setStyleSheet(f"color: {TEXT_PRIMARY}; padding-top: 4px;")
     return lbl
 
 
@@ -367,7 +421,7 @@ def pill_button(
     text: str,
     bg: str = "transparent",
     fg: str = TEXT_SECONDARY,
-    bg_hover: str = "rgba(255,255,255,0.05)",
+    bg_hover: str = "rgba(255,255,255,0.06)",
     fg_hover: str = TEXT_PRIMARY,
     border: str = BORDER_DEFAULT,
     width: int = 0,
@@ -381,7 +435,8 @@ def pill_button(
     btn.setStyleSheet(
         f"QPushButton {{ background: {bg}; color: {fg}; border: 1px solid {border};"
         f" border-radius: {height // 2}px; padding: 0 18px; font-size: 12px; }}"
-        f"QPushButton:hover {{ background: {bg_hover}; color: {fg_hover}; }}"
+        f"QPushButton:hover {{ background: {bg_hover}; color: {fg_hover};"
+        f" border: 1px solid {BORDER_STRONG}; }}"
     )
     return btn
 
@@ -391,10 +446,12 @@ def accent_button(text: str, height: int = 40) -> QPushButton:
     btn.setFixedHeight(height)
     btn.setCursor(Qt.CursorShape.PointingHandCursor)
     btn.setStyleSheet(
-        f"QPushButton {{ background: {ACCENT_BLUE};"
+        f"QPushButton {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+        f" stop:0 {ACCENT_BLUE}, stop:1 {ACCENT_BLUE_HOVER});"
         f" color: #fff; border: none;"
         f" border-radius: {height // 2}px; padding: 0 24px; font-size: 13px; font-weight: bold; }}"
-        f"QPushButton:hover {{ background: {ACCENT_BLUE_HOVER}; }}"
+        f"QPushButton:hover {{ background: qlineargradient(x1:0,y1:0,x2:0,y2:1,"
+        f" stop:0 #6b9ef0, stop:1 {ACCENT_BLUE}); }}"
     )
     return btn
 
@@ -411,77 +468,62 @@ def separator() -> QFrame:
 # ── Combo box style ─────────────────────────────────────────────────────
 
 COMBO_QSS = (
-    f"QComboBox {{ background: {BG_INPUT}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_SUBTLE};"
+    f"QComboBox {{ background: {BG_ELEVATED}; color: {TEXT_PRIMARY};"
+    f" border: 1px solid {BORDER_DEFAULT};"
     f" border-radius: 10px; padding: 10px 16px; font-size: 13px; }}"
-    f"QComboBox:hover {{ border: 1px solid {BORDER_DEFAULT}; }}"
+    f"QComboBox:hover {{ border: 1px solid {BORDER_STRONG}; }}"
     f"QComboBox::drop-down {{ border: none; width: 28px; }}"
-    # Popup list — explicitly style the view AND the items so no
-    # macOS native gray bleeds through anywhere. outline:0 removes
-    # the dotted focus ring Qt paints on the active item, which
-    # reads as a faint gray rectangle inside the popup.
-    f"QComboBox QAbstractItemView {{ background: #000000; color: {TEXT_PRIMARY};"
+    f"QComboBox QAbstractItemView {{ background: {BG_ELEVATED}; color: {TEXT_PRIMARY};"
     f" border: 1px solid {BORDER_DEFAULT}; border-radius: 8px;"
     f" padding: 4px; outline: 0; }}"
-    f"QComboBox QAbstractItemView::item {{ background: #000000; color: {TEXT_PRIMARY};"
+    f"QComboBox QAbstractItemView::item {{ background: {BG_ELEVATED}; color: {TEXT_PRIMARY};"
     f" padding: 6px 12px; min-height: 22px; border: none; }}"
     f"QComboBox QAbstractItemView::item:selected {{"
     f" background: {ACCENT_BLUE}; color: #ffffff; }}"
     f"QComboBox QAbstractItemView::item:hover {{"
-    f" background: rgba(91, 141, 239, 0.18); color: {TEXT_PRIMARY}; }}"
+    f" background: rgba(91,141,239,0.18); color: {TEXT_PRIMARY}; }}"
 )
 
 
 def style_combo(combo) -> None:
-    """Apply COMBO_QSS to the box AND force the popup-window-level
-    background to pure black.
-
-    Why this exists: the QComboBox dropdown is implemented as a
-    separate top-level QWidget (QComboBoxPrivateContainer holding a
-    QListView). On macOS, that container's NSWindow draws its own
-    backdrop that QSS rules attached to the QComboBox can't reach,
-    so the user still sees a 1-2 px gray frame around the popup
-    even with `QComboBox QAbstractItemView { background: #000 }`
-    set. Styling combo.view() (the QListView) and its window()
-    closes that gap.
-
-    Must be called AFTER the combo is added to a parent widget;
-    combo.view() creates the view lazily on first access, so calling
-    too early can produce a popup that's partially un-styled.
-    """
+    """Apply COMBO_QSS and force the popup window background."""
     combo.setStyleSheet(COMBO_QSS)
     view = combo.view()
     if view is None:
         return
     view.setStyleSheet(
-        "QListView, QAbstractItemView {"
-        " background: #000000; border: none; outline: 0; }"
+        f"QListView, QAbstractItemView {{"
+        f" background: {BG_ELEVATED}; border: none; outline: 0; }}"
     )
     win = view.window()
     if win is not None and win is not view:
         win.setStyleSheet(
-            f"background: #000000; border: 1px solid {BORDER_DEFAULT};"
+            f"background: {BG_ELEVATED}; border: 1px solid {BORDER_DEFAULT};"
             " border-radius: 8px;"
         )
+
 
 # ── Line edit style ─────────────────────────────────────────────────────
 
 INPUT_QSS = (
-    f"QLineEdit {{ background: {BG_INPUT}; color: {TEXT_PRIMARY}; border: 1px solid {BORDER_SUBTLE};"
+    f"QLineEdit {{ background: {BG_ELEVATED}; color: {TEXT_PRIMARY};"
+    f" border: 1px solid {BORDER_DEFAULT};"
     f" border-radius: 10px; padding: 10px 16px; font-size: 13px; }}"
-    f"QLineEdit:focus {{ border: 1px solid {ACCENT_BLUE}; }}"
+    f"QLineEdit:hover {{ border: 1px solid {BORDER_STRONG}; }}"
+    f"QLineEdit:focus {{ border: 1px solid {ACCENT_ORANGE}; }}"
 )
 
 
 # ── Segment tab bar (pill-style) ────────────────────────────────────────
 
 def segment_tab_qss() -> str:
-    """Returns QSS for a segment-control style tab bar (rounded pill tabs)."""
     return (
         f"QTabBar {{ background: transparent; }}"
         f"QTabBar::tab {{ background: transparent; color: {TEXT_SECONDARY};"
         f" padding: 8px 24px; border: 1px solid transparent;"
         f" border-radius: 8px; margin: 0 2px; font-size: 13px; }}"
         f"QTabBar::tab:selected {{ background: {BG_ELEVATED}; color: {TEXT_PRIMARY};"
-        f" border: 1px solid {BORDER_SUBTLE}; font-weight: bold; }}"
-        f"QTabBar::tab:hover {{ color: {TEXT_PRIMARY}; }}"
+        f" border: 1px solid {BORDER_DEFAULT}; font-weight: bold; }}"
+        f"QTabBar::tab:hover {{ color: {TEXT_PRIMARY};"
+        f" background: rgba(255,255,255,0.04); }}"
     )

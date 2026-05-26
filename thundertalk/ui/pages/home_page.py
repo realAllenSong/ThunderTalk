@@ -10,8 +10,9 @@ import datetime
 import math
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, QRectF, QTimer
+from PySide6.QtCore import Qt, QRectF, QTimer, QPropertyAnimation, QEasingCurve
 from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtWidgets import QGraphicsDropShadowEffect
 from PySide6.QtWidgets import (
     QFrame,
     QHBoxLayout,
@@ -109,8 +110,22 @@ class _StatCard(QFrame):
         self.setStyleSheet(
             f"QFrame#statCard {{ background: {theme.BG_CARD};"
             f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 16px; }}"
+            f"QFrame#statCard:hover {{ background: {theme.BG_CARD_HOVER};"
+            f" border: 1px solid {theme.BORDER_STRONG}; }}"
         )
         self.setFixedHeight(150)
+
+        # Hover glow effect
+        glow_color = QColor(accent)
+        glow_color.setAlpha(55)
+        self._glow = QGraphicsDropShadowEffect()
+        self._glow.setBlurRadius(0)
+        self._glow.setColor(glow_color)
+        self._glow.setOffset(0, 0)
+        self.setGraphicsEffect(self._glow)
+        self._glow_anim = QPropertyAnimation(self._glow, b"blurRadius")
+        self._glow_anim.setDuration(220)
+        self._glow_anim.setEasingCurve(QEasingCurve.Type.OutCubic)
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(22, 20, 22, 20)
@@ -141,6 +156,20 @@ class _StatCard(QFrame):
 
     def set_value(self, value: str) -> None:
         self._value.setText(value)
+
+    def enterEvent(self, e) -> None:
+        self._glow_anim.stop()
+        self._glow_anim.setStartValue(int(self._glow.blurRadius()))
+        self._glow_anim.setEndValue(26)
+        self._glow_anim.start()
+        super().enterEvent(e)
+
+    def leaveEvent(self, e) -> None:
+        self._glow_anim.stop()
+        self._glow_anim.setStartValue(int(self._glow.blurRadius()))
+        self._glow_anim.setEndValue(0)
+        self._glow_anim.start()
+        super().leaveEvent(e)
 
     def paintEvent(self, ev) -> None:
         super().paintEvent(ev)

@@ -89,6 +89,7 @@ class HotwordsPage(QWidget):
         scroll.setWidgetResizable(True)
         scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
         root.addWidget(scroll)
+        self._scroll = scroll
 
         container = QWidget()
         self._layout = QVBoxLayout(container)
@@ -204,7 +205,11 @@ class HotwordsPage(QWidget):
         current_row.setSpacing(6)
         current_row.setContentsMargins(0, 0, 0, 0)
         row_width = 0
-        max_width = 500
+        # Use the chips container's actual rendered width — it accounts for all
+        # the card and scroll margins precisely. Fall back to viewport - 104
+        # (32+32 container margins + 20+20 card margins) on first paint.
+        cw = self._chips_container.width()
+        max_width = cw if cw > 100 else max(500, self._scroll.viewport().width() - 104)
 
         row_widget = QWidget()
         row_widget.setStyleSheet("background: transparent;")
@@ -212,8 +217,8 @@ class HotwordsPage(QWidget):
         for word in words:
             chip = _WordChip(word)
             chip.remove_clicked.connect(self._remove_word)
-            estimated_width = len(word) * 9 + 50
-            if row_width + estimated_width > max_width and row_width > 0:
+            chip_width = chip.sizeHint().width() + 6  # +6 = row spacing
+            if row_width + chip_width > max_width and row_width > 0:
                 current_row.addStretch()
                 row_widget.setLayout(current_row)
                 self._chips_layout.addWidget(row_widget)
@@ -224,7 +229,7 @@ class HotwordsPage(QWidget):
                 row_widget.setStyleSheet("background: transparent;")
                 row_width = 0
             current_row.addWidget(chip)
-            row_width += estimated_width
+            row_width += chip_width
 
         current_row.addStretch()
         row_widget.setLayout(current_row)
@@ -252,6 +257,16 @@ class HotwordsPage(QWidget):
             self._settings.set("hotwords", words)
             self._rebuild_chips()
             self.hotwords_changed.emit(words)
+
+    def showEvent(self, ev) -> None:
+        super().showEvent(ev)
+        if hasattr(self, "_chips_container"):
+            self._rebuild_chips()
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        if hasattr(self, "_chips_container"):
+            self._rebuild_chips()
 
     def _remove_word(self, word: str) -> None:
         words = self._settings.hotwords

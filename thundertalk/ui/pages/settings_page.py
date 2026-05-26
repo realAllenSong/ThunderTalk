@@ -406,13 +406,14 @@ class SettingsPage(QWidget):
         self._mode_combo = QComboBox()
         theme.style_combo(self._mode_combo)
         self._mode_combo.addItem(t("settings.mode.toggle_click"))
-        self._mode_combo.addItem(t("settings.mode.hold_record"))
+        # self._mode_combo.addItem(t("settings.mode.hold_record"))  # TODO: not yet stable
         self._mode_combo.setFixedWidth(160)
-        
-        idx = 1 if self._settings.press_mode == "hold" else 0
-        self._mode_combo.setCurrentIndex(idx)
+
+        # Force toggle mode; hold mode is hidden until stable
+        self._settings.set("press_mode", "toggle")
+        self._mode_combo.setCurrentIndex(0)
         self._mode_combo.currentIndexChanged.connect(
-            lambda i: self._set_mode("hold" if i == 1 else "toggle")
+            lambda i: self._set_mode("toggle")
         )
         mode_row.addWidget(self._mode_combo)
         cl.addLayout(mode_row)
