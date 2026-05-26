@@ -86,8 +86,8 @@ def check_for_update(current_version: str) -> Optional[UpdateInfo]:
 
     zip_url = ""
     for asset in data.get("assets", []) or []:
-        name = asset.get("name", "")
-        if name.endswith("-macOS.zip"):
+        name = asset.get("name", "").lower()
+        if "macos" in name and name.endswith(".zip"):
             zip_url = asset.get("browser_download_url", "")
             break
     if not zip_url:
