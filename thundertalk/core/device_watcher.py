@@ -12,9 +12,18 @@ The recording UX broke for users in two reproducible ways before this:
    in PortAudio with ``max_input_channels == 0`` and is filtered out.
 
 Both are fixed by re-running ``Pa_Terminate + Pa_Initialize`` whenever
-the OS reports a device topology change. macOS's CoreAudio exposes
-exactly that signal through ``kAudioHardwarePropertyDevices``; we
-register a property listener on the system object and react.
+the OS reports a device topology change. macOS's CoreAudio exposes two
+signals we monitor on the system object:
+
+  - ``kAudioHardwarePropertyDevices``      — device list added/removed
+  - ``kAudioHardwarePropertyDefaultInputDevice`` — default input changed
+
+The second property is critical for the common case where the user
+switches their default mic in System Settings without adding or removing
+a device (e.g. switching between internal mic and already-paired AirPods).
+Without monitoring it, PortAudio's cached default from the last
+``Pa_Initialize`` stays stale and "auto" mode records from the wrong mic
+until the app is restarted.
 
 Non-macOS builds (or installations where the CoreAudio binding fails
 to load) fall back to a 5-second QTimer that polls the cached
@@ -31,6 +40,19 @@ Threading
 - ``devices_changed`` is a Qt signal. Emission is thread-safe; Qt's
   default ``Qt.AutoConnection`` queues delivery to the receiver's
   thread (typically the GUI main thread).
+- ``_request_emit`` is an internal signal used to safely start the
+  debounce timer from any thread (QTimer.start() must run on the
+  GUI thread; Signal emission crosses thread boundaries transparently).
+
+Debounce
+--------
+Bluetooth profile switches (A2DP→HFP) fire several rapid-fire
+``kAudioHardwarePropertyDevices`` events within ~200ms. Without
+debouncing, the dropdown would flash "no mic → has mic". We coalesce
+these into a single UI update emitted 500ms after the last event.
+The underlying PortAudio reinit still runs immediately on each event
+(coalesced by the in-flight lock), so devices are usable as soon as
+the OS settles — only the dropdown update is delayed.
 
 Recording-aware
 ---------------
@@ -49,7 +71,7 @@ import platform
 import threading
 from typing import Optional
 
-from PySide6.QtCore import QObject, QTimer, Signal
+from PySide6.QtCore import QObject, QTimer, Signal, Slot
 
 from thundertalk.core.audio import (
     AudioRecorder,
@@ -63,6 +85,7 @@ from thundertalk.core.audio_executor import AudioCallTimeout, get_executor
 
 _POLL_INTERVAL_MS = 5_000
 _HEAVY_REFRESH_EVERY_N_TICKS = 6  # 6 ticks * 5s = full re-enumeration every 30s
+_DEBOUNCE_MS = 500                 # wait this long after last event before updating UI
 
 
 class DeviceWatcher(QObject):
@@ -70,6 +93,11 @@ class DeviceWatcher(QObject):
     device names changes. Use ``get_watcher()`` to access the singleton."""
 
     devices_changed = Signal(list)
+
+    # Internal signal: safely starts the debounce timer from any thread.
+    # QTimer.start() must be called from the GUI thread; emitting this
+    # signal from a non-GUI thread queues the call via AutoConnection.
+    _request_emit = Signal()
 
     def __init__(self) -> None:
         super().__init__()
@@ -81,7 +109,7 @@ class DeviceWatcher(QObject):
         # CoreAudio retains the function pointer; we must keep the
         # CFUNCTYPE wrapper alive for the listener's whole lifetime.
         self._listener_proc = None
-        self._listener_address = None
+        self._listener_addresses: list = []   # AudioObjectPropertyAddress structs
         self._coreaudio = None
         self._listener_registered = False
 
@@ -96,6 +124,19 @@ class DeviceWatcher(QObject):
         self._refresh_lock = threading.Lock()
         self._refresh_in_flight = False
         self._refresh_pending = False
+
+        # Debounced emission: accumulate the latest device list here,
+        # then emit devices_changed 500ms after the last update.
+        # _pending_emit_names is written from handoff threads and read on
+        # the GUI thread; access is protected by _pending_emit_lock.
+        self._pending_emit_names: list[str] = []
+        self._pending_emit_lock = threading.Lock()
+
+        self._debounce_timer = QTimer(self)
+        self._debounce_timer.setSingleShot(True)
+        self._debounce_timer.setInterval(_DEBOUNCE_MS)
+        self._debounce_timer.timeout.connect(self._on_debounce_timeout)
+        self._request_emit.connect(self._on_request_emit)
 
     def start(self, recorder: Optional[AudioRecorder] = None) -> None:
         """Begin watching. ``recorder`` is consulted before every refresh
@@ -114,8 +155,8 @@ class DeviceWatcher(QObject):
 
         if platform.system() == "Darwin" and self._try_register_coreaudio_listener():
             print(
-                "[DeviceWatcher] CoreAudio listener registered "
-                "(kAudioHardwarePropertyDevices)"
+                "[DeviceWatcher] CoreAudio listeners registered "
+                "(kAudioHardwarePropertyDevices + kAudioHardwarePropertyDefaultInputDevice)"
             )
             return
 
@@ -179,34 +220,45 @@ class DeviceWatcher(QObject):
                 return v
 
             k_audio_object_system_object = 1
-            k_audio_hw_property_devices = _fourcc("dev#")
             k_scope_global = _fourcc("glob")
             k_element_master = 0
-            address = _Address(
-                k_audio_hw_property_devices, k_scope_global, k_element_master
-            )
 
-            # Strong refs prevent GC for the listener's whole lifetime —
-            # CoreAudio retains only the raw function pointer.
+            # The two properties we care about:
+            #   kAudioHardwarePropertyDevices             = 'dev#'
+            #   kAudioHardwarePropertyDefaultInputDevice  = 'dIn '
+            properties = [_fourcc("dev#"), _fourcc("dIn ")]
+            addresses = [
+                _Address(sel, k_scope_global, k_element_master)
+                for sel in properties
+            ]
+
+            # Strong ref: CoreAudio retains only the raw function pointer.
             self._listener_proc = listener_proc_t(self._native_callback)
-            self._listener_address = address
             self._coreaudio = lib
 
-            status = lib.AudioObjectAddPropertyListener(
-                k_audio_object_system_object,
-                ctypes.byref(address),
-                self._listener_proc,
-                None,
-            )
-            if status != 0:
-                print(
-                    f"[DeviceWatcher] AudioObjectAddPropertyListener "
-                    f"returned status={status}"
+            any_ok = False
+            for addr in addresses:
+                status = lib.AudioObjectAddPropertyListener(
+                    k_audio_object_system_object,
+                    ctypes.byref(addr),
+                    self._listener_proc,
+                    None,
                 )
+                if status == 0:
+                    self._listener_addresses.append(addr)
+                    any_ok = True
+                else:
+                    print(
+                        f"[DeviceWatcher] AudioObjectAddPropertyListener "
+                        f"returned status={status} for selector={addr.mSelector:#010x}"
+                    )
+
+            if not any_ok:
                 self._listener_proc = None
-                self._listener_address = None
+                self._listener_addresses = []
                 self._coreaudio = None
                 return False
+
             self._listener_registered = True
             return True
         except Exception as e:
@@ -217,19 +269,20 @@ class DeviceWatcher(QObject):
         if not self._listener_registered or self._coreaudio is None:
             return
         try:
-            self._coreaudio.AudioObjectRemovePropertyListener(
-                1,
-                ctypes.byref(self._listener_address),
-                self._listener_proc,
-                None,
-            )
+            for addr in self._listener_addresses:
+                self._coreaudio.AudioObjectRemovePropertyListener(
+                    1,  # kAudioObjectSystemObject
+                    ctypes.byref(addr),
+                    self._listener_proc,
+                    None,
+                )
         except Exception as e:
             print(f"[DeviceWatcher] CoreAudio listener unregister failed: {e}")
         finally:
             self._listener_registered = False
 
     def _native_callback(self, in_object_id, n_addresses, addresses_ptr, client_data):
-        """Fires on a CoreAudio internal thread.
+        """Fires on a CoreAudio internal thread for any registered property.
 
         Hand off to a short-lived daemon thread; CoreAudio holds HAL
         mutexes during this call and would deadlock if we touched
@@ -290,7 +343,47 @@ class DeviceWatcher(QObject):
                 "skipping this notification"
             )
             return
-        self._maybe_emit(names)
+        self._queue_emit(names)
+
+    # ── Debounced emission ────────────────────────────────────────────
+
+    def _queue_emit(self, names: list[str]) -> None:
+        """Accumulate latest device list for debounced emission.
+
+        Safe to call from any thread. Suppresses scheduling if ``names``
+        matches what's already pending (prevents polling fallback from
+        resetting the debounce timer every 5s while devices are stable).
+        """
+        with self._pending_emit_lock:
+            if names == self._pending_emit_names:
+                return
+            self._pending_emit_names = list(names)
+        # Qt AutoConnection: if called from a non-GUI thread, delivery is
+        # queued to the GUI thread, so _on_request_emit always runs there.
+        self._request_emit.emit()
+
+    @Slot()
+    def _on_request_emit(self) -> None:
+        """Start (or restart) the debounce timer. Always runs on GUI thread."""
+        self._debounce_timer.start()
+
+    @Slot()
+    def _on_debounce_timeout(self) -> None:
+        """500ms after the last device change: emit if list actually changed."""
+        with self._pending_emit_lock:
+            names = list(self._pending_emit_names)
+        if names == self._known_names:
+            return
+        added = sorted(set(names) - set(self._known_names))
+        removed = sorted(set(self._known_names) - set(names))
+        msg = []
+        if added:
+            msg.append(f"+{added}")
+        if removed:
+            msg.append(f"-{removed}")
+        print(f"[DeviceWatcher] input devices changed: {' '.join(msg) or '(reorder)'}")
+        self._known_names = list(names)
+        self.devices_changed.emit(list(names))
 
     # ── Polling fallback ─────────────────────────────────────────────
 
@@ -314,25 +407,7 @@ class DeviceWatcher(QObject):
                 names = AudioRecorder.list_devices()
             except Exception:
                 names = []
-        self._maybe_emit(names)
-
-    # ── Common ───────────────────────────────────────────────────────
-
-    def _maybe_emit(self, names: list[str]) -> None:
-        if names == self._known_names:
-            return
-        added = sorted(set(names) - set(self._known_names))
-        removed = sorted(set(self._known_names) - set(names))
-        msg = []
-        if added:
-            msg.append(f"+{added}")
-        if removed:
-            msg.append(f"-{removed}")
-        print(f"[DeviceWatcher] input devices changed: {' '.join(msg) or '(reorder)'}")
-        self._known_names = list(names)
-        # Qt.AutoConnection queues this onto the receiver's thread when
-        # we're not already on it (e.g. emitted from the handoff thread).
-        self.devices_changed.emit(list(names))
+        self._queue_emit(names)
 
 
 _default: Optional[DeviceWatcher] = None

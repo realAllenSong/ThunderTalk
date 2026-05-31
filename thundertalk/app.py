@@ -594,7 +594,12 @@ def main() -> None:
             # Start mic BEFORE muting: muting Bluetooth speakers can trigger
             # a profile switch (A2DP→HFP) that changes the default input device.
             mic = settings.microphone
-            pipe.recorder.start(device=None if mic == "auto" else mic)
+            try:
+                pipe.recorder.start(device=None if mic == "auto" else mic)
+            except Exception as exc:
+                print(f"[Toggle] recorder.start failed: {exc}")
+                overlay.show_error("Mic unavailable")
+                return
             if mute_on:
                 mute_system_audio()
             pipe._recording = True

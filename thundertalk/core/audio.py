@@ -160,6 +160,11 @@ class AudioRecorder:
                 self._stream = None
                 self._recording = False
                 return
+            except Exception as exc:
+                print(f"[Audio] start: stream open failed: {exc}")
+                self._stream = None
+                self._recording = False
+                raise
 
             try:
                 actual = self._exec.call(
