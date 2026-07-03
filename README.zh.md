@@ -2,25 +2,29 @@
   <img src="assets/icon.png" width="80" alt="ThunderTalk Logo" />
 </p>
 
-<h1 align="center">ThunderTalk</h1>
+<h1 align="center">ThunderTalk — macOS 语音输入 / 语音转文字</h1>
 
 <p align="center">
-  极速、隐私优先的桌面语音转文字工具。
+  极速、隐私优先的 <strong>macOS 语音转文字（听写）应用</strong>。<br/>
+  按下快捷键、开口说话，文字直接输入任何应用 — 100% 本地运行，无云端，无订阅。
 </p>
 
 <p align="center">
-  <a href="README.md">English</a>
+  <a href="README.md">English</a> · <a href="https://realallensong.github.io/ThunderTalk/">官网</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">下载</a>
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-1.1.18-orange" alt="Version" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS-brightgreen" alt="Platform: macOS" />
+  <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest"><img src="https://img.shields.io/github/v/release/realAllenSong/ThunderTalk?color=orange" alt="Latest Release" /></a>
+  <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="Downloads" /></a>
 </p>
 
 https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 
 ---
+
+**ThunderTalk** 是一款免费开源的 **macOS 语音输入 / 听写应用**。最先进的语音识别模型（Qwen3-ASR、SenseVoice）完全**在本机运行** — Apple Silicon 上通过 MLX（Metal GPU）加速，任意 Mac 上可用 ONNX CPU 推理 — 并内置 100+ 语言的语音翻译（SeamlessM4T v2）。它是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
 
 ## 功能特性
 
@@ -222,6 +226,26 @@ uv run python run.py
 - **音频：** [sounddevice](https://python-sounddevice.readthedocs.io/)
 - **快捷键：** macOS 原生 NSEvent
 - **打包：** [PyInstaller](https://pyinstaller.org/) + Apple Development 代码签名
+
+## 常见问题
+
+**ThunderTalk 收费吗？**
+完全免费，MIT 协议开源。无订阅、无账号、无使用限制。
+
+**能离线使用吗？**
+可以。语音识别、翻译、语法修正全部在本机运行。模型下载一次后无需联网，录音永不离开你的设备。
+
+**和 Typeless、Wispr Flow、superwhisper 有什么区别？**
+它们是付费闭源应用，通常在云端处理音频。ThunderTalk 免费、开源（MIT）、完全本地 — 代码可审计，语音数据不出本机。
+
+**支持中文和中英混说吗？**
+支持。Qwen3-ASR 支持 52 种语言，包括中英混合（code-switching）语音；界面本身也有中文和英文两种语言。
+
+**Intel Mac 能用吗？**
+能 — 使用 CPU（ONNX）模型，如 SenseVoice-Small 和 Qwen3-ASR-0.6B int8。Apple Silicon 则通过 MLX 获得 GPU 加速，体验最佳。
+
+**可以在哪些应用里听写？**
+任何能输入文字的应用：浏览器、编辑器、Slack、邮件、终端 — 光标在哪里，文字就输入到哪里。
 
 ## 许可证
 

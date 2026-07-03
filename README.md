@@ -2,25 +2,29 @@
   <img src="assets/icon.png" width="80" alt="ThunderTalk Logo" />
 </p>
 
-<h1 align="center">ThunderTalk</h1>
+<h1 align="center">ThunderTalk — Voice-to-Text Dictation for macOS</h1>
 
 <p align="center">
-  Lightning-fast, privacy-first voice-to-text for every desktop.
+  Lightning-fast, privacy-first <strong>speech-to-text dictation app</strong> for macOS.<br/>
+  Press a hotkey, speak, get text in any app — 100% local, no cloud, no subscription.
 </p>
 
 <p align="center">
-  <a href="README.zh.md">中文文档</a>
+  <a href="README.zh.md">中文文档</a> · <a href="https://realallensong.github.io/ThunderTalk/">Website</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">Download</a>
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="License" /></a>
-  <img src="https://img.shields.io/badge/platform-macOS%20(Apple%20Silicon)-brightgreen" alt="Platform" />
-  <img src="https://img.shields.io/badge/version-1.1.18-orange" alt="Version" />
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <img src="https://img.shields.io/badge/platform-macOS-brightgreen" alt="Platform: macOS" />
+  <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest"><img src="https://img.shields.io/github/v/release/realAllenSong/ThunderTalk?color=orange" alt="Latest Release" /></a>
+  <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="Downloads" /></a>
 </p>
 
 https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 
 ---
+
+**ThunderTalk** is a free, open-source **voice typing / dictation app for macOS**. It runs state-of-the-art speech recognition models (Qwen3-ASR, SenseVoice) entirely **on-device** — on Apple Silicon via the MLX Metal GPU framework, or on any Mac via ONNX CPU inference — and includes built-in speech translation across 100+ languages (SeamlessM4T v2). It is an open-source alternative to **Typeless**, **Wispr Flow**, **superwhisper**, and macOS built-in Dictation.
 
 ## Features
 
@@ -235,6 +239,26 @@ uv run python run.py
 - **Audio**: [sounddevice](https://python-sounddevice.readthedocs.io/)
 - **Hotkeys**: Native NSEvent (macOS)
 - **Build**: [PyInstaller](https://pyinstaller.org/) + Apple Development code signing
+
+## FAQ
+
+**Is ThunderTalk free?**
+Yes. ThunderTalk is completely free and open source under the MIT license. No subscription, no account, no usage limits.
+
+**Does ThunderTalk work offline?**
+Yes. All speech recognition, translation, and grammar correction run 100% locally on your Mac. After downloading a model once, no internet connection is needed and no audio ever leaves your device.
+
+**How is ThunderTalk different from Typeless, Wispr Flow, or superwhisper?**
+Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free, open source (MIT), and fully local — you can audit the code, and your voice data stays on your machine.
+
+**Does ThunderTalk support Chinese and bilingual dictation?**
+Yes. Qwen3-ASR handles 52 languages including mixed Chinese-English (code-switching) speech, and the UI itself is available in English and 中文.
+
+**Does it work on Intel Macs?**
+Yes — via CPU (ONNX) models like SenseVoice-Small and Qwen3-ASR-0.6B int8. Apple Silicon gets GPU acceleration through MLX for the fastest experience.
+
+**Which apps does dictation work in?**
+Any app that accepts text: browsers, editors, Slack, mail, terminals — ThunderTalk types wherever your cursor is.
 
 ## License
 
