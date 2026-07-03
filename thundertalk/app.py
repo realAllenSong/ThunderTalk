@@ -127,6 +127,32 @@ class TextTranslateWorker(QThread):
             self.error.emit(str(e))
 
 
+class LlmRewriteWorker(QThread):
+    """Runs LLM grammar correction off the main thread.
+
+    Model loading (first call) can take 10-30s — that's fine; we guard
+    against late replacements in _on_rewrite_done via paste_time.
+    Emits done(original, corrected | None, paste_monotonic_time).
+    """
+
+    done = Signal(str, object, float)  # original, corrected|None, paste_time
+    error = Signal(str)
+
+    def __init__(self, text: str, model_id: str, paste_time: float) -> None:
+        super().__init__()
+        self._text = text
+        self._model_id = model_id
+        self._paste_time = paste_time
+
+    def run(self) -> None:
+        try:
+            from thundertalk.core.llm_rewrite import rewrite
+            corrected = rewrite(self._text, self._model_id)
+            self.done.emit(self._text, corrected, self._paste_time)
+        except Exception as e:
+            self.error.emit(str(e))
+
+
 class ModelLoadWorker(QThread):
     """Loads an ASR model off the main thread."""
 
@@ -256,6 +282,7 @@ def main() -> None:
     overlay = VoiceOverlay()
     from thundertalk.ui.review_overlay import ReviewOverlay
     review_overlay = ReviewOverlay()
+    rewrite_overlay = ReviewOverlay()  # separate instance for grammar-fix popup
     window = MainWindow(settings, history)
     tray = TrayIcon()
 
@@ -285,6 +312,9 @@ def main() -> None:
     # --- Hotwords + Language → ASR engine ---
     pipe.asr.set_hotwords(settings.hotwords)
     pipe.asr.set_language(settings.transcription_language)
+
+    # --- Lab page: wire the ASR engine reference ---
+    window.lab_page.set_engine(pipe.asr)
 
     # --- Model loading helpers -----------------------------------------
     def _clear_load_worker() -> None:
@@ -393,6 +423,37 @@ def main() -> None:
 
     QTimer.singleShot(500, _restore_model)
 
+    def _prewarm_llm_rewrite() -> None:
+        """Load + warm up the rewrite model in a background thread so the first
+        correction isn't slow due to Metal GPU cold-start."""
+        if not settings.get("llm_rewrite_enabled"):
+            return
+        model_id = settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit"
+
+        def _run() -> None:
+            try:
+                from thundertalk.core.llm_rewrite import load_engine, _SYSTEM_PROMPT
+                import mlx_lm, time
+                print(f"[LlmRewrite] Pre-warming model {model_id}…")
+                engine = load_engine(model_id)
+                # One tiny inference to prime Metal shader compilation
+                prompt = engine._tokenizer.apply_chat_template(
+                    [{"role": "system", "content": "/no_think\n" + _SYSTEM_PROMPT},
+                     {"role": "user", "content": "Correct: hello"}],
+                    add_generation_prompt=True, tokenize=False,
+                )
+                t0 = time.monotonic()
+                mlx_lm.generate(engine._model, engine._tokenizer, prompt=prompt,
+                                 max_tokens=10, verbose=False)
+                print(f"[LlmRewrite] Pre-warm done in {time.monotonic()-t0:.2f}s")
+            except Exception as e:
+                print(f"[LlmRewrite] Pre-warm error: {e}")
+
+        import threading
+        threading.Thread(target=_run, daemon=True, name="llm-prewarm").start()
+
+    QTimer.singleShot(3000, _prewarm_llm_rewrite)  # 3s after launch, after ASR loads
+
     # --- Model loading from UI -----------------------------------------
     def on_load_model(model_id: str, path: str, family: str, backend: str) -> None:
         _start_model_load(model_id, path, family, backend)
@@ -428,6 +489,9 @@ def main() -> None:
             _paste_and_learn(text)
             paste_dispatch_ms = int((time.perf_counter() - t_start) * 1000)
             print(f"[Toggle] Post-ASR dispatch took {paste_dispatch_ms}ms")
+            # Async grammar correction: run LLM in background, replace when ready
+            if settings.get("llm_rewrite_enabled"):
+                _launch_rewrite(text, time.perf_counter())
             # Defer non-critical UI updates so they don't block paste
             history.add(
                 text=text,
@@ -511,6 +575,33 @@ def main() -> None:
         print(f"[Review] T2TT error: {msg}")
         # Original text is already pasted; silently drop the translation.
         # No overlay needed — user has the original; the popup just doesn't appear.
+
+    def _launch_rewrite(text: str, paste_time: float) -> None:
+        model_id = settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit"
+        worker = LlmRewriteWorker(text, model_id, paste_time)
+        worker.done.connect(_on_rewrite_done)
+        worker.error.connect(lambda msg: print(f"[LlmRewrite] Worker error: {msg}"))
+        _track_worker(worker)
+        worker.start()
+
+    def _on_rewrite_done(original: str, corrected, paste_time: float) -> None:
+        if not corrected:
+            print("[LlmRewrite] No correction needed")
+            return
+        elapsed = time.perf_counter() - paste_time
+        if elapsed > 15.0:
+            print(f"[LlmRewrite] Took {elapsed:.1f}s — skipping stale result")
+            return
+        # Show popup only when there IS a correction — no loading flash
+        rewrite_overlay.show_rewrite_loading(original)
+        rewrite_overlay.update_rewrite(corrected)
+
+    def _on_rewrite_replace(corrected: str) -> None:
+        from thundertalk.core.text_output import replace_pasted_text
+        keep_clipboard = not settings.get("save_to_clipboard")
+        replace_pasted_text(corrected, keep_clipboard=keep_clipboard)
+
+    rewrite_overlay.replace_clicked.connect(_on_rewrite_replace)
 
     # Grace period (ms) between stop-requested and stream-closed so the
     # audio callback can capture trailing speech that is still being spoken

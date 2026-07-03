@@ -610,6 +610,63 @@ class SettingsPage(QWidget):
         c2.addLayout(clip_row)
         ly.addWidget(card2)
 
+        # -- Grammar correction card --
+        card3 = theme.make_card()
+        c3 = QVBoxLayout(card3)
+        c3.setContentsMargins(20, 18, 20, 18)
+        c3.setSpacing(12)
+
+        sec3_row = QHBoxLayout()
+        sec3_row.setSpacing(8)
+        sec3 = QLabel(t("settings.llm_rewrite.label"))
+        sec3.setFont(theme.font(14, bold=True))
+        sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        sec3_row.addWidget(sec3)
+        exp_badge = QLabel(t("common.experimental"))
+        exp_badge.setStyleSheet(
+            f"color: {theme.ACCENT_ORANGE}; background: {theme.ACCENT_ORANGE_DIM};"
+            " font-size: 9px; font-weight: 700; letter-spacing: 0.8px;"
+            f" border: 1px solid {theme.ACCENT_ORANGE}55; border-radius: 7px; padding: 1px 7px;"
+        )
+        sec3_row.addWidget(exp_badge)
+        sec3_row.addStretch()
+        c3.addLayout(sec3_row)
+        c3.addWidget(theme.separator())
+
+        rewrite_row, _ = theme.setting_row(
+            t("settings.llm_rewrite.label"),
+            t("settings.llm_rewrite.desc"),
+        )
+        rw_toggle = theme.ToggleSwitch(self._settings.get("llm_rewrite_enabled"))
+        rw_toggle.toggled_signal.connect(
+            lambda v: self._settings.set("llm_rewrite_enabled", v)
+        )
+        rewrite_row.addWidget(rw_toggle)
+        c3.addLayout(rewrite_row)
+
+        model_row, _ = theme.setting_row(
+            t("settings.llm_rewrite.model_label"),
+            t("settings.llm_rewrite.model_hint"),
+        )
+        from PySide6.QtWidgets import QLineEdit
+        self._rewrite_model_edit = QLineEdit()
+        self._rewrite_model_edit.setFixedWidth(300)
+        self._rewrite_model_edit.setPlaceholderText("mlx-community/Qwen3-8B-4bit")
+        self._rewrite_model_edit.setText(
+            self._settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit"
+        )
+        self._rewrite_model_edit.setStyleSheet(
+            f"background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY}; "
+            f"border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 6px; padding: 4px 8px;"
+        )
+        self._rewrite_model_edit.editingFinished.connect(
+            lambda: self._settings.set("llm_rewrite_model", self._rewrite_model_edit.text().strip())
+        )
+        model_row.addWidget(self._rewrite_model_edit)
+        c3.addLayout(model_row)
+
+        ly.addWidget(card3)
+
         ly.addStretch()
         self._add_page(page)
 

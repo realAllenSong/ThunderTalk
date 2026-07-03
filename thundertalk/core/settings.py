@@ -36,6 +36,9 @@ DEFAULTS: dict[str, Any] = {
     # (likely via the in-app updater) and surface a one-time hint
     # about macOS permissions resetting under ad-hoc code signing.
     "last_run_version": "",
+    "tts_model": "",
+    "llm_rewrite_enabled": False,
+    "llm_rewrite_model": "mlx-community/Qwen3-8B-4bit",
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

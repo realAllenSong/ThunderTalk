@@ -295,6 +295,22 @@ def _draw_icon_about(p: QPainter, r: QRect) -> None:
     p.drawText(QRectF(cx - 7, cy - 7, 14, 14), Qt.AlignmentFlag.AlignCenter, "i")
 
 
+def _draw_icon_lab(p: QPainter, r: QRect) -> None:
+    cx, cy = r.center().x(), r.center().y()
+    # Erlenmeyer flask: narrow neck + wide base
+    path = QPainterPath()
+    path.moveTo(cx - 2.5, cy - 7)
+    path.lineTo(cx + 2.5, cy - 7)
+    path.lineTo(cx + 2.5, cy - 2)
+    path.lineTo(cx + 7.5, cy + 6.5)
+    path.lineTo(cx - 7.5, cy + 6.5)
+    path.lineTo(cx - 2.5, cy - 2)
+    path.closeSubpath()
+    p.drawPath(path)
+    # Liquid line inside the flask body
+    p.drawLine(int(cx - 4), int(cy + 2), int(cx + 4), int(cy + 2))
+
+
 def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:
     path = QPainterPath()
     cx, cy = rect.center().x(), rect.center().y()
@@ -315,7 +331,7 @@ def draw_boltPath(p: QPainter, rect: QRectF, color: str = "#ffffff") -> None:
     p.setBrush(old_brush)
 
 
-ICON_PAINTERS = [_draw_icon_home, _draw_icon_models, _draw_icon_hotwords, _draw_icon_settings, _draw_icon_about]
+ICON_PAINTERS = [_draw_icon_home, _draw_icon_models, _draw_icon_hotwords, _draw_icon_settings, _draw_icon_lab, _draw_icon_about]
 
 
 # ── Custom Toggle Switch ────────────────────────────────────────────────

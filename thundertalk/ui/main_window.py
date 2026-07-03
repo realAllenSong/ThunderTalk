@@ -27,6 +27,7 @@ from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
 from thundertalk.ui.pages.home_page import HomePage
 from thundertalk.ui.pages.hotwords_page import HotwordsPage
+from thundertalk.ui.pages.lab_page import LabPage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
 
@@ -35,7 +36,7 @@ _SIDEBAR_W = 208
 
 def _nav_items() -> list[str]:
     return [t("nav.home"), t("nav.models"), t("nav.hotwords"),
-            t("nav.settings"), t("nav.about")]
+            t("nav.settings"), t("nav.lab"), t("nav.about")]
 
 
 class _NavButton(QPushButton):
@@ -252,12 +253,14 @@ class MainWindow(QMainWindow):
         self._models_page = ModelsPage(settings)
         self._hotwords_page = HotwordsPage(settings)
         self._settings_page = SettingsPage(settings)
+        self._lab_page = LabPage()
         self._about_page = AboutPage()
 
         self._stack.addWidget(self._home_page)
         self._stack.addWidget(self._models_page)
         self._stack.addWidget(self._hotwords_page)
         self._stack.addWidget(self._settings_page)
+        self._stack.addWidget(self._lab_page)
         self._stack.addWidget(self._about_page)
 
         self._models_page.load_model_signal.connect(
@@ -277,6 +280,8 @@ class MainWindow(QMainWindow):
             self._models_page.retranslate()
         if hasattr(self._hotwords_page, "retranslate"):
             self._hotwords_page.retranslate()
+        if hasattr(self._lab_page, "retranslate"):
+            self._lab_page.retranslate()
 
     # ── Navigation ───────────────────────────────────────────────
 
@@ -309,6 +314,10 @@ class MainWindow(QMainWindow):
     @property
     def settings_page(self) -> SettingsPage:
         return self._settings_page
+
+    @property
+    def lab_page(self) -> LabPage:
+        return self._lab_page
 
     @property
     def about_page(self) -> AboutPage:

@@ -236,7 +236,44 @@ class ReviewOverlay(QWidget):
         self.show_review_loading(original, tgt_lang)
         self.update_translation(translated, tgt_lang)
 
+    def show_rewrite_loading(self, original: str) -> None:
+        """Show popup in grammar-correction mode (no lang picker)."""
+        self._original_text = original
+        self._translated_text = ""
+        self._is_loading = True
+        self._lang_combo.hide()
+        self._status_label.setText(t("review.rewriting"))
+        self._status_label.setStyleSheet(
+            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
+            " font-weight: 500; background: transparent; border: none;"
+            " letter-spacing: 0.3px;"
+        )
+        self._orig_text.setText(original)
+        self._trans_text.setText("")
+        self._set_trans_loading_style()
+        self._replace_btn.setEnabled(False)
+        self._resize_to_fit()
+        self._position_near_cursor()
+        self.show()
+        self.raise_()
+
+    def update_rewrite(self, corrected: str) -> None:
+        """Fill in the LLM-corrected text and enable Replace."""
+        self._translated_text = corrected
+        self._is_loading = False
+        self._status_label.setText(t("review.rewrite_label"))
+        self._status_label.setStyleSheet(
+            f"color: {theme.ACCENT_ORANGE}; font-size: 11px;"
+            " font-weight: 600; background: transparent; border: none;"
+            " letter-spacing: 0.3px;"
+        )
+        self._trans_text.setText(corrected)
+        self._set_trans_ready_style()
+        self._replace_btn.setEnabled(True)
+        self._resize_to_fit()
+
     def hide_review(self) -> None:
+        self._lang_combo.show()  # restore for next translation use
         self.hide()
 
     # ── painting (matches VoiceOverlay's pill style) ───────────────────
