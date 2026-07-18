@@ -471,12 +471,15 @@ def _convert_en_number(match: re.Match) -> str:
 
 # ── Letter merging (M B S → MBS) ─────────────────────────────────────────
 
+# Boundary guards use [^\W\d_] (any Unicode letter) rather than [A-Za-z]:
+# with ASCII-only guards, accented neighbours like "für nächste" made the
+# inner "r n" look like isolated letters and merged them ("fürnächste").
 _LETTER_SPACES_RE = re.compile(
-    r"(?<![A-Za-z])"
+    r"(?<![^\W\d_])"
     r"([A-Za-z])"
     r"(?:\s([A-Za-z]))"
     r"(?:\s([A-Za-z]))*"
-    r"(?![A-Za-z])"
+    r"(?![^\W\d_])"
 )
 
 

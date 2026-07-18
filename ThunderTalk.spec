@@ -10,6 +10,10 @@ hidden_imports += collect_submodules("rubicon")
 # They are lazy-loaded at runtime only when user selects an MLX model.
 hidden_imports += ["mlx", "mlx.core", "mlx.nn", "mlx._reprlib_fix"]
 hidden_imports += ["mlx_qwen3_asr"]
+# mlx_audio loads STT model modules dynamically by name (MODEL_REMAPPING →
+# importlib), so static analysis misses them — collect the full tree.
+hidden_imports += collect_submodules("mlx_audio")
+hidden_imports += collect_submodules("mlx_lm")
 # huggingface_hub: needed by mlx_qwen3_asr for model downloads
 hidden_imports += ["huggingface_hub"]
 # torch + transformers: needed by the SeamlessM4T translation engine
@@ -28,6 +32,8 @@ hidden_imports += collect_submodules("sentencepiece")
 custom_datas = [('assets', 'assets')]
 custom_datas += collect_data_files("mlx")
 custom_datas += collect_data_files("mlx_qwen3_asr")
+custom_datas += collect_data_files("mlx_audio")
+custom_datas += collect_data_files("mlx_lm")
 custom_datas += collect_data_files("huggingface_hub")
 custom_datas += collect_data_files("sherpa_onnx")
 custom_datas += collect_data_files("torch")

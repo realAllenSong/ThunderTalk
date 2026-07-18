@@ -39,6 +39,9 @@ DEFAULTS: dict[str, Any] = {
     "tts_model": "",
     "llm_rewrite_enabled": False,
     "llm_rewrite_model": "mlx-community/Qwen3-8B-4bit",
+    # MOSS dictation: prefix each speaker turn with S01:/S02: labels when
+    # two or more speakers are detected in the utterance.
+    "moss_speaker_labels": False,
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

@@ -398,6 +398,70 @@ class _FileTranscribeWorker(QThread):
             self.error.emit(str(exc))
 
 
+class _MossTranscribeWorker(QThread):
+    """File transcription with speaker diarization via MOSS-Transcribe-Diarize.
+
+    Unlike _FileTranscribeWorker there is no VAD segmentation — MOSS handles
+    long-form audio (up to ~90 min) in a single pass and returns segments
+    with timestamps and speaker labels itself.
+    """
+
+    progress = Signal(int, str)
+    done = Signal(str, list)
+    error = Signal(str)
+
+    def __init__(self, file_path: str) -> None:
+        super().__init__()
+        self._path = file_path
+
+    def run(self) -> None:
+        import os
+        import tempfile
+
+        wav = None
+        try:
+            ffmpeg = _find_ffmpeg()
+            if not ffmpeg:
+                self.error.emit("ffmpeg not found — install: brew install ffmpeg")
+                return
+            self.progress.emit(5, t("lab.progress.extracting"))
+            fd, wav = tempfile.mkstemp(suffix=".wav")
+            os.close(fd)
+            cmd = [ffmpeg, "-y", "-i", self._path, "-ar", "16000", "-ac", "1", wav]
+            r = subprocess.run(cmd, capture_output=True, timeout=600)
+            if r.returncode != 0:
+                raise RuntimeError(r.stderr.decode("utf-8", errors="replace")[-600:])
+
+            from thundertalk.core.diarize import load_model, merge_turns, transcribe
+
+            self.progress.emit(20, t("lab.progress.loading_moss"))
+            load_model()
+            self.progress.emit(40, t("lab.progress.diarizing"))
+            segs = transcribe(wav)
+            if not segs:
+                self.error.emit("No speech detected in file.")
+                return
+            timed = [
+                (s.start, s.end, f"{s.speaker}: {s.text}" if s.speaker else s.text)
+                for s in segs
+            ]
+            plain = "\n\n".join(
+                f"{s.speaker}: {s.text}" if s.speaker else s.text
+                for s in merge_turns(segs)
+            )
+            self.progress.emit(100, t("lab.progress.done"))
+            self.done.emit(plain, timed)
+        except Exception as exc:
+            import traceback; traceback.print_exc()
+            self.error.emit(str(exc))
+        finally:
+            if wav:
+                try:
+                    os.unlink(wav)
+                except OSError:
+                    pass
+
+
 # ── TTS workers ───────────────────────────────────────────────────────────────
 
 class _TtsServerWorker(QThread):
@@ -988,6 +1052,19 @@ class LabPage(QWidget):
         lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none;")
         hdr.addWidget(lbl)
         hdr.addStretch()
+        self._asr_model_combo = QComboBox()
+        self._asr_model_combo.addItem(t("lab.asr.engine_active"))
+        self._asr_model_combo.addItem("MOSS-Transcribe-Diarize 0.9B")
+        self._asr_model_combo.setFixedHeight(28)
+        self._asr_model_combo.setStyleSheet(
+            f"QComboBox {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 8px; padding: 0 8px; font-size: 12px; }}"
+            f"QComboBox::drop-down {{ border: none; width: 18px; }}"
+            f"QComboBox QAbstractItemView {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
+            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 6px; }}"
+        )
+        self._asr_model_combo.currentIndexChanged.connect(self._on_asr_model_changed)
+        hdr.addWidget(self._asr_model_combo)
         self._asr_badge = QLabel()
         self._asr_badge.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; background: transparent; font-size: 11px;"
@@ -1374,12 +1451,31 @@ class LabPage(QWidget):
         self._heading.setText(t("lab.title"))
         self._exp_badge.setText(t("common.experimental"))
         self._subtitle.setText(t("lab.subtitle"))
+        self._asr_model_combo.setItemText(0, t("lab.asr.engine_active"))
         self._refresh_asr_badge()
 
     # ── ASR helpers ───────────────────────────────────────────────────
 
+    @property
+    def _moss_selected(self) -> bool:
+        return self._asr_model_combo.currentIndex() == 1
+
+    def _on_asr_model_changed(self, _: int) -> None:
+        self._refresh_asr_badge()
+        self._refresh_asr_btn()
+
     def _refresh_asr_badge(self) -> None:
-        if self._engine is None or not self._engine.is_loaded:
+        if self._moss_selected:
+            from thundertalk.core.models import is_downloaded
+            ready = is_downloaded("moss-transcribe-diarize-mlx")
+            self._asr_badge.setText(
+                t("lab.asr.diarize_ready") if ready else t("lab.asr.diarize_lazy")
+            )
+            self._asr_badge.setStyleSheet(
+                f"color: {theme.ACCENT_ORANGE}; background: transparent; font-size: 11px;"
+                f" border: 1px solid {theme.ACCENT_ORANGE}55; border-radius: 8px; padding: 2px 10px;"
+            )
+        elif self._engine is None or not self._engine.is_loaded:
             self._asr_badge.setText(t("lab.asr.no_model"))
             self._asr_badge.setStyleSheet(
                 f"color: {theme.TEXT_MUTED}; background: transparent; font-size: 11px;"
@@ -1394,7 +1490,9 @@ class LabPage(QWidget):
 
     def _refresh_asr_btn(self) -> None:
         has_file = self._drop_zone._loaded_path is not None
-        has_model = self._engine is not None and self._engine.is_loaded
+        has_model = self._moss_selected or (
+            self._engine is not None and self._engine.is_loaded
+        )
         self._transcribe_btn.setEnabled(has_file and has_model and self._asr_worker is None)
 
     def _on_file_selected(self, _: str) -> None:
@@ -1402,7 +1500,9 @@ class LabPage(QWidget):
 
     def _start_asr(self) -> None:
         path = self._drop_zone._loaded_path
-        if not path or not self._engine:
+        if not path:
+            return
+        if not self._moss_selected and not self._engine:
             return
         self._transcribe_btn.setEnabled(False)
         self._real_pct = 0.0
@@ -1412,7 +1512,10 @@ class LabPage(QWidget):
         self._asr_progress_label.setStyleSheet(f"color: {theme.TEXT_MUTED}; background: transparent; font-size: 11px; border: none;")
         self._asr_progress_area.setVisible(True)
         self._asr_output.setVisible(False)
-        self._asr_worker = _FileTranscribeWorker(self._engine, path)
+        if self._moss_selected:
+            self._asr_worker = _MossTranscribeWorker(path)
+        else:
+            self._asr_worker = _FileTranscribeWorker(self._engine, path)
         self._asr_worker.progress.connect(self._on_asr_progress)
         self._asr_worker.done.connect(self._on_asr_done)
         self._asr_worker.error.connect(self._on_asr_error)

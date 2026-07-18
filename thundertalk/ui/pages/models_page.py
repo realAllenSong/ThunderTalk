@@ -693,6 +693,14 @@ class FamilyCard(QFrame):
             layout.addWidget(row)
             self._rows[v.id] = row
 
+    def add_option_row(self, row_layout) -> None:
+        """Append a per-family option row (e.g. a feature toggle) below
+        the variant rows."""
+        layout = self.layout()
+        layout.addSpacing(2)
+        layout.addWidget(theme.separator())
+        layout.addLayout(row_layout)
+
     def paintEvent(self, ev) -> None:
         super().paintEvent(ev)
         p = QPainter(self)
@@ -728,6 +736,7 @@ class FamilyCard(QFrame):
 class ModelsPage(QWidget):
     load_model_signal = Signal(str, str, str, str)  # model_id, path, family, backend
     translation_mode_changed = Signal(str)           # off | direct | review
+    speaker_labels_toggled = Signal(bool)            # MOSS: keep S01:/S02: in dictation
     translation_target_changed = Signal(str)         # ISO-639-3 code or "off"
     download_translator_requested = Signal()         # user clicked "Download" on the translator status row
     model_download_completed = Signal(str)           # model_id — emitted after a successful download finishes
@@ -815,6 +824,14 @@ class ModelsPage(QWidget):
             card = FamilyCard(family, variants, self._active_model)
             card.activate_clicked.connect(self._on_activate)
             card.download_clicked.connect(self._on_download)
+            if family == "MOSS-Transcribe-Diarize" and self._settings is not None:
+                row, _ = theme.setting_row(
+                    t("models.moss.labels"), t("models.moss.labels_desc"),
+                )
+                tg = theme.ToggleSwitch(bool(self._settings.get("moss_speaker_labels")))
+                tg.toggled_signal.connect(self._on_speaker_labels_toggled)
+                row.addWidget(tg)
+                card.add_option_row(row)
             self._layout.addWidget(card)
             self._family_cards[family] = card
 
@@ -837,6 +854,11 @@ class ModelsPage(QWidget):
     def _on_activate(self, model_id: str, path: str, family: str, backend: str) -> None:
         self._error_label.hide()
         self.load_model_signal.emit(model_id, path, family, backend)
+
+    def _on_speaker_labels_toggled(self, enabled: bool) -> None:
+        if self._settings is not None:
+            self._settings.set("moss_speaker_labels", enabled)
+        self.speaker_labels_toggled.emit(bool(enabled))
 
     @staticmethod
     def _compute_current_mode(settings) -> str:

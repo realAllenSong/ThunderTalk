@@ -65,6 +65,12 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "lab.asr.title": {"en": "File Transcription", "zh": "文件转录"},
     "lab.asr.no_model": {"en": "No model loaded", "zh": "未加载模型"},
+    "lab.asr.engine_active": {"en": "Dictation model", "zh": "听写模型"},
+    "lab.asr.diarize_ready": {"en": "✓ Speaker diarization", "zh": "✓ 说话人分离"},
+    "lab.asr.diarize_lazy": {
+        "en": "Downloads ~1.7 GB on first use",
+        "zh": "首次使用需下载约 1.7 GB",
+    },
     "lab.asr.transcribe": {"en": "Transcribe", "zh": "开始转录"},
     "lab.asr.result": {"en": "Result", "zh": "转录结果"},
     "lab.asr.show_timestamps": {"en": "Timestamps", "zh": "时间戳"},
@@ -113,6 +119,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "lab.progress.segmenting": {"en": "Segmenting…", "zh": "正在分段…"},
     "lab.progress.transcribing": {"en": "Transcribing segment {i}/{n}…", "zh": "正在转录第 {i}/{n} 段…"},
     "lab.progress.done": {"en": "Done", "zh": "完成"},
+    "lab.progress.loading_moss": {"en": "Loading MOSS model…", "zh": "加载 MOSS 模型…"},
+    "lab.progress.diarizing": {
+        "en": "Transcribing + diarizing…",
+        "zh": "转录 + 说话人分离中…",
+    },
 
     # ── Home ────────────────────────────────────────────────────────
     "home.speaking_time": {"en": "Speaking Time", "zh": "发声时长"},
@@ -187,6 +198,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "zh": "可用变体 {n} 个",
     },
     "models.btn.activate": {"en": "Activate", "zh": "激活"},
+    "models.moss.labels": {
+        "en": "Speaker labels in dictation",
+        "zh": "听写时保留说话人标签",
+    },
+    "models.moss.labels_desc": {
+        "en": "Prefix turns with S01:/S02: when 2+ speakers are detected. Solo speech stays plain.",
+        "zh": "检测到 2 人以上说话时按 S01:/S02: 分行输出；单人语音保持纯文本。",
+    },
     "models.btn.active": {"en": "✓ Active", "zh": "✓ 当前"},
     "models.btn.translator": {"en": "✓ Translator", "zh": "✓ 翻译器"},
     "models.btn.loading": {"en": "Loading…", "zh": "加载中…"},

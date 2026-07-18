@@ -85,6 +85,36 @@ BUILTIN_MODELS: list[ModelInfo] = [
         platform="apple-silicon",
         notes="Metal GPU · Higher accuracy · Needs 4 GB+ RAM",
     ),
+    # ── NVIDIA Parakeet-TDT 0.6B v3 (multilingual) ─────────────────────
+    ModelInfo(
+        id="parakeet-tdt-06b-v3-int8",
+        family="Parakeet-TDT-v3",
+        name="Parakeet-TDT 0.6B v3",
+        variant="ONNX int8",
+        backend="onnx",
+        size_mb=640,
+        language_count=25,
+        accuracy_stars=5,
+        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v3-int8.tar.bz2",
+        hotword_support=False,
+        platform="all",
+        notes="CPU · 25 European languages · Punctuation + casing built in",
+    ),
+    # ── NVIDIA Parakeet-TDT 0.6B v2 (English) ──────────────────────────
+    ModelInfo(
+        id="parakeet-tdt-06b-v2-int8",
+        family="Parakeet-TDT-v2",
+        name="Parakeet-TDT 0.6B v2",
+        variant="ONNX int8",
+        backend="onnx",
+        size_mb=640,
+        language_count=1,
+        accuracy_stars=5,
+        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
+        hotword_support=False,
+        platform="all",
+        notes="CPU · English only · Top of HF Open ASR leaderboard · Punctuation + casing",
+    ),
     # ── SenseVoice-Small ────────────────────────────────────────────────
     ModelInfo(
         id="sensevoice-small-int8",
@@ -98,6 +128,21 @@ BUILTIN_MODELS: list[ModelInfo] = [
         download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-sense-voice-zh-en-ja-ko-yue-2024-07-17.tar.bz2",
         platform="all",
         notes="CPU · Lightweight · Fast on all platforms",
+    ),
+    # ── MOSS-Transcribe-Diarize (Lab: multi-speaker transcription) ─────
+    ModelInfo(
+        id="moss-transcribe-diarize-mlx",
+        family="MOSS-Transcribe-Diarize",
+        name="MOSS-Transcribe-Diarize 0.9B",
+        variant="MLX bf16",
+        backend="mlx-moss",
+        size_mb=1700,
+        language_count=50,
+        accuracy_stars=5,
+        download_url="hf://OpenMOSS-Team/MOSS-Transcribe-Diarize",
+        hotword_support=False,
+        platform="apple-silicon",
+        notes="Multi-speaker ASR · Diarization + timestamps in Lab · Metal GPU",
     ),
     # ── SeamlessM4T v2 (translation) ────────────────────────────────────
     ModelInfo(
@@ -201,6 +246,14 @@ def is_downloaded(model_id: str) -> bool:
     if info and info.backend == "mlx":
         # MLX models are auto-downloaded by mlx-qwen3-asr from HuggingFace cache
         return True
+    if info and info.backend == "mlx-moss":
+        d = get_models_dir() / model_id
+        if d.is_dir() and any(f.suffix == ".safetensors" for f in d.iterdir()):
+            return True
+        # Already fetched into the HuggingFace cache (e.g. by a Lab run)
+        repo = info.download_url[len("hf://"):].replace("/", "--")
+        cache = Path.home() / ".cache" / "huggingface" / "hub" / f"models--{repo}"
+        return cache.is_dir() and any(cache.rglob("*.safetensors"))
     d = get_models_dir() / model_id
     if not d.is_dir():
         return False
@@ -216,6 +269,11 @@ def get_model_path(model_id: str) -> Optional[str]:
     info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
     if info and info.backend == "mlx":
         return info.download_url  # "hf://Qwen/Qwen3-ASR-0.6B" — resolved by asr.py
+    if info and info.backend == "mlx-moss":
+        d = get_models_dir() / model_id
+        if d.is_dir():
+            return str(d)
+        return info.download_url  # HF cache copy — resolved by diarize.load_model
     d = get_models_dir() / model_id
     if d.is_dir():
         return str(d)

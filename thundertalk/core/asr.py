@@ -133,6 +133,7 @@ class AsrEngine:
     def __init__(self) -> None:
         self._recognizer = None          # sherpa-onnx recognizer (ONNX backends)
         self._mlx_model = None           # pre-loaded mlx model object
+        self._moss_model = None          # MOSS-Transcribe-Diarize (mlx-audio)
         self._model_id: Optional[str] = None
         self._hotwords: str = ""
         self._hotword_set: set[str] = set()
@@ -141,6 +142,7 @@ class AsrEngine:
         self._active_backend: str = ""   # actual backend of the currently loaded model
         self._language: Optional[str] = None  # forced language (None = auto-detect)
         self._itn_enabled: bool = True   # Inverse Text Normalization
+        self._speaker_labels: bool = False  # MOSS: keep S01:/S02: in dictation
 
         print(f"[ASR] Platform: {_SYSTEM}/{_MACHINE}  "
               f"mlx=lazy  "
@@ -148,7 +150,11 @@ class AsrEngine:
 
     @property
     def is_loaded(self) -> bool:
-        return self._recognizer is not None or self._mlx_model is not None
+        return (
+            self._recognizer is not None
+            or self._mlx_model is not None
+            or self._moss_model is not None
+        )
 
     @property
     def current_model(self) -> Optional[str]:
@@ -178,6 +184,12 @@ class AsrEngine:
         hotword_count = sum(1 for w in words if w.strip().lower() in self._hotword_set)
         return hotword_count >= len(words) * 0.8 and len(words) >= 2
 
+    def set_speaker_labels(self, enabled: bool) -> None:
+        """MOSS dictation: keep S01:/S02: speaker labels in the pasted
+        text when the utterance contains two or more speakers."""
+        self._speaker_labels = bool(enabled)
+        print(f"[ASR] Speaker labels: {'on' if self._speaker_labels else 'off'}")
+
     def set_language(self, language: str) -> None:
         """Set forced language for transcription. 'auto' = auto-detect."""
         if language in ("auto", ""):
@@ -197,6 +209,7 @@ class AsrEngine:
     def unload(self) -> None:
         self._recognizer = None
         self._mlx_model = None
+        self._moss_model = None
         self._model_id = None
 
     # -- Loading ----------------------------------------------------------
@@ -223,10 +236,16 @@ class AsrEngine:
             if not _check_mlx():
                 raise RuntimeError("MLX is not available on this system")
             self._load_mlx_qwen3(model_dir)
+        elif backend == "mlx-moss":
+            if not _check_mlx():
+                raise RuntimeError("MLX is not available on this system")
+            self._load_mlx_moss(model_dir)
         elif family == "SenseVoice":
             self._load_sherpa_sensevoice(model_dir, backend, memory_mode)
         elif family in ("Qwen3-ASR", "Qwen3-ASR-1.7B"):
             self._load_sherpa_qwen3(model_dir, backend, memory_mode)
+        elif family.startswith("Parakeet-TDT"):
+            self._load_sherpa_parakeet(model_dir, backend, memory_mode)
         else:
             raise ValueError(f"Unknown model family: {family}")
 
@@ -254,6 +273,16 @@ class AsrEngine:
         print(f"[ASR] Loaded {hf_repo} via MLX (Metal GPU)  "
               f"hotwords={len(self._hotwords.split('/')) if self._hotwords else 0}")
 
+    def _load_mlx_moss(self, model_dir: str) -> None:
+        # diarize.load_model prefers the Models-page copy on disk and
+        # falls back to the HF repo/cache — model_dir points at the same
+        # local directory when downloaded, so both resolve identically.
+        from thundertalk.core import diarize
+
+        self._moss_model = diarize.load_model()
+        self._model_id = "MOSS-Transcribe-Diarize"
+        print("[ASR] Loaded MOSS-Transcribe-Diarize via MLX (Metal GPU)")
+
     def _load_sherpa_sensevoice(
         self, model_dir: str, backend: str, memory_mode: str = "high"
     ) -> None:
@@ -275,6 +304,33 @@ class AsrEngine:
         print(
             f"[ASR] Loaded SenseVoice  threads={threads}  "
             f"provider={provider}  memory_mode={memory_mode}"
+        )
+
+    def _load_sherpa_parakeet(
+        self, model_dir: str, backend: str, memory_mode: str = "high"
+    ) -> None:
+        """NVIDIA Parakeet-TDT (NeMo transducer) via sherpa-onnx."""
+        import sherpa_onnx
+        encoder = _find(model_dir, "encoder", ".onnx")
+        decoder = _find(model_dir, "decoder", ".onnx")
+        joiner = _find(model_dir, "joiner", ".onnx")
+        tokens_file = os.path.join(model_dir, "tokens.txt")
+        provider = self._onnx_provider(backend)
+        threads = _detect_threads(memory_mode)
+
+        self._recognizer = sherpa_onnx.OfflineRecognizer.from_transducer(
+            encoder=encoder,
+            decoder=decoder,
+            joiner=joiner,
+            tokens=tokens_file,
+            model_type="nemo_transducer",
+            num_threads=threads,
+            provider=provider,
+        )
+        self._model_id = os.path.basename(model_dir)
+        print(
+            f"[ASR] Loaded Parakeet-TDT (sherpa-onnx nemo_transducer)  "
+            f"threads={threads}  provider={provider}"
         )
 
     def _load_sherpa_qwen3(
@@ -332,6 +388,9 @@ class AsrEngine:
             return AsrResult(text="", duration_secs=duration, inference_ms=0,
                              model=self._model_id or "unknown", backend=self._active_backend)
 
+        if self._moss_model is not None:
+            return self._recognize_moss(samples, sample_rate)
+
         if self._mlx_model is not None:
             return self._recognize_mlx(samples, sample_rate)
 
@@ -358,6 +417,53 @@ class AsrEngine:
             inference_ms=total_ms,
             model=self._model_id or "unknown",
             backend=self._active_backend,
+            rtf=rtf,
+        )
+
+    def _recognize_moss(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
+        """Dictation via MOSS-Transcribe-Diarize: speaker labels and
+        timestamps are stripped — the paste target gets plain text."""
+        import mlx.core as mx
+        from thundertalk.core import diarize
+        from thundertalk.core.itn import normalize_numbers
+
+        duration_secs = len(samples) / sample_rate
+        print(f"[ASR-MOSS] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s)...")
+        t0 = time.perf_counter()
+        segs = diarize.transcribe(samples.astype(np.float32))
+        inference_ms = int((time.perf_counter() - t0) * 1000)
+        print(f"[ASR-MOSS] Transcribe done in {inference_ms}ms ({len(segs)} segments)")
+        mx.metal.clear_cache()
+        rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
+
+        speakers = {s.speaker for s in segs if s.speaker}
+        if self._speaker_labels and len(speakers) >= 2:
+            # Multi-speaker utterance with labels enabled: one line per
+            # speaker turn. A single speaker keeps plain text — labelling
+            # a solo dictation is noise.
+            text = "\n".join(
+                f"{s.speaker}: {s.text}" if s.speaker else s.text
+                for s in diarize.merge_turns(segs)
+            )
+        else:
+            text = diarize.plain_text(segs)
+        cleaned = _strip_special_tokens(text)
+        if cleaned != text:
+            print(f"[ASR-CLEAN] '{text}' → '{cleaned}'")
+            text = cleaned
+
+        if self._itn_enabled and text:
+            raw = text
+            text = normalize_numbers(text)
+            if text != raw:
+                print(f"[ASR-ITN] '{raw}' → '{text}'")
+
+        return AsrResult(
+            text=text,
+            duration_secs=duration_secs,
+            inference_ms=inference_ms,
+            model=self._model_id or "unknown",
+            backend="mlx-moss",
             rtf=rtf,
         )
 
