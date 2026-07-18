@@ -7,7 +7,8 @@
 - Platform: macOS 12+ (Apple Silicon recommended; Intel supported via CPU inference)
 - Price: free, open source, MIT license
 - Privacy: all processing is on-device; audio never leaves the machine
-- ASR models: Qwen3-ASR (0.6B / 1.7B, 52 languages, hotword support), SenseVoice-Small (5 languages)
+- ASR models: Qwen3-ASR (0.6B / 1.7B, 52 languages, hotword support), MOSS-Transcribe-Diarize 0.9B (multi-speaker, speaker labels + timestamps, up to ~90 min single pass), NVIDIA Parakeet-TDT 0.6B v2/v3 (CPU, RTF ~0.035, English + 25 European languages), SenseVoice-Small (5 languages)
+- Speaker diarization: MOSS transcribes meetings/podcasts with S01/S02 speaker labels fully on-device; optional labels in dictation when 2+ speakers detected
 - Inference backends: MLX (Metal GPU on Apple Silicon, ~10–20× faster than real time) and ONNX (CPU, any Mac)
 - Translation: built-in speech & text translation across 100+ languages via SeamlessM4T v2 (Direct and Review modes)
 - Grammar correction (experimental): local LLM (Qwen3-8B via mlx-lm) fixes misheard proper nouns, removes filler words, adds punctuation — user confirms via a review popup
