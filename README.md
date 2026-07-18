@@ -31,7 +31,8 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 - **Press a key, speak, get text.** One hotkey activates voice input anywhere on your desktop.
 - **100% local & private** — your voice never leaves your device. No cloud, no subscription.
 - **Multiple ASR backends** — MLX (Metal GPU on Apple Silicon) and ONNX (CPU).
-- **Multiple ASR models** — SenseVoice and Qwen3-ASR in various sizes.
+- **Multiple ASR models** — Qwen3-ASR, MOSS-Transcribe-Diarize, NVIDIA Parakeet-TDT, and SenseVoice in various sizes.
+- **Multi-speaker transcription** — MOSS-Transcribe-Diarize adds speaker labels (S01/S02) and timestamps; the Lab page transcribes meetings and podcasts up to ~90 minutes in one pass.
 - **Built-in speech translation** — Direct and Review modes via SeamlessM4T v2 (100+ languages). The engine ships inside the app; only the model file is fetched on demand.
 - **Hotwords** — custom vocabulary for domain-specific terms.
 - **Smart hardware detection** — identifies your CPU, RAM, and GPU to recommend the best model.
@@ -56,6 +57,12 @@ Download the latest **ThunderTalk.app** from [Releases](https://github.com/realA
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-1.7B | ~3.4 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
+| MOSS-Transcribe-Diarize 0.9B | ~1.7 GB | MLX (Metal GPU) | 50+ | ★★★★★ | No |
+| Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25 (European) | ★★★★★ | No |
+| Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | English | ★★★★★ | No |
+
+> **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), INTERSPEECH 2026 MLC-SLM Challenge winner) is a multi-speaker model: dictation pastes clean text (with an optional S01:/S02: speaker-label toggle on its model card), and the Lab page transcribes meetings/podcasts up to ~90 min with speaker labels + timestamps in a single pass.
+> **Parakeet-TDT** (NVIDIA) models run on any Mac via CPU at RTF ~0.035 — about 8× faster than Qwen3-ASR ONNX — with punctuation and casing built in.
 
 ### Translation
 
@@ -102,6 +109,9 @@ The app's **Models** page shows your detected hardware and tags each model with 
 | Most accurate, every Mac | **Qwen3-ASR-0.6B (ONNX int8)** |
 | Most accurate, Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)** ← default |
 | Highest accuracy on hard accents / noisy audio | **Qwen3-ASR-1.7B (MLX fp16)** — needs ≥16 GB RAM |
+| Meetings / multi-speaker audio, speaker labels | **MOSS-Transcribe-Diarize 0.9B (MLX)** — Apple Silicon only |
+| Fastest English dictation, any Mac | **Parakeet-TDT 0.6B v2 (ONNX int8)** — CPU, RTF ~0.035 |
+| European languages on CPU | **Parakeet-TDT 0.6B v3 (ONNX int8)** — 25 languages |
 | Speech translation (e.g. talk in Chinese, paste English) | **Direct mode** — picks SeamlessM4T directly |
 | Speak in your own language, see a translation alongside | **Review mode** — ASR transcribes, then translates; you choose Replace or Keep Original |
 

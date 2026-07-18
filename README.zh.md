@@ -31,7 +31,8 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 - **按一下快捷键，开口说话，文字直出。** 一个全局快捷键即可在任何应用中输入语音。
 - **100% 本地、完全私密** — 录音永不离开设备，无云端、无订阅。
 - **多种 ASR 后端** — 支持 MLX（Apple Silicon Metal GPU）和 ONNX（CPU）。
-- **多种 ASR 模型** — 支持 SenseVoice 与 Qwen3-ASR 的多个尺寸。
+- **多种 ASR 模型** — 支持 Qwen3-ASR、MOSS-Transcribe-Diarize、NVIDIA Parakeet-TDT 与 SenseVoice 的多个尺寸。
+- **多说话人转录** — MOSS-Transcribe-Diarize 输出说话人标签（S01/S02）和时间戳；实验室页可单次转录最长约 90 分钟的会议、播客音频。
 - **内置语音翻译** — 通过 SeamlessM4T v2（100+ 语言）实现「直译」和「审阅」两种模式。翻译引擎已打包在 App 内，仅模型文件按需下载。
 - **热词** — 自定义词汇表,专业术语再也不会识别错。
 - **智能硬件检测** — 自动识别 CPU / 内存 / GPU 并推荐最优模型。
@@ -56,6 +57,12 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-1.7B | ~3.4 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
+| MOSS-Transcribe-Diarize 0.9B | ~1.7 GB | MLX (Metal GPU) | 50+ | ★★★★★ | 否 |
+| Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25（欧洲语言） | ★★★★★ | 否 |
+| Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | 英语 | ★★★★★ | 否 |
+
+> **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 MLC-SLM Challenge 冠军）是多说话人模型：听写时粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），实验室页可单次转录最长约 90 分钟的会议/播客，带说话人标签和时间戳。
+> **Parakeet-TDT**（NVIDIA）在任意 Mac 上以 CPU 运行，RTF 约 0.035 — 比 Qwen3-ASR ONNX 快约 8 倍，自带标点和大小写。
 
 ### 翻译
 
@@ -102,6 +109,9 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 | 准确率最高、任意 Mac | **Qwen3-ASR-0.6B (ONNX int8)** |
 | 准确率最高、Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)** ← 默认 |
 | 处理重口音 / 嘈杂音频 | **Qwen3-ASR-1.7B (MLX fp16)** — 需 ≥16 GB 内存 |
+| 会议 / 多人音频、说话人标签 | **MOSS-Transcribe-Diarize 0.9B (MLX)** — 仅 Apple Silicon |
+| 最快英语听写、任意 Mac | **Parakeet-TDT 0.6B v2 (ONNX int8)** — CPU，RTF 约 0.035 |
+| CPU 上的欧洲语言 | **Parakeet-TDT 0.6B v3 (ONNX int8)** — 25 种语言 |
 | 语音翻译（如说中文，粘贴英文） | **直译模式** — 直接用 SeamlessM4T |
 | 用母语说话同时看到译文 | **审阅模式** — ASR 转录后再翻译，弹窗让你选「替换」或「保留原文」 |
 
