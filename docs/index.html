@@ -3,6 +3,7 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <meta name="theme-color" content="#0b0d10" />
 
   <title>ThunderTalk — Free Open-Source Voice-to-Text Dictation App for macOS</title>
   <meta name="description" content="ThunderTalk is a free, open-source voice-to-text dictation app for macOS. Press a hotkey, speak, get text in any app. 100% local speech recognition on Apple Silicon (MLX) with multi-speaker diarization — no cloud, no subscription. Open-source alternative to Typeless, Wispr Flow &amp; superwhisper." />
@@ -12,6 +13,8 @@
   <!-- Open Graph -->
   <meta property="og:type" content="website" />
   <meta property="og:url" content="https://realallensong.github.io/ThunderTalk/" />
+  <meta property="og:locale" content="en_US" />
+  <meta property="og:locale:alternate" content="zh_CN" />
   <meta property="og:title" content="ThunderTalk — Free Open-Source Voice-to-Text for macOS" />
   <meta property="og:description" content="Press a hotkey, speak, get text in any app. 100% local speech recognition with multi-speaker diarization — no cloud, no subscription. Free &amp; open source (MIT)." />
   <meta property="og:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
@@ -117,15 +120,16 @@
       -webkit-font-smoothing: antialiased;
       overflow-x: hidden;
     }
+    :lang(zh-CN) body, body:lang(zh-CN) { font-weight: 400; }
     ::selection { background: var(--bolt); color: #fff; }
+    a:focus-visible, button:focus-visible, summary:focus-visible {
+      outline: 2px solid var(--bolt); outline-offset: 3px; border-radius: 6px;
+    }
 
     .wrap { max-width: 1080px; margin: 0 auto; padding: 0 24px; position: relative; }
 
     /* ── storm backdrop + parallax orbs ── */
-    .storm {
-      position: fixed; inset: 0; z-index: -2; pointer-events: none;
-      background: var(--bg);
-    }
+    .storm { position: fixed; inset: 0; z-index: -2; pointer-events: none; background: var(--bg); }
     .storm::after {
       content: ""; position: absolute; inset: 0; opacity: 0.35;
       background-image: url("data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='140' height='140'%3E%3Cfilter id='n'%3E%3CfeTurbulence type='fractalNoise' baseFrequency='0.9' numOctaves='2'/%3E%3C/filter%3E%3Crect width='140' height='140' filter='url(%23n)' opacity='0.05'/%3E%3C/svg%3E");
@@ -142,10 +146,10 @@
     }
 
     /* ── nav ── */
-    nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; }
-    .brand { display: flex; align-items: center; gap: 10px; font-weight: 640; font-size: 17px; letter-spacing: -0.01em; color: var(--text); text-decoration: none; }
+    nav { display: flex; align-items: center; justify-content: space-between; padding: 22px 0; gap: 12px; }
+    .brand { display: flex; align-items: center; gap: 10px; font-weight: 640; font-size: 17px; letter-spacing: -0.01em; color: var(--text); text-decoration: none; flex-shrink: 0; }
     .brand img { width: 30px; height: 30px; border-radius: 7px; }
-    .nav-links { display: flex; gap: 26px; align-items: center; }
+    .nav-links { display: flex; gap: 24px; align-items: center; }
     .nav-links a { color: var(--text-dim); text-decoration: none; font-size: 14.5px; transition: color .18s; }
     .nav-links a:hover { color: var(--text); }
     .gh-btn {
@@ -155,6 +159,13 @@
       background: var(--bg-raise); transition: border-color .18s, transform .18s;
     }
     .gh-btn:hover { border-color: rgba(255,255,255,0.22); transform: translateY(-1px); }
+    .lang-btn {
+      font-family: var(--font-mono); font-size: 12.5px; cursor: pointer;
+      color: var(--text-dim); background: var(--bg-raise);
+      border: 1px solid var(--line); border-radius: 999px; padding: 7px 14px;
+      transition: color .18s, border-color .18s;
+    }
+    .lang-btn:hover { color: var(--text); border-color: rgba(255,255,255,0.22); }
 
     /* ── hero ── */
     header.hero { padding: 88px 0 80px; text-align: center; position: relative; }
@@ -167,19 +178,13 @@
     }
     .h1-line { display: block; overflow: hidden; }
     .h1-line > span { display: inline-block; will-change: transform; }
-    h1 {
-      font-size: clamp(44px, 7.5vw, 88px);
-      font-weight: 750; line-height: 1.02; letter-spacing: -0.035em;
-    }
+    h1 { font-size: clamp(44px, 7.5vw, 88px); font-weight: 750; line-height: 1.06; letter-spacing: -0.035em; }
     h1 .bolt-word { color: var(--bolt); text-shadow: 0 0 44px rgba(249,115,22,0.45); }
-    .hero-sub {
-      max-width: 640px; margin: 26px auto 0;
-      font-size: clamp(16px, 2.2vw, 19px); color: var(--text-dim);
-    }
+    .hero-sub { max-width: 640px; margin: 26px auto 0; font-size: clamp(16px, 2.2vw, 19px); color: var(--text-dim); }
     .hero-sub strong { color: var(--text); font-weight: 560; }
     .cta-row { display: flex; gap: 14px; justify-content: center; flex-wrap: wrap; margin-top: 40px; }
     .cta {
-      display: inline-flex; align-items: center; gap: 9px;
+      display: inline-flex; align-items: center; justify-content: center; gap: 9px;
       font-size: 15.5px; font-weight: 560; text-decoration: none;
       border-radius: 12px; padding: 14px 26px; transition: transform .18s, box-shadow .18s;
     }
@@ -224,11 +229,10 @@
     .stat { text-align: center; }
     .stat b {
       display: block; font-size: clamp(26px, 3.6vw, 38px); font-weight: 720;
-      letter-spacing: -0.03em; color: var(--text);
-      font-variant-numeric: tabular-nums;
+      letter-spacing: -0.03em; color: var(--text); font-variant-numeric: tabular-nums;
     }
     .stat b em { color: var(--bolt); font-style: normal; }
-    .stat span { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
+    .stat > span { font-family: var(--font-mono); font-size: 11.5px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); }
 
     /* ── sections ── */
     section { padding: 84px 0; position: relative; }
@@ -236,7 +240,7 @@
       font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.14em;
       text-transform: uppercase; color: var(--bolt); margin-bottom: 14px;
     }
-    h2 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 700; letter-spacing: -0.025em; line-height: 1.1; margin-bottom: 14px; }
+    h2 { font-size: clamp(28px, 4.2vw, 42px); font-weight: 700; letter-spacing: -0.025em; line-height: 1.14; margin-bottom: 14px; }
     .section-sub { color: var(--text-dim); max-width: 580px; font-size: 16px; }
 
     /* how it works */
@@ -258,9 +262,9 @@
     }
     .diarize-head {
       display: flex; align-items: center; gap: 10px; margin-bottom: 20px;
-      font-family: var(--font-mono); font-size: 12px; color: var(--text-dim);
+      font-family: var(--font-mono); font-size: 12px; color: var(--text-dim); flex-wrap: wrap;
     }
-    .diarize-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bolt); animation: blink 1.4s steps(1) infinite; }
+    .diarize-head .dot { width: 8px; height: 8px; border-radius: 50%; background: var(--bolt); animation: blink 1.4s steps(1) infinite; flex-shrink: 0; }
     .turn { display: flex; gap: 14px; margin-bottom: 16px; }
     .turn:last-child { margin-bottom: 0; }
     .turn .spk {
@@ -294,9 +298,7 @@
       margin-top: 18px; display: flex; flex-wrap: wrap; gap: 10px;
       font-family: var(--font-mono); font-size: 11.5px; color: var(--text-dim);
     }
-    .model-extras span {
-      border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--bg-raise);
-    }
+    .model-extras span { border: 1px solid var(--line); border-radius: 999px; padding: 4px 12px; background: var(--bg-raise); }
 
     /* features */
     .grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 18px; margin-top: 44px; }
@@ -310,7 +312,7 @@
     .card p { font-size: 14px; color: var(--text-dim); }
 
     /* comparison */
-    .tbl-wrap { overflow-x: auto; margin-top: 44px; border: 1px solid var(--line); border-radius: var(--radius); }
+    .tbl-wrap { overflow-x: auto; -webkit-overflow-scrolling: touch; margin-top: 44px; border: 1px solid var(--line); border-radius: var(--radius); }
     table { width: 100%; border-collapse: collapse; font-size: 14.5px; min-width: 640px; }
     th, td { text-align: left; padding: 14px 18px; border-bottom: 1px solid var(--line); }
     th { font-family: var(--font-mono); font-size: 12px; letter-spacing: 0.08em; text-transform: uppercase; color: var(--text-dim); background: var(--bg-raise); font-weight: 600; }
@@ -328,7 +330,7 @@
       display: flex; justify-content: space-between; align-items: center; gap: 16px;
     }
     summary::-webkit-details-marker { display: none; }
-    summary::after { content: "+"; font-family: var(--font-mono); color: var(--bolt); font-size: 18px; transition: transform .2s; }
+    summary::after { content: "+"; font-family: var(--font-mono); color: var(--bolt); font-size: 18px; transition: transform .2s; flex-shrink: 0; }
     details[open] summary::after { transform: rotate(45deg); }
     details p { padding: 0 24px 20px; color: var(--text-dim); font-size: 14.5px; }
 
@@ -347,18 +349,35 @@
     .foot { display: flex; justify-content: space-between; align-items: center; flex-wrap: wrap; gap: 18px; }
     .foot-l { display: flex; align-items: center; gap: 10px; color: var(--text-dim); font-size: 14px; }
     .foot-l img { width: 22px; height: 22px; border-radius: 5px; }
-    .foot-r { display: flex; gap: 22px; }
+    .foot-r { display: flex; gap: 22px; flex-wrap: wrap; }
     .foot-r a { color: var(--text-dim); text-decoration: none; font-size: 14px; }
     .foot-r a:hover { color: var(--text); }
 
     /* reveal helpers: hidden state applied only when JS+motion available */
     html.motion .rv { opacity: 0; }
 
+    /* ── responsive ── */
+    @media (max-width: 1000px) {
+      .grid { grid-template-columns: repeat(2, 1fr); }
+    }
     @media (max-width: 780px) {
       .steps, .grid, .models { grid-template-columns: 1fr; }
-      .stats { grid-template-columns: repeat(2, 1fr); }
+      .stats { grid-template-columns: repeat(2, 1fr); gap: 22px 10px; margin-top: 64px; }
+      .nav-links { gap: 12px; }
       .nav-links a:not(.gh-btn) { display: none; }
       section { padding: 56px 0; }
+      header.hero { padding: 56px 0 56px; }
+      .demo { padding: 20px; margin-top: 44px; }
+      .diarize-demo { padding: 20px; }
+      .band { padding: 48px 22px; }
+      h2 { margin-bottom: 12px; }
+    }
+    @media (max-width: 480px) {
+      .cta-row { flex-direction: column; align-items: stretch; padding: 0 8px; }
+      .demo-line { font-size: 13px; }
+      .turn { gap: 10px; }
+      .gh-btn span-label { display: none; }
+      .foot { flex-direction: column; align-items: flex-start; }
     }
     @media (prefers-reduced-motion: reduce) {
       *, *::before, *::after { animation: none !important; transition: none !important; }
@@ -376,10 +395,11 @@
     <nav aria-label="Main">
       <a class="brand" href="#"><img src="assets/icon.png" alt="ThunderTalk app icon" width="30" height="30" />ThunderTalk</a>
       <div class="nav-links">
-        <a href="#models">Models</a>
-        <a href="#diarize">Diarization</a>
-        <a href="#compare">Compare</a>
-        <a href="#faq">FAQ</a>
+        <a href="#models" data-i18n="nav.models">Models</a>
+        <a href="#diarize" data-i18n="nav.diarize">Diarization</a>
+        <a href="#compare" data-i18n="nav.compare">Compare</a>
+        <a href="#faq" data-i18n="nav.faq">FAQ</a>
+        <button class="lang-btn" id="lang-btn" aria-label="切换到中文 / Switch language">中文</button>
         <a class="gh-btn" href="https://github.com/realAllenSong/ThunderTalk" rel="noopener">
           <svg width="15" height="15" viewBox="0 0 16 16" fill="currentColor" aria-hidden="true"><path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.01 8.01 0 0 0 16 8c0-4.42-3.58-8-8-8z"/></svg>
           GitHub
@@ -389,59 +409,59 @@
 
     <header class="hero">
       <canvas id="wave-canvas" aria-hidden="true"></canvas>
-      <span class="hero-badge" data-hero="0">⚡ FREE · OPEN SOURCE · 100% LOCAL</span>
+      <span class="hero-badge" data-hero="0" data-i18n="hero.badge">⚡ FREE · OPEN SOURCE · 100% LOCAL</span>
       <h1>
-        <span class="h1-line"><span data-hero-line>Talk more.</span></span>
-        <span class="h1-line"><span data-hero-line class="bolt-word">Type less.</span></span>
+        <span class="h1-line"><span data-hero-line data-i18n="hero.h1a">Talk more.</span></span>
+        <span class="h1-line"><span data-hero-line class="bolt-word" data-i18n="hero.h1b">Type less.</span></span>
       </h1>
-      <p class="hero-sub" data-hero="1">
+      <p class="hero-sub" data-hero="1" data-i18n="hero.sub">
         ThunderTalk is a <strong>free, open-source voice-to-text dictation app for macOS</strong>.
         Press a hotkey, speak, and your words appear in any app — with
         <strong>multi-speaker diarization</strong> and on-device speech recognition that
         <strong>never sends audio to the cloud</strong>.
       </p>
       <div class="cta-row" data-hero="2">
-        <a class="cta cta-primary" href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener">⬇ Download for macOS</a>
-        <a class="cta cta-ghost" href="https://github.com/realAllenSong/ThunderTalk" rel="noopener">Star on GitHub</a>
+        <a class="cta cta-primary" href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener" data-i18n="hero.cta1">⬇ Download for macOS</a>
+        <a class="cta cta-ghost" href="https://github.com/realAllenSong/ThunderTalk" rel="noopener" data-i18n="hero.cta2">Star on GitHub</a>
       </div>
-      <p class="hero-meta" data-hero="3">v1.3.0 · MIT license · Apple Silicon (MLX GPU) &amp; Intel (ONNX CPU) · English + 中文 UI</p>
+      <p class="hero-meta" data-hero="3" data-i18n="hero.meta">v1.3.0 · MIT license · Apple Silicon (MLX GPU) &amp; Intel (ONNX CPU) · English + 中文 UI</p>
 
       <div class="demo" data-hero="4" aria-hidden="true">
         <div class="demo-head">
-          <kbd>Right ⌘</kbd><span>recording…</span>
+          <kbd>Right ⌘</kbd><span data-i18n="demo.rec">recording…</span>
           <div id="lottie-wave"></div>
         </div>
         <div class="demo-line"><span id="typed"></span><span class="caret"></span></div>
       </div>
 
       <div class="stats">
-        <div class="stat rv"><b><em data-count="0.035" data-decimals="3">0</em></b><span>RTF on CPU (Parakeet)</span></div>
-        <div class="stat rv"><b><em data-count="52">0</em> langs</b><span>Qwen3-ASR dictation</span></div>
-        <div class="stat rv"><b><em data-count="90">0</em> min</b><span>single-pass diarization</span></div>
-        <div class="stat rv"><b><em>100</em>%</b><span>on-device, always</span></div>
+        <div class="stat rv"><b><em data-count="0.035" data-decimals="3">0</em></b><span data-i18n="stat.1">RTF on CPU (Parakeet)</span></div>
+        <div class="stat rv"><b><em data-count="52">0</em> <span data-i18n="stat.2u">langs</span></b><span data-i18n="stat.2">Qwen3-ASR dictation</span></div>
+        <div class="stat rv"><b><em data-count="90">0</em> <span data-i18n="stat.3u">min</span></b><span data-i18n="stat.3">single-pass diarization</span></div>
+        <div class="stat rv"><b><em>100</em>%</b><span data-i18n="stat.4">on-device, always</span></div>
       </div>
     </header>
 
     <section id="how">
-      <p class="kicker rv">How it works</p>
-      <h2 class="rv">One hotkey. Zero friction.</h2>
+      <p class="kicker rv" data-i18n="how.kicker">How it works</p>
+      <h2 class="rv" data-i18n="how.h2">One hotkey. Zero friction.</h2>
       <div class="steps">
-        <div class="step rv"><span class="n">01</span><h3>Press</h3><p>Hit the global hotkey (default <kbd>Right ⌘</kbd>) in any application — browser, editor, Slack, terminal.</p></div>
-        <div class="step rv"><span class="n">02</span><h3>Speak</h3><p>State-of-the-art ASR transcribes on your Mac's own silicon, 10–20× faster than real time. Solo dictation or a room full of voices.</p></div>
-        <div class="step rv"><span class="n">03</span><h3>Done</h3><p>Text lands right where your cursor is. Optionally translated across 100+ languages, or polished by a local LLM with a review popup.</p></div>
+        <div class="step rv"><span class="n">01</span><h3 data-i18n="how.s1h">Press</h3><p data-i18n="how.s1p">Hit the global hotkey (default <kbd>Right ⌘</kbd>) in any application — browser, editor, Slack, terminal.</p></div>
+        <div class="step rv"><span class="n">02</span><h3 data-i18n="how.s2h">Speak</h3><p data-i18n="how.s2p">State-of-the-art ASR transcribes on your Mac's own silicon, 10–20× faster than real time. Solo dictation or a room full of voices.</p></div>
+        <div class="step rv"><span class="n">03</span><h3 data-i18n="how.s3h">Done</h3><p data-i18n="how.s3p">Text lands right where your cursor is. Optionally translated across 100+ languages, or polished by a local LLM with a review popup.</p></div>
       </div>
     </section>
 
     <section id="diarize">
-      <p class="kicker rv">New in v1.3</p>
-      <h2 class="rv">Who said what — on your own Mac.</h2>
-      <p class="section-sub rv">
+      <p class="kicker rv" data-i18n="dia.kicker">New in v1.3</p>
+      <h2 class="rv" data-i18n="dia.h2">Who said what — on your own Mac.</h2>
+      <p class="section-sub rv" data-i18n="dia.sub">
         MOSS-Transcribe-Diarize (INTERSPEECH 2026 MLC-SLM Challenge winner) transcribes meetings,
         podcasts, and interviews up to ~90 minutes in a single pass — speaker labels and
         timestamps included, nothing uploaded.
       </p>
       <div class="diarize-demo rv" aria-hidden="true">
-        <div class="diarize-head"><span class="dot"></span> meeting_recording.m4a · MOSS-Transcribe-Diarize · local</div>
+        <div class="diarize-head"><span class="dot"></span> <span data-i18n="dia.file">meeting_recording.m4a · MOSS-Transcribe-Diarize · local</span></div>
         <div class="turn" data-turn><span class="spk s1">S01</span><div><span class="txt">Hello everyone, welcome to today's meeting. Let's start with the quarterly review.</span><span class="ts">00:00 → 00:06</span></div></div>
         <div class="turn" data-turn><span class="spk s2">S02</span><div><span class="txt">大家好，我先说一下这个季度的进展。我们的语音识别模型已经上线了。</span><span class="ts">00:07 → 00:15</span></div></div>
         <div class="turn" data-turn><span class="spk s1">S01</span><div><span class="txt">That sounds great. What about the speaker diarization feature?</span><span class="ts">00:16 → 00:21</span></div></div>
@@ -450,113 +470,113 @@
     </section>
 
     <section id="models">
-      <p class="kicker rv">Model lineup</p>
-      <h2 class="rv">Pick your engine. Swap anytime.</h2>
-      <p class="section-sub rv">Every model runs fully on-device. Download from the in-app Models page; the app recommends the best fit for your hardware.</p>
+      <p class="kicker rv" data-i18n="mod.kicker">Model lineup</p>
+      <h2 class="rv" data-i18n="mod.h2">Pick your engine. Swap anytime.</h2>
+      <p class="section-sub rv" data-i18n="mod.sub">Every model runs fully on-device. Download from the in-app Models page; the app recommends the best fit for your hardware.</p>
       <div class="models">
         <div class="model rv">
           <h3>Qwen3-ASR</h3>
           <span class="tag">0.6B / 1.7B · MLX (Metal GPU) &amp; ONNX (CPU)</span>
-          <p><b>The dictation default.</b> 52 languages, excellent mixed Chinese-English (code-switching), custom hotwords for your jargon.</p>
+          <p data-i18n="mod.qwen"><b>The dictation default.</b> 52 languages, excellent mixed Chinese-English (code-switching), custom hotwords for your jargon.</p>
         </div>
         <div class="model rv">
           <span class="new">NEW</span>
           <h3>MOSS-Transcribe-Diarize</h3>
           <span class="tag">0.9B · MLX (Metal GPU)</span>
-          <p><b>Multi-speaker specialist.</b> Speaker labels (S01/S02) + timestamps in one pass, up to ~90 min. Optional labels in dictation too.</p>
+          <p data-i18n="mod.moss"><b>Multi-speaker specialist.</b> Speaker labels (S01/S02) + timestamps in one pass, up to ~90 min. Optional labels in dictation too.</p>
         </div>
         <div class="model rv">
           <span class="new">NEW</span>
           <h3>NVIDIA Parakeet-TDT</h3>
           <span class="tag">0.6B v2 / v3 · ONNX (CPU, any Mac)</span>
-          <p><b>The speed king.</b> RTF ~0.035 on CPU — ~8× faster than Qwen3 ONNX. v2: English, top of the HF leaderboard. v3: 25 European languages.</p>
+          <p data-i18n="mod.para"><b>The speed king.</b> RTF ~0.035 on CPU — ~8× faster than Qwen3 ONNX. v2: English, top of the HF leaderboard. v3: 25 European languages.</p>
         </div>
         <div class="model rv">
           <h3>SenseVoice-Small</h3>
           <span class="tag">241 MB · ONNX (CPU)</span>
-          <p><b>The featherweight.</b> Runs on any Mac from the last 5 years. 5 languages, instant startup.</p>
+          <p data-i18n="mod.sense"><b>The featherweight.</b> Runs on any Mac from the last 5 years. 5 languages, instant startup.</p>
         </div>
       </div>
       <div class="model-extras rv">
-        <span>+ SeamlessM4T v2 — speech &amp; text translation, 100+ languages</span>
-        <span>+ Qwen3-8B — local LLM grammar correction</span>
-        <span>+ Lab — file transcription &amp; TTS with voice cloning</span>
+        <span data-i18n="mod.e1">+ SeamlessM4T v2 — speech &amp; text translation, 100+ languages</span>
+        <span data-i18n="mod.e2">+ Qwen3-8B — local LLM grammar correction</span>
+        <span data-i18n="mod.e3">+ Lab — file transcription &amp; TTS with voice cloning</span>
       </div>
     </section>
 
     <section id="features">
-      <p class="kicker rv">Features</p>
-      <h2 class="rv">Everything local. Everything yours.</h2>
-      <p class="section-sub rv">No cloud processing, no subscription, no account. Your voice never leaves your device — and you can read the code to verify it.</p>
+      <p class="kicker rv" data-i18n="ft.kicker">Features</p>
+      <h2 class="rv" data-i18n="ft.h2">Everything local. Everything yours.</h2>
+      <p class="section-sub rv" data-i18n="ft.sub">No cloud processing, no subscription, no account. Your voice never leaves your device — and you can read the code to verify it.</p>
       <div class="grid">
-        <div class="card rv"><span class="ic">🔒</span><h3>100% private by design</h3><p>Speech recognition runs entirely on-device. Audio is never uploaded, logged, or shared — there is no server to send it to.</p></div>
-        <div class="card rv"><span class="ic">👥</span><h3>Speaker diarization</h3><p>MOSS labels every turn (S01/S02) with timestamps — transcribe meetings and podcasts like a local, free Otter.ai.</p></div>
-        <div class="card rv"><span class="ic">⚡</span><h3>Apple Silicon speed</h3><p>MLX Metal-GPU inference transcribes 10–20× faster than real time. Intel Macs run ONNX on CPU — Parakeet hits RTF 0.035.</p></div>
-        <div class="card rv"><span class="ic">🌏</span><h3>52 languages + code-switching</h3><p>Qwen3-ASR handles mixed Chinese-English naturally. Built-in translation covers 100+ languages via SeamlessM4T v2.</p></div>
-        <div class="card rv"><span class="ic">🧪</span><h3>LLM grammar correction</h3><p>An optional local LLM fixes misheard proper nouns, removes filler words, and adds punctuation — with a review popup, never a silent rewrite.</p></div>
-        <div class="card rv"><span class="ic">🎯</span><h3>Hotwords &amp; auto-updates</h3><p>Teach it your product names and acronyms. One-click in-app updater keeps you on the latest release.</p></div>
+        <div class="card rv"><span class="ic">🔒</span><h3 data-i18n="ft.1h">100% private by design</h3><p data-i18n="ft.1p">Speech recognition runs entirely on-device. Audio is never uploaded, logged, or shared — there is no server to send it to.</p></div>
+        <div class="card rv"><span class="ic">👥</span><h3 data-i18n="ft.2h">Speaker diarization</h3><p data-i18n="ft.2p">MOSS labels every turn (S01/S02) with timestamps — transcribe meetings and podcasts like a local, free Otter.ai.</p></div>
+        <div class="card rv"><span class="ic">⚡</span><h3 data-i18n="ft.3h">Apple Silicon speed</h3><p data-i18n="ft.3p">MLX Metal-GPU inference transcribes 10–20× faster than real time. Intel Macs run ONNX on CPU — Parakeet hits RTF 0.035.</p></div>
+        <div class="card rv"><span class="ic">🌏</span><h3 data-i18n="ft.4h">52 languages + code-switching</h3><p data-i18n="ft.4p">Qwen3-ASR handles mixed Chinese-English naturally. Built-in translation covers 100+ languages via SeamlessM4T v2.</p></div>
+        <div class="card rv"><span class="ic">🧪</span><h3 data-i18n="ft.5h">LLM grammar correction</h3><p data-i18n="ft.5p">An optional local LLM fixes misheard proper nouns, removes filler words, and adds punctuation — with a review popup, never a silent rewrite.</p></div>
+        <div class="card rv"><span class="ic">🎯</span><h3 data-i18n="ft.6h">Hotwords &amp; auto-updates</h3><p data-i18n="ft.6p">Teach it your product names and acronyms. One-click in-app updater keeps you on the latest release.</p></div>
       </div>
     </section>
 
     <section id="compare">
-      <p class="kicker rv">Compare</p>
-      <h2 class="rv">ThunderTalk vs. the alternatives</h2>
-      <p class="section-sub rv">How ThunderTalk compares to Typeless, Wispr Flow, superwhisper, and macOS built-in Dictation.</p>
+      <p class="kicker rv" data-i18n="cmp.kicker">Compare</p>
+      <h2 class="rv" data-i18n="cmp.h2">ThunderTalk vs. the alternatives</h2>
+      <p class="section-sub rv" data-i18n="cmp.sub">How ThunderTalk compares to Typeless, Wispr Flow, superwhisper, and macOS built-in Dictation.</p>
       <div class="tbl-wrap rv">
         <table>
           <thead>
-            <tr><th></th><th class="col-tt">ThunderTalk</th><th>Typeless</th><th>Wispr Flow</th><th>superwhisper</th><th>macOS Dictation</th></tr>
+            <tr><th></th><th class="col-tt">ThunderTalk</th><th>Typeless</th><th>Wispr Flow</th><th>superwhisper</th><th data-i18n="cmp.mac">macOS Dictation</th></tr>
           </thead>
           <tbody>
-            <tr><td>Price</td><td class="col-tt">Free forever</td><td class="p">Subscription</td><td class="p">Subscription</td><td class="p">Paid</td><td class="y">Free</td></tr>
-            <tr><td>Open source</td><td class="y">✓ MIT</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
-            <tr><td>Fully offline / local</td><td class="y">✓ Always</td><td class="n2">Cloud</td><td class="n2">Cloud</td><td class="p">Partial</td><td class="p">Partial</td></tr>
-            <tr><td>Multi-speaker diarization</td><td class="y">✓ MOSS</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
-            <tr><td>Chinese-English code-switching</td><td class="y">✓</td><td class="p">Varies</td><td class="p">Varies</td><td class="p">Varies</td><td class="n2">Weak</td></tr>
-            <tr><td>Custom hotwords</td><td class="y">✓</td><td class="n2">✗</td><td class="p">Dictionary</td><td class="p">Modes</td><td class="n2">✗</td></tr>
-            <tr><td>Built-in translation (100+ langs)</td><td class="y">✓</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
-            <tr><td>Auditable code</td><td class="y">✓ GitHub</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
+            <tr><td data-i18n="cmp.r1">Price</td><td class="col-tt" data-i18n="cmp.r1a">Free forever</td><td class="p" data-i18n="cmp.sub1">Subscription</td><td class="p" data-i18n="cmp.sub2">Subscription</td><td class="p" data-i18n="cmp.paid">Paid</td><td class="y" data-i18n="cmp.free">Free</td></tr>
+            <tr><td data-i18n="cmp.r2">Open source</td><td class="y">✓ MIT</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
+            <tr><td data-i18n="cmp.r3">Fully offline / local</td><td class="y" data-i18n="cmp.r3a">✓ Always</td><td class="n2" data-i18n="cmp.cl1">Cloud</td><td class="n2" data-i18n="cmp.cl2">Cloud</td><td class="p" data-i18n="cmp.pt1">Partial</td><td class="p" data-i18n="cmp.pt2">Partial</td></tr>
+            <tr><td data-i18n="cmp.r4">Multi-speaker diarization</td><td class="y">✓ MOSS</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
+            <tr><td data-i18n="cmp.r5">Chinese-English code-switching</td><td class="y">✓</td><td class="p" data-i18n="cmp.v1">Varies</td><td class="p" data-i18n="cmp.v2">Varies</td><td class="p" data-i18n="cmp.v3">Varies</td><td class="n2" data-i18n="cmp.weak">Weak</td></tr>
+            <tr><td data-i18n="cmp.r6">Custom hotwords</td><td class="y">✓</td><td class="n2">✗</td><td class="p" data-i18n="cmp.dict">Dictionary</td><td class="p" data-i18n="cmp.modes">Modes</td><td class="n2">✗</td></tr>
+            <tr><td data-i18n="cmp.r7">Built-in translation (100+ langs)</td><td class="y">✓</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
+            <tr><td data-i18n="cmp.r8">Auditable code</td><td class="y">✓ GitHub</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td><td class="n2">✗</td></tr>
           </tbody>
         </table>
       </div>
     </section>
 
     <section id="faq">
-      <p class="kicker rv">FAQ</p>
-      <h2 class="rv">Questions, answered.</h2>
+      <p class="kicker rv" data-i18n="faq.kicker">FAQ</p>
+      <h2 class="rv" data-i18n="faq.h2">Questions, answered.</h2>
       <div class="faq-list">
         <details class="rv" open>
-          <summary>Is ThunderTalk free?</summary>
-          <p>Yes. ThunderTalk is completely free and open source under the MIT license. No subscription, no account, no usage limits.</p>
+          <summary data-i18n="faq.1q">Is ThunderTalk free?</summary>
+          <p data-i18n="faq.1a">Yes. ThunderTalk is completely free and open source under the MIT license. No subscription, no account, no usage limits.</p>
         </details>
         <details class="rv">
-          <summary>Does ThunderTalk work offline?</summary>
-          <p>Yes. All speech recognition, translation, and grammar correction run 100% locally on your Mac. After downloading a model once, no internet connection is needed and no audio ever leaves your device.</p>
+          <summary data-i18n="faq.2q">Does ThunderTalk work offline?</summary>
+          <p data-i18n="faq.2a">Yes. All speech recognition, translation, and grammar correction run 100% locally on your Mac. After downloading a model once, no internet connection is needed and no audio ever leaves your device.</p>
         </details>
         <details class="rv">
-          <summary>Can it transcribe meetings with multiple speakers?</summary>
-          <p>Yes. The MOSS-Transcribe-Diarize model transcribes up to ~90 minutes of multi-speaker audio in a single pass, labelling each turn (S01, S02, …) with timestamps — fully on-device.</p>
+          <summary data-i18n="faq.3q">Can it transcribe meetings with multiple speakers?</summary>
+          <p data-i18n="faq.3a">Yes. The MOSS-Transcribe-Diarize model transcribes up to ~90 minutes of multi-speaker audio in a single pass, labelling each turn (S01, S02, …) with timestamps — fully on-device.</p>
         </details>
         <details class="rv">
-          <summary>How is it different from Typeless, Wispr Flow, or superwhisper?</summary>
-          <p>Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free, open source (MIT), and fully local — you can audit the code, and your voice data stays on your machine.</p>
+          <summary data-i18n="faq.4q">How is it different from Typeless, Wispr Flow, or superwhisper?</summary>
+          <p data-i18n="faq.4a">Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free, open source (MIT), and fully local — you can audit the code, and your voice data stays on your machine.</p>
         </details>
         <details class="rv">
-          <summary>Does it support Chinese and bilingual dictation?</summary>
-          <p>Yes. Qwen3-ASR handles 52 languages including mixed Chinese-English (code-switching) speech, and the UI itself is available in English and 中文.</p>
+          <summary data-i18n="faq.5q">Does it support Chinese and bilingual dictation?</summary>
+          <p data-i18n="faq.5a">Yes. Qwen3-ASR handles 52 languages including mixed Chinese-English (code-switching) speech, and the UI itself is available in English and 中文.</p>
         </details>
         <details class="rv">
-          <summary>Does it work on Intel Macs?</summary>
-          <p>Yes — via CPU (ONNX) models like SenseVoice-Small, Qwen3-ASR-0.6B int8, and NVIDIA Parakeet-TDT. Apple Silicon gets GPU acceleration through MLX for the fastest experience.</p>
+          <summary data-i18n="faq.6q">Does it work on Intel Macs?</summary>
+          <p data-i18n="faq.6a">Yes — via CPU (ONNX) models like SenseVoice-Small, Qwen3-ASR-0.6B int8, and NVIDIA Parakeet-TDT. Apple Silicon gets GPU acceleration through MLX for the fastest experience.</p>
         </details>
       </div>
     </section>
 
     <section>
       <div class="band rv">
-        <h2>Start talking in 60 seconds.</h2>
-        <p>Download, drop into Applications, press the hotkey. That's it.</p>
-        <a class="cta cta-primary" href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener">⬇ Download ThunderTalk for macOS</a>
+        <h2 data-i18n="band.h2">Start talking in 60 seconds.</h2>
+        <p data-i18n="band.p">Download, drop into Applications, press the hotkey. That's it.</p>
+        <a class="cta cta-primary" href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener" data-i18n="band.cta">⬇ Download ThunderTalk for macOS</a>
         <p class="mono">v1.3.0 · macOS 12+ · ~281 MB · MIT licensed</p>
       </div>
     </section>
@@ -569,9 +589,9 @@
         </div>
         <div class="foot-r">
           <a href="https://github.com/realAllenSong/ThunderTalk" rel="noopener">GitHub</a>
-          <a href="https://github.com/realAllenSong/ThunderTalk/releases" rel="noopener">Releases</a>
-          <a href="https://github.com/realAllenSong/ThunderTalk/blob/main/README.zh.md" rel="noopener">中文文档</a>
-          <a href="https://github.com/realAllenSong/ThunderTalk/issues" rel="noopener">Support</a>
+          <a href="https://github.com/realAllenSong/ThunderTalk/releases" rel="noopener" data-i18n="foot.rel">Releases</a>
+          <a href="https://github.com/realAllenSong/ThunderTalk/blob/main/README.zh.md" rel="noopener" data-i18n="foot.docs">中文文档</a>
+          <a href="https://github.com/realAllenSong/ThunderTalk/issues" rel="noopener" data-i18n="foot.sup">Support</a>
         </div>
       </div>
     </footer>
@@ -585,7 +605,94 @@
     var reduceMotion = window.matchMedia("(prefers-reduced-motion: reduce)").matches;
     var hasGsap = typeof gsap !== "undefined";
 
-    /* ── typed hero line (always runs unless reduced motion) ── */
+    /* ══ i18n ══ */
+    var ZH = {
+      "nav.models": "模型", "nav.diarize": "说话人分离", "nav.compare": "对比", "nav.faq": "常见问题",
+      "hero.badge": "⚡ 免费 · 开源 · 100% 本地",
+      "hero.h1a": "多说话，", "hero.h1b": "少打字。",
+      "hero.sub": "ThunderTalk 是一款<strong>免费开源的 macOS 语音转文字（听写）应用</strong>。按下快捷键、开口说话，文字直接出现在任何应用里——支持<strong>多说话人分离</strong>，语音识别<strong>完全在本机运行，绝不上传云端</strong>。",
+      "hero.cta1": "⬇ 下载 macOS 版", "hero.cta2": "去 GitHub 点个 Star",
+      "hero.meta": "v1.3.0 · MIT 开源协议 · Apple Silicon（MLX GPU）与 Intel（ONNX CPU）· 中英文界面",
+      "demo.rec": "录音中…",
+      "stat.1": "CPU 实时率（Parakeet）", "stat.2": "Qwen3-ASR 听写语言", "stat.2u": "种",
+      "stat.3": "单次分离转录", "stat.3u": "分钟", "stat.4": "永远本机运行",
+      "how.kicker": "使用方式", "how.h2": "一个快捷键，零摩擦。",
+      "how.s1h": "按下", "how.s1p": "在任何应用里按下全局快捷键（默认 <kbd>右 ⌘</kbd>）——浏览器、编辑器、Slack、终端都行。",
+      "how.s2h": "开口", "how.s2p": "最先进的语音识别模型在你 Mac 的芯片上转录，比实时快 10–20 倍。一个人听写，或一屋子人开会，都可以。",
+      "how.s3h": "完成", "how.s3p": "文字直接落在光标处。还可以选择翻译成 100+ 种语言，或让本地大模型润色（弹窗确认，绝不擅自改动）。",
+      "dia.kicker": "v1.3 新功能", "dia.h2": "谁说了什么——就在你的 Mac 上。",
+      "dia.sub": "MOSS-Transcribe-Diarize（INTERSPEECH 2026 MLC-SLM Challenge 冠军）单次即可转录最长约 90 分钟的会议、播客和访谈——说话人标签和时间戳一并输出，什么都不上传。",
+      "dia.file": "会议录音.m4a · MOSS-Transcribe-Diarize · 本地",
+      "mod.kicker": "模型阵容", "mod.h2": "挑选引擎，随时切换。",
+      "mod.sub": "所有模型都完全在本机运行。在应用内的模型页下载，应用会根据你的硬件推荐最合适的选择。",
+      "mod.qwen": "<b>听写默认之选。</b>52 种语言，中英混说识别极佳，支持自定义热词搞定专业术语。",
+      "mod.moss": "<b>多说话人专家。</b>单次输出说话人标签（S01/S02）+ 时间戳，最长约 90 分钟。听写时也可选保留标签。",
+      "mod.para": "<b>速度之王。</b>CPU 上 RTF 约 0.035——比 Qwen3 ONNX 快约 8 倍。v2：英语，HF 榜单前列。v3：25 种欧洲语言。",
+      "mod.sense": "<b>轻量级选手。</b>近 5 年的任何 Mac 都能跑。5 种语言，秒级启动。",
+      "mod.e1": "+ SeamlessM4T v2 — 语音与文本翻译，100+ 语言",
+      "mod.e2": "+ Qwen3-8B — 本地大模型语法修正",
+      "mod.e3": "+ 实验室 — 文件转录 &amp; TTS 声音克隆",
+      "ft.kicker": "功能特性", "ft.h2": "一切本地，一切属于你。",
+      "ft.sub": "无云端处理、无订阅、无账号。你的声音永不离开设备——而且代码开源，随时可以验证。",
+      "ft.1h": "隐私优先设计", "ft.1p": "语音识别完全在本机运行。录音永远不会被上传、记录或分享——根本没有服务器可发。",
+      "ft.2h": "说话人分离", "ft.2p": "MOSS 为每一轮发言标注说话人（S01/S02）和时间戳——像本地免费版 Otter.ai 一样转录会议和播客。",
+      "ft.3h": "Apple Silicon 加速", "ft.3p": "MLX Metal GPU 推理比实时快 10–20 倍。Intel Mac 走 ONNX CPU——Parakeet 实时率达 0.035。",
+      "ft.4h": "52 种语言 + 中英混说", "ft.4p": "Qwen3-ASR 自然处理中英混合语音。内置翻译通过 SeamlessM4T v2 覆盖 100+ 种语言。",
+      "ft.5h": "大模型语法修正", "ft.5p": "可选的本地 LLM 修正听错的专有名词、去掉口头语、补上标点——弹窗确认后才替换，绝不擅自改写。",
+      "ft.6h": "热词与自动更新", "ft.6p": "教它认识你的产品名和缩写。应用内一键更新，始终保持最新版本。",
+      "cmp.kicker": "对比", "cmp.h2": "ThunderTalk 与其他方案",
+      "cmp.sub": "ThunderTalk 对比 Typeless、Wispr Flow、superwhisper 和 macOS 自带听写。",
+      "cmp.mac": "macOS 听写",
+      "cmp.r1": "价格", "cmp.r1a": "永久免费", "cmp.sub1": "订阅制", "cmp.sub2": "订阅制", "cmp.paid": "付费", "cmp.free": "免费",
+      "cmp.r2": "开源",
+      "cmp.r3": "完全离线本地", "cmp.r3a": "✓ 始终", "cmp.cl1": "云端", "cmp.cl2": "云端", "cmp.pt1": "部分", "cmp.pt2": "部分",
+      "cmp.r4": "多说话人分离",
+      "cmp.r5": "中英混说", "cmp.v1": "不稳定", "cmp.v2": "不稳定", "cmp.v3": "不稳定", "cmp.weak": "较弱",
+      "cmp.r6": "自定义热词", "cmp.dict": "词典", "cmp.modes": "模式",
+      "cmp.r7": "内置翻译（100+ 语言）",
+      "cmp.r8": "代码可审计",
+      "faq.kicker": "常见问题", "faq.h2": "你想问的，都在这。",
+      "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "完全免费，MIT 协议开源。无订阅、无账号、无使用限制。",
+      "faq.2q": "能离线使用吗？", "faq.2a": "可以。语音识别、翻译、语法修正全部在本机运行。模型下载一次后无需联网，录音永不离开你的设备。",
+      "faq.3q": "能转录多人会议吗？", "faq.3a": "能。MOSS-Transcribe-Diarize 模型单次可转录最长约 90 分钟的多人音频，每轮发言都带说话人标签（S01、S02…）和时间戳——完全在本机完成。",
+      "faq.4q": "和 Typeless、Wispr Flow、superwhisper 有什么区别？", "faq.4a": "它们是付费闭源应用，通常在云端处理音频。ThunderTalk 免费、开源（MIT）、完全本地——代码可审计，语音数据不出本机。",
+      "faq.5q": "支持中文和中英混说吗？", "faq.5a": "支持。Qwen3-ASR 支持 52 种语言，包括中英混合（code-switching）语音；界面本身也有中文和英文两种语言。",
+      "faq.6q": "Intel Mac 能用吗？", "faq.6a": "能——使用 CPU（ONNX）模型，如 SenseVoice-Small、Qwen3-ASR-0.6B int8 和 NVIDIA Parakeet-TDT。Apple Silicon 则通过 MLX 获得 GPU 加速，体验最佳。",
+      "band.h2": "60 秒开始用语音输入。", "band.p": "下载、拖进「应用程序」、按下快捷键，就这么简单。",
+      "band.cta": "⬇ 下载 ThunderTalk",
+      "foot.rel": "版本下载", "foot.docs": "中文文档", "foot.sup": "问题反馈"
+    };
+    var TITLES = {
+      en: "ThunderTalk — Free Open-Source Voice-to-Text Dictation App for macOS",
+      zh: "ThunderTalk — 免费开源的 macOS 语音转文字听写应用"
+    };
+
+    var EN = {};
+    var nodes = document.querySelectorAll("[data-i18n]");
+    nodes.forEach(function (el) { EN[el.getAttribute("data-i18n")] = el.innerHTML; });
+
+    var langBtn = document.getElementById("lang-btn");
+    function applyLang(lang) {
+      var dict = lang === "zh" ? ZH : EN;
+      nodes.forEach(function (el) {
+        var k = el.getAttribute("data-i18n");
+        if (dict[k] !== undefined) el.innerHTML = dict[k];
+      });
+      document.documentElement.lang = lang === "zh" ? "zh-CN" : "en";
+      document.title = TITLES[lang];
+      langBtn.textContent = lang === "zh" ? "EN" : "中文";
+      try { localStorage.setItem("tt-lang", lang); } catch (e) {}
+      if (hasGsap && typeof ScrollTrigger !== "undefined") ScrollTrigger.refresh();
+    }
+    var saved = null;
+    try { saved = localStorage.getItem("tt-lang"); } catch (e) {}
+    if (!saved) saved = (navigator.language || "").toLowerCase().indexOf("zh") === 0 ? "zh" : "en";
+    if (saved === "zh") applyLang("zh"); else langBtn.textContent = "中文";
+    langBtn.addEventListener("click", function () {
+      applyLang(document.documentElement.lang.indexOf("zh") === 0 ? "en" : "zh");
+    });
+
+    /* ══ typed hero line ══ */
     var typedEl = document.getElementById("typed");
     var PHRASES = [
       "ThunderTalk types what you say — in any app.",
@@ -613,7 +720,7 @@
       }
     }
 
-    /* ── Lottie waveform ── */
+    /* ══ Lottie waveform ══ */
     if (typeof lottie !== "undefined" && !reduceMotion) {
       lottie.loadAnimation({
         container: document.getElementById("lottie-wave"),
@@ -627,7 +734,7 @@
     gsap.registerPlugin(ScrollTrigger);
     gsap.defaults({ ease: "power3.out", duration: 0.9 });
 
-    /* ── hero load timeline ── */
+    /* ══ hero load timeline ══ */
     var tl = gsap.timeline();
     tl.from("[data-hero='0']", { y: 24, autoAlpha: 0 })
       .from("[data-hero-line]", { yPercent: 110, duration: 1.0, stagger: 0.12, ease: "power4.out" }, "-=0.55")
@@ -636,7 +743,7 @@
       .from("[data-hero='3']", { autoAlpha: 0, duration: 0.6 }, "-=0.5")
       .from("[data-hero='4']", { y: 34, autoAlpha: 0, duration: 1.0 }, "-=0.45");
 
-    /* ── scroll reveals (batched) ── */
+    /* ══ scroll reveals (batched) ══ */
     ScrollTrigger.batch(".rv", {
       start: "top 86%",
       once: true,
@@ -647,7 +754,7 @@
       }
     });
 
-    /* ── diarization turns: chat-style entrance ── */
+    /* ══ diarization turns: chat-style entrance ══ */
     gsap.utils.toArray("[data-turn]").forEach(function (turn, i) {
       gsap.from(turn, {
         x: i % 2 ? 36 : -36, autoAlpha: 0, duration: 0.8,
@@ -655,7 +762,7 @@
       });
     });
 
-    /* ── stat counters ── */
+    /* ══ stat counters ══ */
     gsap.utils.toArray("[data-count]").forEach(function (el) {
       var target = parseFloat(el.getAttribute("data-count"));
       var decimals = parseInt(el.getAttribute("data-decimals") || "0", 10);
@@ -667,7 +774,7 @@
       });
     });
 
-    /* ── parallax orbs (scrub) ── */
+    /* ══ parallax orbs (scrub) ══ */
     gsap.utils.toArray(".orb").forEach(function (orb) {
       gsap.to(orb, {
         y: parseFloat(orb.getAttribute("data-speed") || "40"),
@@ -676,7 +783,7 @@
       });
     });
 
-    /* ── hero canvas fades out as you scroll past ── */
+    /* ══ hero canvas fades out as you scroll past ══ */
     gsap.to("#wave-canvas", {
       autoAlpha: 0, ease: "none",
       scrollTrigger: { trigger: ".hero", start: "40% top", end: "bottom top", scrub: true }
@@ -685,7 +792,7 @@
   </script>
 
   <script type="module">
-  /* ── Three.js: particle voice-waveform field in the hero ── */
+  /* ══ Three.js: particle voice-waveform field in the hero ══ */
   const reduce = matchMedia("(prefers-reduced-motion: reduce)").matches;
   const canvas = document.getElementById("wave-canvas");
   if (!reduce && canvas && innerWidth >= 760) {
