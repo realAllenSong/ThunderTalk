@@ -55,7 +55,7 @@ class SpeakTab(QWidget):
         self._settings = settings
         self._asr = None
         self._lib = VoiceLibrary()
-        self._voice_id = "vivian" if i18n.LANG == "zh" else "ryan"
+        self._voice_id = self._pref("studio_voice", "") or ("vivian" if i18n.LANG == "zh" else "ryan")
         self._chips: dict[str, VoiceChip] = {}
         self._synth: Optional[SynthWorker] = None
         self._dl: Optional[RepoDownloadWorker] = None
@@ -146,7 +146,7 @@ class SpeakTab(QWidget):
         self._lang = QComboBox()
         theme.style_combo(self._lang)
         self._lang.setMinimumWidth(150)
-        self._lang.currentIndexChanged.connect(lambda _i: self._on_text())
+        self._lang.currentIndexChanged.connect(self._on_lang_changed)
         opts.addWidget(self._lang)
         self._speed_lbl = _muted(t("studio.speed.label"))
         opts.addWidget(self._speed_lbl)
@@ -154,8 +154,9 @@ class SpeakTab(QWidget):
         theme.style_combo(self._speed)
         for label, val in SPEEDS:
             self._speed.addItem(f"{label}×", val)
-        self._speed.setCurrentIndex(2)
-        self._speed.currentIndexChanged.connect(lambda _i: self._on_text())
+        saved_speed = float(self._pref("studio_speed", 1.0) or 1.0)
+        self._speed.setCurrentIndex(next((i for i, (_l, v) in enumerate(SPEEDS) if abs(v - saved_speed) < 1e-6), 2))
+        self._speed.currentIndexChanged.connect(self._on_speed_changed)
         opts.addWidget(self._speed)
         tly.addLayout(opts)
 
@@ -203,7 +204,7 @@ class SpeakTab(QWidget):
         self._idle.setInterval(IDLE_UNLOAD_MS)
         self._idle.timeout.connect(self._unload_idle)
 
-        self._rebuild_languages()
+        self._rebuild_languages(self._pref("studio_language", "auto") or "auto")
         self._rebuild_voices()
         self._on_text()
         self._refresh()
@@ -248,8 +249,8 @@ class SpeakTab(QWidget):
         self._refresh()
 
     # ── voices ────────────────────────────────────────────────────────
-    def _rebuild_languages(self) -> None:
-        cur = self._lang.currentData() or "auto"
+    def _rebuild_languages(self, initial: Optional[str] = None) -> None:
+        cur = initial or self._lang.currentData() or "auto"
         self._lang.blockSignals(True)
         self._lang.clear()
         for code in tts.LANGUAGES:
@@ -295,8 +296,33 @@ class SpeakTab(QWidget):
 
     def _select(self, vid: str) -> None:
         self._voice_id = vid
+        self._save_pref("studio_voice", vid)
         self._mark_selected()
         self._refresh()
+
+    # ── remembered choices ────────────────────────────────────────────
+    def _pref(self, key: str, default):
+        get = getattr(self._settings, "get", None)
+        try:
+            return get(key) if callable(get) else default
+        except Exception:
+            return default
+
+    def _save_pref(self, key: str, value) -> None:
+        setter = getattr(self._settings, "set", None)
+        if callable(setter):
+            try:
+                setter(key, value)
+            except OSError:
+                pass
+
+    def _on_lang_changed(self, _i: int) -> None:
+        self._save_pref("studio_language", self._lang.currentData() or "auto")
+        self._on_text()
+
+    def _on_speed_changed(self, _i: int) -> None:
+        self._save_pref("studio_speed", float(self._speed.currentData() or 1.0))
+        self._on_text()
 
     def _saved_voice(self) -> Optional[SavedVoice]:
         if self._voice_id.startswith(MY_PREFIX):
@@ -309,6 +335,7 @@ class SpeakTab(QWidget):
         dlg.exec()
         if dlg.saved is not None:
             self._voice_id = MY_PREFIX + dlg.saved.id
+            self._save_pref("studio_voice", self._voice_id)
             self._rebuild_voices()
             self._refresh()
             self.toast.emit(t("studio.voices.saved").format(name=dlg.saved.name), "success")
@@ -352,6 +379,7 @@ class SpeakTab(QWidget):
                                 cancel_label=t("common.cancel"), destructive=True):
             self._lib.delete(v.id)
             self._voice_id = "vivian" if i18n.LANG == "zh" else "ryan"
+            self._save_pref("studio_voice", "")
             self._rebuild_voices()
             self._refresh()
 

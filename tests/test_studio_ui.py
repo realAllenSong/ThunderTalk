@@ -286,3 +286,75 @@ def test_drop_anywhere_switches_to_transcribe(studio, tmp_path):
                                 Qt.KeyboardModifier.NoModifier))
     assert studio._tabs.current() == "transcribe"
     assert studio.transcribe_tab._path == str(wav)
+
+
+# ── remembered Speak choices (#3) ────────────────────────────────────────
+
+def test_speak_remembers_voice_language_and_speed(qapp, isolated_home, monkeypatch):
+    from thundertalk.core.settings import Settings
+    from thundertalk.ui.studio.speak_tab import SpeakTab
+    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    s = Settings()
+    tab = SpeakTab(s)
+    tab._chips["serena"].click()
+    tab._lang.setCurrentIndex(tab._lang.findData("english"))
+    tab._speed.setCurrentIndex(4)                              # 1.3x
+    again = SpeakTab(Settings())                               # fresh read from disk
+    assert again._voice_id == "serena" and again._chips["serena"].isChecked()
+    assert again._lang.currentData() == "english"
+    assert again._speed.currentData() == pytest.approx(1.3)
+
+
+def test_speak_falls_back_when_the_remembered_voice_was_deleted(qapp, isolated_home, monkeypatch):
+    from thundertalk.core.settings import Settings
+    from thundertalk.ui.studio.speak_tab import SpeakTab
+    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    s = Settings()
+    s.set("studio_voice", "my:gone")
+    tab = SpeakTab(s)
+    assert tab._voice_id in ("ryan", "vivian")
+
+
+# ── player keyboard (#4) ─────────────────────────────────────────────────
+
+def _key(widget, key):
+    from PySide6.QtCore import QEvent, Qt
+    from PySide6.QtGui import QKeyEvent
+    widget.keyPressEvent(QKeyEvent(QEvent.Type.KeyPress, key, Qt.KeyboardModifier.NoModifier))
+
+
+def test_player_space_and_arrow_keys(qapp, monkeypatch):
+    from PySide6.QtCore import Qt
+    from thundertalk.ui.studio.parts import PlayerBar
+    bar = PlayerBar()
+    calls = []
+    monkeypatch.setattr(bar, "toggle", lambda: calls.append("toggle"))
+    bar.set_audio(np.zeros(SR * 20, np.float32), SR)
+    monkeypatch.setattr(bar._player, "_default_rate", staticmethod(lambda: SR))
+    _key(bar, Qt.Key.Key_Space)
+    assert calls == ["toggle"]
+    _key(bar, Qt.Key.Key_Right)
+    assert bar.player.position == pytest.approx(5.0, abs=0.05)
+    for _ in range(4):
+        _key(bar, Qt.Key.Key_Right)
+    assert bar.player.position == pytest.approx(20.0, abs=0.05)             # clamped at the end
+    _key(bar, Qt.Key.Key_Left)
+    assert bar.player.position == pytest.approx(15.0, abs=0.05)
+    for _ in range(5):
+        _key(bar, Qt.Key.Key_Left)
+    assert bar.player.position == pytest.approx(0.0, abs=0.05)              # clamped at the start
+
+
+# ── transcription time remaining (#5) ────────────────────────────────────
+
+def test_eta_appears_after_two_parts_and_counts_down(studio):
+    tab = studio.transcribe_tab
+    tab._eta_base, tab._eta_done, tab._eta_total = None, 0, 0
+    tab._note_part(1, 10, now=0.0)
+    tab._note_part(2, 10, now=9.0)                  # slow first part (warm-up) is ignored
+    assert tab.eta_seconds(now=9.5) is None          # only one part timed so far
+    tab._note_part(3, 10, now=12.0)                  # 3 s per part from here on
+    assert tab.eta_seconds(now=12.0) == pytest.approx(3.0 * 8)
+    assert tab.eta_seconds(now=14.0) == pytest.approx(3.0 * 8 - 2.0)
+    tab._note_part(10, 10, now=33.0)
+    assert tab.eta_seconds(now=34.0) == pytest.approx(3.0 - 1.0)

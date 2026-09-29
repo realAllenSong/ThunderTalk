@@ -71,6 +71,7 @@ STUDIO: dict[str, dict[str, str]] = {
         "en": "Listening for speakers — long recordings take a while…",
         "zh": "正在识别说话人——较长的录音需要一些时间…",
     },
+    "studio.progress.eta": {"en": "about {t} left", "zh": "约剩 {t}"},
     "studio.progress.part": {"en": "Transcribing part {i} of {n}…", "zh": "正在转写第 {i} / {n} 段…"},
     "studio.stats": {
         "en": "{dur} of audio in {took} — {x}× faster than real time",
@@ -158,6 +159,7 @@ STUDIO: dict[str, dict[str, str]] = {
         "en": "Part of this passage may sound off — {snippet}. Generating again usually fixes it.",
         "zh": "其中一段可能听起来不自然——{snippet}。再生成一次通常就能解决。",
     },
+    "studio.player.keys": {"en": "Space: play / pause · ← →: back / forward 5 s", "zh": "空格：播放 / 暂停 · ← →：后退 / 前进 5 秒"},
     "studio.play_failed": {"en": "Couldn't play — check your output device", "zh": "无法播放——请检查输出设备"},
     "studio.save.wav": {"en": "lossless", "zh": "无损"},
     "studio.save.m4a": {"en": "small file", "zh": "体积小"},

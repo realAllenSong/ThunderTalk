@@ -16,8 +16,6 @@ import re
 import threading
 import time
 from dataclasses import dataclass
-from pathlib import Path
-from typing import Optional
 
 MODEL_REPO = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
 MODEL_ID = "moss-transcribe-diarize-mlx"  # catalog id / local dir name

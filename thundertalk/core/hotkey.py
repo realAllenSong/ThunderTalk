@@ -65,12 +65,7 @@ def _is_modifier_name(name: str) -> bool:
 # ---------------------------------------------------------------------------
 
 if _SYSTEM == "Darwin":
-    import threading
     from AppKit import NSEvent, NSKeyDownMask, NSKeyUpMask, NSFlagsChangedMask
-    from Quartz import (
-        CGEventGetIntegerValueField,
-        kCGKeyboardEventKeycode,
-    )
 
     class HotkeyListener:
         def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4") -> None:

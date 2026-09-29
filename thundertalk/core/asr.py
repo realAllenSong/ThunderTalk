@@ -72,7 +72,8 @@ def _check_mlx() -> bool:
         import mlx_qwen3_asr  # noqa: F401
         _MLX_AVAILABLE = True
     except ImportError as e:
-        import sys, traceback
+        import sys
+        import traceback
         print("MLX Load Error:", e, file=sys.stderr)
         traceback.print_exc()
         _MLX_AVAILABLE = False

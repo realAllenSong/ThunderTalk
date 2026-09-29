@@ -44,6 +44,10 @@ DEFAULTS: dict[str, Any] = {
     "moss_speaker_labels": False,
     # First-run setup flow (welcome → permissions → model → try it).
     "onboarding_done": False,
+    # Studio ▸ Speak: last voice ("" = default), language and speed.
+    "studio_voice": "",
+    "studio_language": "auto",
+    "studio_speed": 1.0,
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

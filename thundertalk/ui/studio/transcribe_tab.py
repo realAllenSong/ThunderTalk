@@ -242,6 +242,7 @@ class TranscribeTab(QWidget):
         self._worker.cancelled.connect(self._on_cancelled)
         self._worker.finished.connect(self._on_finished)
         self._t0 = time.monotonic()
+        self._eta_base, self._eta_done, self._eta_total = None, 0, 0
         self._phase = t("studio.progress.decode")
         self._go.setVisible(False)
         self._cancel.setVisible(True)
@@ -259,6 +260,7 @@ class TranscribeTab(QWidget):
         if "/" in msg:
             i, n = msg.split("/", 1)
             self._phase = t("studio.progress.part").format(i=i, n=n)
+            self._note_part(int(i), int(n))
         elif msg in ("decode", "load_moss", "diarize"):
             self._phase = t(f"studio.progress.{msg}")
         if msg == "diarize" or msg == "load_moss" or msg == "decode":
@@ -266,9 +268,31 @@ class TranscribeTab(QWidget):
         elif pct >= 0:
             self._bar.set_value(pct)
 
+    def _note_part(self, i: int, n: int, now: Optional[float] = None) -> None:
+        """Part ``i`` of ``n`` (1-based) just started, so ``i - 1`` are done."""
+        now = time.monotonic() if now is None else now
+        if i == 2:
+            self._eta_base = now                  # the first part includes warm-up
+        self._eta_last = now
+        self._eta_done, self._eta_total = i - 1, n
+
+    def eta_seconds(self, now: Optional[float] = None) -> Optional[float]:
+        """Remaining time, once two parts have finished; None before that."""
+        base = getattr(self, "_eta_base", None)
+        done, total = getattr(self, "_eta_done", 0), getattr(self, "_eta_total", 0)
+        if base is None or done < 2 or total <= done:
+            return None
+        now = time.monotonic() if now is None else now
+        per_part = (self._eta_last - base) / (done - 1)
+        return max(0.0, per_part * (total - done) - (now - self._eta_last))
+
     def _on_tick(self) -> None:
         elapsed = time.monotonic() - self._t0
-        self._status.setText(f"{self._phase}   {fmt_time(elapsed)}")
+        text = f"{self._phase}   {fmt_time(elapsed)}"
+        eta = self.eta_seconds()
+        if eta is not None:
+            text += "   " + t("studio.progress.eta").format(t=fmt_time(eta + 0.5))
+        self._status.setText(text)
 
     def _on_cancel(self) -> None:
         if self._worker is not None:

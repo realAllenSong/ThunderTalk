@@ -344,6 +344,28 @@ class PlayerBar(QWidget):
         self._timer.setInterval(40)
         self._timer.timeout.connect(self._tick)
 
+        # Keyboard: Space plays/pauses, ← / → jump 5 s. Clicking the waveform
+        # gives the bar focus; keys pressed on the play button bubble up here.
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self._wave.setFocusPolicy(Qt.FocusPolicy.ClickFocus)
+        self._wave.seek.connect(lambda _f: self.setFocus(Qt.FocusReason.MouseFocusReason))
+        self.setToolTip(t("studio.player.keys"))
+
+    SEEK_STEP_S = 5.0
+
+    def keyPressEvent(self, ev) -> None:
+        key = ev.key()
+        if key == Qt.Key.Key_Space and not ev.isAutoRepeat():
+            self.toggle()
+        elif key in (Qt.Key.Key_Left, Qt.Key.Key_Right) and self._player.duration > 0:
+            step = self.SEEK_STEP_S if key == Qt.Key.Key_Right else -self.SEEK_STEP_S
+            target = min(max(self._player.position + step, 0.0), self._player.duration)
+            self._on_seek(target / self._player.duration)
+        else:
+            super().keyPressEvent(ev)
+            return
+        ev.accept()
+
     # -- api ------------------------------------------------------------
     @property
     def player(self) -> Player:

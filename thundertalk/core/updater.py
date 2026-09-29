@@ -27,7 +27,6 @@ import ssl
 import subprocess
 import tempfile
 import urllib.request
-import zipfile
 from dataclasses import dataclass
 from typing import Callable, Optional
 
