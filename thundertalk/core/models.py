@@ -134,7 +134,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
         platform="all",
         notes="CPU · Lightweight · Fast on all platforms",
     ),
-    # ── MOSS-Transcribe-Diarize (Lab: multi-speaker transcription) ─────
+    # ── MOSS-Transcribe-Diarize (Studio: multi-speaker transcription) ─────
     ModelInfo(
         id="moss-transcribe-diarize-mlx",
         family="MOSS-Transcribe-Diarize",
@@ -147,7 +147,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
         download_url="hf://OpenMOSS-Team/MOSS-Transcribe-Diarize",
         hotword_support=False,
         platform="apple-silicon",
-        notes="Multi-speaker ASR · Diarization + timestamps in Lab · Metal GPU",
+        notes="Multi-speaker ASR · Diarization + timestamps in Studio · Metal GPU",
     ),
     # ── SeamlessM4T v2 (translation) ────────────────────────────────────
     ModelInfo(
@@ -262,7 +262,7 @@ def is_downloaded(model_id: str) -> bool:
         d = get_models_dir() / model_id
         if d.is_dir() and any(f.suffix == ".safetensors" for f in d.iterdir()):
             return True
-        # Already fetched into the HuggingFace cache (e.g. by a Lab run)
+        # Already fetched into the HuggingFace cache (e.g. by a Studio run)
         repo = info.download_url[len("hf://"):].replace("/", "--")
         cache = Path.home() / ".cache" / "huggingface" / "hub" / f"models--{repo}"
         return cache.is_dir() and any(cache.rglob("*.safetensors"))
@@ -370,6 +370,21 @@ def _curl_download(url: str, dest: Path, progress_cb, cancel, lo: int, hi: int) 
         raise
 
 
+def hf_snapshot_dir(repo_id: str) -> Optional[Path]:
+    """The newest snapshot folder of ``repo_id`` in the HF cache, if any."""
+    try:
+        from huggingface_hub import constants
+        root = (Path(constants.HF_HUB_CACHE)
+                / ("models--" + repo_id.replace("/", "--")) / "snapshots")
+    except Exception:
+        root = (Path.home() / ".cache" / "huggingface" / "hub"
+                / ("models--" + repo_id.replace("/", "--")) / "snapshots")
+    if not root.is_dir():
+        return None
+    snaps = [d for d in root.iterdir() if d.is_dir()]
+    return max(snaps, key=lambda d: d.stat().st_mtime) if snaps else None
+
+
 def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) -> None:
     """snapshot_download with real byte progress and cancel support."""
     from huggingface_hub import snapshot_download
@@ -445,6 +460,20 @@ def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) ->
 
 
 _MLX_ALLOW = ["*.json", "*.safetensors", "*.txt", "*.model"]
+
+
+def download_repo(repo_id: str, ready=None, progress_cb=None,
+                  cancel: "threading.Event | None" = None) -> None:
+    """Fetch a whole MLX repo into the shared HuggingFace cache with real byte
+    progress and instant cancel. ``ready`` is an optional predicate that says
+    whether the repo is already complete (defaults to the weights check)."""
+    if (ready or _hf_cache_has)(repo_id):
+        if progress_cb:
+            progress_cb(100, "Done")
+        return
+    _hf_snapshot(repo_id, None, _MLX_ALLOW, None, progress_cb, cancel)
+    if progress_cb:
+        progress_cb(100, "Done")
 
 
 def download_model(

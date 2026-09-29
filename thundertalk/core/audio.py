@@ -96,7 +96,9 @@ def _full_reinit() -> None:
 
 
 class AudioRecorder:
-    def __init__(self) -> None:
+    def __init__(self, sample_rate: int = SAMPLE_RATE) -> None:
+        self._sr = int(sample_rate)          # dictation uses 16 kHz; voice cloning records at 24 kHz
+        self._fade = int(self._sr * 0.010)
         self._lock = threading.RLock()
         self._stream: Optional[sd.InputStream] = None
         self._chunks: list[np.ndarray] = []
@@ -144,7 +146,7 @@ class AudioRecorder:
             def _open() -> sd.InputStream:
                 dev_idx = _resolve_device_idx(device)
                 stream = sd.InputStream(
-                    samplerate=SAMPLE_RATE,
+                    samplerate=self._sr,
                     channels=CHANNELS,
                     dtype="float32",
                     device=dev_idx,
@@ -208,18 +210,18 @@ class AudioRecorder:
             rms = float(np.sqrt(np.mean(samples ** 2)))
             print(
                 f"[Audio] Recorded {len(samples)} samples "
-                f"({len(samples)/SAMPLE_RATE:.1f}s)  "
+                f"({len(samples)/self._sr:.1f}s)  "
                 f"peak={peak:.4f}  rms={rms:.4f}"
             )
 
-            if len(samples) < _FADE_SAMPLES * 2:
+            if len(samples) < self._fade * 2:
                 return samples
 
-            fade_in = np.linspace(0.0, 1.0, _FADE_SAMPLES, dtype=np.float32)
-            samples[:_FADE_SAMPLES] *= fade_in
+            fade_in = np.linspace(0.0, 1.0, self._fade, dtype=np.float32)
+            samples[:self._fade] *= fade_in
 
-            fade_out = np.linspace(1.0, 0.0, _FADE_SAMPLES, dtype=np.float32)
-            samples[-_FADE_SAMPLES:] *= fade_out
+            fade_out = np.linspace(1.0, 0.0, self._fade, dtype=np.float32)
+            samples[-self._fade:] *= fade_out
 
             return samples
 

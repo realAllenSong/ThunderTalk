@@ -21,6 +21,8 @@ from typing import Optional
 
 import numpy as np
 
+from thundertalk.core.gpu_lock import GPU_LOCK
+
 
 # Strip leaked model special tokens from ASR output. Qwen3-ASR was
 # trained with a chat-template wrapper (`<asr_text>...</asr_text>`,
@@ -258,7 +260,10 @@ class AsrEngine:
         import mlx_qwen3_asr
         import mlx.core as mx
 
-        mx.metal.set_cache_limit(0)
+        # A small buffer cache instead of none: with the cache disabled every
+        # recognition re-allocates its buffers and runs ~3x slower (measured
+        # 6.4 s vs 2.0 s for 18 s of audio); 512 MB keeps memory bounded.
+        mx.set_cache_limit(512 << 20)
 
         hf_repo = model_dir
         if hf_repo.startswith("hf://"):
@@ -266,7 +271,7 @@ class AsrEngine:
 
         print(f"[ASR-MLX] Calling load_model({hf_repo!r})...")
         model, _cfg = mlx_qwen3_asr.load_model(hf_repo, dtype=mx.float16)
-        mx.metal.clear_cache()
+        mx.clear_cache()
         print("[ASR-MLX] load_model returned")
         self._mlx_model = model
         self._model_id = hf_repo.split("/")[-1] if "/" in hf_repo else os.path.basename(model_dir)
@@ -388,11 +393,14 @@ class AsrEngine:
             return AsrResult(text="", duration_secs=duration, inference_ms=0,
                              model=self._model_id or "unknown", backend=self._active_backend)
 
+        # MLX runs on the shared Metal queue; serialise with TTS / file jobs.
         if self._moss_model is not None:
-            return self._recognize_moss(samples, sample_rate)
+            with GPU_LOCK:
+                return self._recognize_moss(samples, sample_rate)
 
         if self._mlx_model is not None:
-            return self._recognize_mlx(samples, sample_rate)
+            with GPU_LOCK:
+                return self._recognize_mlx(samples, sample_rate)
 
         from thundertalk.core.vad import segment_audio
         segments = segment_audio(samples, sr=sample_rate)
@@ -433,7 +441,7 @@ class AsrEngine:
         segs = diarize.transcribe(samples.astype(np.float32))
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MOSS] Transcribe done in {inference_ms}ms ({len(segs)} segments)")
-        mx.metal.clear_cache()
+        mx.clear_cache()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
 
         speakers = {s.speaker for s in segs if s.speaker}
@@ -489,7 +497,7 @@ class AsrEngine:
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MLX] Transcribe done in {inference_ms}ms")
 
-        mx.metal.clear_cache()
+        mx.clear_cache()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
 
         text = result.text.strip()

@@ -282,6 +282,9 @@ class Pipeline(QObject):
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
+        from thundertalk import selftest
+        sys.exit(selftest.run(sys.argv[2:]))
     qInstallMessageHandler(_qt_message_filter)
     app = QApplication(sys.argv)
     from thundertalk.ui import theme as _theme
@@ -325,8 +328,10 @@ def main() -> None:
     pipe.asr.set_speaker_labels(settings.get("moss_speaker_labels"))
     window.models_page.speaker_labels_toggled.connect(pipe.asr.set_speaker_labels)
 
-    # --- Lab page: wire the ASR engine reference ---
-    window.lab_page.set_engine(pipe.asr)
+    # --- Studio: the dictation model also serves file transcription, and reads
+    # cloning references / generated speech back to catch mistakes ---
+    window.studio_page.set_engine(pipe.asr)
+    app.aboutToQuit.connect(window.studio_page.shutdown)
 
     # --- Model loading helpers -----------------------------------------
     def _clear_load_worker() -> None:

@@ -228,6 +228,20 @@ def _play(p: QPainter) -> None:
     _poly(p, [(7, 4.6), (19, 12), (7, 19.4)], closed=True)
 
 
+def _pause(p: QPainter) -> None:
+    _rrect(p, 6.5, 5, 3.6, 14, 1.2)
+    _rrect(p, 13.9, 5, 3.6, 14, 1.2)
+
+
+def _stop(p: QPainter) -> None:
+    _rrect(p, 6, 6, 12, 12, 2.2)
+
+
+def _record(p: QPainter) -> None:
+    _circle(p, 12, 12, 7.5)
+    _dot(p, 12, 12, 3.6)
+
+
 def _refresh(p: QPainter) -> None:
     _arc(p, 12, 12, 8, 30, 290)
     _poly(p, [(18.4, 3.6), (19.4, 8.6), (14.4, 9.4)])
@@ -287,6 +301,7 @@ ICONS: dict[str, Callable[[QPainter], None]] = {
     "play": _play, "refresh": _refresh, "folder": _folder,
     "external": _external, "waveform": _waveform, "plus": _plus,
     "lock": _lock, "cursor": _cursor_text,
+    "pause": _pause, "stop": _stop, "record": _record,
     "chevron-right": _chevron_right, "chevron-down": _chevron_down,
 }
 

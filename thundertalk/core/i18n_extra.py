@@ -161,8 +161,8 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "小巧快速：中、英、日、韩、粤语。",
     },
     "model.blurb.moss-transcribe-diarize-mlx": {
-        "en": "Multi-speaker transcription with speaker labels (see Lab).",
-        "zh": "多人对话转写并标注说话人（见实验室）。",
+        "en": "Multi-speaker transcription with speaker labels (see Studio).",
+        "zh": "多人对话转写并标注说话人（见工作室）。",
     },
     "model.blurb.seamless-m4t-v2-large": {
         "en": "Speech translation across 96 languages. Required for Translation.",

@@ -1,0 +1,288 @@
+"""Studio page behaviour with fake engines: real widgets, real worker threads,
+no models and no audio hardware."""
+
+from __future__ import annotations
+
+import time
+import wave
+from types import SimpleNamespace
+
+import numpy as np
+import pytest
+from PySide6.QtWidgets import QApplication
+
+from thundertalk.core import audio_io, tts, voices
+from thundertalk.core import transcribe as tr
+
+SR = 24000
+
+
+def wait_for(cond, timeout=8.0):
+    end = time.time() + timeout
+    while time.time() < end:
+        QApplication.processEvents()
+        if cond():
+            return True
+        time.sleep(0.01)
+    return False
+
+
+class FakeAsr:
+    is_loaded = True
+    current_model = "Fake-ASR"
+
+    def __init__(self):
+        self.calls = 0
+
+    def recognize(self, x, sr):
+        self.calls += 1
+        return SimpleNamespace(text=f"words {self.calls}")
+
+
+def _talk(seconds_each=9.0, n=4, pause=0.6):
+    out = []
+    for i in range(n):
+        t = np.arange(int(seconds_each * SR)) / SR
+        env = 0.04 + 0.96 * np.sin(2 * np.pi * 3.0 * t) ** 2
+        out.append((0.2 * env * np.sin(2 * np.pi * 150 * t)).astype(np.float32))
+        out.append((0.0008 * np.random.default_rng(i).standard_normal(int(pause * SR))).astype(np.float32))
+    return np.concatenate(out)
+
+
+@pytest.fixture
+def studio(qapp, isolated_home, monkeypatch):
+    from thundertalk.ui.pages.studio_page import StudioPage
+    toasts = []
+    page = StudioPage(SimpleNamespace(microphone="auto"))
+    page.toast_requested.connect(lambda m, k: toasts.append((k, m)))
+    page.set_engine(FakeAsr())
+    page.resize(900, 900)
+    page.show()
+    QApplication.processEvents()
+    page._toasts = toasts
+    yield page
+    page.shutdown()
+    page.close()
+
+
+# ── transcribe ───────────────────────────────────────────────────────────
+
+def test_transcribe_a_file_end_to_end(studio, tmp_path):
+    wav = tmp_path / "meeting.wav"
+    audio_io.write_wav(str(wav), _talk(), SR)
+    tab = studio.transcribe_tab
+    assert not tab._go.isEnabled()                              # no file yet
+    tab.load_file(str(wav))
+    assert tab._go.isEnabled() and "meeting.wav" in tab._drop._title.text()
+    tab._go.click()
+    assert wait_for(lambda: tab._result.isVisible())
+    assert tab._transcript is not None and len(tab._transcript.segments) >= 2
+    assert "faster than real time" in tab._stats.text() and "Fake-ASR" in tab._stats.text()
+    assert tab._go.isVisible() and not tab._cancel.isVisible() and not tab._bar.isVisible()
+
+
+def test_transcribe_export_and_copy(studio, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    tab = studio.transcribe_tab
+    tab._on_done(tr.Transcript([tr.Segment(0, 2, "Hello there.", "S01"), tr.Segment(2, 4, "Hi.", "S02")],
+                               4.0, "MOSS-Transcribe-Diarize", 0.4, has_speakers=True))
+    out = tmp_path / "talk.srt"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(out), "")))
+    tab._export("srt", ".srt")
+    assert "S01: Hello there." in out.read_text(encoding="utf-8")
+    tab._copy()
+    assert "Hello there." in QApplication.clipboard().text()
+    assert any(k == "success" for k, _ in studio._toasts)
+
+
+def test_speaker_rename_updates_chips(studio, monkeypatch):
+    from PySide6.QtWidgets import QInputDialog
+    tab = studio.transcribe_tab
+    tab._on_done(tr.Transcript([tr.Segment(0, 2, "Hello.", "S01")], 2.0, "MOSS", 0.1, has_speakers=True))
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Allen", True)))
+    tab._rename_speaker("S01")
+    assert tab._view._chips[0][0].text() == "Allen"
+    assert "Allen: Hello." in tab._transcript.to_text()
+
+
+def test_undecodable_file_shows_a_friendly_error(studio, tmp_path):
+    bad = tmp_path / "broken.mp3"
+    bad.write_bytes(b"not audio" * 50)
+    tab = studio.transcribe_tab
+    tab.load_file(str(bad))
+    tab._go.click()
+    assert wait_for(lambda: studio._toasts)
+    kind, msg = studio._toasts[-1]
+    assert kind == "error" and "Couldn't read" in msg
+    assert tab._go.isVisible()                                   # controls come back
+
+
+def test_speakers_mode_asks_for_the_model_first(studio, tmp_path, monkeypatch):
+    from thundertalk.ui.studio import transcribe_tab as tt
+    monkeypatch.setattr(tt, "is_downloaded", lambda _id: False)
+    tab = studio.transcribe_tab
+    tab._mode.set_current("speakers")
+    tab._refresh()
+    assert tab._notice.isVisible() and "download" in tab._notice_text.text().lower()
+    assert not tab._go.isEnabled()
+
+
+def test_no_dictation_model_points_to_models_page(studio):
+    tab = studio.transcribe_tab
+    tab.set_engine(SimpleNamespace(is_loaded=False, current_model=""))
+    assert tab._notice.isVisible()
+    got = []
+    tab.navigate.connect(got.append)
+    tab._notice_btn.click()
+    assert got == ["models"]
+
+
+# ── speak ────────────────────────────────────────────────────────────────
+
+class FakeTts:
+    def __init__(self):
+        self.calls = []
+
+    def synthesize(self, text, voice, language=None, style=None, speed=1.0, progress=None, cancel=None,
+                   verifier=None, **kw):
+        self.calls.append((text, voice, language, speed, verifier is not None))
+        n = 3
+        for i in range(n):
+            if progress:
+                progress(i, n, "x")
+        t = np.arange(SR * 2) / SR
+        return tts.SynthResult((0.3 * np.sin(2 * np.pi * 200 * t)).astype(np.float32), SR, language or "english",
+                               [tts.SegmentReport("x", 2, 2, 1, True)], 0.5)
+
+    def unload(self):
+        pass
+
+
+@pytest.fixture
+def speak(studio, monkeypatch):
+    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    fake = FakeTts()
+    monkeypatch.setattr(tts, "get_engine", lambda: fake)
+    studio.show_tab("speak")
+    tab = studio.speak_tab
+    tab.refresh()
+    tab._fake = fake
+    return tab
+
+
+def test_builtin_voices_are_listed_and_selectable(speak):
+    ids = [v.id for v in tts.PRESET_VOICES]
+    assert all(i in speak._chips for i in ids)
+    speak._chips["serena"].click()
+    assert speak._voice_id == "serena" and speak._chips["serena"].isChecked()
+    assert not speak._chips["ryan"].isChecked()
+
+
+def test_generate_speech_end_to_end(speak):
+    speak._chips["ryan"].click()
+    assert not speak._go.isEnabled()                            # empty text
+    speak._text.setPlainText("Hello from ThunderTalk. This is a test of the speech pipeline.")
+    assert speak._go.isEnabled() and "characters" in speak._count.text()
+    speak._go.click()
+    assert wait_for(lambda: speak._result_card.isVisible())
+    text, voice, lang, speed, has_verifier = speak._fake.calls[0]
+    assert voice == "ryan" and lang == "auto" and speed == 1.0 and has_verifier      # ASR read-back is wired
+    assert speak._player.player.has_audio and speak._player.player.duration == pytest.approx(2.0, abs=0.01)
+    assert speak._go.isVisible() and not speak._cancel.isVisible()
+
+
+def test_engine_missing_shows_download_card(studio, monkeypatch):
+    monkeypatch.setattr(tts, "repo_ready", lambda repo: False)
+    studio.show_tab("speak")
+    tab = studio.speak_tab
+    tab.refresh()
+    assert tab._engine_card.isVisible() and "GB" in tab._engine_body.text()
+    tab._text.setPlainText("hello")
+    assert not tab._go.isEnabled()
+
+
+def test_cloned_voice_needs_the_base_model(studio, monkeypatch):
+    ready = {tts.CUSTOM_REPO: True, tts.BASE_REPO: False}
+    monkeypatch.setattr(tts, "repo_ready", lambda repo: ready[repo])
+    ref = _talk(6.0, 1)
+    voices.VoiceLibrary().add("Me", voices.prepare_reference(ref, SR).audio, "some words here")
+    studio.show_tab("speak")
+    tab = studio.speak_tab
+    tab.refresh()
+    assert not tab._engine_card.isVisible()                      # built-in voice: custom model is enough
+    tab._chips["my:me"].click()
+    assert tab._engine_card.isVisible() and "own voice" in tab._engine_body.text()
+
+
+def test_cloned_voice_is_passed_as_a_prompt(studio, monkeypatch):
+    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    fake = FakeTts()
+    monkeypatch.setattr(tts, "get_engine", lambda: fake)
+    voices.VoiceLibrary().add("Me", voices.prepare_reference(_talk(6.0, 1), SR).audio, "some words here")
+    studio.show_tab("speak")
+    tab = studio.speak_tab
+    tab.refresh()
+    tab._chips["my:me"].click()
+    tab._text.setPlainText("Say this in my voice, please.")
+    tab._go.click()
+    assert wait_for(lambda: tab._result_card.isVisible())
+    voice = fake.calls[0][1]
+    assert isinstance(voice, tts.ClonePrompt) and voice.text == "some words here"
+
+
+def test_save_exports_wav(speak, tmp_path, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    speak._text.setPlainText("Please save this sentence to disk.")
+    speak._go.click()
+    assert wait_for(lambda: speak._result_card.isVisible())
+    out = tmp_path / "speech.wav"
+    monkeypatch.setattr(QFileDialog, "getSaveFileName", staticmethod(lambda *a, **k: (str(out), "")))
+    speak._save("wav")
+    with wave.open(str(out)) as w:
+        assert w.getframerate() == SR and w.getnframes() == SR * 2
+
+
+def test_shutdown_cancels_a_running_transcription(studio, tmp_path):
+    wav = tmp_path / "long.wav"
+    audio_io.write_wav(str(wav), _talk(9.0, 8), SR)
+
+    class SlowAsr(FakeAsr):
+        def recognize(self, x, sr):
+            time.sleep(0.25)
+            return super().recognize(x, sr)
+
+    tab = studio.transcribe_tab
+    tab.set_engine(SlowAsr())
+    tab.load_file(str(wav))
+    tab._go.click()
+    assert wait_for(lambda: tab._worker is not None and tab._worker.isRunning())
+    t0 = time.time()
+    studio.shutdown()
+    assert time.time() - t0 < 5 and not tab._worker.isRunning()
+
+
+def test_language_switch_rebuilds_labels(studio):
+    from thundertalk.core import i18n
+    i18n.LANG = "zh"
+    try:
+        studio.retranslate()
+        assert studio._tabs.current() == "transcribe"
+        assert "转写" in [lbl for _, lbl in studio._tabs._options][0]
+        assert studio.speak_tab._lang.itemText(0) == "自动识别"
+    finally:
+        i18n.LANG = "en"
+        studio.retranslate()
+
+
+def test_drop_anywhere_switches_to_transcribe(studio, tmp_path):
+    studio.show_tab("speak")
+    wav = tmp_path / "a.wav"
+    audio_io.write_wav(str(wav), _talk(3.0, 1), SR)
+    from PySide6.QtCore import QMimeData, QUrl, QPointF, Qt
+    from PySide6.QtGui import QDropEvent
+    md = QMimeData()
+    md.setUrls([QUrl.fromLocalFile(str(wav))])
+    studio.dropEvent(QDropEvent(QPointF(10, 10), Qt.DropAction.CopyAction, md, Qt.MouseButton.LeftButton,
+                                Qt.KeyboardModifier.NoModifier))
+    assert studio._tabs.current() == "transcribe"
+    assert studio.transcribe_tab._path == str(wav)

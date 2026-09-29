@@ -51,79 +51,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "nav.models": {"en": "Models", "zh": "模型"},
     "nav.hotwords": {"en": "Hotwords", "zh": "热词"},
     "nav.settings": {"en": "Settings", "zh": "设置"},
-    "nav.lab": {"en": "Lab", "zh": "实验室"},
     "nav.about": {"en": "About", "zh": "关于"},
-
-    # ── Common ──────────────────────────────────────────────────────
-    "common.experimental": {"en": "EXPERIMENTAL", "zh": "实验性"},
-
-    # ── Lab ─────────────────────────────────────────────────────────
-    "lab.title": {"en": "Lab", "zh": "实验室"},
-    "lab.subtitle": {
-        "en": "Experimental features — transcribe audio or video files using the active ASR model.",
-        "zh": "实验性功能 — 使用当前 ASR 模型转录音频或视频文件。",
-    },
-    "lab.asr.title": {"en": "File Transcription", "zh": "文件转录"},
-    "lab.asr.no_model": {"en": "No model loaded", "zh": "未加载模型"},
-    "lab.asr.engine_active": {"en": "Dictation model", "zh": "听写模型"},
-    "lab.asr.diarize_ready": {"en": "✓ Speaker diarization", "zh": "✓ 说话人分离"},
-    "lab.asr.diarize_lazy": {
-        "en": "Downloads ~1.7 GB on first use",
-        "zh": "首次使用需下载约 1.7 GB",
-    },
-    "lab.asr.transcribe": {"en": "Transcribe", "zh": "开始转录"},
-    "lab.asr.result": {"en": "Result", "zh": "转录结果"},
-    "lab.asr.show_timestamps": {"en": "Timestamps", "zh": "时间戳"},
-    "lab.asr.show_plain": {"en": "Plain text", "zh": "纯文本"},
-    "lab.asr.copy": {"en": "Copy", "zh": "复制"},
-    "lab.asr.copied": {"en": "Copied!", "zh": "已复制！"},
-    "lab.asr.export": {"en": "Export .txt", "zh": "导出 .txt"},
-    "lab.asr.clear": {"en": "Clear", "zh": "清空"},
-    "lab.drop.hint": {"en": "Drop a file here, or click to browse", "zh": "拖入文件，或点击选择"},
-    "lab.drop.change": {"en": "Change file", "zh": "重新选择"},
-    "lab.drop.browse": {"en": "Browse", "zh": "选择文件"},
-    "lab.tts.title": {"en": "Text to Speech", "zh": "文字转语音"},
-    "lab.tts.online": {"en": "● Online", "zh": "● 已连接"},
-    "lab.tts.offline": {"en": "○ Offline", "zh": "○ 未连接"},
-    "lab.tts.server_start": {"en": "Start Server", "zh": "启动服务"},
-    "lab.tts.server_stop": {"en": "Stop", "zh": "停止"},
-    "lab.tts.server_starting": {"en": "Starting mlx-tts-server…", "zh": "正在启动 mlx-tts-server…"},
-    "lab.tts.server_start_timeout": {"en": "Server did not respond within 30 s", "zh": "服务器 30 秒内未响应"},
-    "lab.tts.no_binary": {"en": "mlx-tts not found — install: uv pip install mlx-tts-server", "zh": "找不到 mlx-tts，请安装：uv pip install mlx-tts-server"},
-    "lab.tts.install_engine": {"en": "Install TTS Engine", "zh": "安装 TTS 引擎"},
-    "lab.tts.installing": {"en": "Installing mlx-tts-server…", "zh": "正在安装 mlx-tts-server…"},
-    "lab.tts.install_done": {"en": "Installed — starting server…", "zh": "安装完成，正在启动…"},
-    "lab.tts.install_error": {"en": "Install failed", "zh": "安装失败"},
-    "lab.tts.btn_installing": {"en": "Installing…", "zh": "安装中…"},
-    "lab.tts.btn_starting": {"en": "Starting…", "zh": "启动中…"},
-    "lab.tts.model_placeholder": {"en": "mlx-community/Qwen3-TTS-12Hz-0.6B-CustomVoice-4bit", "zh": "模型路径或 Hugging Face ID"},
-    "lab.tts.mode_preset": {"en": "Preset Voice", "zh": "预设声音"},
-    "lab.tts.mode_clone": {"en": "Voice Clone", "zh": "声音克隆"},
-    "lab.tts.input_placeholder": {"en": "Type or paste text to synthesize…", "zh": "输入要合成的文字…"},
-    "lab.tts.voice_label": {"en": "Voice", "zh": "声音"},
-    "lab.tts.instruct_label": {"en": "Style", "zh": "风格"},
-    "lab.tts.instruct_placeholder": {"en": "e.g. speak warmly and slowly", "zh": "如：语气温柔，语速慢"},
-    "lab.tts.speed_label": {"en": "Speed", "zh": "速度"},
-    "lab.tts.lang_label": {"en": "Lang", "zh": "语言"},
-    "lab.tts.clone_drop": {"en": "Drop audio or video, or click to browse", "zh": "拖入音频或视频，或点击选择"},
-    "lab.tts.clone_ref_label": {"en": "Reference", "zh": "参考音频"},
-    "lab.tts.clone_transcript_label": {"en": "Transcript", "zh": "参考文字"},
-    "lab.tts.clone_transcript_placeholder": {"en": "What is said in the reference audio (optional, improves quality)", "zh": "参考音频的文字内容（可选，可提升效果）"},
-    "lab.tts.clone_note": {"en": "Requires a Base model (e.g. Qwen3-TTS-…-Base)", "zh": "需要 Base 模型（如 Qwen3-TTS-…-Base）"},
-    "lab.tts.generate": {"en": "Generate", "zh": "生成"},
-    "lab.tts.generating": {"en": "Generating…", "zh": "生成中…"},
-    "lab.tts.play": {"en": "Play", "zh": "播放"},
-    "lab.tts.stop_play": {"en": "Stop", "zh": "停止"},
-    "lab.tts.save_audio": {"en": "Save .wav", "zh": "保存 .wav"},
-    "lab.progress.extracting": {"en": "Extracting audio…", "zh": "正在提取音频…"},
-    "lab.progress.segmenting": {"en": "Segmenting…", "zh": "正在分段…"},
-    "lab.progress.transcribing": {"en": "Transcribing segment {i}/{n}…", "zh": "正在转录第 {i}/{n} 段…"},
-    "lab.progress.done": {"en": "Done", "zh": "完成"},
-    "lab.progress.loading_moss": {"en": "Loading MOSS model…", "zh": "加载 MOSS 模型…"},
-    "lab.progress.diarizing": {
-        "en": "Transcribing + diarizing…",
-        "zh": "转录 + 说话人分离中…",
-    },
 
     # ── Home ────────────────────────────────────────────────────────
     "home.speaking_time": {"en": "Speaking Time", "zh": "发声时长"},
@@ -612,8 +540,10 @@ _STRINGS: dict[str, dict[str, str]] = {
 
 # UI v2 strings live in their own module to keep this table reviewable.
 from thundertalk.core.i18n_extra import EXTRA as _EXTRA  # noqa: E402
+from thundertalk.core.i18n_studio import STUDIO as _STUDIO  # noqa: E402
 
 _STRINGS.update(_EXTRA)
+_STRINGS.update(_STUDIO)
 
 
 def t(key: str) -> str:

@@ -29,19 +29,19 @@ from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
 from thundertalk.ui.pages.home_page import HomePage
 from thundertalk.ui.pages.hotwords_page import HotwordsPage
-from thundertalk.ui.pages.lab_page import LabPage
+from thundertalk.ui.pages.studio_page import StudioPage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
 from thundertalk.ui.widgets import BrandMark, KeyCaps, StatusDot, Toast, paint_canvas
 
 _SIDEBAR_W = 224
 
-_PAGES = ["home", "models", "hotwords", "settings", "lab", "about"]
+_PAGES = ["home", "studio", "models", "hotwords", "settings", "about"]
 
 
 def _nav_items() -> list[str]:
-    return [t("nav.home"), t("nav.models"), t("nav.hotwords"),
-            t("nav.settings"), t("nav.lab"), t("nav.about")]
+    return [t("nav.home"), t("nav.studio"), t("nav.models"), t("nav.hotwords"),
+            t("nav.settings"), t("nav.about")]
 
 
 class _Canvas(QWidget):
@@ -305,15 +305,18 @@ class MainWindow(QMainWindow):
         root.addWidget(self._stack, stretch=1)
 
         self._home_page = HomePage(history, self._state)
+        self._studio_page = StudioPage(settings)
         self._models_page = ModelsPage(settings)
         self._hotwords_page = HotwordsPage(settings, self._state)
         self._settings_page = SettingsPage(settings)
-        self._lab_page = LabPage()
         self._about_page = AboutPage()
 
-        for page in (self._home_page, self._models_page, self._hotwords_page,
-                     self._settings_page, self._lab_page, self._about_page):
+        for page in (self._home_page, self._studio_page, self._models_page, self._hotwords_page,
+                     self._settings_page, self._about_page):
             self._stack.addWidget(page)
+
+        self._studio_page.navigate_requested.connect(self.navigate)
+        self._studio_page.toast_requested.connect(lambda m, k: self.show_toast(m, k))
 
         self._models_page.load_model_signal.connect(
             lambda mid, path, fam, be: self.load_model_signal.emit(mid, path, fam, be)
@@ -370,8 +373,8 @@ class MainWindow(QMainWindow):
     def _retranslate(self) -> None:
         for btn, label in zip(self._nav_buttons, _nav_items()):
             btn.set_label(label)
-        for page in (self._home_page, self._models_page, self._hotwords_page,
-                     self._settings_page, self._lab_page, self._about_page):
+        for page in (self._home_page, self._studio_page, self._models_page, self._hotwords_page,
+                     self._settings_page, self._about_page):
             if hasattr(page, "retranslate"):
                 page.retranslate()
         self._refresh_status()
@@ -414,8 +417,8 @@ class MainWindow(QMainWindow):
         return self._settings_page
 
     @property
-    def lab_page(self) -> LabPage:
-        return self._lab_page
+    def studio_page(self) -> StudioPage:
+        return self._studio_page
 
     @property
     def about_page(self) -> AboutPage:

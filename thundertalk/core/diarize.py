@@ -6,7 +6,7 @@ speaker-attributed transcript in a single pass:每个片段带起止时间戳和
 
     [0.07][S01]Hello everyone.[2.68][2.82][S02]大家好。[6.62]
 
-Used by the Lab page only — the realtime dictation pipeline keeps using
+Used by the Studio (file transcription with speakers) only — the realtime dictation pipeline keeps using
 the active ASR engine (single speaker, no diarization overhead).
 """
 
@@ -80,6 +80,22 @@ def parse_transcript(raw: str) -> list[DiarizedSegment]:
     return []
 
 
+def max_tokens_for(audio) -> int:
+    """Generation budget for a recording. The library default (2048 tokens)
+    silently cut transcripts off after about 5.5 minutes of English: text,
+    timestamps and speaker tags run at ~6 tokens per second of speech. Budget
+    16/s with headroom so the model's own end-of-transcript decides."""
+    try:
+        if isinstance(audio, str):
+            from thundertalk.core import audio_io
+            seconds = audio_io.audio_duration(audio)
+        else:
+            seconds = len(audio) / 16000
+    except Exception:
+        seconds = 5400.0
+    return int(min(max(2048, seconds * 16 + 512), 120_000))
+
+
 def transcribe(audio) -> list[DiarizedSegment]:
     """Transcribe *audio* with speaker labels.
 
@@ -88,7 +104,7 @@ def transcribe(audio) -> list[DiarizedSegment]:
     """
     model = load_model()
     with _MODEL_LOCK:
-        result = model.generate(audio)
+        result = model.generate(audio, max_tokens=max_tokens_for(audio))
     raw = result.text if hasattr(result, "text") else str(result)
     return parse_transcript(raw)
 

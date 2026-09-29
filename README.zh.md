@@ -2,11 +2,12 @@
   <img src="assets/icon.png" width="80" alt="ThunderTalk Logo" />
 </p>
 
-<h1 align="center">ThunderTalk — macOS 语音输入 / 语音转文字</h1>
+<h1 align="center">ThunderTalk</h1>
 
 <p align="center">
-  极速、隐私优先的 <strong>macOS 语音转文字（听写）应用</strong>。<br/>
-  按下快捷键、开口说话，文字直接输入任何应用 — 100% 本地运行，无云端，无订阅。
+  免费开源的 macOS 语音输入应用。<br/>
+  按下快捷键、开口说话，文字就出现在光标处。<br/>
+  语音识别在你自己的 Mac 上完成：无需账号，无需订阅，没有云端。
 </p>
 
 <p align="center">
@@ -16,36 +17,71 @@
 <p align="center">
   <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-brightgreen" alt="Platform: macOS" />
-  <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest"><img src="https://img.shields.io/github/v/release/realAllenSong/ThunderTalk?color=orange" alt="Latest Release" /></a>
-  <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="Downloads" /></a>
+  <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest"><img src="https://img.shields.io/github/v/release/realAllenSong/ThunderTalk?color=orange" alt="最新版本" /></a>
+  <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="下载量" /></a>
 </p>
-
-https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 
 ---
 
-**ThunderTalk** 是一款免费开源的 **macOS 语音输入 / 听写应用**。最先进的语音识别模型（Qwen3-ASR、SenseVoice）完全**在本机运行** — Apple Silicon 上通过 MLX（Metal GPU）加速，任意 Mac 上可用 ONNX CPU 推理 — 并内置 100+ 语言的语音翻译（SeamlessM4T v2）。它是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
+ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：Apple Silicon 上通过 MLX 加速，任意 Mac 上都可以用 ONNX，所以你的录音不会发往任何地方。它以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
+
+界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
+
+## 新功能：工作室（Studio）
+
+工作室取代了原来的“实验室”页，是 1.5 版本的主打功能，分为两部分。
+
+**转写。** 把音频或视频录音（m4a、mp3、wav、mp4、mov 等）拖进来，就能得到带时间戳的文字稿。多人对话请选择“多人对话”，MOSS-Transcribe-Diarize 会给每一轮发言标上说话人，点击说话人即可改名。可导出为 TXT、Markdown、SRT、VTT 或 JSON。解码使用 macOS 自带的工具，不需要安装 ffmpeg。
+
+**朗读。** 用 Qwen3-TTS 把文字读出来，支持中文、英文、日语、韩语等。
+
+- 九种内置音色：Vivian、Serena、Uncle Fu、Dylan、Eric、Ryan、Aiden、Ono Anna、Sohee。
+- 可调语速（0.75x 到 1.5x），带可拖动进度的播放器。结果可保存为 WAV（无损）或 M4A（体积小）。
+- **我的声音：** 录制或导入 5 到 15 秒你自己的声音，它就能朗读你输入的任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
+
+语音引擎只需下载一次，之后工作室里的一切都可以离线使用。
 
 ## 功能特性
 
-- **按一下快捷键，开口说话，文字直出。** 一个全局快捷键即可在任何应用中输入语音。
-- **100% 本地、完全私密** — 录音永不离开设备，无云端、无订阅。
-- **多种 ASR 后端** — 支持 MLX（Apple Silicon Metal GPU）和 ONNX（CPU）。
-- **多种 ASR 模型** — 支持 Qwen3-ASR、MOSS-Transcribe-Diarize、NVIDIA Parakeet-TDT 与 SenseVoice 的多个尺寸。
-- **多说话人转录** — MOSS-Transcribe-Diarize 输出说话人标签（S01/S02）和时间戳；实验室页可单次转录最长约 90 分钟的会议、播客音频。
-- **内置语音翻译** — 通过 SeamlessM4T v2（100+ 语言）实现「直译」和「审阅」两种模式。翻译引擎已打包在 App 内，仅模型文件按需下载。
-- **热词** — 自定义词汇表,专业术语再也不会识别错。
-- **智能硬件检测** — 自动识别 CPU / 内存 / GPU 并推荐最优模型。
-- **内存模式可选** — 「设置 → 性能」中可在「高」「低」之间切换,牺牲一些 KV 缓存与线程数,换取约 3 GB 的内存占用降低,适合不需要超长单句的场景。
-- **应用内自动更新** — 启动时若发现新版本会弹出提示,一键即可下载、替换、自动重启。
-- **录音时静音扬声器** — 防止扬声器声被麦克风拾取造成回声。
-- **中英双语界面** — 在「设置」中即时切换,无需重启。
+**听写**
+
+- 一个全局快捷键，任意应用都能用。默认是 Right ⌘；可以在“设置”里选择“切换”（按一下开始、再按一下结束）或“长按”，也可以更换按键或组合键。
+- 多种语音模型：Qwen3-ASR 0.6B 与 1.7B、SenseVoice-Small、NVIDIA Parakeet-TDT、MOSS-Transcribe-Diarize。应用会读取你的硬件并推荐合适的模型。
+- 中文、英文，以及同一句话里的中英混说。界面本身也有英文和中文两种语言。
+- 热词：把总是听错的产品名、缩写、人名教给它（适用于 Qwen3-ASR 系列模型）。
+- 逆文本规整：口述的数字会变成阿拉伯数字，中英文都支持（“twenty five”变成 25，“三百五十二”变成 352）。
+- 可选的翻译，通过 SeamlessM4T v2 支持 100+ 种语言：“直译”模式边说边译，“审阅”模式先转写，再由你选择替换或保留原文。
+- 可搜索的历史记录，保存为 `~/.thundertalk` 里的普通文件。
+- 可选的本地 LLM 润色（实验性，默认关闭）：修正听错的人名、去掉口头语，通过审阅弹窗确认，绝不静默改写。
+
+**日常细节**
+
+- 第一次运行有引导：欢迎、权限、选模型、试一试。
+- 模型下载显示来自真实字节数的进度，网络中断后可以续传，“取消”立即生效。
+- 应用内自动更新：有新版本发布时弹出一个小提示，点一下就会下载、替换并重启。
+- 可选的录音时静音扬声器，避免麦克风拾取你自己的声音。
+- 内存模式（“设置 → 性能”）：牺牲一些 KV 缓存与线程数，换取约 3 GB 的内存占用降低。
+
+**隐私**
+
+- 无账号、无订阅、无使用次数限制。
+- 音频在你的 Mac 上识别，绝不上传。
+- 网络只用于两件事：下载模型，以及向 GitHub Releases 检查更新。
+- 代码开源，可以阅读、自行构建、随意 fork。
 
 ## 下载
 
-从 [Releases](https://github.com/realAllenSong/ThunderTalk/releases) 下载最新的 **ThunderTalk.app**。
+从 [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest) 下载最新的 **ThunderTalk.app**，移到“应用程序”文件夹后打开。首次启动时按提示授予“麦克风”和“辅助功能”权限（“辅助功能”让 ThunderTalk 能替你把文字输入到光标处）。
 
-> **macOS：** 下载后将 `ThunderTalk.app` 移到「应用程序」文件夹。首次启动时按提示授予「麦克风」与「辅助功能」权限。
+ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 99 美元），所以从浏览器下载后首次打开时 macOS 会给出警告。请看下文 [首次打开提示“无法打开 / 无法验证开发者”](#首次打开提示无法打开--无法验证开发者)，大约十秒就能搞定。
+
+## 使用方法
+
+1. 打开 ThunderTalk，按首次运行引导操作，或进入“模型”页下载一个模型。
+2. 点进任意应用里的任意输入框。
+3. 按下快捷键（默认 **Right ⌘**），说话，再按一次结束，文字会粘贴到光标处。
+
+在“设置”里可以修改快捷键、按键模式、麦克风和界面语言。打开“工作室”可以做文件转写和文字转语音。
 
 ## 支持的模型
 
@@ -61,213 +97,202 @@ https://github.com/user-attachments/assets/51be7955-ef63-40db-b3f0-5dbed0943a21
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25（欧洲语言） | ★★★★★ | 否 |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | 英语 | ★★★★★ | 否 |
 
-> **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 MLC-SLM Challenge 冠军）是多说话人模型：听写时粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），实验室页可单次转录最长约 90 分钟的会议/播客，带说话人标签和时间戳。
-> **Parakeet-TDT**（NVIDIA）在任意 Mac 上以 CPU 运行，RTF 约 0.035 — 比 Qwen3-ASR ONNX 快约 8 倍，自带标点和大小写。
+> **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 MLC-SLM Challenge 冠军）是多说话人模型。听写时它粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），同时它也驱动工作室的“多人对话”模式，单次即可转写最长约 90 分钟的录音，并附说话人标签和时间戳。
+>
+> **Parakeet-TDT**（NVIDIA）在任意 Mac 上以 CPU 运行，RTF 约 0.035，比 Qwen3-ASR ONNX 快约 8 倍，自带标点和大小写。
+
+### 文字转语音（工作室）
+
+| 模型 | 大小 | 后端 | 用途 |
+|------|------|------|------|
+| Qwen3-TTS 1.7B CustomVoice（8-bit） | 3.1 GB | MLX (Metal GPU) | 九种内置音色 |
+| Qwen3-TTS 1.7B Base（8-bit） | 3.1 GB | MLX (Metal GPU) | 用你克隆的声音朗读 |
+
+两者都是一次性下载，由应用在“朗读”标签页里提示下载。需要 Apple Silicon。
 
 ### 翻译
 
 | 模型 | 大小 | 后端 | 语言 | 用途 |
 |------|------|------|------|------|
-| SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | 在「直译」「审阅」模式下进行语音与文本翻译 |
+| SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | 在“直译”“审阅”模式下进行语音与文本翻译 |
 
-翻译**引擎**（PyTorch + Transformers）已直接打包在 `ThunderTalk.app` 内,无需另装任何依赖,只有 SeamlessM4T 的模型文件本身按需下载。ASR 模型和翻译模型都从「模型」页面下载,统一存储路径为 `~/.thundertalk/models/`。
+翻译**引擎**（PyTorch + Transformers）已直接打包在 `ThunderTalk.app` 内，无需另装任何依赖，只有 SeamlessM4T 的模型文件本身按需下载。模型都从“模型”页面下载，统一存放在 `~/.thundertalk/models/`。
 
 ## 系统要求
 
+macOS 12 (Monterey) 或更高版本。
+
 ### Apple Silicon（推荐）
 
-| 设备 | 内存 | 推荐 ASR 模型 | 是否支持翻译？ |
-|------|------|---------------|----------------|
-| M1 / M2（8 GB） | 8 GB | Qwen3-ASR-0.6B (MLX fp16) | ❌ 内存不够 SeamlessM4T 跑 |
-| M1 Pro / M2 Pro / M3（16 GB） | 16 GB | Qwen3-ASR-0.6B 或 1.7B (MLX) | ⚠️ 能跑但偏紧，建议关闭其他大型应用 |
-| M1 Max / M2 Max / M3 Max（24+ GB） | 24+ GB | Qwen3-ASR-1.7B (MLX) | ✅ 宽裕 |
-| M3/M4 Ultra | 32+ GB | 任意 | ✅ 可同时跑批量任务 |
+| 设备 | 内存 | 推荐 ASR 模型 | 翻译 |
+|------|------|---------------|------|
+| M1 / M2 | 8 GB | Qwen3-ASR-0.6B (MLX fp16) | 不行，内存不够跑 SeamlessM4T |
+| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B 或 1.7B (MLX) | 能跑但偏紧，建议关闭其他大型应用 |
+| M1 Max / M2 Max / M3 Max | 24 GB 及以上 | Qwen3-ASR-1.7B (MLX) | 宽裕 |
+| M3 / M4 Ultra | 32 GB 及以上 | 任意 | 余量充足 |
 
-> **MLX = Metal GPU 加速。** 在 M 系列芯片上 RTF（实时倍率）通常在 0.05–0.1 之间——也就是说推理速度比说话本身快 10–20 倍。
+MLX 即 Metal GPU 加速。在 M 系列芯片上 RTF（实时倍率）通常在 0.05–0.1 之间，也就是识别速度比说话本身快 10–20 倍。
 
 ### Intel Mac / 老硬件
 
 只能走纯 CPU 的 ONNX 后端：
 
-- **SenseVoice-Small**（241 MB）— 近 5 年的 Mac 都能跑；速度快但只支持 5 种语言、无热词。
-- **Qwen3-ASR-0.6B (ONNX int8)** — 任意 Apple Silicon 都能跑；M3 Max CPU 下 RTF ≈ 0.3，Intel Mac 慢一些。
-- **翻译在 Intel Mac 上不实用。** 翻译引擎已经随 App 打包,但 SeamlessM4T 需要 MPS（Apple Silicon GPU）才能跑出可用速度;在 Intel CPU 上每句要花数十秒。
+- **SenseVoice-Small**（241 MB）：近 5 年的 Mac 都能跑，速度快，但只支持 5 种语言、不支持热词。
+- **Qwen3-ASR-0.6B (ONNX int8)**：任意 Mac 都能跑，M3 Max 的 CPU 上 RTF 约 0.3，Intel Mac 会慢一些。
+- **Parakeet-TDT**：最快的 CPU 选择（v2 为英语，v3 为 25 种欧洲语言）。
+- **翻译在 Intel Mac 上不实用。** SeamlessM4T 需要 Apple Silicon 的 GPU（MPS）才能跑出可用速度。
+- **工作室的“多人对话”和“朗读”使用 MLX**，因此需要 Apple Silicon。单人快速转写使用你的听写模型，在任何 Mac 上都能用。
 
 ### 磁盘空间
 
-- **App 本体:** 约 820 MB。翻译引擎(PyTorch + Transformers)已打包在内,这也是体积偏大的原因——但好处是模型下载完之后翻译功能开箱即用。
-- **最低**(仅运行 App + ASR):约 1.1 GB(.app + SenseVoice-Small)。
-- **推荐**(含翻译):约 13 GB 空闲(.app + Qwen3-ASR-0.6B + SeamlessM4T + 工作文件)。
+- **App 本体：** 约 820 MB。翻译引擎（PyTorch + Transformers）已打包在内，这也是体积偏大的原因，好处是模型下载完之后翻译开箱即用。
+- **最低运行需求：** 约 1.1 GB（App + SenseVoice-Small）。
+- **含翻译的推荐配置：** 约 13 GB 空闲空间（App + Qwen3-ASR-0.6B + SeamlessM4T + 工作文件）。
 
-「模型」页面会显示检测到的硬件，并为每个模型标注「推荐」/「需要 Apple Silicon」/「需要 MLX」，无需记忆上表。
+“模型”页面会显示检测到的硬件，并为每个模型标注“推荐”“需要 Apple Silicon”或“需要 MLX”，无需记忆上面的表格。
 
 ## 选择模型
 
 | 目标 | 选择 |
 |------|------|
-| 转录速度最快、语言最少 | **SenseVoice-Small**（5 种语言，无热词） |
+| 启动最快、语言最少 | **SenseVoice-Small**（5 种语言，无热词） |
 | 准确率最高、任意 Mac | **Qwen3-ASR-0.6B (ONNX int8)** |
-| 准确率最高、Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)** ← 默认 |
-| 处理重口音 / 嘈杂音频 | **Qwen3-ASR-1.7B (MLX fp16)** — 需 ≥16 GB 内存 |
-| 会议 / 多人音频、说话人标签 | **MOSS-Transcribe-Diarize 0.9B (MLX)** — 仅 Apple Silicon |
-| 最快英语听写、任意 Mac | **Parakeet-TDT 0.6B v2 (ONNX int8)** — CPU，RTF 约 0.035 |
-| CPU 上的欧洲语言 | **Parakeet-TDT 0.6B v3 (ONNX int8)** — 25 种语言 |
-| 语音翻译（如说中文，粘贴英文） | **直译模式** — 直接用 SeamlessM4T |
-| 用母语说话同时看到译文 | **审阅模式** — ASR 转录后再翻译，弹窗让你选「替换」或「保留原文」 |
+| 准确率最高、Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)**（默认） |
+| 重口音或嘈杂音频 | **Qwen3-ASR-1.7B (MLX fp16)**，需要 16 GB 及以上内存 |
+| 带说话人标签的会议 / 访谈 | **MOSS-Transcribe-Diarize 0.9B (MLX)**，仅 Apple Silicon |
+| 最快的英语听写、任意 Mac | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
+| CPU 上的欧洲语言 | **Parakeet-TDT 0.6B v3 (ONNX int8)** |
+| 说一种语言，粘贴另一种 | **直译模式**，直接使用 SeamlessM4T |
+| 用母语说话，同时看到译文 | **审阅模式**：ASR 转写后再翻译，由你选择替换或保留原文 |
 
-### 作者推荐——我自己平时这么用
-
-- **纯转录：** **Qwen3-ASR-0.6B (ONNX int8) + 热词。**
-  快、准，任意 Mac 都跑得动（无需 GPU 加速）。ONNX 版本约 940 MB，启动不到一秒。在「热词」页加入领域词汇（例如 `onnx`、`MLX`、团队产品名等），技术术语就不会再被识别错。
-
-- **偶尔翻译：** **审阅模式** + **Qwen3-ASR-0.6B (ONNX int8) + 热词** 作为识别引擎，配 **SeamlessM4T v2 Large** 作为翻译引擎。
-  ASR 完美转录原文，SeamlessM4T 走 T2TT（文本→文本，不再过一次音频，比直译模式快得多），审阅弹窗让你逐句决定是否替换。两全其美：原文随时可保留，需要译文时一键替换。
-
-  直译模式跳过 ASR（音频→译文一步到位，全靠 SeamlessM4T），更简单但失去原始转录文本，也无法配合热词。所以我默认用审阅模式。
+作者自己的配置：纯转写用 **Qwen3-ASR-0.6B (ONNX int8) + 热词**，又快又准，不需要 GPU；需要翻译时用**审阅模式**，以它作为识别引擎，搭配 **SeamlessM4T v2**。审阅模式翻译的是转写后的文本（文本到文本），比直译模式快，并且能保留原文。
 
 ## 自动更新
 
-ThunderTalk 启动后会在几秒内自动检查 GitHub Releases 是否有新版本,如果有就会弹出一个小弹窗。点「立即更新」之后 App 会:
+ThunderTalk 启动后不久会检查 GitHub Releases，发现新版本就弹出一个小提示。点“立即更新”后，应用会跳转到“关于”页，下载新版本的 zip，退出、替换 `/Applications/ThunderTalk.app`、移除 quarantine 属性，然后自动重启。点“以后再说”则本次启动内不再提示。你也可以在“关于 → 检查更新”里手动检查。
 
-1. 自动跳转到「关于」页面,方便你实时看下载进度。
-2. 从 GitHub Releases 下载新版本的 `.zip`。
-3. 退出当前实例,替换 `/Applications/ThunderTalk.app`,自动剥掉 quarantine 属性,然后重新打开新版本。
-
-如果不想现在更新,点「以后再说」即可——本次会话不会再弹,下次启动时还会再问。也可以在「关于 → 检查更新」中手动触发。
-
-更新成功后,可能需要重新授予一次「辅助功能」和「麦克风」权限。原因见下文「自动更新后快捷键 / 麦克风失灵」一节。
+更新之后可能需要重新授予“辅助功能”和“麦克风”权限，见下文 [自动更新后快捷键 / 麦克风失灵](#自动更新后快捷键--麦克风失灵)。
 
 ## 故障排查
 
-### 模型下载中断了（断网、应用退出、电脑休眠）
+### 模型下载中断了
 
-下载器写入 `.tmp` 临时文件并在完成时原子重命名，所以**未完成的下载不会被错认成可用模型**。恢复方法：在「模型」页点「下载」即可。如果模型已标记为已下载但激活时崩溃，请删除 `~/.thundertalk/models/<模型 ID>/` 文件夹后重新下载。
+下载器先写入临时文件，完成后才重命名，所以未完成的下载不会被当成可用模型，续传也会从中断处继续。在“模型”页再点一次“下载”即可。如果模型已标记为已下载但激活时崩溃，请删除 `~/.thundertalk/models/<模型 ID>/` 后重新下载。
 
-### "Translation model not downloaded"（翻译模型未下载）
+### “Translation model not downloaded”（翻译模型未下载）
 
-你选了「直译」或「审阅」模式但还没下载 SeamlessM4T（约 9 GB）。「模型」页面的 Translation 卡片旁边会出现「下载」按钮——点击后会自动完成下载与加载。下载期间状态条显示「正在加载翻译模型…」。
+你选了“直译”或“审阅”模式，但还没下载 SeamlessM4T（约 9 GB）。“模型”页的翻译卡片上有“下载”按钮，点击后应用会自动下载并加载。
+
+### 工作室提示缺少模型或引擎
+
+说话人模型和“朗读”所需的语音引擎都是一次性下载。工作室会在需要的地方显示大小和下载按钮。单人快速转写需要先加载一个听写模型：请到“模型”页选一个。
 
 ### 应用打开后是空白窗口或纯色
 
-通常是 Qt 主题冲突（多见于第三方全局样式）。退出应用，从终端启动看输出：`/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk`。如果控制台打印 `Could not parse stylesheet`，请将完整输出提交 issue。
+通常是 Qt 样式冲突。退出应用，从终端启动：`/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk`。如果控制台打印 `Could not parse stylesheet`，请把输出贴到 issue 里。
 
-### 历史面板显示「0 次会话」，但昨天明明用过
+### 历史页显示“0 次”，但昨天明明用过
 
-ThunderTalk 读取 `~/.thundertalk/history.json`。如果某次写入被中断（强制退出、磁盘满），文件可能损坏。当前版本不再静默清空——它会把损坏文件改名为同目录下的 `history.broken-<时间戳>.json`。用任意文本编辑器打开那个文件应能看到原始记录，修复 JSON 后粘贴回新的 `history.json` 即可恢复。
+ThunderTalk 读取 `~/.thundertalk/history.json`。如果某次写入被中断（保存时强制退出、磁盘满），文件可能损坏。应用不会静默清空它，而是把损坏文件改名为同目录下的 `history.broken-<时间戳>.json`。用文本编辑器打开它，修复 JSON 后把内容粘贴回新的 `history.json` 即可。
 
-### 麦克风权限明明开了，应用还是说"no audio"
+### 麦克风权限明明开了，应用还是说“no audio”
 
-macOS 有时会把权限绑定到具体的二进制路径上。如果应用经历过 Gatekeeper 重新隔离（例如把 .app 在文件夹间移动），请在「系统设置 → 隐私与安全性 → 麦克风」中先撤销再重新授予。
+macOS 有时会把权限绑定到具体的二进制路径上，例如把 App 在文件夹之间移动之后。请在“系统设置 → 隐私与安全性 → 麦克风”里先移除再重新添加。
 
 ### 快捷键不触发录音
 
-ThunderTalk 需要「辅助功能」权限来读取全局键盘事件。在「系统设置 → 隐私与安全性 → 辅助功能」中先关闭再打开 ThunderTalk 的开关，然后重启应用。
+ThunderTalk 需要“辅助功能”权限来读取全局键盘事件。在“系统设置 → 隐私与安全性 → 辅助功能”里先关闭再打开 ThunderTalk，然后重启应用。
 
-### 从 Releases 下载首次打开提示「无法验证开发者 / 移到废纸篓」
+### 首次打开提示“无法打开 / 无法验证开发者”
 
-ThunderTalk 使用 ad-hoc 签名（没有花 $99/年办 Apple Developer Program），所以从浏览器下载后首次打开会被 Gatekeeper 拦截。允许打开的方式：
+因为是 ad-hoc 签名，Gatekeeper 会对浏览器下载的应用给出警告。允许打开的方式：
 
-1. 把 `ThunderTalk.app` 拖进 `/Applications`，跟普通应用一样。
+1. 把 `ThunderTalk.app` 拖进 `/Applications`。
 2. 双击打开一次，macOS 会拒绝并弹出警告。
-3. 打开「**系统设置 → 隐私与安全性**」，往下翻到底部，找到「*ThunderTalk 已被阻止使用*」那一行，点旁边的「**仍要打开**」。
-4. 在二次确认弹窗里再点「打开」。
+3. 打开“系统设置 → 隐私与安全性”，往下翻到底部，点“ThunderTalk 已被阻止使用”那一行旁边的“仍要打开”。
+4. 在二次确认弹窗里再点“打开”。
 
-或者一行 Terminal 命令搞定：
+或者用一条命令：
 
 ```bash
 xattr -dr com.apple.quarantine /Applications/ThunderTalk.app
 open /Applications/ThunderTalk.app
 ```
 
-之后再启动就不会再问了。从 ThunderTalk *内部*的自动更新（v1.1.0 起支持）会自动剥掉 quarantine 属性——只有最初一次浏览器下载需要这个步骤。
+macOS 会记住你的选择。通过应用内更新升级会自动移除 quarantine 属性，所以只有最初那一次浏览器下载需要这个步骤。
 
 ### 自动更新后快捷键 / 麦克风失灵
 
-ad-hoc 签名导致每次构建的 cdhash 都不一样，而 macOS 的 TCC 权限数据库把权限绑死在这个 hash 上。所以即使 bundle ID 没变，自动更新替换 .app 之后系统认定那是「另一个 App」，旧版的「**辅助功能**」授权悄悄失效，「**麦克风**」也得在下一次录音时重新授予。
+ad-hoc 签名让每次构建的代码目录哈希都不同，而 macOS 把隐私权限绑定在这个哈希上。更新器替换 .app 之后，系统会把新的二进制当成“另一个 App”，旧的“辅助功能”授权悄悄失效，“麦克风”也得重新授予。ThunderTalk 会在更新后的第一次启动给出一次性提示。修复步骤：
 
-ThunderTalk 在更新后第一次启动会弹一个一次性提示说明这件事。修复步骤：
+1. 打开“系统设置 → 隐私与安全性 → 辅助功能”。
+2. 删掉旧的 `ThunderTalk` 条目（开关亮着但灰着的那个，或路径已过期的）。
+3. 点 `+`，选择 `/Applications/ThunderTalk.app`，重新添加。
+4. 打开开关，再按一次快捷键。第一次录音时可能会再次询问麦克风权限，允许即可。
 
-1. 打开「**系统设置 → 隐私与安全性 → 辅助功能**」。
-2. 删掉旧的 `ThunderTalk` 条目（开关亮着但灰着的那个，或者路径已经过期的）。
-3. 点 `+`，定位到 `/Applications/ThunderTalk.app`，重新加进来。
-4. 把开关打开。
-5. 再按一次快捷键。第一次录音时会再次询问麦克风权限，允许即可。
+这是发布未公证应用的固有限制。用 Apple Developer ID 给每次发布签名并公证就能消除它，代价是每年 99 美元和多几步发布流程。
 
-这是非公证 App 在现代 macOS 上的根本性限制。买了 Apple Developer ID 之后给每次发布做代码签名 + 公证就能彻底解决（cdhash 在不同版本间会变，但 team identifier 保持稳定，TCC 就能保留授权）——代价是每年 $99 和多几步发布流程。
+### 最低能跑什么配置？
 
-### 我的设备规格低于上表，最低能跑什么？
+只要能运行 macOS 12 及以上、有至少 4 GB 空闲内存和 250 MB 磁盘空间的 Mac，就能跑 **SenseVoice-Small**。内存低于 16 GB 时，无论 CPU / GPU 如何，翻译都不现实。
 
-任何能运行 macOS 12 (Monterey) 及以上、有至少 4 GB 空闲内存、250 MB 磁盘空间的 Mac 都能跑 **SenseVoice-Small**。**翻译功能在内存低于 16 GB 的设备上无论 CPU/GPU 都不现实。**
+## 从源码构建
 
-## 使用方法
-
-1. 点击菜单栏的 **ThunderTalk** 图标 → **打开设置** → 下载一个模型。
-2. 按下快捷键（默认：**Right ⌘**）开始录音，再按一下停止。
-3. 转录的文本会自动粘贴到当前应用。
-
-> 在「设置」页可以修改快捷键、界面语言（中文 / English）等。
-
-## 开发
+需要 macOS、Python 3.12 或更高版本，以及 [uv](https://docs.astral.sh/uv/)。
 
 ```bash
 # 安装 uv（如果还没有）
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-# 克隆并安装
+# 克隆并安装（Apple Silicon：MLX 后端 + 翻译引擎）
 git clone https://github.com/realAllenSong/ThunderTalk.git
 cd ThunderTalk
-uv sync
-
-# (Apple Silicon) 安装 MLX 后端以使用 GPU 加速
-uv sync --extra mlx
+uv sync --extra mlx --extra translation
 
 # 从源码运行
 uv run python run.py
 
-# 打包 macOS .app
+# 打包 macOS 应用（产物：dist/ThunderTalk.app）
 .venv/bin/python build_macos.py
-# 产物位于：dist/ThunderTalk.app
 ```
 
-## 技术栈
-
-- **UI：** [PySide6](https://doc.qt.io/qtforpython-6/) (Qt6)
-- **ASR：** [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (ONNX)、[mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) (MLX)
-- **音频：** [sounddevice](https://python-sounddevice.readthedocs.io/)
-- **快捷键：** macOS 原生 NSEvent
-- **打包：** [PyInstaller](https://pyinstaller.org/) + Apple Development 代码签名
-
-## 常见问题
-
-**ThunderTalk 收费吗？**
-完全免费，MIT 协议开源。无订阅、无账号、无使用限制。
-
-**能离线使用吗？**
-可以。语音识别、翻译、语法修正全部在本机运行。模型下载一次后无需联网，录音永不离开你的设备。
-
-**和 Typeless、Wispr Flow、superwhisper 有什么区别？**
-它们是付费闭源应用，通常在云端处理音频。ThunderTalk 免费、开源（MIT）、完全本地 — 代码可审计，语音数据不出本机。
-
-**支持中文和中英混说吗？**
-支持。Qwen3-ASR 支持 52 种语言，包括中英混合（code-switching）语音；界面本身也有中文和英文两种语言。
-
-**Intel Mac 能用吗？**
-能 — 使用 CPU（ONNX）模型，如 SenseVoice-Small 和 Qwen3-ASR-0.6B int8。Apple Silicon 则通过 MLX 获得 GPU 加速，体验最佳。
-
-**可以在哪些应用里听写？**
-任何能输入文字的应用：浏览器、编辑器、Slack、邮件、终端 — 光标在哪里，文字就输入到哪里。
-
-## 许可证
-
-ThunderTalk 基于 [MIT License](LICENSE) 开源。
-
-随意使用、Fork、在自己的产品中集成——没有任何限制。给个 Star 或提个 PR 就是对项目最好的支持。
+请**始终同时**带上这两个 extra。单独运行 `uv sync --extra mlx` 会把 `translation` 这个 extra（PyTorch）从环境里移除，缺了它打出来的包翻译功能会悄悄失效（构建日志里出现“PyTorch was not found”就是征兆）。Intel Mac 上去掉 `--extra mlx` 即可。
 
 欢迎贡献代码，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 
+## 技术栈
+
+- **UI：** [PySide6](https://doc.qt.io/qtforpython-6/)（Qt 6），颜色、字体和间距集中定义在一个主题模块里
+- **语音识别：** [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（ONNX）、[mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) 与 [mlx-audio](https://github.com/Blaizzy/mlx-audio)（MLX）
+- **文字转语音：** 通过 mlx-audio 进程内运行的 Qwen3-TTS
+- **翻译：** 通过 PyTorch 与 Transformers 运行的 SeamlessM4T v2
+- **音频：** 采集用 [sounddevice](https://python-sounddevice.readthedocs.io/)，文件解码用 macOS 自带的 `afconvert`
+- **快捷键：** macOS 原生 NSEvent
+- **打包：** [PyInstaller](https://pyinstaller.org/)，ad-hoc 签名
+
+## 常见问题
+
+**ThunderTalk 收费吗？** 不收费。MIT 协议开源，无账号、无订阅、无使用次数限制。
+
+**能离线使用吗？** 可以。模型下载完成后，识别、翻译、工作室和文字转语音都在你的 Mac 上运行，无需联网。
+
+**和 Typeless、Wispr Flow、superwhisper 有什么区别？** 它们是付费闭源应用，通常在云端处理音频。ThunderTalk 免费、开源、完全本地，你可以阅读代码，语音数据也不会离开你的电脑。
+
+**支持中文和中英混说吗？** 支持。Qwen3-ASR 支持 52 种语言，包括同一句话里中英混说，界面也有中文和英文两种语言。
+
+**Intel Mac 能用吗？** 能，使用 CPU（ONNX）模型：SenseVoice-Small、Qwen3-ASR-0.6B int8 和 Parakeet-TDT。Apple Silicon 通过 MLX 获得 GPU 加速，工作室的“多人对话”和“朗读”也需要 Apple Silicon。
+
+**可以在哪些应用里听写？** 任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。光标在哪里，文字就粘贴到哪里。
+
+## 许可证
+
+ThunderTalk 基于 [MIT License](LICENSE) 开源。随意使用、fork、集成到你自己的产品里。给个 Star 或提个 PR 就是对项目最好的支持。
+
 ## 致谢
 
-- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) — 跨平台 ASR 推理
-- [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) — MLX 原生的 Qwen3 ASR
-- [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) — 轻量级 ASR 模型
-- [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) — 业界领先的 ASR 模型
+- [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)：跨平台 ASR 推理
+- [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr)：MLX 原生的 Qwen3 ASR
+- [mlx-audio](https://github.com/Blaizzy/mlx-audio)：MOSS-Transcribe-Diarize 与 Qwen3-TTS 的 MLX 推理
+- [SenseVoice](https://github.com/FunAudioLLM/SenseVoice)：轻量级 ASR 模型
+- [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR)：业界领先的 ASR 模型
+- [OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)：MOSS-Transcribe-Diarize
