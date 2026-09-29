@@ -141,8 +141,8 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "在 Apple 芯片的 GPU 上运行，支持 52 种语言和热词。",
     },
     "model.blurb.qwen3-asr-06b-int8": {
-        "en": "Runs on any Mac's CPU, at about the same speed as the GPU build on Apple Silicon.",
-        "zh": "任何 Mac 的 CPU 都能跑，在 Apple 芯片上速度与 GPU 版相当。",
+        "en": "Runs on the CPU, at about the same speed as the GPU build.",
+        "zh": "在 CPU 上运行，速度与 GPU 版相当。",
     },
     "model.blurb.qwen3-asr-17b-mlx": {
         "en": "Higher accuracy. Needs about 5 GB of free memory.",

@@ -40,7 +40,7 @@
     "operatingSystem": "macOS",
     "applicationCategory": "UtilitiesApplication",
     "applicationSubCategory": "Speech-to-Text / Dictation",
-    "description": "Free, open-source voice input app for macOS. Speech recognition (Qwen3-ASR, MOSS-Transcribe-Diarize, NVIDIA Parakeet-TDT, SenseVoice) runs entirely on your Mac, on Apple Silicon through MLX or on any Mac through ONNX. Studio adds file transcription with speaker labels, text to speech with nine built-in voices, and voice cloning from a short recording.",
+    "description": "Free, open-source voice input app for macOS. Speech recognition (Qwen3-ASR, MOSS-Transcribe-Diarize, NVIDIA Parakeet-TDT, SenseVoice) runs entirely on your Mac, on Apple Silicon through MLX and ONNX.",
     "url": "https://realallensong.github.io/ThunderTalk/",
     "downloadUrl": "https://github.com/realAllenSong/ThunderTalk/releases/latest",
     "license": "https://opensource.org/licenses/MIT",
@@ -79,12 +79,12 @@
       {
         "@type": "Question",
         "name": "Which Macs are supported?",
-        "acceptedAnswer": { "@type": "Answer", "text": "macOS 12 or later. Apple Silicon Macs use the GPU through MLX and are the recommended setup. Intel Macs can run the CPU models: SenseVoice, Qwen3-ASR 0.6B (ONNX) and Parakeet-TDT." }
+        "acceptedAnswer": { "@type": "Answer", "text": "An Apple Silicon Mac (M1 or newer) with macOS 15 or later. Intel Macs are not supported by the release build." }
       },
       {
         "@type": "Question",
         "name": "How is it different from Typeless, Wispr Flow or superwhisper?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free, open source and fully local, so you can read the code and your voice stays on your machine." }
+        "acceptedAnswer": { "@type": "Answer", "text": "They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free, open source and always local. See the <a href="#compare">comparison</a> for sources." }
       }
     ]
   }
@@ -505,6 +505,16 @@
     .dg-c { font: 400 11.5px var(--mono); fill: #55534E; }
 
     /* models */
+    .cmp-wrap { margin-top: clamp(28px, 4vw, 48px); overflow-x: auto; -webkit-overflow-scrolling: touch; }
+    .cmp { width: 100%; min-width: 720px; border-collapse: collapse; font-size: 14px; table-layout: fixed; }
+    .cmp th, .cmp td { text-align: left; vertical-align: top; padding: 14px 16px 14px 0; border-top: 1px solid var(--line-1); color: var(--t2); line-height: 1.5; }
+    .cmp thead th { border-top: 0; border-bottom: 1px solid var(--line-3); padding-bottom: 12px; font: 700 12px/1.3 var(--mono); letter-spacing: 0.06em; text-transform: uppercase; color: var(--t3); }
+    .cmp thead th a { color: var(--t1); text-decoration: none; border-bottom: 1px solid var(--line-3); }
+    .cmp tbody th { width: 17%; font-weight: 700; color: var(--t1); }
+    .cmp .me { color: var(--t1); font-weight: 600; }
+    .cmp thead .me { color: var(--accent); }
+    .cmp td a { color: inherit; }
+    .cmp-note { margin-top: 18px; max-width: 760px; color: var(--t3); font-size: 13.5px; line-height: 1.6; }
     .mt { margin-top: clamp(28px, 4vw, 48px); }
     .mt-head, .mt-row { display: grid; grid-template-columns: minmax(0, 2.8fr) minmax(0, 1.2fr) minmax(0, 0.9fr) minmax(0, 1.35fr) minmax(0, 2.5fr); gap: 18px; align-items: baseline; }
     .mt-head { padding: 0 0 12px; font: 700 10px/1 var(--mono); letter-spacing: 0.1em; text-transform: uppercase; color: var(--t3); border-bottom: 1px solid var(--line-3); }
@@ -681,7 +691,7 @@
             </a>
             <a class="btn btn-line btn-lg" href="https://github.com/realAllenSong/ThunderTalk" rel="noopener" data-i18n="hero.cta2">View the source</a>
           </div>
-          <p class="fine" data-i18n="hero.fine">Free and MIT licensed. macOS 12 or later, Apple Silicon and Intel.</p>
+          <p class="fine" data-i18n="hero.fine">Free and MIT licensed. Apple Silicon Mac, macOS 15 or later.</p>
         </div>
       </div>
 
@@ -1009,7 +1019,7 @@
         <div class="mt-row"><span class="c-name">Qwen3-ASR 1.7B</span><span class="c-run">GPU · MLX</span><span class="c-size">~4.7 GB</span><span class="c-lang" data-i18n="md.l52c">52 languages</span><span class="c-note" data-i18n="md.n4">Harder accents and noisy audio. Wants 16 GB of RAM.</span></div>
         <div class="mt-row"><span class="c-name">MOSS-Transcribe-Diarize 0.9B <span class="tag blue">Studio</span></span><span class="c-run">GPU · MLX</span><span class="c-size">~1.8 GB</span><span class="c-lang" data-i18n="md.l50">50+ languages</span><span class="c-note" data-i18n="md.n5">Speaker labels and timestamps. Powers the multi-speaker mode.</span></div>
         <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v3</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.l25">25 European languages</span><span class="c-note" data-i18n="md.n6">Punctuation and casing built in.</span></div>
-        <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v2</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.len">English</span><span class="c-note" data-i18n="md.n7">Fast English dictation on any Mac (about 50× real time on an M3 Max).</span></div>
+        <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v2</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.len">English</span><span class="c-note" data-i18n="md.n7">Fast English dictation on the CPU (about 50× real time on an M3 Max).</span></div>
 
         <div class="mt-group" data-i18n="md.g2">Studio</div>
         <div class="mt-row"><span class="c-name">Qwen3-TTS 1.7B CustomVoice <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size" data-i18n="md.first">3.1 GB, once</span><span class="c-lang" data-i18n="md.ltts">Chinese, English, Japanese, Korean and more</span><span class="c-note" data-i18n="md.n8">The nine built-in voices.</span></div>
@@ -1021,8 +1031,28 @@
     </section>
 
     <!-- ═════════════ 05 FAQ ═════════════ -->
+    <section class="sec wrap" id="compare" aria-labelledby="cp-h">
+      <div class="sec-head rv"><p class="kicker"><b>05</b><span data-i18n="cp.kicker">Compare</span></p></div>
+      <div class="sec-title">
+        <h2 id="cp-h" class="rv" data-i18n="cp.h2">How it compares.</h2>
+        <p class="sec-p rv" data-i18n="cp.p">Taken from each product's own website on 29 September 2026. Prices change, so follow the links.</p>
+      </div>
+      <div class="cmp-wrap rv">
+        <table class="cmp">
+          <thead><tr><th></th><th class="me">ThunderTalk</th><th><a href="https://wisprflow.ai/pricing" rel="noopener">Wispr Flow</a></th><th><a href="https://superwhisper.com" rel="noopener">Superwhisper</a></th><th><a href="https://github.com/beingpax/VoiceInk" rel="noopener">VoiceInk</a></th></tr></thead>
+          <tbody>
+            <tr><th data-i18n="cp.r1">Price</th><td class="me" data-i18n="cp.tt1">Free</td><td data-i18n="cp.w1">Free up to 2,000 words a week; Pro $15 a month ($12 billed yearly)</td><td data-i18n="cp.s1">Free plan; Pro subscription or lifetime licence</td><td data-i18n="cp.v1">Free trial; paid licence</td></tr>
+            <tr><th data-i18n="cp.r2">Open source</th><td class="me" data-i18n="cp.tt2">Yes, MIT</td><td data-i18n="cp.no">No</td><td data-i18n="cp.no2">No</td><td data-i18n="cp.v2">Yes, GPL-3.0</td></tr>
+            <tr><th data-i18n="cp.r3">Where speech is processed</th><td class="me" data-i18n="cp.tt3">On your Mac</td><td data-i18n="cp.w3">In the cloud (<a href="https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq" rel="noopener">their security FAQ</a>)</td><td data-i18n="cp.s3">On your device or in the cloud, your choice</td><td data-i18n="cp.v3">On your Mac</td></tr>
+            <tr><th data-i18n="cp.r4">Platforms</th><td class="me" data-i18n="cp.tt4">macOS 15 or later (Apple Silicon)</td><td data-i18n="cp.w4">Mac, Windows, iOS, Android</td><td data-i18n="cp.s4">Mac, Windows, iOS, Android</td><td data-i18n="cp.v4">macOS 15 or later</td></tr>
+          </tbody>
+        </table>
+      </div>
+      <p class="cmp-note rv" data-i18n="cp.note">ThunderTalk also transcribes meetings with speaker labels, reads text aloud in nine voices and clones your own voice, all on your Mac. We have not checked whether the others offer these, so they are not in the table. Where ThunderTalk falls short: it needs an Apple Silicon Mac with macOS 15, and it is not yet notarised by Apple.</p>
+    </section>
+
     <section class="sec wrap" id="faq" aria-labelledby="fq-h">
-      <div class="sec-head rv"><p class="kicker"><b>05</b><span data-i18n="faq.kicker">Questions</span></p></div>
+      <div class="sec-head rv"><p class="kicker"><b>06</b><span data-i18n="faq.kicker">Questions</span></p></div>
       <div class="sec-title">
         <h2 id="fq-h" class="rv" data-i18n="faq.h2">Plain answers.</h2>
         <p class="sec-p rv" data-i18n="faq.p">Something not covered here? Open an issue on GitHub and it will get an answer.</p>
@@ -1035,9 +1065,9 @@
         <details><summary><span data-i18n="faq.5q">Do I need ffmpeg for Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.5a">No. Studio decodes audio and video with the tools that come with macOS, so there is nothing else to install.</p></div></details>
         <details><summary><span data-i18n="faq.6q">Where does a cloned voice go?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.6a">Nowhere. The short reference recording and its transcript are stored in <code>~/.thundertalk/voices</code> on your Mac, and nothing is uploaded. Delete a voice in the app, or delete the folder, to remove it. Please only clone voices you have the right to use.</p></div></details>
         <details><summary><span data-i18n="faq.7q">Does it handle Chinese and mixed Chinese-English?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.7a">Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the app itself is available in English and Chinese.</p></div></details>
-        <details><summary><span data-i18n="faq.8q">Which Macs are supported?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.8a">macOS 12 or later. Apple Silicon Macs use the GPU through MLX and are the recommended setup. Intel Macs can run the CPU models: SenseVoice, Qwen3-ASR 0.6B (ONNX) and Parakeet-TDT. The multi-speaker model and Speak use MLX, so they need Apple Silicon.</p></div></details>
+        <details><summary><span data-i18n="faq.8q">Which Macs are supported?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.8a">An Apple Silicon Mac (M1 or newer) with macOS 15 or later. The download is built for Apple Silicon only, and the bundled speech libraries need macOS 15. Intel Macs are not supported by the release build.</p></div></details>
         <details><summary><span data-i18n="faq.9q">Why does macOS warn me the first time I open it?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.9a">ThunderTalk is not notarised by Apple, which would cost $99 a year, so Gatekeeper shows a warning after a browser download. Open System Settings, go to Privacy &amp; Security and click Open Anyway. Updates that arrive through the in-app updater skip this step, although macOS may ask you to grant Accessibility and Microphone access again.</p></div></details>
-        <details><summary><span data-i18n="faq.10q">How is it different from Typeless, Wispr Flow or superwhisper?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.10a">Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free, open source and fully local, so you can read the code and your voice stays on your machine.</p></div></details>
+        <details><summary><span data-i18n="faq.10q">How is it different from Typeless, Wispr Flow or superwhisper?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.10a">They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free, open source and always local. See the <a href="#compare">comparison</a> for sources.</p></div></details>
       </div>
     </section>
   </main>
@@ -1048,7 +1078,7 @@
       <div class="close-row">
         <div>
           <h2 class="rv" data-i18n="cta.h">Try it. It costs nothing and sends nothing.</h2>
-          <p class="fine rv" data-i18n="cta.fine">macOS 12 or later, Apple Silicon and Intel. MIT licence. Downloads come from GitHub Releases.</p>
+          <p class="fine rv" data-i18n="cta.fine">Apple Silicon, macOS 15 or later. MIT licence. Downloads come from GitHub Releases, or <code>brew install --cask realallensong/tap/thundertalk</code>.</p>
         </div>
         <div class="close-btns rv">
           <a class="btn btn-paper btn-lg" href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener">
@@ -1089,7 +1119,7 @@
       "hero.h1a": "开口说，它来打字。", "hero.h1b": "声音不会离开你的 Mac。",
       "hero.lede": "ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就出现在光标处。识别全部在你自己的电脑上完成：无需账号，无需订阅，没有云端。",
       "hero.cta1": "下载 macOS 版", "hero.cta2": "查看源码",
-      "hero.fine": "免费，MIT 协议。需要 macOS 12 或更高版本，支持 Apple Silicon 与 Intel。",
+      "hero.fine": "免费，MIT 协议。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
       "hero.newtag": "1.5 新增", "hero.newtxt": "工作室（Studio）：转写录音、朗读文字、克隆你的声音",
       "scene.cap": "主页界面的交互式复刻，数据为示例。点击按键即可试一次听写。",
       "app.home": "主页", "app.models": "模型", "app.hotwords": "热词", "app.settings": "设置", "app.studio": "工作室", "app.about": "关于",
@@ -1146,8 +1176,14 @@
       "md.ltts": "中文、英文、日语、韩语等", "md.ltts2": "中文、英文、日语、韩语等", "md.first": "3.1 GB，一次性", "md.first2": "3.1 GB，一次性", "md.def": "默认",
       "md.n1": "最小、启动最快。不支持热词。", "md.n2": "所有 Mac 都能跑，支持热词。", "md.n3": "Apple Silicon 上的默认选择，支持热词。",
       "md.n4": "更难的口音和嘈杂音频，建议 16 GB 内存。", "md.n5": "说话人标签和时间戳，驱动多说话人模式。",
-      "md.n6": "自带标点和大小写。", "md.n7": "任意 Mac 上的快速英语听写（M3 Max 上约为实时的 50 倍）。",
+      "md.n6": "自带标点和大小写。", "md.n7": "只用 CPU 的快速英语听写（M3 Max 上约为实时的 50 倍）。",
       "md.n8": "九种内置音色。", "md.n8b": "用你克隆的声音朗读。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
+      "cp.kicker": "对比", "cp.h2": "和同类产品比一比。", "cp.p": "内容取自各产品官网，核对日期 2026 年 9 月 29 日。价格会变，请以链接为准。",
+      "cp.r1": "价格", "cp.tt1": "免费", "cp.w1": "每周 2,000 词以内免费；Pro 每月 15 美元（按年付每月 12 美元）", "cp.s1": "有免费版；Pro 可订阅或买断", "cp.v1": "免费试用；付费授权",
+      "cp.r2": "开源", "cp.tt2": "是，MIT", "cp.no": "否", "cp.no2": "否", "cp.v2": "是，GPL-3.0",
+      "cp.r3": "语音在哪里处理", "cp.tt3": "你的 Mac 上", "cp.w3": "云端（<a href=\"https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq\" rel=\"noopener\">见其安全 FAQ</a>）", "cp.s3": "本机或云端，可自选", "cp.v3": "你的 Mac 上",
+      "cp.r4": "平台", "cp.tt4": "macOS 15 及以上（Apple Silicon）", "cp.w4": "Mac、Windows、iOS、Android", "cp.s4": "Mac、Windows、iOS、Android", "cp.v4": "macOS 15 及以上",
+      "cp.note": "ThunderTalk 还能转写会议并区分说话人、用九种音色朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 的不足：需要 Apple Silicon 且 macOS 15 的 Mac，也还没有经过 Apple 公证。",
       "faq.kicker": "常见问题", "faq.h2": "直接回答。", "faq.p": "这里没讲到的问题？在 GitHub 上提一个 issue，就会有回复。",
       "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "不收费。ThunderTalk 以 MIT 协议开源，可以免费使用。无需账号，无订阅，无使用次数限制，源码就在 GitHub 上。",
       "faq.2q": "能离线使用吗？", "faq.2a": "可以。模型下载完成后，语音识别、翻译、工作室转写和语音合成都在你的 Mac 上运行，无需联网。网络只用于下载模型和向 GitHub 检查更新。",
@@ -1156,10 +1192,10 @@
       "faq.5q": "使用工作室需要安装 ffmpeg 吗？", "faq.5a": "不需要。工作室用 macOS 自带的工具解码音频和视频，无需再安装别的东西。",
       "faq.6q": "克隆出的声音会存到哪里？", "faq.6a": "哪里也不去。那段简短的参考录音和它的文字保存在你 Mac 上的 <code>~/.thundertalk/voices</code>，不会上传。在应用里删除声音，或直接删掉该文件夹即可移除。请只克隆你有权使用的声音。",
       "faq.7q": "支持中文和中英混说吗？", "faq.7a": "支持。Qwen3-ASR 支持 52 种语言，包括同一句话里中英混说，应用界面也有中文和英文两种语言。",
-      "faq.8q": "支持哪些 Mac？", "faq.8a": "macOS 12 或更高版本。Apple Silicon 通过 MLX 使用 GPU，是推荐配置。Intel Mac 可以运行 CPU 模型：SenseVoice、Qwen3-ASR 0.6B（ONNX）和 Parakeet-TDT。多说话人模型和朗读使用 MLX，需要 Apple Silicon。",
+      "faq.8q": "支持哪些 Mac？", "faq.8a": "需要 Apple Silicon（M1 或更新）的 Mac，以及 macOS 15 或更高版本。下载版只为 Apple Silicon 构建，内置的语音库也需要 macOS 15。发布版不支持 Intel Mac。",
       "faq.9q": "为什么第一次打开时 macOS 会有警告？", "faq.9a": "ThunderTalk 没有经过 Apple 公证（公证每年要 99 美元），所以浏览器下载后 Gatekeeper 会弹出警告。打开“系统设置”，进入“隐私与安全性”，点“仍要打开”即可。通过应用内更新升级则不会有这一步，不过 macOS 可能要你重新授予“辅助功能”和“麦克风”权限。",
-      "faq.10q": "和 Typeless、Wispr Flow、superwhisper 有什么区别？", "faq.10a": "它们是付费闭源应用，通常在云端处理音频。ThunderTalk 免费、开源、完全本地，你可以阅读代码，语音数据也不会离开你的电脑。",
-      "cta.h": "试一试。不花一分钱，也不上传任何东西。", "cta.fine": "macOS 12 或更高版本，支持 Apple Silicon 与 Intel。MIT 协议。从 GitHub Releases 下载。",
+      "faq.10q": "和 Typeless、Wispr Flow、superwhisper 有什么区别？", "faq.10a": "它们是闭源产品，有付费方案；Wispr Flow 在云端处理语音，Superwhisper 可选本地或云端模型。ThunderTalk 免费、开源，并且始终在本地运行。出处见<a href=\"#compare\">对比</a>。",
+      "cta.h": "试一试。不花一分钱，也不上传任何东西。", "cta.fine": "Apple Silicon，macOS 15 或更高版本。MIT 协议。从 GitHub Releases 下载，或运行 <code>brew install --cask realallensong/tap/thundertalk</code>。",
       "cta.btn": "下载 macOS 版", "cta.btn2": "阅读源码",
       "foot.rel": "版本发布", "foot.issues": "反馈问题", "foot.lic": "MIT 协议"
     };

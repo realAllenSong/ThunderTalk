@@ -21,9 +21,14 @@
   <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="Downloads" /></a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" width="760" alt="ThunderTalk: dictating a mixed Chinese-English sentence into an email, transcribing a three-person meeting with speaker labels, and reading text aloud" />
+  <br/><sub>The recording bar and Studio screens are the app's own interface (the email window is a stand-in). The dictated sentence, the meeting transcript and the speech are real model output on an M3 Max; only the pacing is scripted.</sub>
+</p>
+
 ---
 
-ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on Apple Silicon through MLX or on any Mac through ONNX, so your audio is never sent anywhere. It is MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
+ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere. It is MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
@@ -71,7 +76,13 @@ The speech engines are one-time downloads. After that, everything in Studio work
 
 ## Download
 
-Download the latest **ThunderTalk.app** from [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), move it to your Applications folder and open it. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
+With Homebrew:
+
+```sh
+brew install --cask realallensong/tap/thundertalk
+```
+
+Or download the latest **ThunderTalk.app** from [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), move it to your Applications folder and open it. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
 
 ThunderTalk is signed ad hoc rather than notarised (an Apple Developer ID costs $99 a year), so macOS shows a warning the first time you open a browser download. See [First launch: "ThunderTalk can't be opened"](#first-launch-thundertalk-cant-be-opened) below; it takes about ten seconds.
 
@@ -99,7 +110,7 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 
 > **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), first place in the 2nd MLC-SLM Challenge at INTERSPEECH 2026) is a multi-speaker model. In dictation it pastes clean text (there is an optional S01:/S02: speaker-label toggle on its model card), and it powers Studio's Multiple speakers mode, with speaker labels and timestamps for recordings up to about 90 minutes in a single pass.
 >
-> **Parakeet-TDT** (NVIDIA) runs on any Mac through the CPU, with punctuation and casing built in. On an M3 Max it transcribes about 50 times faster than real time (RTF 0.019), roughly 4 times faster than Qwen3-ASR ONNX.
+> **Parakeet-TDT** (NVIDIA) runs on the CPU, with punctuation and casing built in. On an M3 Max it transcribes about 50 times faster than real time (RTF 0.019), roughly 4 times faster than Qwen3-ASR ONNX.
 
 ### Text to speech (Studio)
 
@@ -120,28 +131,27 @@ The translation engine (PyTorch and Transformers) is bundled in `ThunderTalk.app
 
 ## System requirements
 
-macOS 12 (Monterey) or later.
+An **Apple Silicon Mac (M1 or newer) with macOS 15 (Sequoia) or later.** The release build is arm64-only, and the speech libraries it bundles need macOS 15 (MLX), 14 (ONNX Runtime) and 13 (Qt). Intel Macs are not supported by the release build.
 
-### Apple Silicon (recommended)
+### Suggested models by memory
 
-| Mac | RAM | Best ASR model | Translation |
-|-----|-----|----------------|-------------|
-| M1 / M2 | 8 GB | Qwen3-ASR-0.6B (MLX fp16) | No, not enough RAM for SeamlessM4T |
-| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B or 1.7B (MLX) | Works, but tight; close other heavy apps |
-| M1 Max / M2 Max / M3 Max | 24 GB or more | Qwen3-ASR-1.7B (MLX) | Comfortable |
-| M3 / M4 Ultra | 32 GB or more | Anything | Plenty of headroom |
+| Mac | RAM | Suggested ASR model | Translation |
+|-----|-----|---------------------|-------------|
+| M1 / M2 | 8 GB | SenseVoice-Small or Qwen3-ASR-0.6B | Not enough RAM for SeamlessM4T |
+| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B or 1.7B | Works, but close other heavy apps |
+| Max / Ultra chips | 24 GB or more | Anything | Comfortable |
 
-MLX means the Metal GPU. On an M3 Max, Qwen3-ASR-0.6B (MLX) recognises speech about 11 times faster than real time (RTF about 0.09); smaller chips are slower.
+Measured on an M3 Max so far (same recordings for every model):
 
-### Intel Mac or older hardware
+| Model | English WER | Chinese CER | Speed |
+|-------|------------:|------------:|------:|
+| Qwen3-ASR-0.6B (MLX, GPU) | 4.7 % | 5.0 % | ~11x real time |
+| Qwen3-ASR-0.6B (ONNX int8, CPU) | 5.5 % | 4.5 % | ~12x |
+| Parakeet-TDT 0.6B v2 (CPU) | 3.0 % | English only | ~50x |
+| Parakeet-TDT 0.6B v3 (CPU) | 4.5 % | no Chinese | ~50x |
+| MOSS-Transcribe-Diarize (MLX, Studio) | 3.6 % | 3.5 % | 15-21x |
 
-CPU-only ONNX models are the way to go:
-
-- **SenseVoice-Small** (241 MB) works on any Mac from the last five years. It is fast but covers only 5 languages and has no hotwords.
-- **Qwen3-ASR-0.6B (ONNX int8)** runs on any Mac; on an M3 Max CPU it runs about 12 times faster than real time (RTF about 0.08), slower on Intel.
-- **Parakeet-TDT** is the fastest CPU option (English on v2, 25 European languages on v3).
-- **Translation is unrealistic on Intel.** SeamlessM4T needs the Apple Silicon GPU (MPS) to run at a usable speed.
-- **Studio's multi-speaker mode and Speak use MLX**, so they need Apple Silicon. Fast single-speaker transcription uses your dictation model and works anywhere.
+Smaller chips will be slower. If you have another Mac, the numbers from `ThunderTalk --selftest` help everyone: see [#6](https://github.com/realAllenSong/ThunderTalk/issues/6).
 
 ### Disk space
 
@@ -156,11 +166,11 @@ The **Models** page shows your detected hardware and tags each model **Recommend
 | Goal | Pick |
 |------|------|
 | Fastest start, fewest languages | **SenseVoice-Small** (5 languages, no hotwords) |
-| Most accurate, any Mac | **Qwen3-ASR-0.6B (ONNX int8)** |
+| Most accurate on the CPU | **Qwen3-ASR-0.6B (ONNX int8)** |
 | Most accurate, Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)**, the default |
 | Hard accents or noisy audio | **Qwen3-ASR-1.7B (MLX fp16)**, needs 16 GB of RAM or more |
 | Meetings and interviews with speaker labels | **MOSS-Transcribe-Diarize 0.9B (MLX)**, Apple Silicon only |
-| Fastest English dictation, any Mac | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
+| Fastest English dictation | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
 | European languages on the CPU | **Parakeet-TDT 0.6B v3 (ONNX int8)** |
 | Speak in one language, paste another | **Direct mode**, which uses SeamlessM4T directly |
 | Speak in your language and see a translation beside it | **Review mode**: ASR transcribes, then translates, and you choose Replace or Keep original |
@@ -234,7 +244,7 @@ This is a constraint of shipping an un-notarised app. Signing and notarising eac
 
 ### What is the minimum machine?
 
-Anything that runs macOS 12 or later with at least 4 GB of free RAM and 250 MB of free disk will run **SenseVoice-Small**. Translation is unrealistic below 16 GB of RAM, whatever the CPU or GPU.
+Any Apple Silicon Mac with macOS 15 should run **SenseVoice-Small** (163 MB), the lightest model. Only an M3 Max has been measured so far; reports from 8 GB machines are welcome in [#6](https://github.com/realAllenSong/ThunderTalk/issues/6). Translation is unrealistic below 16 GB of RAM.
 
 ## Build from source
 
@@ -280,7 +290,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Does it support Chinese and mixed Chinese-English dictation?** Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the interface is available in English and 中文.
 
-**Does it work on Intel Macs?** Yes, through the CPU (ONNX) models: SenseVoice-Small, Qwen3-ASR-0.6B int8 and Parakeet-TDT. Apple Silicon adds GPU acceleration through MLX, and is required for Studio's multi-speaker mode and Speak.
+**Does it work on Intel Macs?** Not the release build: it is built for Apple Silicon only. Running from source on Intel with the CPU (ONNX) models has not been tested.
 
 **Which apps does dictation work in?** Any app with a text cursor: browsers, editors, Slack, mail, terminals. ThunderTalk pastes where the cursor is.
 

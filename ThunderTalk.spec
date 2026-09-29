@@ -105,5 +105,8 @@ app = BUNDLE(
         'NSAppleEventsUsageDescription': 'ThunderTalk needs accessibility access to paste transcribed text.',
         'CFBundleShortVersionString': _APP_VERSION,
         'CFBundleVersion': _APP_VERSION,
+        # Bundled libraries set the real floor: Qt needs macOS 13, onnxruntime 14,
+        # MLX 15. Declaring it lets older systems say so instead of crashing.
+        'LSMinimumSystemVersion': '15.0',
     },
 )

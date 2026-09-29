@@ -4,11 +4,11 @@
 
 ## Key facts
 
-- Platform: macOS 12 or later (Apple Silicon recommended; Intel supported through CPU inference)
+- Platform: Apple Silicon Mac, macOS 15 or later (release build is arm64-only)
 - Price: free, open source, MIT license
 - Privacy: all processing is on-device and audio is never uploaded. The only network use is downloading models and checking GitHub Releases for updates.
 - Speech models: Qwen3-ASR (0.6B / 1.7B, 52 languages, hotword support), MOSS-Transcribe-Diarize 0.9B (multi-speaker, speaker labels and timestamps), NVIDIA Parakeet-TDT 0.6B v2/v3 (CPU, English and 25 European languages), SenseVoice-Small (5 languages)
-- Inference backends: MLX (Metal GPU on Apple Silicon) and ONNX (CPU, any Mac)
+- Inference backends: MLX (Metal GPU on Apple Silicon) and ONNX (CPU)
 - Dictation: one global hotkey (default Right Command; Toggle or Hold press mode), hotwords, inverse text normalisation (spoken numbers become digits, English and Chinese), searchable local history, mixed Chinese-English dictation, English and Chinese interface
 - Translation: optional speech and text translation across 100+ languages with SeamlessM4T v2 (Direct and Review modes)
 - Studio (new in 1.5, replaces the old Lab page):

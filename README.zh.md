@@ -21,9 +21,14 @@
   <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="下载量" /></a>
 </p>
 
+<p align="center">
+  <img src="assets/demo.gif" width="760" alt="ThunderTalk：把一句中英混说的话听写进邮件、转写三人对话并区分说话人、朗读一段文字" />
+  <br/><sub>录音条和工作室画面取自 App 自身界面（邮件窗口是示意）。听写的句子、会议转写和朗读语音都是模型在 M3 Max 上的真实输出，只有镜头节奏是脚本控制的。</sub>
+</p>
+
 ---
 
-ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：Apple Silicon 上通过 MLX 加速，任意 Mac 上都可以用 ONNX，所以你的录音不会发往任何地方。它以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
+ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方。它以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
@@ -71,7 +76,13 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 ## 下载
 
-从 [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest) 下载最新的 **ThunderTalk.app**，移到“应用程序”文件夹后打开。首次启动时按提示授予“麦克风”和“辅助功能”权限（“辅助功能”让 ThunderTalk 能替你把文字输入到光标处）。
+用 Homebrew：
+
+```sh
+brew install --cask realallensong/tap/thundertalk
+```
+
+或者从 [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest) 下载最新的 **ThunderTalk.app**，移到“应用程序”文件夹后打开。首次启动时按提示授予“麦克风”和“辅助功能”权限（“辅助功能”让 ThunderTalk 能替你把文字输入到光标处）。
 
 ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 99 美元），所以从浏览器下载后首次打开时 macOS 会给出警告。请看下文 [首次打开提示“无法打开 / 无法验证开发者”](#首次打开提示无法打开--无法验证开发者)，大约十秒就能搞定。
 
@@ -99,7 +110,7 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 
 > **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 第二届 MLC-SLM 挑战赛第一名）是多说话人模型。听写时它粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），同时它也驱动工作室的“多人对话”模式，单次即可转写最长约 90 分钟的录音，并附说话人标签和时间戳。
 >
-> **Parakeet-TDT**（NVIDIA）在任意 Mac 上以 CPU 运行，自带标点和大小写。在 M3 Max 上识别速度约为实时的 50 倍（RTF 0.019），约为 Qwen3-ASR ONNX 的 4 倍。
+> **Parakeet-TDT**（NVIDIA）以 CPU 运行，自带标点和大小写。在 M3 Max 上识别速度约为实时的 50 倍（RTF 0.019），约为 Qwen3-ASR ONNX 的 4 倍。
 
 ### 文字转语音（工作室）
 
@@ -120,28 +131,27 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 
 ## 系统要求
 
-macOS 12 (Monterey) 或更高版本。
+**需要 Apple Silicon（M1 或更新）的 Mac，以及 macOS 15（Sequoia）或更高版本。** 发布版只为 arm64 构建，内置的语音库分别需要 macOS 15（MLX）、14（ONNX Runtime）和 13（Qt）。发布版不支持 Intel Mac。
 
-### Apple Silicon（推荐）
+### 按内存建议的模型
 
-| 设备 | 内存 | 推荐 ASR 模型 | 翻译 |
-|------|------|---------------|------|
-| M1 / M2 | 8 GB | Qwen3-ASR-0.6B (MLX fp16) | 不行，内存不够跑 SeamlessM4T |
-| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B 或 1.7B (MLX) | 能跑但偏紧，建议关闭其他大型应用 |
-| M1 Max / M2 Max / M3 Max | 24 GB 及以上 | Qwen3-ASR-1.7B (MLX) | 宽裕 |
-| M3 / M4 Ultra | 32 GB 及以上 | 任意 | 余量充足 |
+| Mac | 内存 | 建议的识别模型 | 翻译 |
+|-----|------|----------------|------|
+| M1 / M2 | 8 GB | SenseVoice-Small 或 Qwen3-ASR-0.6B | 内存不够跑 SeamlessM4T |
+| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B 或 1.7B | 可以，但请关掉其他重型应用 |
+| Max / Ultra 芯片 | 24 GB 及以上 | 都可以 | 宽裕 |
 
-MLX 即 Metal GPU 加速。在 M3 Max 上，Qwen3-ASR-0.6B（MLX）的识别速度约为实时的 11 倍（RTF 约 0.09），芯片越小越慢。
+目前只在 M3 Max 上实测过（所有模型用同一批录音）：
 
-### Intel Mac / 老硬件
+| 模型 | 英文词错率 | 中文字错率 | 速度 |
+|------|----------:|----------:|-----:|
+| Qwen3-ASR-0.6B（MLX，GPU） | 4.7% | 5.0% | 约实时的 11 倍 |
+| Qwen3-ASR-0.6B（ONNX int8，CPU） | 5.5% | 4.5% | 约 12 倍 |
+| Parakeet-TDT 0.6B v2（CPU） | 3.0% | 仅英文 | 约 50 倍 |
+| Parakeet-TDT 0.6B v3（CPU） | 4.5% | 不支持中文 | 约 50 倍 |
+| MOSS-Transcribe-Diarize（MLX，工作室） | 3.6% | 3.5% | 15–21 倍 |
 
-只能走纯 CPU 的 ONNX 后端：
-
-- **SenseVoice-Small**（241 MB）：近 5 年的 Mac 都能跑，速度快，但只支持 5 种语言、不支持热词。
-- **Qwen3-ASR-0.6B (ONNX int8)**：任意 Mac 都能跑，M3 Max 的 CPU 上约为实时的 12 倍（RTF 约 0.08），Intel Mac 会慢一些。
-- **Parakeet-TDT**：最快的 CPU 选择（v2 为英语，v3 为 25 种欧洲语言）。
-- **翻译在 Intel Mac 上不实用。** SeamlessM4T 需要 Apple Silicon 的 GPU（MPS）才能跑出可用速度。
-- **工作室的“多人对话”和“朗读”使用 MLX**，因此需要 Apple Silicon。单人快速转写使用你的听写模型，在任何 Mac 上都能用。
+芯片越小越慢。如果你有别的 Mac，`ThunderTalk --selftest` 的结果对大家都很有用，见 [#6](https://github.com/realAllenSong/ThunderTalk/issues/6)。
 
 ### 磁盘空间
 
@@ -156,11 +166,11 @@ MLX 即 Metal GPU 加速。在 M3 Max 上，Qwen3-ASR-0.6B（MLX）的识别速�
 | 目标 | 选择 |
 |------|------|
 | 启动最快、语言最少 | **SenseVoice-Small**（5 种语言，无热词） |
-| 准确率最高、任意 Mac | **Qwen3-ASR-0.6B (ONNX int8)** |
+| CPU 上准确率最高 | **Qwen3-ASR-0.6B (ONNX int8)** |
 | 准确率最高、Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)**（默认） |
 | 重口音或嘈杂音频 | **Qwen3-ASR-1.7B (MLX fp16)**，需要 16 GB 及以上内存 |
 | 带说话人标签的会议 / 访谈 | **MOSS-Transcribe-Diarize 0.9B (MLX)**，仅 Apple Silicon |
-| 最快的英语听写、任意 Mac | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
+| 最快的英语听写 | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
 | CPU 上的欧洲语言 | **Parakeet-TDT 0.6B v3 (ONNX int8)** |
 | 说一种语言，粘贴另一种 | **直译模式**，直接使用 SeamlessM4T |
 | 用母语说话，同时看到译文 | **审阅模式**：ASR 转写后再翻译，由你选择替换或保留原文 |
@@ -234,7 +244,7 @@ ad-hoc 签名让每次构建的代码目录哈希都不同，而 macOS 把隐私
 
 ### 最低能跑什么配置？
 
-只要能运行 macOS 12 及以上、有至少 4 GB 空闲内存和 250 MB 磁盘空间的 Mac，就能跑 **SenseVoice-Small**。内存低于 16 GB 时，无论 CPU / GPU 如何，翻译都不现实。
+任何装了 macOS 15 的 Apple Silicon Mac 应该都能跑最轻的 **SenseVoice-Small**（163 MB）。目前只在 M3 Max 上实测过，欢迎在 [#6](https://github.com/realAllenSong/ThunderTalk/issues/6) 分享 8 GB 机器的结果。内存低于 16 GB 时翻译不现实。
 
 ## 从源码构建
 
@@ -280,7 +290,7 @@ uv run python run.py
 
 **支持中文和中英混说吗？** 支持。Qwen3-ASR 支持 52 种语言，包括同一句话里中英混说，界面也有中文和英文两种语言。
 
-**Intel Mac 能用吗？** 能，使用 CPU（ONNX）模型：SenseVoice-Small、Qwen3-ASR-0.6B int8 和 Parakeet-TDT。Apple Silicon 通过 MLX 获得 GPU 加速，工作室的“多人对话”和“朗读”也需要 Apple Silicon。
+**Intel Mac 能用吗？** 发布版不行：它只为 Apple Silicon 构建。在 Intel 上从源码运行 CPU（ONNX）模型没有测试过。
 
 **可以在哪些应用里听写？** 任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。光标在哪里，文字就粘贴到哪里。
 
