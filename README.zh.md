@@ -97,9 +97,9 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25（欧洲语言） | ★★★★★ | 否 |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | 英语 | ★★★★★ | 否 |
 
-> **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 MLC-SLM Challenge 冠军）是多说话人模型。听写时它粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），同时它也驱动工作室的“多人对话”模式，单次即可转写最长约 90 分钟的录音，并附说话人标签和时间戳。
+> **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 第二届 MLC-SLM 挑战赛第一名）是多说话人模型。听写时它粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），同时它也驱动工作室的“多人对话”模式，单次即可转写最长约 90 分钟的录音，并附说话人标签和时间戳。
 >
-> **Parakeet-TDT**（NVIDIA）在任意 Mac 上以 CPU 运行，RTF 约 0.035，比 Qwen3-ASR ONNX 快约 8 倍，自带标点和大小写。
+> **Parakeet-TDT**（NVIDIA）在任意 Mac 上以 CPU 运行，自带标点和大小写。在 M3 Max 上识别速度约为实时的 50 倍（RTF 0.019），约为 Qwen3-ASR ONNX 的 4 倍。
 
 ### 文字转语音（工作室）
 
@@ -131,14 +131,14 @@ macOS 12 (Monterey) 或更高版本。
 | M1 Max / M2 Max / M3 Max | 24 GB 及以上 | Qwen3-ASR-1.7B (MLX) | 宽裕 |
 | M3 / M4 Ultra | 32 GB 及以上 | 任意 | 余量充足 |
 
-MLX 即 Metal GPU 加速。在 M 系列芯片上 RTF（实时倍率）通常在 0.05–0.1 之间，也就是识别速度比说话本身快 10–20 倍。
+MLX 即 Metal GPU 加速。在 M3 Max 上，Qwen3-ASR-0.6B（MLX）的识别速度约为实时的 11 倍（RTF 约 0.09），芯片越小越慢。
 
 ### Intel Mac / 老硬件
 
 只能走纯 CPU 的 ONNX 后端：
 
 - **SenseVoice-Small**（241 MB）：近 5 年的 Mac 都能跑，速度快，但只支持 5 种语言、不支持热词。
-- **Qwen3-ASR-0.6B (ONNX int8)**：任意 Mac 都能跑，M3 Max 的 CPU 上 RTF 约 0.3，Intel Mac 会慢一些。
+- **Qwen3-ASR-0.6B (ONNX int8)**：任意 Mac 都能跑，M3 Max 的 CPU 上约为实时的 12 倍（RTF 约 0.08），Intel Mac 会慢一些。
 - **Parakeet-TDT**：最快的 CPU 选择（v2 为英语，v3 为 25 种欧洲语言）。
 - **翻译在 Intel Mac 上不实用。** SeamlessM4T 需要 Apple Silicon 的 GPU（MPS）才能跑出可用速度。
 - **工作室的“多人对话”和“朗读”使用 MLX**，因此需要 Apple Silicon。单人快速转写使用你的听写模型，在任何 Mac 上都能用。

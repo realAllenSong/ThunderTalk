@@ -158,14 +158,23 @@ utterances, 8.6 min; THCHS-30, 36 utterances, 5.5 min):
 
 | Path | English WER | Chinese CER | Speed |
 |------|------------:|------------:|------:|
-| One speaker (Qwen3-ASR 0.6B, per segment) | 4.7 % | 5.0 % | 6–7× real time |
+| One speaker (Qwen3-ASR 0.6B, per segment) | 4.7 % | 5.0 % | 11× real time (6–7× in 1.5.0) |
 | Multiple speakers (MOSS-Transcribe-Diarize) | 3.6 % | 3.5 % | 15–21× real time |
 
 Two bugs surfaced here. MOSS stopped after ~5.5 minutes of English without
 any error (the library's 2048-token default; English WER was 36 % before the
 fix). The recogniser ran with MLX's buffer cache disabled, making every
 recognition — including everyday dictation — about 3× slower (18 s of audio:
-6.4 s → 2.0 s with a 512 MB cache).
+6.4 s → 2.0 s). 1.5.0 shipped a 512 MB limit; a sweep in 1.5.1 (0 → 4×,
+512 MB → 6.5×, 1 GB → 7×, 2 GB → 11×, 4 GB → 12×, peak memory 4.4 GB at every
+setting) moved it to 2 GB.
+
+**Other dictation models, same data, M3 Max** (added in 1.5.1 to replace
+copy that had never been measured): Qwen3-ASR 0.6B ONNX int8 — WER 5.5 %,
+CER 4.5 %, 12.8× real time; Parakeet-TDT v2 — WER 3.0 %, 53×; Parakeet-TDT v3
+— WER 4.5 %, 53×. The old claims ("Parakeet RTF 0.035, 8× faster than Qwen
+ONNX", "Qwen ONNX RTF 0.3", "MLX fastest on Apple Silicon") were wrong and have
+been replaced with these.
 
 **Speakers.** A conversation assembled from three real THCHS-30 speakers
 (12 turns, 177 s): MOSS found 3 speakers and attributed 12 of 12 turns

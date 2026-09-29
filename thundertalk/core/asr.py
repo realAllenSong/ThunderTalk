@@ -260,10 +260,12 @@ class AsrEngine:
         import mlx_qwen3_asr
         import mlx.core as mx
 
-        # A small buffer cache instead of none: with the cache disabled every
-        # recognition re-allocates its buffers and runs ~3x slower (measured
-        # 6.4 s vs 2.0 s for 18 s of audio); 512 MB keeps memory bounded.
-        mx.set_cache_limit(512 << 20)
+        # Buffer cache used *within* one recognition. Measured on M3 Max
+        # (10 utterances, ~2.5 min): limit 0 → 4x real time, 512 MB → 6.5x,
+        # 1 GB → 7x, 2 GB → 11x, 4 GB → 12x. Peak memory is the same (4.4 GB)
+        # at every setting, and the cache is emptied after each recognition,
+        # so idle memory is unaffected either way.
+        mx.set_cache_limit(2048 << 20)
 
         hf_repo = model_dir
         if hf_repo.startswith("hf://"):

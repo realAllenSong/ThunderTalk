@@ -137,12 +137,12 @@ EXTRA: dict[str, dict[str, str]] = {
     "models.big_download_go": {"en": "Download", "zh": "开始下载"},
 
     "model.blurb.qwen3-asr-06b-mlx": {
-        "en": "Fastest on Apple Silicon — runs on the GPU.",
-        "zh": "Apple 芯片上最快，使用 GPU 运行。",
+        "en": "Runs on the Apple Silicon GPU. 52 languages, hotwords.",
+        "zh": "在 Apple 芯片的 GPU 上运行，支持 52 种语言和热词。",
     },
     "model.blurb.qwen3-asr-06b-int8": {
-        "en": "Runs on any CPU. Slower than the MLX build.",
-        "zh": "任何 CPU 都能跑，比 MLX 版本慢。",
+        "en": "Runs on any Mac's CPU, at about the same speed as the GPU build on Apple Silicon.",
+        "zh": "任何 Mac 的 CPU 都能跑，在 Apple 芯片上速度与 GPU 版相当。",
     },
     "model.blurb.qwen3-asr-17b-mlx": {
         "en": "Higher accuracy. Needs about 5 GB of free memory.",
@@ -153,8 +153,8 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "支持 25 种欧洲语言，自带标点与大小写。",
     },
     "model.blurb.parakeet-tdt-06b-v2-int8": {
-        "en": "English only — top of the Open ASR leaderboard.",
-        "zh": "仅英文，Open ASR 榜单第一梯队。",
+        "en": "English only — the fastest and most accurate English model here.",
+        "zh": "仅英文——这里速度最快、英文最准的模型。",
     },
     "model.blurb.sensevoice-small-int8": {
         "en": "Tiny and fast: Chinese, English, Japanese, Korean, Cantonese.",

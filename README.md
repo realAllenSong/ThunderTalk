@@ -97,9 +97,9 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25 (European) | ★★★★★ | No |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | English | ★★★★★ | No |
 
-> **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), INTERSPEECH 2026 MLC-SLM Challenge winner) is a multi-speaker model. In dictation it pastes clean text (there is an optional S01:/S02: speaker-label toggle on its model card), and it powers Studio's Multiple speakers mode, with speaker labels and timestamps for recordings up to about 90 minutes in a single pass.
+> **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), first place in the 2nd MLC-SLM Challenge at INTERSPEECH 2026) is a multi-speaker model. In dictation it pastes clean text (there is an optional S01:/S02: speaker-label toggle on its model card), and it powers Studio's Multiple speakers mode, with speaker labels and timestamps for recordings up to about 90 minutes in a single pass.
 >
-> **Parakeet-TDT** (NVIDIA) runs on any Mac through the CPU at an RTF of about 0.035, roughly 8x faster than Qwen3-ASR ONNX, with punctuation and casing built in.
+> **Parakeet-TDT** (NVIDIA) runs on any Mac through the CPU, with punctuation and casing built in. On an M3 Max it transcribes about 50 times faster than real time (RTF 0.019), roughly 4 times faster than Qwen3-ASR ONNX.
 
 ### Text to speech (Studio)
 
@@ -131,14 +131,14 @@ macOS 12 (Monterey) or later.
 | M1 Max / M2 Max / M3 Max | 24 GB or more | Qwen3-ASR-1.7B (MLX) | Comfortable |
 | M3 / M4 Ultra | 32 GB or more | Anything | Plenty of headroom |
 
-MLX means the Metal GPU. On M-series chips the real-time factor is typically 0.05 to 0.1, so recognition is 10 to 20 times faster than the audio you spoke.
+MLX means the Metal GPU. On an M3 Max, Qwen3-ASR-0.6B (MLX) recognises speech about 11 times faster than real time (RTF about 0.09); smaller chips are slower.
 
 ### Intel Mac or older hardware
 
 CPU-only ONNX models are the way to go:
 
 - **SenseVoice-Small** (241 MB) works on any Mac from the last five years. It is fast but covers only 5 languages and has no hotwords.
-- **Qwen3-ASR-0.6B (ONNX int8)** runs on any Mac; the RTF is about 0.3 on an M3 Max CPU and slower on Intel.
+- **Qwen3-ASR-0.6B (ONNX int8)** runs on any Mac; on an M3 Max CPU it runs about 12 times faster than real time (RTF about 0.08), slower on Intel.
 - **Parakeet-TDT** is the fastest CPU option (English on v2, 25 European languages on v3).
 - **Translation is unrealistic on Intel.** SeamlessM4T needs the Apple Silicon GPU (MPS) to run at a usable speed.
 - **Studio's multi-speaker mode and Speak use MLX**, so they need Apple Silicon. Fast single-speaker transcription uses your dictation model and works anywhere.

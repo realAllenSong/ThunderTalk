@@ -59,7 +59,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
         download_url="hf://Qwen/Qwen3-ASR-0.6B",
         hotword_support=True,
         platform="apple-silicon",
-        notes="Metal GPU · RTF ~0.06 · Fastest on Apple Silicon",
+        notes="Metal GPU · ~11x real time on M3 Max",
     ),
     ModelInfo(
         id="qwen3-asr-06b-int8",
@@ -73,7 +73,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
         download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
         hotword_support=True,
         platform="all",
-        notes="CPU · RTF ~0.3 · Works on all platforms",
+        notes="CPU · ~12x real time on M3 Max · Works on all platforms",
     ),
     # ── Qwen3-ASR 1.7B ─────────────────────────────────────────────────
     ModelInfo(
@@ -118,7 +118,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
         download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-nemo-parakeet-tdt-0.6b-v2-int8.tar.bz2",
         hotword_support=False,
         platform="all",
-        notes="CPU · English only · Top of HF Open ASR leaderboard · Punctuation + casing",
+        notes="CPU · English only · ~50x real time on M3 Max · Punctuation + casing",
     ),
     # ── SenseVoice-Small ────────────────────────────────────────────────
     ModelInfo(
