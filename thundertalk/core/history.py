@@ -6,12 +6,22 @@ import json
 import os
 import secrets
 import time
-from dataclasses import asdict, dataclass
+from dataclasses import dataclass
 from pathlib import Path
 
 _DIR = Path.home() / ".thundertalk"
 _JSONL_PATH = _DIR / "history.jsonl"
 _LEGACY_PATH = _DIR / "history.json"
+
+
+def count_units(text: str) -> int:
+    """Rough "word" count that works for mixed English/CJK dictation:
+    one unit per latin word plus one per CJK character (which is how
+    people count Chinese/Japanese length)."""
+    import re
+    latin = len(re.findall(r"[A-Za-z0-9\u00C0-\u024F]+(?:['’-][A-Za-z0-9\u00C0-\u024F]+)*", text))
+    cjk = len(re.findall(r"[\u3040-\u30ff\u3400-\u4dbf\u4e00-\u9fff\uac00-\ud7af]", text))
+    return latin + cjk
 
 
 def _generate_id() -> str:
@@ -126,6 +136,7 @@ class HistoryStore:
         entries_by_id: dict[str, HistoryEntry] = {}
         order: list[str] = []
         skipped: list[str] = []
+        deleted: set[str] = set()
 
         with open(_JSONL_PATH, "r", encoding="utf-8") as f:
             for line in f:
@@ -161,6 +172,14 @@ class HistoryStore:
                         # Duplicate id (shouldn't happen, but: keep first,
                         # treat second as skipped so the bytes survive).
                         skipped.append(stripped)
+                elif kind == "delete":
+                    # Tombstone: hides the entry from the view. The entry's
+                    # own line is never rewritten or removed.
+                    eid = rec.get("id")
+                    if eid:
+                        deleted.add(eid)
+                    else:
+                        skipped.append(stripped)
                 elif kind == "translate":
                     eid = rec.get("id")
                     if eid and eid in entries_by_id:
@@ -171,7 +190,7 @@ class HistoryStore:
                 else:
                     skipped.append(stripped)
 
-        self._entries = [entries_by_id[i] for i in order]
+        self._entries = [entries_by_id[i] for i in order if i not in deleted]
 
         if skipped:
             sidecar = _DIR / f"history.skipped-{int(time.time())}.jsonl"
@@ -259,6 +278,18 @@ class HistoryStore:
             "translation_lang": translation_lang,
         })
 
+    def remove(self, entry_id: str) -> bool:
+        """Hide one entry (user-confirmed in the UI).
+
+        Appends a ``delete`` tombstone rather than rewriting the file, so the
+        append-only invariant holds: the original line stays on disk."""
+        for i, entry in enumerate(self._entries):
+            if entry.id == entry_id:
+                self._append_record({"v": 1, "kind": "delete", "id": entry_id})
+                del self._entries[i]
+                return True
+        return False
+
     def clear(self) -> None:
         """User-confirmed clear. Archive the current file rather than
         delete it; the next ``add()`` opens a fresh ``history.jsonl``.
@@ -289,6 +320,10 @@ class HistoryStore:
     @property
     def total_characters(self) -> int:
         return sum(len(e.text) for e in self._entries)
+
+    @property
+    def total_units(self) -> int:
+        return sum(count_units(e.text) for e in self._entries)
 
     @property
     def session_count(self) -> int:

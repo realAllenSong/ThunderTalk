@@ -610,6 +610,12 @@ _STRINGS: dict[str, dict[str, str]] = {
 }
 
 
+# UI v2 strings live in their own module to keep this table reviewable.
+from thundertalk.core.i18n_extra import EXTRA as _EXTRA  # noqa: E402
+
+_STRINGS.update(_EXTRA)
+
+
 def t(key: str) -> str:
     entry = _STRINGS.get(key)
     if not entry:

@@ -1,15 +1,15 @@
-"""Main window — sidebar navigation + stacked page content.
+"""Main window — paper canvas, quiet sidebar with live status, stacked pages.
 
-Sidebar matches 闪电说 style: warm dark bg, orange bolt logo,
-minimal nav items with left accent bar on active.
+The sidebar footer answers "can I dictate right now, and with what?" from
+AppState — never guessed. Navigation is text, marked by a small orange tick.
 """
 
 from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QRectF, QPoint
-from PySide6.QtGui import QCloseEvent, QColor, QPainter, QPen
+from PySide6.QtCore import QPoint, QRectF, Qt, Signal
+from PySide6.QtGui import QCloseEvent, QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
@@ -20,9 +20,11 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
+from thundertalk.core import state as st
 from thundertalk.core.history import HistoryStore
 from thundertalk.core.i18n import bus as i18n_bus, t
 from thundertalk.core.settings import Settings
+from thundertalk.core.state import AppState
 from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
 from thundertalk.ui.pages.home_page import HomePage
@@ -30,8 +32,11 @@ from thundertalk.ui.pages.hotwords_page import HotwordsPage
 from thundertalk.ui.pages.lab_page import LabPage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
+from thundertalk.ui.widgets import BrandMark, KeyCaps, StatusDot, Toast, paint_canvas
 
-_SIDEBAR_W = 208
+_SIDEBAR_W = 224
+
+_PAGES = ["home", "models", "hotwords", "settings", "lab", "about"]
 
 
 def _nav_items() -> list[str]:
@@ -39,12 +44,29 @@ def _nav_items() -> list[str]:
             t("nav.settings"), t("nav.lab"), t("nav.about")]
 
 
-class _NavButton(QPushButton):
-    """Sidebar nav button.
+class _Canvas(QWidget):
+    """Central widget: plain paper behind the pages."""
 
-    Active state: 3px orange bar on the left + faint accent-tinted bg + the
-    icon takes on the accent color. Hover: subtle background tint.
-    """
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        paint_canvas(p, QRectF(self.rect()))
+        p.end()
+
+
+class _Sidebar(QWidget):
+    """Warm bone panel with a hairline on its right edge."""
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        p.fillRect(self.rect(), QColor(theme.BG_SIDEBAR))
+        p.setPen(QPen(theme._BORDER_DEFAULT_C, 1))
+        p.drawLine(self.width() - 1, 0, self.width() - 1, self.height())
+        p.end()
+
+
+class _NavButton(QPushButton):
+    """Text nav item. Active: ink + semibold + a 2px orange tick at the edge.
+    Hover: a faint ink wash. No icons, no sliding highlight."""
 
     def __init__(self, index: int, label: str) -> None:
         super().__init__()
@@ -52,20 +74,23 @@ class _NavButton(QPushButton):
         self._label = label
         self._active = False
         self._hover = False
-        self.setFixedHeight(40)
+        self.setFixedHeight(36)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setCheckable(True)
-        # Stylesheet handles bg fill + text; we paint the bar + icon ourselves.
-        self._update()
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.setFlat(True)
+        self.setStyleSheet("QPushButton { background: transparent; border: none; }")
+        self.setAccessibleName(label)
 
     def set_label(self, label: str) -> None:
         self._label = label
-        self._update()
+        self.setAccessibleName(label)
+        self.update()
 
     def set_active(self, active: bool) -> None:
         self._active = active
         self.setChecked(active)
-        self._update()
+        self.update()
 
     def enterEvent(self, ev) -> None:
         self._hover = True
@@ -77,72 +102,25 @@ class _NavButton(QPushButton):
         self.update()
         super().leaveEvent(ev)
 
-    def _update(self) -> None:
-        if self._active:
-            # Faint accent backdrop, primary text
-            self.setStyleSheet(
-                "QPushButton { background: rgba(249, 115, 22, 0.10);"
-                f" color: {theme.TEXT_PRIMARY}; border: none;"
-                " text-align: left; padding-left: 44px;"
-                " font-size: 13px; font-weight: 600;"
-                " border-radius: 8px; margin: 1px 10px; }"
-            )
-        else:
-            self.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
-                " border: none; text-align: left; padding-left: 44px;"
-                " font-size: 13px; border-radius: 8px; margin: 1px 10px; }}"
-                f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-                " background: rgba(255, 255, 255, 0.04); }}"
-            )
-        self.setText(self._label)
-
     def paintEvent(self, ev) -> None:
-        super().paintEvent(ev)
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        # Left accent bar (active state) — 3px wide, 18px tall, centered,
-        # painted in the 10px margin area.
+        r = QRectF(self.rect()).adjusted(10, 1, -10, -1)
         if self._active:
-            bar_x = 4
-            bar_y = (self.height() - 18) // 2
             p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(theme._HOVER_FILL_C)
+            p.drawRoundedRect(r, 5, 5)
             p.setBrush(QColor(theme.ACCENT_ORANGE))
-            p.drawRoundedRect(QRectF(bar_x, bar_y, 3, 18), 1.5, 1.5)
-
-        # Icon — adopts accent color when active for stronger emphasis.
-        icon_rect = self.rect().adjusted(20, 0, 0, 0)
-        icon_rect.setWidth(20)
-        if self._active:
-            color = QColor(theme.ACCENT_ORANGE)
+            p.drawRoundedRect(QRectF(10, (self.height() - 16) / 2, 2.5, 16), 1.2, 1.2)
         elif self._hover:
-            color = QColor(theme.TEXT_PRIMARY)
-        else:
-            color = QColor(theme.TEXT_SECONDARY)
-        p.setPen(QPen(color, 1.5))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        theme.ICON_PAINTERS[self._index](p, icon_rect)
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(theme._HOVER_FILL_C)
+            p.drawRoundedRect(r, 5, 5)
+        p.setFont(theme.font(14, bold=self._active))
+        p.setPen(QColor(theme.TEXT_PRIMARY if (self._active or self._hover) else theme.TEXT_SECONDARY))
+        p.drawText(QRectF(26, 0, self.width() - 36, self.height()),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self._label)
         p.end()
-
-
-class _LogoBolt(QLabel):
-    """Sidebar logo using the actual app icon."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setFixedSize(32, 32)
-        import os
-        from PySide6.QtGui import QPixmap
-        from thundertalk import asset_path
-        icon_file = asset_path("icon.png")
-        if os.path.isfile(icon_file):
-            pm = QPixmap(icon_file).scaled(
-                32, 32,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self.setPixmap(pm)
 
 
 class _DragArea(QWidget):
@@ -169,135 +147,255 @@ class _DragArea(QWidget):
         super().mouseReleaseEvent(ev)
 
 
+class _StatusBlock(QWidget):
+    """Sidebar footer: live dictation status, active model, hotkey. Plain text
+    under a hairline — not a card."""
+
+    clicked = Signal()
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self._hover = False
+        self.setFixedHeight(112)
+
+        ly = QVBoxLayout(self)
+        ly.setContentsMargins(22, 16, 18, 16)
+        ly.setSpacing(3)
+
+        top = QHBoxLayout()
+        top.setSpacing(4)
+        self._dot = StatusDot(theme.TEXT_MUTED, 8)
+        top.addWidget(self._dot)
+        self._title = QLabel("")
+        self._title.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; background: transparent;")
+        top.addWidget(self._title, stretch=1)
+        ly.addLayout(top)
+
+        self._sub = QLabel("")
+        self._sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        ly.addWidget(self._sub)
+        ly.addSpacing(8)
+
+        self._hotkey_row = QWidget()
+        self._hotkey_row.setStyleSheet("background: transparent;")
+        hk = QHBoxLayout(self._hotkey_row)
+        hk.setContentsMargins(0, 0, 0, 0)
+        hk.setSpacing(8)
+        self._keycaps = KeyCaps("", height=22)
+        hk.addWidget(self._keycaps)
+        self._hk_label = QLabel(t("status.to_dictate"))
+        self._hk_label.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        hk.addWidget(self._hk_label)
+        hk.addStretch()
+        ly.addWidget(self._hotkey_row)
+
+    def apply(self, color: str, pulse: bool, title: str, sub: str,
+              hotkey: str, show_hotkey: bool) -> None:
+        self._dot.set_state(color)
+        self._title.setText(title)
+        fm = QFontMetrics(self._sub.font())
+        self._sub.setText(fm.elidedText(sub, Qt.TextElideMode.ElideRight, _SIDEBAR_W - 44))
+        self._sub.setToolTip(sub)
+        self._keycaps.set_combo(hotkey)
+        self._hk_label.setText(t("status.to_dictate"))
+        self._hotkey_row.setVisible(show_hotkey)
+        self.update()
+
+    def enterEvent(self, ev) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(ev)
+
+    def mouseReleaseEvent(self, ev) -> None:
+        if ev.button() == Qt.MouseButton.LeftButton and self.rect().contains(ev.position().toPoint()):
+            self.clicked.emit()
+        super().mouseReleaseEvent(ev)
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        if self._hover:
+            p.fillRect(self.rect().adjusted(0, 1, -1, 0), theme._HOVER_FILL_C)
+        p.setPen(QPen(theme._BORDER_DEFAULT_C, 1))
+        p.drawLine(0, 0, self.width() - 1, 0)
+        p.end()
+
+
 class MainWindow(QMainWindow):
     load_model_signal = Signal(str, str, str, str)
 
-    def __init__(self, settings: Settings, history: HistoryStore) -> None:
+    def __init__(self, settings: Settings, history: HistoryStore,
+                 state: Optional[AppState] = None) -> None:
         super().__init__()
         self._settings = settings
+        self._state = state or AppState(settings.hotkey)
         self._titlebar_configured = False
+        self._onboarding = None
         self.setWindowTitle("ThunderTalk")
-        self.setMinimumSize(820, 580)
-        self.resize(1060, 720)
+        self.setMinimumSize(900, 620)
+        self.resize(1120, 780)
         self.setStyleSheet(theme.APP_QSS)
 
         from thundertalk.ui.tray import app_icon
         self.setWindowIcon(app_icon())
 
-        central = QWidget()
+        central = _Canvas()
         self.setCentralWidget(central)
         root = QHBoxLayout(central)
         root.setContentsMargins(0, 0, 0, 0)
         root.setSpacing(0)
 
-        # Full-width transparent drag strip that hovers over the top 28px
-        # (macOS title-bar zone). Sits outside the layout so it doesn't push
-        # content down; resizeEvent keeps it sized to the window width.
+        # Full-width transparent drag strip over the top 28px (macOS title-bar
+        # zone). Sits outside the layout; resizeEvent keeps it sized.
         self._title_strip = _DragArea(central)
         self._title_strip.setFixedHeight(28)
         self._title_strip.setStyleSheet("background: transparent;")
         self._title_strip.raise_()
 
         # ── Sidebar ──────────────────────────────────────────────
-        sidebar = QWidget()
+        sidebar = _Sidebar()
         sidebar.setFixedWidth(_SIDEBAR_W)
-        sidebar.setStyleSheet(
-            f"QWidget#sidebar {{ background: {theme.BG_SIDEBAR};"
-            "  border: none;"
-            "  border-right: 1px solid rgba(255, 255, 255, 0.08); }}"
-        )
-        sidebar.setObjectName("sidebar")
         sb = QVBoxLayout(sidebar)
         sb.setContentsMargins(0, 0, 0, 0)
         sb.setSpacing(0)
 
-        # Logo area — also the window drag handle; top 28 px reserved for
-        # macOS traffic-light buttons when titlebar is hidden.
         logo_area = _DragArea()
-        logo_area.setFixedHeight(72)
+        logo_area.setFixedHeight(88)
         logo_area.setStyleSheet("background: transparent;")
         logo_ly = QHBoxLayout(logo_area)
-        logo_ly.setContentsMargins(18, 28, 16, 0)
+        logo_ly.setContentsMargins(24, 36, 16, 0)
         logo_ly.setSpacing(10)
-
-        bolt = _LogoBolt()
-        logo_ly.addWidget(bolt)
-
+        logo_ly.addWidget(BrandMark(26))
         name_label = QLabel("ThunderTalk")
-        name_label.setFont(theme.font_heading(14))
-        name_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
+        name_label.setFont(theme.font_heading(17))
+        name_label.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         logo_ly.addWidget(name_label)
         logo_ly.addStretch()
         sb.addWidget(logo_area)
 
-        sb.addSpacing(8)
-
-        # Nav buttons
+        self._nav_wrap = QWidget()
+        self._nav_wrap.setStyleSheet("background: transparent;")
+        nav_ly = QVBoxLayout(self._nav_wrap)
+        nav_ly.setContentsMargins(0, 8, 0, 8)
+        nav_ly.setSpacing(2)
         self._nav_buttons: list[_NavButton] = []
         for i, label in enumerate(_nav_items()):
             btn = _NavButton(i, label)
             btn.clicked.connect(lambda checked, b=btn: self._on_nav(b))
-            sb.addWidget(btn)
+            nav_ly.addWidget(btn)
             self._nav_buttons.append(btn)
-
+        sb.addWidget(self._nav_wrap)
         sb.addStretch()
+
+        self._status = _StatusBlock()
+        self._status.clicked.connect(self._on_status_clicked)
+        sb.addWidget(self._status)
 
         root.addWidget(sidebar)
 
         # ── Content ──────────────────────────────────────────────
         self._stack = QStackedWidget()
-        self._stack.setStyleSheet(f"QStackedWidget {{ background: {theme.BG_BASE}; }}")
         root.addWidget(self._stack, stretch=1)
 
-        self._home_page = HomePage(history)
+        self._home_page = HomePage(history, self._state)
         self._models_page = ModelsPage(settings)
-        self._hotwords_page = HotwordsPage(settings)
+        self._hotwords_page = HotwordsPage(settings, self._state)
         self._settings_page = SettingsPage(settings)
         self._lab_page = LabPage()
         self._about_page = AboutPage()
 
-        self._stack.addWidget(self._home_page)
-        self._stack.addWidget(self._models_page)
-        self._stack.addWidget(self._hotwords_page)
-        self._stack.addWidget(self._settings_page)
-        self._stack.addWidget(self._lab_page)
-        self._stack.addWidget(self._about_page)
+        for page in (self._home_page, self._models_page, self._hotwords_page,
+                     self._settings_page, self._lab_page, self._about_page):
+            self._stack.addWidget(page)
 
         self._models_page.load_model_signal.connect(
             lambda mid, path, fam, be: self.load_model_signal.emit(mid, path, fam, be)
         )
+        self._home_page.navigate_requested.connect(self.navigate)
+        self._hotwords_page.word_added.connect(
+            lambda w: self.show_toast(t("toast.hotword_added").format(w=w), "success"))
+        self._settings_page.run_setup_requested.connect(lambda: self.show_onboarding())
+        from thundertalk.ui.keys import display_combo
+        self._settings_page.hotkey_changed.connect(
+            lambda k: self.show_toast(t("toast.hotkey_saved").format(key=display_combo(k)), "success"))
+        self._home_page.copied.connect(lambda: self.show_toast(t("home.copied_toast"), "copy"))
+        self._home_page.deleted.connect(lambda: self.show_toast(t("home.deleted"), "info"))
+
+        self._toast = Toast(central)
 
         self._select_nav(0)
 
+        self._state.model_changed.connect(self._refresh_status)
+        self._state.recording_changed.connect(lambda _s: self._refresh_status())
+        self._state.hotkey_changed.connect(lambda _k: self._refresh_status())
         i18n_bus.language_changed.connect(self._retranslate)
+        self._refresh_status()
+
+    # ── Status block ─────────────────────────────────────────────
+
+    def _refresh_status(self) -> None:
+        s = self._state
+        name = s.model_name
+        if s.recording == st.REC_RECORDING:
+            self._status.apply(theme.ACCENT_ORANGE, True, t("status.listening"),
+                               name, s.hotkey, True)
+        elif s.recording == st.REC_TRANSCRIBING:
+            self._status.apply(theme.ACCENT_BLUE, True, t("status.transcribing"),
+                               name, s.hotkey, True)
+        elif s.model_status == st.MODEL_READY:
+            self._status.apply(theme.SUCCESS, False, t("status.ready"), name, s.hotkey, True)
+        elif s.model_status == st.MODEL_LOADING:
+            self._status.apply(theme.WARNING, True, t("status.loading"),
+                               name, s.hotkey, False)
+        elif s.model_status == st.MODEL_ERROR:
+            self._status.apply(theme.ERROR, False, t("status.error"),
+                               s.model_error or name, s.hotkey, False)
+        else:
+            self._status.apply(theme.WARNING, False, t("status.setup"),
+                               t("status.tap_to_fix"), s.hotkey, False)
+
+    def _on_status_clicked(self) -> None:
+        if self._state.model_status in (st.MODEL_NONE, st.MODEL_ERROR):
+            self.navigate("models")
+        else:
+            self.navigate("settings")
 
     def _retranslate(self) -> None:
         for btn, label in zip(self._nav_buttons, _nav_items()):
             btn.set_label(label)
-        if hasattr(self._home_page, "retranslate"):
-            self._home_page.retranslate()
-        if hasattr(self._models_page, "retranslate"):
-            self._models_page.retranslate()
-        if hasattr(self._hotwords_page, "retranslate"):
-            self._hotwords_page.retranslate()
-        if hasattr(self._lab_page, "retranslate"):
-            self._lab_page.retranslate()
+        for page in (self._home_page, self._models_page, self._hotwords_page,
+                     self._settings_page, self._lab_page, self._about_page):
+            if hasattr(page, "retranslate"):
+                page.retranslate()
+        self._refresh_status()
 
     # ── Navigation ───────────────────────────────────────────────
 
     def _on_nav(self, btn: _NavButton) -> None:
-        idx = self._nav_buttons.index(btn)
-        self._select_nav(idx)
+        self._select_nav(self._nav_buttons.index(btn))
 
-    def _select_nav(self, idx: int) -> None:
+    def _select_nav(self, idx: int, animate: bool = False) -> None:
+        self._current_idx = idx
         for i, b in enumerate(self._nav_buttons):
             b.set_active(i == idx)
         self._stack.setCurrentIndex(idx)
-        page = self._stack.currentWidget()
-        if page:
-            theme.fade_in(page, duration=200)
+
+    def navigate(self, name: str) -> None:
+        if name in _PAGES:
+            self._select_nav(_PAGES.index(name))
 
     # ── Public API ───────────────────────────────────────────────
+
+    @property
+    def state(self) -> AppState:
+        return self._state
 
     @property
     def models_page(self) -> ModelsPage:
@@ -323,14 +421,13 @@ class MainWindow(QMainWindow):
     def about_page(self) -> AboutPage:
         return self._about_page
 
+    def show_toast(self, text: str, kind: str = "info", ms: int = 2600) -> None:
+        self._toast.show_message(text, kind, ms)
+
     def show_about(self) -> None:
-        """Switch the side-nav selection to About. Used by the
-        proactive update popup so the download progress is visible
-        immediately after the user clicks Update Now, instead of
-        forcing them to manually find the About tab."""
-        idx = self._stack.indexOf(self._about_page)
-        if idx >= 0:
-            self._select_nav(idx)
+        """Switch the side-nav selection to About. Used by the proactive
+        update popup so download progress is visible immediately."""
+        self.navigate("about")
 
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._models_page.set_active_model(model_id)
@@ -338,12 +435,37 @@ class MainWindow(QMainWindow):
     def show_load_error(self, msg: str) -> None:
         self._models_page.show_load_error(msg)
 
+    def show_onboarding(self, on_finished=None) -> None:
+        """Cover the window with the first-run setup flow."""
+        from thundertalk.ui.onboarding import OnboardingOverlay
+        if self._onboarding is not None:
+            return
+        ov = OnboardingOverlay(self.centralWidget(), self._settings, self._state, self._models_page)
+        self._onboarding = ov
+
+        def _done(completed: bool) -> None:
+            self._onboarding = None
+            ov.deleteLater()
+            if completed:
+                self.show_toast(t("toast.setup_done"), "success", 3600)
+            if on_finished:
+                on_finished(completed)
+
+        ov.finished.connect(_done)
+        ov.navigate_requested.connect(self.navigate)
+        ov.setGeometry(self.centralWidget().rect())
+        ov.show()
+        ov.raise_()
+        self._title_strip.raise_()
+
     # ── macOS frameless title bar ─────────────────────────────────
 
     def resizeEvent(self, ev) -> None:
         super().resizeEvent(ev)
         self._title_strip.resize(self.centralWidget().width(), 28)
         self._title_strip.raise_()
+        if self._onboarding is not None:
+            self._onboarding.setGeometry(self.centralWidget().rect())
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)
@@ -413,10 +535,9 @@ class MainWindow(QMainWindow):
                 argtypes=[ctypes.c_bool],
             )
 
-            # Set NSWindow backgroundColor to match our sidebar (#0c0c14) so
-            # macOS draws the 1px window border in a dark tone — making it
-            # invisible against the near-black sidebar instead of appearing
-            # as a bright white line.
+            # Set NSWindow backgroundColor to match our sidebar (#F3F1EC) so
+            # the window edge blends into the paper instead of showing a
+            # contrasting line.
             lib.objc_getClass.restype = ctypes.c_void_p
             lib.objc_getClass.argtypes = [ctypes.c_char_p]
             ns_color = lib.objc_getClass(b"NSColor")
@@ -424,9 +545,9 @@ class MainWindow(QMainWindow):
                 dark_bg = _msg(
                     ns_color,
                     _sel(b"colorWithRed:green:blue:alpha:"),
-                    ctypes.c_double(12 / 255),
-                    ctypes.c_double(12 / 255),
-                    ctypes.c_double(20 / 255),
+                    ctypes.c_double(243 / 255),
+                    ctypes.c_double(241 / 255),
+                    ctypes.c_double(236 / 255),
                     ctypes.c_double(1.0),
                     argtypes=[
                         ctypes.c_double, ctypes.c_double,

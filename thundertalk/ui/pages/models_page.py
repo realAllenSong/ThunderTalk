@@ -1,26 +1,32 @@
-"""Models page — grouped by family, each with selectable format variants."""
+"""Models page — pick, download, and activate speech models.
+
+Every row is a small state machine (idle → downloading → loading → active)
+so a click can never be ambiguous: downloads show real byte progress and can
+be cancelled, activation shows a spinner, and a row that is mid-download
+can't be started twice.
+"""
 
 from __future__ import annotations
 
+import threading
 from typing import Optional
 
-from PySide6.QtCore import Qt, Signal, QThread, QRectF
-from PySide6.QtGui import QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtCore import QRectF, Qt, QThread, Signal
+from PySide6.QtGui import QColor, QPainter
 from PySide6.QtWidgets import (
-    QButtonGroup,
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
-    QProgressBar,
     QPushButton,
-    QScrollArea,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
+from thundertalk.core.i18n import t
 from thundertalk.core.models import (
     BUILTIN_MODELS,
+    DownloadCancelled,
     ModelInfo,
     detect_hardware,
     download_model,
@@ -30,71 +36,77 @@ from thundertalk.core.models import (
     is_downloaded,
     is_variant_compatible,
 )
-from thundertalk.core.i18n import t
 from thundertalk.ui import theme
+from thundertalk.ui.icons import paint_icon
+from thundertalk.ui.widgets import PageHeader, SegmentedControl, Spinner, StatusDot, ThinProgress, column_scroll
 
 _FAMILY_COLORS = {
     "SenseVoice": theme.ACCENT_CYAN,
     "Qwen3-ASR": theme.ACCENT_BLUE,
     "Qwen3-ASR-1.7B": theme.ACCENT_BLUE,
+    "Parakeet-TDT-v3": theme.SUCCESS,
+    "Parakeet-TDT-v2": theme.SUCCESS,
+    "MOSS-Transcribe-Diarize": theme.ACCENT_PURPLE,
+    "SeamlessM4T-v2": theme.ACCENT_ORANGE,
 }
 
+_BEST_FAMILY = "Qwen3-ASR"
+_BIG_DOWNLOAD_MB = 2000
 
-class _DeviceIcon(QWidget):
-    """Outlined device glyph — MacBook (clamshell + base) or generic PC tower."""
 
-    def __init__(self, kind: str = "mac") -> None:
-        super().__init__()
-        self._kind = kind
-        self.setFixedSize(44, 32)
-        self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
+def _fmt_size(mb: int) -> str:
+    return f"{mb / 1000:.1f} GB" if mb >= 1000 else f"{mb} MB"
 
-    def set_kind(self, kind: str) -> None:
-        self._kind = kind
-        self.update()
 
-    def paintEvent(self, ev) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        color = QColor(theme.TEXT_SECONDARY)
-        p.setPen(QPen(color, 1.6, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
-                      Qt.PenJoinStyle.RoundJoin))
-        p.setBrush(Qt.BrushStyle.NoBrush)
+def _blurb(info: ModelInfo) -> str:
+    key = f"model.blurb.{info.id}"
+    text = t(key)
+    return info.notes if text == key else text
 
-        if self._kind == "mac":
-            # Screen
-            p.drawRoundedRect(QRectF(6, 4, 32, 20), 2.2, 2.2)
-            # Base lip
-            p.drawLine(2, 26, 42, 26)
-            # Notch/hinge
-            p.drawLine(18, 26, 26, 26)
-        else:
-            # Desktop tower / generic
-            p.drawRoundedRect(QRectF(10, 4, 24, 22), 3, 3)
-            p.drawLine(14, 28, 30, 28)
-        p.end()
 
+# ── workers ──────────────────────────────────────────────────────────────
 
 class DownloadWorker(QThread):
-    progress = Signal(int, str)
-    finished = Signal(str)
+    progress = Signal(int, str)      # percent (-1 = unknown), message
+    done = Signal(str)               # model_id
     error = Signal(str)
+    cancelled = Signal()
 
     def __init__(self, info: ModelInfo) -> None:
         super().__init__()
         self._info = info
+        self._cancel = threading.Event()
+
+    def cancel(self) -> None:
+        self._cancel.set()
 
     def run(self) -> None:
         try:
-            download_model(self._info, progress_cb=lambda p, m: self.progress.emit(p, m))
-            self.finished.emit(self._info.id)
+            download_model(
+                self._info,
+                progress_cb=lambda p, m: self.progress.emit(p, m),
+                cancel=self._cancel,
+            )
+            self.done.emit(self._info.id)
+        except DownloadCancelled:
+            self.cancelled.emit()
         except Exception as e:
             self.error.emit(str(e))
 
 
-# ---------------------------------------------------------------------------
-# Translation mode card — appears at the top of Models page.
-# ---------------------------------------------------------------------------
+class _HardwareWorker(QThread):
+    """`system_profiler` takes ~1 s — keep it off the UI thread."""
+
+    detected = Signal(object)
+
+    def run(self) -> None:
+        try:
+            self.detected.emit(detect_hardware())
+        except Exception:
+            self.detected.emit(None)
+
+
+# ── translation card ─────────────────────────────────────────────────────
 
 # ISO-639-3 codes + display labels for the inline target picker.
 TRANSLATION_TARGETS_NEW: list[tuple[str, str]] = [
@@ -112,10 +124,9 @@ TRANSLATION_TARGETS_NEW: list[tuple[str, str]] = [
 ]
 
 
-class TranslationModeCard(QFrame):
-    """Top-of-page card with a 3-segment Mode switch (Off / Direct / Review)
-    and an inline target language picker. Replaces the old Settings ▸
-    Translation tab.
+class TranslationModeCard(theme.Card):
+    """Off / Direct / Review switch, target-language picker, and the status
+    of the translation engine (missing → loading → ready / error).
 
     Settings semantics:
       - Mode = Off    → translation_target = "off"  (mode value preserved)
@@ -125,11 +136,10 @@ class TranslationModeCard(QFrame):
 
     mode_changed = Signal(str)        # "off" | "direct" | "review"
     target_changed = Signal(str)      # ISO-639-3
-    download_translator_clicked = Signal()  # user wants the Seamless model
+    download_translator_clicked = Signal()
 
     @staticmethod
     def _modes() -> list[tuple[str, str]]:
-        # Re-evaluated each call so a language switch updates labels.
         return [
             ("off", t("models.mode_off")),
             ("direct", t("models.mode_direct")),
@@ -137,160 +147,77 @@ class TranslationModeCard(QFrame):
         ]
 
     def __init__(self, settings) -> None:
-        super().__init__()
+        super().__init__(radius=theme.RADIUS_CARD)
         self._settings = settings
-        self.setStyleSheet(
-            f"QFrame#translationModeCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 12px; }}"
-        )
-        self.setObjectName("translationModeCard")
 
         ly = QVBoxLayout(self)
-        ly.setContentsMargins(20, 16, 20, 16)
+        ly.setContentsMargins(24, 20, 24, 22)
         ly.setSpacing(10)
 
-        # ── Heading: title on its own line, subtitle muted underneath.
-        # Mirrors the FamilyCard structure (name → pill → meta line) so
-        # this card sits in the same visual rhythm as the model cards
-        # below instead of looking like a different design.
+        head = QHBoxLayout()
+        head.setSpacing(10)
         self._title_lbl = QLabel(t("models.translation"))
-        self._title_lbl.setFont(theme.font(15, bold=True))
-        self._title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        ly.addWidget(self._title_lbl)
+        self._title_lbl.setFont(theme.font_serif(18))
+        self._title_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
+        head.addWidget(self._title_lbl)
+        head.addStretch()
+        ly.addLayout(head)
 
         self._subtitle_lbl = QLabel(t("models.translation_subtitle"))
         self._subtitle_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;"
-        )
+            f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
         ly.addWidget(self._subtitle_lbl)
+        ly.addSpacing(4)
 
-        ly.addSpacing(2)
-
-        # ── Controls row: mode segment on the LEFT, target combo on the
-        # RIGHT, on the same horizontal axis. They're conceptually one
-        # control ("how to translate, into what language"); putting them
-        # on opposite ends of opposite rows broke that grouping.
-        controls_row = QHBoxLayout()
-        controls_row.setSpacing(12)
-
-        seg_outer = QFrame()
-        seg_outer.setStyleSheet(
-            "QFrame { background: transparent;"
-            f" border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 11px; }"
-        )
-        seg_outer.setFixedHeight(34)
-        seg_inner = QHBoxLayout(seg_outer)
-        seg_inner.setContentsMargins(3, 3, 3, 3)
-        seg_inner.setSpacing(2)
-
-        self._buttons: dict[str, QPushButton] = {}
-        self._group = QButtonGroup(self)
-        self._group.setExclusive(True)
-        for code, label in self._modes():
-            btn = QPushButton(label)
-            btn.setCheckable(True)
-            btn.setCursor(Qt.CursorShape.PointingHandCursor)
-            btn.setStyleSheet(
-                "QPushButton {"
-                " background: transparent;"
-                f" color: {theme.TEXT_MUTED};"
-                " border: none; border-radius: 8px;"
-                " padding: 4px 22px; font-size: 12px; font-weight: 500;"
-                " }"
-                f"QPushButton:hover {{ color: {theme.TEXT_SECONDARY}; }}"
-                f"QPushButton:checked {{ background: {theme.ACCENT_ORANGE};"
-                f" color: #ffffff; font-weight: 600; }}"
-            )
-            btn.clicked.connect(lambda _, c=code: self._on_mode_clicked(c))
-            self._buttons[code] = btn
-            self._group.addButton(btn)
-            seg_inner.addWidget(btn)
-
-        controls_row.addWidget(seg_outer)
-        controls_row.addStretch()
+        controls = QHBoxLayout()
+        controls.setSpacing(12)
+        self._segment = SegmentedControl(self._modes(), "off")
+        self._segment.changed.connect(self._on_mode_clicked)
+        controls.addWidget(self._segment)
+        controls.addStretch()
 
         self._target_combo = QComboBox()
         self._target_combo.setFixedHeight(34)
-        self._target_combo.setMinimumWidth(170)
+        self._target_combo.setMinimumWidth(180)
         theme.style_combo(self._target_combo)
         for code, display in TRANSLATION_TARGETS_NEW:
             self._target_combo.addItem(display, code)
         self._target_combo.currentIndexChanged.connect(self._on_target_changed)
-        controls_row.addWidget(self._target_combo)
-        ly.addLayout(controls_row)
+        controls.addWidget(self._target_combo)
+        ly.addLayout(controls)
 
-        # Warning shown when Review is picked without an active ASR.
-        # MaximumWidth caps wrap to the card width — without it, the
-        # WordWrap label reports its unwrapped sizeHint and forces the
-        # whole card (and the window) to grow rightward.
         self._warning = QLabel(t("models.review_needs_asr"))
         self._warning.setStyleSheet(
-            f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
-            " padding-top: 2px;"
-        )
+            f"color: {theme.WARNING}; font-size: 12px; background: transparent; padding-top: 2px;")
         self._warning.setWordWrap(True)
         self._warning.setMinimumWidth(0)
-        self._warning.setMaximumWidth(680)
         self._warning.hide()
         ly.addWidget(self._warning)
 
-        # Translator (SeamlessM4T) status: a single line beneath the
-        # segment control — the user previously had no way to see whether
-        # the translation engine was loading / ready / missing on disk.
-        # Visible only while a target is set (i.e. not Off).
-        self._translator_status_row = QWidget()
-        self._translator_status_row.setStyleSheet("background: transparent;")
-        ts_ly = QHBoxLayout(self._translator_status_row)
-        ts_ly.setContentsMargins(0, 2, 0, 0)
-        ts_ly.setSpacing(8)
-
-        self._translator_dot = QLabel("●")
-        self._translator_dot.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 10px;"
-            " background: transparent; border: none;"
-        )
-        ts_ly.addWidget(self._translator_dot)
-
-        self._translator_status_label = QLabel("")
-        self._translator_status_label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: 11px;"
-            " background: transparent; border: none;"
-        )
-        self._translator_status_label.setAlignment(
-            Qt.AlignmentFlag.AlignLeft | Qt.AlignmentFlag.AlignVCenter
-        )
-        from PySide6.QtWidgets import QSizePolicy
-        self._translator_status_label.setSizePolicy(
-            QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred
-        )
-        ts_ly.addWidget(self._translator_status_label, stretch=1)
-
-        self._translator_action_btn = QPushButton("")
-        self._translator_action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._translator_action_btn.setFixedHeight(24)
-        self._translator_action_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent; color: {theme.ACCENT_ORANGE};"
-            f" border: 1px solid {theme.ACCENT_ORANGE};"
-            " border-radius: 12px; padding: 0 12px; font-size: 11px; }}"
-            f"QPushButton:hover {{ color: #ffffff; background: {theme.ACCENT_ORANGE}; }}"
-        )
-        self._translator_action_btn.clicked.connect(
-            self.download_translator_clicked
-        )
-        self._translator_action_btn.hide()
-        ts_ly.addWidget(self._translator_action_btn)
-
-        self._translator_status_row.hide()
-        ly.addWidget(self._translator_status_row)
+        # Translator engine status
+        self._status_row = QWidget()
+        self._status_row.setStyleSheet("background: transparent;")
+        sr = QHBoxLayout(self._status_row)
+        sr.setContentsMargins(0, 4, 0, 0)
+        sr.setSpacing(8)
+        self._dot = StatusDot(theme.TEXT_MUTED, 8)
+        sr.addWidget(self._dot)
+        self._status_label = QLabel("")
+        self._status_label.setStyleSheet(
+            f"color: {theme.TEXT_SECONDARY}; font-size: 12px; background: transparent;")
+        self._status_label.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Preferred)
+        sr.addWidget(self._status_label, stretch=1)
+        self._action_btn = theme.make_button("", "secondary", 30, font_px=12)
+        self._action_btn.clicked.connect(self.download_translator_clicked)
+        self._action_btn.hide()
+        sr.addWidget(self._action_btn)
+        self._status_row.hide()
+        ly.addWidget(self._status_row)
 
         self._restore_state()
 
-    # ── public API ──────────────────────────────────────────────────────
-
+    # ── public API ──
     def refresh_warning(self) -> None:
-        """Re-evaluate whether to show the 'Review needs ASR' warning.
-        Called by ModelsPage when active model state changes."""
         mode = self._settings.translation_mode
         target = self._settings.translation_target
         active_id = self._settings.active_model_id
@@ -299,57 +226,43 @@ class TranslationModeCard(QFrame):
         self._warning.setVisible(is_review and not is_asr_active)
 
     def set_translator_status(self, state: str, message: str = "") -> None:
-        """Update the inline translator-engine status row.
-
-        state ∈ {"hidden", "missing", "loading", "ready", "error"}
-        - hidden     → row not shown (Off mode)
-        - missing    → orange dot + "Download required" + Download button
-        - loading    → orange dot + "Loading translator…"
-        - ready      → green dot  + "Translator ready"
-        - error      → red dot    + custom message
-        """
+        """state ∈ {"hidden", "missing", "loading", "ready", "error"}"""
         if state == "hidden":
-            self._translator_status_row.hide()
+            self._status_row.hide()
             return
-
         palette = {
-            "missing": (theme.ACCENT_ORANGE, t("models.translator.missing")),
-            "loading": (theme.ACCENT_ORANGE, t("models.translator.loading")),
-            "ready":   (theme.SUCCESS,       t("models.translator.ready")),
-            "error":   (theme.ERROR,
-                        message or t("models.translator.error")),
+            "missing": (theme.WARNING, False, t("models.translator.missing")),
+            "loading": (theme.WARNING, True, t("models.translator.loading")),
+            "ready":   (theme.SUCCESS, False, t("models.translator.ready")),
+            "error":   (theme.ERROR, False, message or t("models.translator.error")),
         }
-        color, default_msg = palette.get(state, (theme.TEXT_MUTED, ""))
-        self._translator_dot.setStyleSheet(
-            f"color: {color}; font-size: 10px;"
-            " background: transparent; border: none;"
-        )
-        self._translator_status_label.setText(message or default_msg)
-        # Download button is only relevant in the "missing" state.
+        color, pulse, default_msg = palette.get(state, (theme.TEXT_MUTED, False, ""))
+        self._dot.set_state(color, pulse)
+        self._status_label.setText(message or default_msg)
         if state == "missing":
-            self._translator_action_btn.setText(t("models.btn.download"))
-            self._translator_action_btn.show()
+            self._action_btn.setText(t("models.btn.download"))
+            self._action_btn.setFixedWidth(96)
+            self._action_btn.show()
         else:
-            self._translator_action_btn.hide()
-        self._translator_status_row.show()
+            self._action_btn.hide()
+        self._status_row.show()
 
-    # ── internals ──────────────────────────────────────────────────────
+    def retranslate(self) -> None:
+        self._title_lbl.setText(t("models.translation"))
+        self._subtitle_lbl.setText(t("models.translation_subtitle"))
+        self._segment.set_options(self._modes())
+        self._warning.setText(t("models.review_needs_asr"))
 
+    # ── internals ──
     def _restore_state(self) -> None:
-        """Sync UI to current settings."""
         target = self._settings.translation_target
         mode = self._settings.translation_mode
-
-        # Determine effective mode for the segmented control
         if not target or target == "off":
-            effective_mode = "off"
+            effective = "off"
         else:
-            effective_mode = mode if mode in ("direct", "review") else "direct"
+            effective = mode if mode in ("direct", "review") else "direct"
+        self._segment.set_current(effective)
 
-        for code, btn in self._buttons.items():
-            btn.setChecked(code == effective_mode)
-
-        # Restore target language (use current target, or default to "eng" if off)
         restore_code = target if target and target != "off" else "eng"
         self._target_combo.blockSignals(True)
         for i in range(self._target_combo.count()):
@@ -357,20 +270,15 @@ class TranslationModeCard(QFrame):
                 self._target_combo.setCurrentIndex(i)
                 break
         self._target_combo.blockSignals(False)
-
         self.refresh_warning()
 
     def _on_mode_clicked(self, mode: str) -> None:
-        """User clicked one of the segment buttons."""
         if mode == "off":
-            # Off = no translation. Clear translation_target.
             self._settings.set("translation_target", "off")
         else:
-            # Direct or Review: ensure target_lang is set (use combo selection)
             current = self._target_combo.currentData() or "eng"
             self._settings.set("translation_target", current)
             self._settings.set("translation_mode", mode)
-
         self.mode_changed.emit(mode)
         self.target_changed.emit(self._settings.translation_target)
         self.refresh_warning()
@@ -379,377 +287,401 @@ class TranslationModeCard(QFrame):
         code = self._target_combo.itemData(idx)
         if not code:
             return
-        # Only meaningful when not in Off mode; persist anyway so it sticks
-        # the next time user enables Direct/Review.
         if self._settings.translation_target != "off":
             self._settings.set("translation_target", code)
             self.target_changed.emit(code)
 
 
-# ---------------------------------------------------------------------------
-# VariantRow — one row inside a FamilyCard
-# ---------------------------------------------------------------------------
+# ── variant row ──────────────────────────────────────────────────────────
 
-class VariantRow(QFrame):
-    """A single format variant row with its own Download / Activate button."""
+class VariantRow(QWidget):
+    """One downloadable/activatable build of a model."""
 
     activate_clicked = Signal(str, str, str, str)  # model_id, path, family, backend
     download_clicked = Signal(str)
+    cancel_clicked = Signal(str)
 
-    def __init__(
-        self,
-        info: ModelInfo,
-        active_id: Optional[str],
-        is_recommended: bool,
-        compatible: bool,
-    ) -> None:
+    def __init__(self, info: ModelInfo, active_id: Optional[str],
+                 is_recommended: bool, compatible: bool) -> None:
         super().__init__()
         self.info = info
         self._compatible = compatible
         self._loading = False
-
-        self.setStyleSheet(
-            f"QFrame {{ background: transparent;"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 10px; }}"
-            f"QFrame:hover {{ border: 1px solid {theme.BORDER_DEFAULT}; }}"
-        )
-        self.setMinimumHeight(52)
+        self._downloading = False
+        self._cancelling = False
+        self._hover = False
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
+        self.setMinimumHeight(66)
 
         row = QHBoxLayout(self)
-        row.setContentsMargins(14, 10, 14, 10)
-        row.setSpacing(10)
+        row.setContentsMargins(0, 12, 0, 12)
+        row.setSpacing(14)
 
-        # Variant name
+        # Left: name + badges, blurb underneath
+        left = QVBoxLayout()
+        left.setSpacing(3)
+        left.setContentsMargins(0, 0, 0, 0)
+        name_row = QHBoxLayout()
+        name_row.setSpacing(8)
         vlabel = QLabel(info.variant)
-        vlabel.setFont(theme.font(13, bold=True))
-        vlabel.setStyleSheet(f"color: {theme.TEXT_PRIMARY if compatible else theme.TEXT_MUTED}; border: none;")
-        row.addWidget(vlabel)
-
-        # Recommended badge
+        vlabel.setFont(theme.font(14, bold=True))
+        vlabel.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY if compatible else theme.TEXT_MUTED}; background: transparent;")
+        name_row.addWidget(vlabel)
         if is_recommended and compatible:
-            badge = QLabel(t("models.recommended"))
-            badge.setStyleSheet(
-                f"color: {theme.SUCCESS}; font-size: 10px; font-weight: bold;"
-                " background: transparent; border: none; padding: 2px 8px;"
-            )
-            row.addWidget(badge)
+            name_row.addWidget(theme.badge(t("models.recommended"), "green", upper=True))
+        name_row.addWidget(theme.badge(_fmt_size(info.size_mb), "muted"))
+        name_row.addStretch()
+        left.addLayout(name_row)
 
-        # Size
-        size = QLabel(f"{info.size_mb} MB")
-        size.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
-        row.addWidget(size)
+        self._blurb = QLabel(_blurb(info))
+        self._blurb.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        self._blurb.setWordWrap(True)
+        self._blurb.setMinimumWidth(0)
+        left.addWidget(self._blurb)
+        row.addLayout(left, stretch=1)
 
-        row.addStretch()
+        # Right: progress cluster (downloading) …
+        self._prog_box = QWidget()
+        self._prog_box.setStyleSheet("background: transparent;")
+        pb = QVBoxLayout(self._prog_box)
+        pb.setContentsMargins(0, 0, 0, 0)
+        pb.setSpacing(4)
+        self._prog_msg = QLabel("")
+        self._prog_msg.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; font-size: 11px; background: transparent;")
+        self._prog_msg.setAlignment(Qt.AlignmentFlag.AlignRight)
+        pb.addWidget(self._prog_msg)
+        self._progress = ThinProgress(6)
+        self._progress.setFixedWidth(170)
+        pb.addWidget(self._progress)
+        self._prog_box.hide()
+        row.addWidget(self._prog_box)
 
-        # Notes
-        if info.notes:
-            note = QLabel(info.notes)
-            note.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px; border: none;")
-            note.setWordWrap(True)
-            note.setMaximumWidth(220)
-            row.addWidget(note)
+        # … spinner for loading …
+        self._spinner = Spinner(16, theme.INK)
+        self._spinner.hide()
+        row.addWidget(self._spinner)
 
-        # Progress bar (hidden by default)
-        self._progress = QProgressBar()
-        self._progress.setFixedSize(80, 3)
-        self._progress.setTextVisible(False)
-        accent = _FAMILY_COLORS.get(info.family, theme.ACCENT_BLUE)
-        self._progress.setStyleSheet(
-            f"QProgressBar {{ background: {theme.BORDER_SUBTLE}; border: none; border-radius: 1px; }}"
-            f"QProgressBar::chunk {{ background: {accent}; border-radius: 1px; }}"
-        )
-        self._progress.hide()
-        row.addWidget(self._progress)
-
-        # Action button
+        # … and the action button.
         self._btn = QPushButton()
-        self._btn.setFixedSize(110, 30)
+        self._btn.setFixedHeight(32)
+        self._btn.setMinimumWidth(108)
         self._btn.setCursor(Qt.CursorShape.PointingHandCursor)
         row.addWidget(self._btn)
 
         self._update_button(active_id)
         self._btn.clicked.connect(self._on_click)
 
+    # ── painting ──
+    def enterEvent(self, ev) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(ev)
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        if self._hover:
+            p.fillRect(self.rect().adjusted(-8, 0, 8, 0), QColor(31, 30, 27, 8))
+        p.setPen(theme._BORDER_SUBTLE_C)
+        p.drawLine(0, 0, self.width(), 0)          # hairline above each row
+        p.end()
+
+    # ── state ──
+    def _style(self, kind: str, text: str, enabled: bool, font_px: int = 12) -> None:
+        self._btn.setText(text)
+        self._btn.setEnabled(enabled)
+        self._btn.setStyleSheet(theme.button_qss(kind, 32, font_px))
+
     def set_loading(self, loading: bool) -> None:
         self._loading = loading
+        self._spinner.setVisible(loading)
         if loading:
-            self._btn.setText(t("models.btn.loading"))
-            self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
-            )
-            self._btn.setEnabled(False)
-            # Intentionally do NOT show the indeterminate progress bar
-            # here. _progress is a fixed-size 80x3 QWidget and toggling
-            # it visible adds 80+10px (spacing) to the row's
-            # minimumSizeHint, which jumps the SeamlessM4T card from
-            # ~558→648 px and forces a horizontal scrollbar on narrower
-            # windows. The "Loading…" button text is enough indicator;
-            # the progress bar stays reserved for actual download
-            # progress (set_progress), where the percentage matters.
-        else:
-            self._progress.hide()
-            self._progress.setRange(0, 100)
+            self._style("secondary", t("models.btn.loading"), False)
 
-    def _update_button(
-        self,
-        active_id: Optional[str],
-        translator_active: Optional[str] = None,
-        mode: str = "off",
-    ) -> None:
-        if self._loading:
+    def set_downloading(self, on: bool) -> None:
+        self._downloading = on
+        self._cancelling = False
+        self._prog_box.setVisible(on)
+        if on:
+            self._progress.set_indeterminate(True)
+            self._prog_msg.setText(t("models.connecting"))
+            self._style("ghost", t("models.cancel"), True)
+        else:
+            self._progress.set_indeterminate(False)
+
+    def set_progress(self, val: int, msg: str) -> None:
+        if not self._downloading or self._cancelling:
+            return
+        if val < 0:
+            self._progress.set_indeterminate(True)
+            self._prog_msg.setText(msg)
+        else:
+            self._progress.set_indeterminate(False)
+            self._progress.set_value(val)
+            if msg.startswith("Extracting"):
+                self._prog_msg.setText(t("models.extracting"))
+            elif msg.startswith(("Connecting", "Starting")):
+                self._prog_msg.setText(t("models.connecting"))
+            else:
+                self._prog_msg.setText(f"{msg} · {val}%")
+
+    def set_cancelling(self) -> None:
+        self._cancelling = True
+        self._prog_msg.setText(t("models.cancelling"))
+        self._style("ghost", t("models.cancelling"), False)
+
+    def _update_button(self, active_id: Optional[str],
+                       translator_active: Optional[str] = None,
+                       mode: str = "off") -> None:
+        if self._loading or self._downloading:
             return
         downloaded = is_downloaded(self.info.id)
         is_seamless = self.info.backend == "seamless-torch"
         is_asr_active = (active_id == self.info.id) and not is_seamless
-        # Translator badge is only meaningful when translation is on.
-        # In Off mode we keep the engine in RAM (so re-enabling is
-        # instant) but suppress the visual badge — the user shouldn't
-        # see "✓ Translator" on Facebook when translation is disabled.
         is_translator_active = (
-            translator_active == self.info.id
-            and is_seamless
+            translator_active == self.info.id and is_seamless
             and mode in ("direct", "review")
         )
 
-        # Mode gating — some rows aren't activatable in some modes:
-        #   Direct mode is "audio → translated text in one pass"; only
-        #     SeamlessM4T can do that, so every other row is disabled.
-        #   Off mode doesn't use the translator engine; SeamlessM4T as
-        #     a pure ASR isn't supported yet, so its row is disabled
-        #     with a hint that it belongs to Direct/Review modes.
-        if self._compatible and not self._loading:
+        if self._compatible:
             if mode == "direct" and not is_seamless and downloaded:
-                self._btn.setText(t("models.btn.direct_uses_seamless"))
-                self._btn.setStyleSheet(
-                    f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                    f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
-                    " font-size: 10px; }}"
-                )
-                self._btn.setEnabled(False)
+                self._style("secondary", t("models.btn.direct_uses_seamless"), False, 11)
                 return
             if mode == "off" and is_seamless and downloaded:
-                self._btn.setText(t("models.btn.direct_review_only"))
-                self._btn.setStyleSheet(
-                    f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                    f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
-                    " font-size: 10px; }}"
-                )
-                self._btn.setEnabled(False)
+                self._style("secondary", t("models.btn.direct_review_only"), False, 11)
                 return
 
         if not self._compatible:
-            plat_key = ("models.btn.needs_apple_silicon"
-                        if self.info.platform == "apple-silicon"
-                        else "models.btn.needs_nvidia")
-            self._btn.setText(t(plat_key))
-            self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px; font-size: 10px; }}"
-            )
-            self._btn.setEnabled(False)
+            key = ("models.btn.needs_apple_silicon" if self.info.platform == "apple-silicon"
+                   else "models.btn.needs_nvidia")
+            self._style("secondary", t(key), False, 11)
         elif is_translator_active:
-            # SeamlessM4T loaded into the TranslationEngine; visually distinct
-            # from the ASR Active badge so both engines can co-exist clearly.
-            self._btn.setText(t("models.btn.translator"))
+            self._style("secondary", t("models.btn.translator"), False)
+            fg, bg, bd = theme.PASTELS["orange"]
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.ACCENT_ORANGE};"
-                f" border: 1px solid {theme.ACCENT_ORANGE}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
-            )
-            self._btn.setEnabled(False)
+                f"QPushButton {{ background: {bg}; color: {fg};"
+                f" border: 1px solid {bd}; border-radius: 5px; padding: 0 14px;"
+                " font-size: 12px; font-weight: 600; }")
         elif is_asr_active:
-            self._btn.setText(t("models.btn.active"))
+            self._style("secondary", t("models.btn.active"), False)
+            fg, bg, bd = theme.PASTELS["green"]
             self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.SUCCESS};"
-                f" border: 1px solid {theme.SUCCESS}; border-radius: 15px; font-weight: 500; font-size: 11px; }}"
-            )
-            self._btn.setEnabled(False)
+                f"QPushButton {{ background: {bg}; color: {fg};"
+                f" border: 1px solid {bd}; border-radius: 5px; padding: 0 14px;"
+                " font-size: 12px; font-weight: 600; }")
         elif downloaded:
-            self._btn.setText(t("models.btn.activate"))
-            self._btn.setStyleSheet(
-                f"QPushButton {{ background: {theme.ACCENT_BLUE}; color: #ffffff; border: none;"
-                " border-radius: 15px; font-weight: 500; font-size: 11px; }}"
-                f"QPushButton:hover {{ background: {theme.ACCENT_BLUE_HOVER}; }}"
-            )
-            self._btn.setEnabled(True)
+            self._style("primary", t("models.btn.activate"), True)
         elif self.info.download_url:
-            self._btn.setText(t("models.btn.download"))
-            self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_SECONDARY};"
-                f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 15px; font-size: 11px; }}"
-                f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER_STRONG}; }}"
-            )
-            self._btn.setEnabled(True)
+            self._style("secondary", t("models.btn.download"), True)
         else:
-            self._btn.setText(t("models.btn.coming_soon"))
-            self._btn.setStyleSheet(
-                f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 15px;"
-                " font-size: 10px; font-style: italic; }}"
-            )
-            self._btn.setEnabled(False)
+            self._style("secondary", t("models.btn.coming_soon"), False, 11)
 
     def _on_click(self) -> None:
+        if self._downloading:
+            self.cancel_clicked.emit(self.info.id)
+            return
         if is_downloaded(self.info.id):
             path = get_model_path(self.info.id)
             if path:
                 self.activate_clicked.emit(
-                    self.info.id, path, self.info.family, self.info.backend,
-                )
+                    self.info.id, path, self.info.family, self.info.backend)
         elif self.info.download_url:
             self.download_clicked.emit(self.info.id)
 
-    def set_progress(self, val: int, msg: str) -> None:
-        self._progress.show()
-        self._progress.setValue(val)
-
-    def download_done(
-        self,
-        active_id: Optional[str],
-        translator_active: Optional[str] = None,
-        mode: str = "off",
-    ) -> None:
-        self._progress.hide()
+    def download_done(self, active_id: Optional[str], translator_active: Optional[str] = None,
+                      mode: str = "off") -> None:
+        self.set_downloading(False)
         self._update_button(active_id, translator_active, mode)
 
-    def refresh(
-        self,
-        active_id: Optional[str],
-        translator_active: Optional[str] = None,
-        mode: str = "off",
-    ) -> None:
+    def refresh(self, active_id: Optional[str], translator_active: Optional[str] = None,
+                mode: str = "off") -> None:
         self._update_button(active_id, translator_active, mode)
 
 
-# ---------------------------------------------------------------------------
-# FamilyCard — groups all variants of one model family
-# ---------------------------------------------------------------------------
+# ── family card ──────────────────────────────────────────────────────────
 
-class FamilyCard(QFrame):
-    """Card for one model family containing variant rows."""
+class FamilyCard(theme.Card):
+    """Card for one model family containing its variant rows."""
 
     activate_clicked = Signal(str, str, str, str)
     download_clicked = Signal(str)
+    cancel_clicked = Signal(str)
 
-    def __init__(
-        self,
-        family: str,
-        variants: list[ModelInfo],
-        active_id: Optional[str],
-    ) -> None:
-        super().__init__()
+    def __init__(self, family: str, variants: list[ModelInfo], active_id: Optional[str]) -> None:
+        super().__init__(radius=theme.RADIUS_CARD)
         self._family = family
-        self._accent = _FAMILY_COLORS.get(family, theme.ACCENT_BLUE)
         self._rows: dict[str, VariantRow] = {}
 
-        self.setStyleSheet(
-            f"QFrame#familyCard {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 14px; }}"
-        )
-        self.setObjectName("familyCard")
-
         layout = QVBoxLayout(self)
-        layout.setContentsMargins(20, 18, 20, 18)
+        layout.setContentsMargins(24, 22, 24, 12)
         layout.setSpacing(10)
 
-        # Header: name + family pill + metadata
         first = variants[0]
         top = QHBoxLayout()
         top.setSpacing(10)
         name = QLabel(first.name)
-        name.setFont(theme.font(15, bold=True))
-        name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
+        name.setFont(theme.font_serif(20))
+        name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         top.addWidget(name)
-
-        pill = QLabel(family)
-        pill.setStyleSheet(
-            f"color: {self._accent}; font-size: 10px;"
-            f" background: transparent; border: 1px solid {self._accent};"
-            " border-radius: 8px; padding: 2px 10px;"
-        )
-        top.addWidget(pill)
+        top.addWidget(theme.Chip(family, theme.TEXT_SECONDARY, "transparent", theme.BORDER_DEFAULT))
+        if family == _BEST_FAMILY and any(is_variant_compatible(v) for v in variants):
+            top.addWidget(theme.badge(t("models.best_for_you"), "orange", upper=True))
         top.addStretch()
         layout.addLayout(top)
 
-        # Metadata line
-        stars = "★" * first.accuracy_stars + "☆" * (5 - first.accuracy_stars)
-        meta_parts = [f"{first.language_count} {t('models.languages')}"]
+        # Meta line: stars + chips
+        meta = QHBoxLayout()
+        meta.setSpacing(10)
+        stars = QLabel()
+        filled, empty = "★" * first.accuracy_stars, "★" * (5 - first.accuracy_stars)
+        stars.setText(
+            f"<span style='color:{theme.TEXT_PRIMARY}'>{filled}</span>"
+            f"<span style='color:#D5D2C9'>{empty}</span>")
+        stars.setStyleSheet("font-size: 13px; background: transparent;")
+        meta.addWidget(stars)
+        parts = [f"{first.language_count} {t('models.languages')}"]
         if any(v.hotword_support for v in variants):
-            meta_parts.append(t("models.hotwords_supported"))
-        meta_parts.append(t("models.variants_available").format(n=len(variants)))
-        meta = QLabel(f"{stars}   {'  ·  '.join(meta_parts)}")
-        meta.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; border: none;")
-        layout.addWidget(meta)
+            parts.append(t("models.hotwords_supported"))
+        n = len(variants)
+        parts.append(t("models.format_one") if n == 1 else t("models.formats").format(n=n))
+        meta_lbl = QLabel("  ·  ".join(parts))
+        meta_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        meta.addWidget(meta_lbl)
+        meta.addStretch()
+        layout.addLayout(meta)
 
-        layout.addSpacing(4)
-
-        # Variant rows
         rec_id = get_recommended_id(family)
         for v in variants:
-            compatible = is_variant_compatible(v)
-            row = VariantRow(v, active_id, is_recommended=(v.id == rec_id), compatible=compatible)
+            row = VariantRow(v, active_id, is_recommended=(v.id == rec_id),
+                             compatible=is_variant_compatible(v))
             row.activate_clicked.connect(self.activate_clicked)
             row.download_clicked.connect(self.download_clicked)
+            row.cancel_clicked.connect(self.cancel_clicked)
             layout.addWidget(row)
             self._rows[v.id] = row
 
     def add_option_row(self, row_layout) -> None:
-        """Append a per-family option row (e.g. a feature toggle) below
-        the variant rows."""
+        """Append a per-family option row (e.g. a feature toggle)."""
         layout = self.layout()
         layout.addSpacing(2)
         layout.addWidget(theme.separator())
         layout.addLayout(row_layout)
 
-    def paintEvent(self, ev) -> None:
-        super().paintEvent(ev)
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        # Left accent bar
-        grad = QLinearGradient(1, 12, 1, 60)
-        grad.setColorAt(0, QColor(self._accent))
-        grad.setColorAt(1, QColor(0, 0, 0, 0))
-        p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(grad)
-        path = QPainterPath()
-        path.addRoundedRect(QRectF(1, 10, 3, 50), 1.5, 1.5)
-        p.drawPath(path)
-        p.end()
-
     def get_row(self, model_id: str) -> Optional[VariantRow]:
         return self._rows.get(model_id)
 
-    def refresh(
-        self,
-        active_id: Optional[str],
-        translator_active: Optional[str] = None,
-        mode: str = "off",
-    ) -> None:
+    def refresh(self, active_id: Optional[str], translator_active: Optional[str] = None,
+                mode: str = "off") -> None:
         for row in self._rows.values():
             row.refresh(active_id, translator_active, mode)
 
 
-# ---------------------------------------------------------------------------
-# ModelsPage
-# ---------------------------------------------------------------------------
+# ── hardware strip ───────────────────────────────────────────────────────
+
+class _HardwareCard(theme.Card):
+    def __init__(self) -> None:
+        super().__init__(radius=14)
+        self.setFixedHeight(66)
+        ly = QHBoxLayout(self)
+        ly.setContentsMargins(66, 10, 18, 10)
+        ly.setSpacing(12)
+        col = QVBoxLayout()
+        col.setSpacing(2)
+        self._main = QLabel(t("models.detecting_hw"))
+        self._main.setStyleSheet(
+            f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600; background: transparent;")
+        col.addWidget(self._main)
+        self._sub = QLabel("")
+        self._sub.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        col.addWidget(self._sub)
+        ly.addLayout(col, stretch=1)
+        self._chip_box = QHBoxLayout()
+        ly.addLayout(self._chip_box)
+        self._chip: Optional[QLabel] = None
+
+    def set_info(self, hw, mlx: bool) -> None:
+        if hw is None:
+            self._main.setText("—")
+            return
+        self._main.setText(hw.cpu if hw.cpu != "Unknown" else hw.platform_tag.title())
+        bits = []
+        if hw.memory_gb:
+            bits.append(t("models.hw.ram").format(gb=f"{hw.memory_gb:.0f}"))
+        if hw.gpu and hw.gpu != "Unknown" and hw.gpu != hw.cpu:
+            bits.append(hw.gpu)
+        self._sub.setText("  ·  ".join(bits))
+        if self._chip is not None:
+            self._chip.deleteLater()
+        if mlx:
+            self._chip = theme.badge(t("models.hw.mlx_ready"), "green", upper=True)
+        elif hw.platform_tag == "nvidia":
+            self._chip = theme.badge(t("models.hw.nvidia"), "green")
+        else:
+            self._chip = theme.badge(t("models.hw.cpu_mode"), "neutral")
+        self._chip_box.addWidget(self._chip)
+        self.update()
+
+    def paintEvent(self, ev) -> None:
+        super().paintEvent(ev)
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        disc = QRectF(18, (self.height() - 30) / 2, 30, 30)
+        paint_icon(p, "cpu", disc, theme.TEXT_SECONDARY, 1.8)
+        p.end()
+
+
+class _Banner(theme.Card):
+    """Dismissible inline message (errors from load/download)."""
+
+    def __init__(self) -> None:
+        super().__init__(radius=12, accent=theme.ERROR)
+        ly = QHBoxLayout(self)
+        ly.setContentsMargins(46, 10, 10, 10)
+        ly.setSpacing(10)
+        self._label = QLabel("")
+        self._label.setWordWrap(True)
+        self._label.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 12px; background: transparent;")
+        ly.addWidget(self._label, stretch=1)
+        self._close = theme.make_button(t("models.dismiss"), "ghost", 28, font_px=12)
+        self._close.clicked.connect(self.hide)
+        ly.addWidget(self._close)
+        self.hide()
+
+    def show_message(self, text: str) -> None:
+        self._label.setText(text)
+        self._close.setText(t("models.dismiss"))
+        self.show()
+
+    def paintEvent(self, ev) -> None:
+        super().paintEvent(ev)
+        p = QPainter(self)
+        paint_icon(p, "alert", QRectF(16, (self.height() - 20) / 2, 20, 20), theme.ERROR, 2.0)
+        p.end()
+
+
+# ── page ─────────────────────────────────────────────────────────────────
 
 class ModelsPage(QWidget):
     load_model_signal = Signal(str, str, str, str)  # model_id, path, family, backend
     translation_mode_changed = Signal(str)           # off | direct | review
     speaker_labels_toggled = Signal(bool)            # MOSS: keep S01:/S02: in dictation
     translation_target_changed = Signal(str)         # ISO-639-3 code or "off"
-    download_translator_requested = Signal()         # user clicked "Download" on the translator status row
-    model_download_completed = Signal(str)           # model_id — emitted after a successful download finishes
+    download_translator_requested = Signal()
+    model_download_completed = Signal(str)           # model_id
+    download_failed = Signal(str, str)               # model_id, message
+    download_started = Signal(str)                   # model_id
+    download_progress = Signal(str, int, str)        # model_id, percent (-1 unknown), message
 
     def __init__(self, settings=None) -> None:
         super().__init__()
         self._settings = settings
         self._active_model: Optional[str] = None
-        # Translator (SeamlessM4T) is loaded into a separate engine; tracked
-        # independently of _active_model so both badges can co-exist.
         self._translator_active: Optional[str] = None
-        # Translation mode drives which rows are activatable. Initial value
-        # matches whatever the user had set last session.
         self._current_mode: str = self._compute_current_mode(settings)
         self._family_cards: dict[str, FamilyCard] = {}
         self._workers: dict[str, DownloadWorker] = {}
@@ -757,77 +689,33 @@ class ModelsPage(QWidget):
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
-
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        scroll, self._layout = column_scroll(spacing=16)
         root.addWidget(scroll)
 
-        container = QWidget()
-        self._layout = QVBoxLayout(container)
-        self._layout.setContentsMargins(32, 32, 32, 20)
-        self._layout.setSpacing(16)
-        scroll.setWidget(container)
+        self._header = PageHeader(t("models.title"), t("models.subtitle"))
+        self._layout.addWidget(self._header)
 
-        self._heading = QLabel(t("models.title"))
-        self._heading.setFont(theme.font_heading(20))
-        self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        self._layout.addWidget(self._heading)
+        self._hw_card = _HardwareCard()
+        self._layout.addWidget(self._hw_card)
 
-        # Hardware info card
-        hw_card = QFrame()
-        hw_card.setStyleSheet(
-            f"QFrame {{ background: {theme.BG_CARD};"
-            f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 12px; }}"
-        )
-        hw_ly = QHBoxLayout(hw_card)
-        hw_ly.setContentsMargins(20, 16, 20, 16)
-        hw_ly.setSpacing(14)
-        self._hw_icon = _DeviceIcon("mac")
-        hw_ly.addWidget(self._hw_icon)
-        self._hw_label = QLabel(t("models.detecting_hw"))
-        self._hw_label.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: 12px; border: none;"
-        )
-        self._hw_label.setWordWrap(True)
-        hw_ly.addWidget(self._hw_label, stretch=1)
-        self._layout.addWidget(hw_card)
+        self._banner = _Banner()
+        self._layout.addWidget(self._banner)
 
-        # Translation mode + target picker (only if settings provided)
         if self._settings is not None:
             self._mode_card = TranslationModeCard(self._settings)
             self._mode_card.mode_changed.connect(self.translation_mode_changed)
             self._mode_card.target_changed.connect(self.translation_target_changed)
-            self._mode_card.download_translator_clicked.connect(
-                self.download_translator_requested
-            )
-            # Mode card drives which rows are activatable in this page.
-            # Off → only ASR rows enabled, Facebook row reads "Direct /
-            # Review only".  Direct → only the Facebook row enabled.
-            # Review → ASR rows enabled, Facebook row shows Translator
-            # badge once loaded.
+            self._mode_card.download_translator_clicked.connect(self.download_translator_requested)
             self._mode_card.mode_changed.connect(self._on_mode_changed)
             self._layout.addWidget(self._mode_card)
 
-        self._error_label = QLabel()
-        self._error_label.setWordWrap(True)
-        self._error_label.setStyleSheet(
-            f"color: {theme.ERROR}; background: {theme.ERROR_DIM};"
-            f" border: 1px solid {theme.ERROR_A40};"
-            " border-radius: 10px; padding: 12px 16px; font-size: 12px;"
-        )
-        self._error_label.hide()
-        self._layout.addWidget(self._error_label)
-
-        # Build family cards
         for family, variants in get_families().items():
             card = FamilyCard(family, variants, self._active_model)
             card.activate_clicked.connect(self._on_activate)
-            card.download_clicked.connect(self._on_download)
+            card.download_clicked.connect(self._on_download_requested)
+            card.cancel_clicked.connect(self._on_cancel)
             if family == "MOSS-Transcribe-Diarize" and self._settings is not None:
-                row, _ = theme.setting_row(
-                    t("models.moss.labels"), t("models.moss.labels_desc"),
-                )
+                row, _ = theme.setting_row(t("models.moss.labels"), t("models.moss.labels_desc"))
                 tg = theme.ToggleSwitch(bool(self._settings.get("moss_speaker_labels")))
                 tg.toggled_signal.connect(self._on_speaker_labels_toggled)
                 row.addWidget(tg)
@@ -837,22 +725,22 @@ class ModelsPage(QWidget):
 
         self._layout.addStretch()
 
-        self._detect_hw()
+        self._hw_worker = _HardwareWorker()
+        self._hw_worker.detected.connect(self._on_hw_detected)
+        self._hw_worker.start()
 
-    def _detect_hw(self) -> None:
-        hw = detect_hardware()
-        from thundertalk.core.asr import _check_mlx, _IS_APPLE_SILICON
-        plat = hw.platform_tag.replace("-", " ").title()
-        mlx_tag = "  [MLX capable]" if _IS_APPLE_SILICON else ""
-        import platform
-        self._hw_icon.set_kind("mac" if platform.system() == "Darwin" else "pc")
-        self._hw_label.setText(
-            f"CPU: {hw.cpu}   ·   RAM: {hw.memory_gb:.0f} GB   ·   GPU: {hw.gpu}\n"
-            f"Platform: {plat}{mlx_tag}"
-        )
+    def wait_background(self, timeout_ms: int = 5000) -> None:
+        """Block until the hardware probe thread has finished (tests / shutdown)."""
+        self._hw_worker.wait(timeout_ms)
 
+    # ── hardware ──
+    def _on_hw_detected(self, hw) -> None:
+        from thundertalk.core.asr import _IS_APPLE_SILICON
+        self._hw_card.set_info(hw, bool(_IS_APPLE_SILICON))
+
+    # ── activation ──
     def _on_activate(self, model_id: str, path: str, family: str, backend: str) -> None:
-        self._error_label.hide()
+        self._banner.hide()
         self.load_model_signal.emit(model_id, path, family, backend)
 
     def _on_speaker_labels_toggled(self, enabled: bool) -> None:
@@ -862,9 +750,6 @@ class ModelsPage(QWidget):
 
     @staticmethod
     def _compute_current_mode(settings) -> str:
-        """Derive 'off' / 'direct' / 'review' from raw settings — mirrors
-        TranslationModeCard._restore_state's logic so the page-level
-        mode tracker matches the UI segment selection on first paint."""
         if settings is None:
             return "off"
         target = settings.translation_target
@@ -874,16 +759,12 @@ class ModelsPage(QWidget):
         return mode if mode in ("direct", "review") else "direct"
 
     def _on_mode_changed(self, mode: str) -> None:
-        """User flipped the segment control. Re-render every row with
-        the new mode so disabled-rows update immediately."""
         self._current_mode = mode
         self._refresh_all_rows()
 
     def _refresh_all_rows(self) -> None:
         for card in self._family_cards.values():
-            card.refresh(
-                self._active_model, self._translator_active, self._current_mode
-            )
+            card.refresh(self._active_model, self._translator_active, self._current_mode)
 
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._active_model = model_id
@@ -892,44 +773,95 @@ class ModelsPage(QWidget):
             self._mode_card.refresh_warning()
 
     def set_translator_active(self, model_id: Optional[str]) -> None:
-        """Mark the SeamlessM4T translator model as active in the UI.
-
-        Independent of set_active_model: ASR and translator can both be
-        loaded simultaneously; both badges co-exist.
-        """
         self._translator_active = model_id
         self._refresh_all_rows()
 
     def set_loading(self, model_id: str, loading: bool) -> None:
-        """Show/hide loading indicator on a specific variant row."""
         row = self._find_row(model_id)
         if row:
             row.set_loading(loading)
             if not loading:
-                row.refresh(
-                    self._active_model, self._translator_active, self._current_mode
-                )
+                row.refresh(self._active_model, self._translator_active, self._current_mode)
 
     def set_translator_status(self, state: str, message: str = "") -> None:
-        """Forward to the inline status row inside TranslationModeCard."""
         if self._mode_card is not None:
             self._mode_card.set_translator_status(state, message)
 
     def show_load_error(self, msg: str) -> None:
-        self._error_label.setText(msg)
-        self._error_label.show()
+        self._banner.show_message(msg)
+
+    # ── downloads ──
+    def is_downloading(self, model_id: str) -> bool:
+        return model_id in self._workers
+
+    def _on_download_requested(self, model_id: str) -> None:
+        """Row clicked Download: confirm very large downloads first."""
+        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+        if info is None:
+            return
+        if info.size_mb >= _BIG_DOWNLOAD_MB:
+            from thundertalk.ui.styled_dialog import StyledDialog
+            ok = StyledDialog.confirm(
+                self.window(),
+                title=t("models.big_download_title"),
+                body=t("models.big_download_body").format(
+                    name=info.name, size=_fmt_size(info.size_mb)),
+                accept_label=t("models.big_download_go"),
+                cancel_label=t("models.cancel"),
+            )
+            if not ok:
+                return
+        self._on_download(model_id)
 
     def _on_download(self, model_id: str) -> None:
-        info = next(m for m in BUILTIN_MODELS if m.id == model_id)
+        """Start (or ignore a duplicate request for) a download."""
+        if model_id in self._workers:
+            return
+        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+        if info is None:
+            return
         worker = DownloadWorker(info)
         self._workers[model_id] = worker
 
         row = self._find_row(model_id)
         if row:
+            row.set_downloading(True)
             worker.progress.connect(row.set_progress)
-        worker.finished.connect(lambda mid: self._download_done(mid))
-        worker.error.connect(lambda msg: self._download_error(model_id, msg))
+        worker.progress.connect(
+            lambda p, msg, mid=model_id: self.download_progress.emit(mid, p, msg))
+        worker.done.connect(self._download_done)
+        worker.error.connect(lambda msg, mid=model_id: self._download_error(mid, msg))
+        worker.cancelled.connect(lambda mid=model_id: self._download_cancelled(mid))
+        # Only drop our reference once the OS thread has fully exited.
+        worker.finished.connect(lambda mid=model_id: self._workers.pop(mid, None))
         worker.start()
+        self.download_started.emit(model_id)
+
+    # Public API used by the onboarding flow and app-level automation.
+    def start_download(self, model_id: str) -> None:
+        self._on_download(model_id)
+
+    def cancel_download(self, model_id: str) -> None:
+        self._on_cancel(model_id)
+
+    def activate_model(self, model_id: str) -> bool:
+        """Load an already-downloaded model. Returns False if it isn't local."""
+        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+        if info is None or not is_downloaded(model_id):
+            return False
+        path = get_model_path(model_id)
+        if not path:
+            return False
+        self._on_activate(info.id, path, info.family, info.backend)
+        return True
+
+    def _on_cancel(self, model_id: str) -> None:
+        worker = self._workers.get(model_id)
+        row = self._find_row(model_id)
+        if worker is not None:
+            worker.cancel()
+        if row is not None:
+            row.set_cancelling()
 
     def _find_row(self, model_id: str) -> Optional[VariantRow]:
         for card in self._family_cards.values():
@@ -941,19 +873,27 @@ class ModelsPage(QWidget):
     def _download_done(self, model_id: str) -> None:
         row = self._find_row(model_id)
         if row:
-            row.download_done(
-                self._active_model, self._translator_active, self._current_mode
-            )
-        self._workers.pop(model_id, None)
+            row.download_done(self._active_model, self._translator_active, self._current_mode)
         self.model_download_completed.emit(model_id)
+
+    def _download_cancelled(self, model_id: str) -> None:
+        row = self._find_row(model_id)
+        if row:
+            row.download_done(self._active_model, self._translator_active, self._current_mode)
 
     def _download_error(self, model_id: str, msg: str) -> None:
         row = self._find_row(model_id)
         if row:
-            row._progress.hide()
-        self._error_label.setText(f"Download failed for {model_id}: {msg}")
-        self._error_label.show()
-        self._workers.pop(model_id, None)
+            row.download_done(self._active_model, self._translator_active, self._current_mode)
+        self._banner.show_message(t("models.download_failed").format(err=msg[:240]))
+        self.download_failed.emit(model_id, msg)
+
+    def cancel_all_downloads(self) -> None:
+        for w in list(self._workers.values()):
+            w.cancel()
 
     def retranslate(self) -> None:
-        self._heading.setText(t("models.title"))
+        self._header.set_title(t("models.title"))
+        self._header.set_subtitle(t("models.subtitle"))
+        if self._mode_card is not None:
+            self._mode_card.retranslate()

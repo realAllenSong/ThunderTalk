@@ -27,7 +27,6 @@ from PySide6.QtWidgets import (
     QDialog,
     QHBoxLayout,
     QLabel,
-    QPushButton,
     QVBoxLayout,
     QWidget,
 )
@@ -65,7 +64,7 @@ class StyledDialog(QDialog):
         self.setMinimumWidth(420)
 
         outer = QVBoxLayout(self)
-        outer.setContentsMargins(0, 0, 0, 0)
+        outer.setContentsMargins(12, 8, 12, 16)
 
         # Inner panel — the actual painted card
         panel = QWidget()
@@ -76,12 +75,12 @@ class StyledDialog(QDialog):
         outer.addWidget(panel)
 
         ly = QVBoxLayout(panel)
-        ly.setContentsMargins(28, 24, 28, 22)
+        ly.setContentsMargins(30, 26, 30, 24)
         ly.setSpacing(14)
 
         # Title — TEXT_PRIMARY, bold, larger.
         title_lbl = QLabel(title)
-        title_lbl.setFont(theme.font_heading(15))
+        title_lbl.setFont(theme.font_heading(17))
         title_lbl.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY}; background: transparent;"
             " border: none;"
@@ -107,31 +106,12 @@ class StyledDialog(QDialog):
         btn_row.setSpacing(8)
         btn_row.addStretch()
 
-        cancel_btn = QPushButton(cancel_label)
-        cancel_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        cancel_btn.setFixedHeight(34)
-        cancel_btn.setStyleSheet(
-            f"QPushButton {{ background: transparent;"
-            f" color: {theme.TEXT_SECONDARY};"
-            f" border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 17px; padding: 0 20px; font-size: 13px; }}"
-            f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER_STRONG}; }}"
-        )
+        cancel_btn = theme.make_button(cancel_label, "secondary", 36, font_px=13)
         cancel_btn.clicked.connect(self.reject)
         btn_row.addWidget(cancel_btn)
 
-        accent = theme.ERROR if destructive else theme.ACCENT_BLUE
-        accent_hover = theme.ERROR if destructive else theme.ACCENT_BLUE_HOVER
-        accept_btn = QPushButton(accept_label)
-        accept_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        accept_btn.setFixedHeight(34)
-        accept_btn.setStyleSheet(
-            f"QPushButton {{ background: {accent};"
-            " color: #ffffff; border: none; border-radius: 17px;"
-            " padding: 0 24px; font-size: 13px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {accent_hover}; }}"
-        )
+        accept_btn = theme.make_button(
+            accept_label, "danger" if destructive else "primary", 36, font_px=13)
         accept_btn.setDefault(True)
         accept_btn.setAutoDefault(True)
         accept_btn.clicked.connect(self.accept)
@@ -147,17 +127,16 @@ class StyledDialog(QDialog):
     def paintEvent(self, _ev) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(0, 0, self.width(), self.height()).adjusted(
-            0.5, 0.5, -0.5, -0.5
-        )
+        rect = QRectF(self.rect()).adjusted(12, 8, -12, -16)
+        # Faint edge shadow (translucent window, so we draw our own).
+        for i, a in enumerate((14, 8, 4)):
+            sh = QPainterPath()
+            sh.addRoundedRect(rect.adjusted(-i, 2 + i, i, 3 + i * 2), 10 + i, 10 + i)
+            p.fillPath(sh, QColor(0, 0, 0, a))
         path = QPainterPath()
-        path.addRoundedRect(rect, 14, 14)
-        # Background — solid pure black (matches the rest of the
-        # app's BG_BASE / BG_CARD).
-        p.fillPath(path, QColor("#0a0a0a"))
-        # Rim — faint white at very low alpha for the glass-edge
-        # look the rest of the app uses.
-        p.setPen(QPen(QColor(255, 255, 255, 32), 1))
+        path.addRoundedRect(rect, 10, 10)
+        p.fillPath(path, QColor(theme.BG_CARD))
+        p.setPen(QPen(theme._BORDER_STRONG_C, 1))
         p.setBrush(Qt.BrushStyle.NoBrush)
         p.drawPath(path)
         p.end()

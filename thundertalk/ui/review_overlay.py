@@ -8,7 +8,7 @@ user decides; no auto-dismiss.
 from __future__ import annotations
 
 from PySide6.QtCore import QRectF, Qt, Signal
-from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath
+from PySide6.QtGui import QColor, QCursor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
@@ -99,17 +99,16 @@ class ReviewOverlay(QWidget):
         self._lang_combo.setFixedWidth(118)
         self._lang_combo.setCursor(Qt.CursorShape.PointingHandCursor)
         self._lang_combo.setStyleSheet(
-            f"QComboBox {{ background: rgba(255,255,255,0.06);"
-            f" color: {theme.TEXT_PRIMARY};"
-            " border: 1px solid rgba(255,255,255,0.10);"
-            " border-radius: 11px; padding: 1px 10px; font-size: 11px; }}"
-            "QComboBox:hover { background: rgba(255,255,255,0.10); }"
+            f"QComboBox {{ background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};"
+            f" border: 1px solid {theme.BORDER_DEFAULT};"
+            " border-radius: 4px; padding: 1px 8px; font-size: 11px; }"
+            f"QComboBox:hover {{ border: 1px solid {theme.BORDER_STRONG}; }}"
             "QComboBox::drop-down { border: none; width: 14px; }"
-            "QComboBox QAbstractItemView { background: #1a1a1d;"
+            f"QComboBox QAbstractItemView {{ background: {theme.BG_CARD};"
             f" color: {theme.TEXT_PRIMARY}; border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 8px; padding: 4px;"
-            f" selection-background-color: {theme.ACCENT_ORANGE};"
-            " selection-color: #ffffff; }"
+            " border-radius: 6px; padding: 4px;"
+            f" selection-background-color: {theme.INK};"
+            " selection-color: #FFFFFF; }"
         )
         for code, display in _REVIEW_LANGS:
             self._lang_combo.addItem(display, code)
@@ -132,7 +131,7 @@ class ReviewOverlay(QWidget):
         # Hairline separator between original and translated (1px, very faint)
         sep = QWidget()
         sep.setFixedHeight(1)
-        sep.setStyleSheet("background: rgba(255, 255, 255, 0.05);")
+        sep.setStyleSheet(f"background: {theme.BORDER_SUBTLE};")
         ly.addSpacing(2)
         ly.addWidget(sep)
         ly.addSpacing(2)
@@ -154,29 +153,15 @@ class ReviewOverlay(QWidget):
 
         self._keep_btn = QPushButton(t("review.keep"))
         self._keep_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._keep_btn.setFixedHeight(26)
-        self._keep_btn.setStyleSheet(
-            "QPushButton { background: transparent;"
-            f" color: {theme.TEXT_MUTED};"
-            " border: 1px solid rgba(255,255,255,0.10);"
-            " border-radius: 13px; font-size: 11px; padding: 2px 14px; }"
-            "QPushButton:hover { background: rgba(255,255,255,0.06);"
-            f" color: {theme.TEXT_SECONDARY}; }}"
-        )
+        self._keep_btn.setFixedHeight(28)
+        self._keep_btn.setStyleSheet(theme.button_qss("secondary", 28, 11))
         self._keep_btn.clicked.connect(self._on_keep)
         btn_row.addWidget(self._keep_btn)
 
         self._replace_btn = QPushButton(t("review.replace"))
         self._replace_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._replace_btn.setFixedHeight(26)
-        self._replace_btn.setStyleSheet(
-            f"QPushButton {{ background: {theme.ACCENT_ORANGE}; color: #ffffff;"
-            " border: none; border-radius: 13px; font-size: 11px;"
-            " font-weight: 600; padding: 2px 16px; }}"
-            f"QPushButton:hover {{ background: {theme.ACCENT_ORANGE_WARM}; }}"
-            "QPushButton:disabled { background: rgba(255,255,255,0.06);"
-            f" color: {theme.TEXT_MUTED}; }}"
-        )
+        self._replace_btn.setFixedHeight(28)
+        self._replace_btn.setStyleSheet(theme.button_qss("primary", 28, 11))
         self._replace_btn.clicked.connect(self._on_replace)
         btn_row.addWidget(self._replace_btn)
 
@@ -192,7 +177,6 @@ class ReviewOverlay(QWidget):
         self._is_loading = True
 
         self._set_combo_lang(tgt_lang)
-        lang_display = self._lang_display(tgt_lang)
         # Loading state — neutral muted text (no jittery icon)
         self._status_label.setText(t("review.translating"))
         self._status_label.setStyleSheet(
@@ -282,16 +266,12 @@ class ReviewOverlay(QWidget):
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
         w, h = self.width(), self.height()
-        radius = 18
+        radius = 10
 
         path = QPainterPath()
-        path.addRoundedRect(QRectF(0, 0, w, h), radius, radius)
-
-        # Dark glass background
-        p.fillPath(path, QColor(18, 18, 18, 240))
-        # Hairline edge
-        from PySide6.QtGui import QPen
-        p.setPen(QPen(QColor(255, 255, 255, 18), 1))
+        path.addRoundedRect(QRectF(0.5, 0.5, w - 1, h - 1), radius, radius)
+        p.fillPath(path, QColor(theme.BG_CARD))
+        p.setPen(QPen(theme._BORDER_STRONG_C, 1))
         p.drawPath(path)
         p.end()
 

@@ -18,7 +18,7 @@ from typing import Optional
 
 import numpy as np
 from PySide6.QtCore import Qt, QPointF, QRectF, QThread, Signal, QTimer
-from PySide6.QtGui import QBrush, QColor, QLinearGradient, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QApplication,
     QComboBox,
@@ -29,7 +29,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QPushButton,
-    QScrollArea,
     QSizePolicy,
     QStackedWidget,
     QTextEdit,
@@ -230,23 +229,13 @@ class _AnimatedBar(QWidget):
         clip = QPainterPath()
         clip.addRoundedRect(QRectF(0, 0, w, h), r, r)
         p.setClipPath(clip)
+        p.setBrush(QColor(theme.INK))
         if self._indeterminate:
             seg = w * 0.38
             pos = (self._phase if self._phase <= 1.0 else 2.0 - self._phase) * (w - seg)
-            grad = QLinearGradient(pos, 0, pos + seg, 0)
-            grad.setColorAt(0.0, QColor(249, 115, 22, 0))
-            grad.setColorAt(0.3, QColor(249, 115, 22, 210))
-            grad.setColorAt(0.7, QColor(249, 115, 22, 210))
-            grad.setColorAt(1.0, QColor(249, 115, 22, 0))
-            p.setBrush(QBrush(grad))
             p.drawRect(QRectF(pos, 0, seg, h))
         else:
             fill = max(self._progress * w, h)
-            grad = QLinearGradient(0, 0, fill, 0)
-            grad.setColorAt(0.0, QColor(249, 115, 22))
-            grad.setColorAt(0.6, QColor(251, 146, 60))
-            grad.setColorAt(1.0, QColor(249, 115, 22))
-            p.setBrush(QBrush(grad))
             p.drawRoundedRect(QRectF(0, 0, fill, h), r, r)
         p.setClipping(False)
         p.end()
@@ -319,7 +308,7 @@ class _WaveformWidget(QWidget):
 
         bars = self._bars
         if not bars:
-            p.setBrush(QColor(255, 255, 255, 14))
+            p.setBrush(QColor(31, 30, 27, 40))
             bw, gap, cy = 2.0, 2.0, h / 2
             x = 6.0
             while x + bw < w - 6:
@@ -337,12 +326,12 @@ class _WaveformWidget(QWidget):
             x = 2 + i * bw
             bh = max(1.5, amp * max_bh)
             played = (i / n) < self._pos
-            p.setBrush(QColor(91, 141, 239, 200 if played else 50))
+            p.setBrush(QColor(31, 30, 27, 210 if played else 55))
             p.drawRoundedRect(QRectF(x, cy - bh / 2, bar_draw_w, bh), 0.5, 0.5)
 
         if self._pos > 0:
             px = 2 + self._pos * (w - 4)
-            p.setPen(QPen(QColor(249, 115, 22), 1.5))
+            p.setPen(QPen(QColor(theme.ACCENT_ORANGE), 1.5))
             p.drawLine(QPointF(px, 3), QPointF(px, h - 3))
 
         p.end()
@@ -786,11 +775,11 @@ class _DropZone(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self._hovering:
-            bg, border, dashed = QColor(249, 115, 22, 20), QColor(theme.ACCENT_ORANGE), False
+            bg, border, dashed = QColor(217, 72, 15, 14), QColor(theme.ACCENT_ORANGE), False
         elif self._loaded_path:
-            bg, border, dashed = QColor(91, 141, 239, 10), QColor(91, 141, 239, 90), False
+            bg, border, dashed = QColor(46, 125, 79, 10), QColor(46, 125, 79, 110), False
         else:
-            bg, border, dashed = QColor(255, 255, 255, 4), QColor(255, 255, 255, 20), True
+            bg, border, dashed = QColor(31, 30, 27, 5), QColor(31, 30, 27, 56), True
         pen = QPen(border, 1.5, Qt.PenStyle.DashLine if dashed else Qt.PenStyle.SolidLine)
         if dashed:
             pen.setDashPattern([4.0, 3.0])
@@ -952,11 +941,11 @@ class _RefAudioPicker(QFrame):
         painter = QPainter(self)
         painter.setRenderHint(QPainter.RenderHint.Antialiasing)
         if self._hovering:
-            bg, border, dashed = QColor(249, 115, 22, 20), QColor(theme.ACCENT_ORANGE), False
+            bg, border, dashed = QColor(217, 72, 15, 14), QColor(theme.ACCENT_ORANGE), False
         elif self._path:
-            bg, border, dashed = QColor(91, 141, 239, 10), QColor(91, 141, 239, 90), False
+            bg, border, dashed = QColor(46, 125, 79, 10), QColor(46, 125, 79, 110), False
         else:
-            bg, border, dashed = QColor(255, 255, 255, 3), QColor(255, 255, 255, 18), True
+            bg, border, dashed = QColor(31, 30, 27, 5), QColor(31, 30, 27, 56), True
         pen = QPen(border, 1.5, Qt.PenStyle.DashLine if dashed else Qt.PenStyle.SolidLine)
         if dashed:
             pen.setDashPattern([4.0, 3.0])
@@ -999,37 +988,13 @@ class LabPage(QWidget):
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
 
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
+        from thundertalk.ui.widgets import PageHeader, column_scroll
+        scroll, layout = column_scroll(spacing=20)
         root.addWidget(scroll)
 
-        container = QWidget()
-        layout = QVBoxLayout(container)
-        layout.setContentsMargins(32, 32, 32, 32)
-        layout.setSpacing(20)
-        scroll.setWidget(container)
-
-        heading_row = QHBoxLayout()
-        heading_row.setSpacing(10)
-        self._heading = QLabel(t("lab.title"))
-        self._heading.setFont(theme.font_heading(20))
-        self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
-        heading_row.addWidget(self._heading)
-        self._exp_badge = QLabel(t("common.experimental"))
-        self._exp_badge.setStyleSheet(
-            f"color: {theme.ACCENT_ORANGE}; background: {theme.ACCENT_ORANGE_DIM};"
-            " font-size: 10px; font-weight: 700; letter-spacing: 0.8px;"
-            f" border: 1px solid {theme.ACCENT_ORANGE}55; border-radius: 8px; padding: 2px 8px;"
-        )
-        heading_row.addWidget(self._exp_badge)
-        heading_row.addStretch()
-        layout.addLayout(heading_row)
-
-        self._subtitle = QLabel(t("lab.subtitle"))
-        self._subtitle.setStyleSheet(f"color: {theme.TEXT_MUTED}; background: transparent; font-size: 13px;")
-        self._subtitle.setWordWrap(True)
-        layout.addWidget(self._subtitle)
+        self._exp_badge = theme.badge(t("common.experimental"), "orange")
+        self._header = PageHeader(t("lab.title"), t("lab.subtitle"), badge=self._exp_badge)
+        layout.addWidget(self._header)
 
         layout.addWidget(self._build_asr_card())
         layout.addWidget(self._build_tts_card())
@@ -1126,7 +1091,7 @@ class LabPage(QWidget):
         ol.addLayout(oh)
         ol.addWidget(theme.separator())
         _ts = (f"QTextEdit {{ background: transparent; color: {theme.TEXT_PRIMARY};"
-               " border: none; padding: 14px; }} QTextEdit:focus {{ border: none; }}")
+               " border: none; padding: 14px; } QTextEdit:focus { border: none; }")
         self._plain_edit = QTextEdit()
         self._plain_edit.setReadOnly(True)
         self._plain_edit.setMinimumHeight(160)
@@ -1198,16 +1163,12 @@ class LabPage(QWidget):
         self._tts_model_edit.setStyleSheet(
             f"QLineEdit {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 8px; padding: 0 10px; font-size: 12px; }}"
-            f"QLineEdit:focus {{ border: 1px solid rgba(249,115,22,0.4); }}"
+            f"QLineEdit:focus {{ border: 1px solid {theme.INK}; }}"
         )
         self._tts_model_edit.textChanged.connect(lambda t_: self._settings.set("tts_model", t_.strip()))
         sp.addWidget(self._tts_model_edit, stretch=1)
-        self._tts_start_btn = theme.pill_button(
-            t("lab.tts.server_start"), height=30,
-            bg=theme.ACCENT_ORANGE, fg="#fff",
-            bg_hover=theme.ACCENT_ORANGE_HOVER, fg_hover="#fff",
-            border=theme.ACCENT_ORANGE,
-        )
+        self._tts_start_btn = theme.make_button(
+            t("lab.tts.server_start"), "primary", 30, font_px=12)
         self._tts_start_btn.setFixedWidth(130)
         self._tts_start_btn.clicked.connect(self._launch_tts_server)
         sp.addWidget(self._tts_start_btn)
@@ -1223,7 +1184,7 @@ class LabPage(QWidget):
         self._tts_input.setStyleSheet(
             f"QTextEdit {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 8px; padding: 10px; }}"
-            f"QTextEdit:focus {{ border: 1px solid rgba(249,115,22,0.35); }}"
+            f"QTextEdit:focus {{ border: 1px solid {theme.INK}; }}"
         )
         ly.addWidget(self._tts_input)
 
@@ -1320,7 +1281,7 @@ class LabPage(QWidget):
         self._tts_instruct.setStyleSheet(
             f"QLineEdit {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 8px; padding: 0 10px; font-size: 12px; }}"
-            f"QLineEdit:focus {{ border: 1px solid rgba(249,115,22,0.35); }}"
+            f"QLineEdit:focus {{ border: 1px solid {theme.INK}; }}"
         )
         row2.addWidget(self._tts_instruct, stretch=1)
         pla.addLayout(row2)
@@ -1348,7 +1309,7 @@ class LabPage(QWidget):
         self._clone_transcript.setStyleSheet(
             f"QLineEdit {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 8px; padding: 0 10px; font-size: 12px; }}"
-            f"QLineEdit:focus {{ border: 1px solid rgba(249,115,22,0.35); }}"
+            f"QLineEdit:focus {{ border: 1px solid {theme.INK}; }}"
         )
         crow2.addWidget(self._clone_transcript, stretch=1)
         cla.addLayout(crow2)
@@ -1448,9 +1409,9 @@ class LabPage(QWidget):
         self._async_tts_ping()
 
     def retranslate(self) -> None:
-        self._heading.setText(t("lab.title"))
+        self._header.set_title(t("lab.title"))
         self._exp_badge.setText(t("common.experimental"))
-        self._subtitle.setText(t("lab.subtitle"))
+        self._header.set_subtitle(t("lab.subtitle"))
         self._asr_model_combo.setItemText(0, t("lab.asr.engine_active"))
         self._refresh_asr_badge()
 
@@ -1471,21 +1432,23 @@ class LabPage(QWidget):
             self._asr_badge.setText(
                 t("lab.asr.diarize_ready") if ready else t("lab.asr.diarize_lazy")
             )
+            fg, bg, bd = theme.PASTELS["orange"]
             self._asr_badge.setStyleSheet(
-                f"color: {theme.ACCENT_ORANGE}; background: transparent; font-size: 11px;"
-                f" border: 1px solid {theme.ACCENT_ORANGE}55; border-radius: 8px; padding: 2px 10px;"
+                f"color: {fg}; background: {bg}; font-size: 11px;"
+                f" border: 1px solid {bd}; border-radius: 9px; padding: 2px 10px;"
             )
         elif self._engine is None or not self._engine.is_loaded:
             self._asr_badge.setText(t("lab.asr.no_model"))
             self._asr_badge.setStyleSheet(
                 f"color: {theme.TEXT_MUTED}; background: transparent; font-size: 11px;"
-                f" border: 1px solid {theme.BORDER_SUBTLE}; border-radius: 8px; padding: 2px 10px;"
+                f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 9px; padding: 2px 10px;"
             )
         else:
             self._asr_badge.setText(f"✓ {self._engine.current_model or 'model'}")
+            fg, bg, bd = theme.PASTELS["green"]
             self._asr_badge.setStyleSheet(
-                f"color: {theme.SUCCESS}; background: transparent; font-size: 11px;"
-                f" border: 1px solid {theme.SUCCESS}44; border-radius: 8px; padding: 2px 10px;"
+                f"color: {fg}; background: {bg}; font-size: 11px;"
+                f" border: 1px solid {bd}; border-radius: 9px; padding: 2px 10px;"
             )
 
     def _refresh_asr_btn(self) -> None:
@@ -1603,7 +1566,7 @@ class LabPage(QWidget):
         active_qss = (
             f"QPushButton {{ background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY};"
             f" border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 13px;"
-            " padding: 0 14px; font-size: 12px; font-weight: bold; }}"
+            " padding: 0 14px; font-size: 12px; font-weight: bold; }"
         )
         inactive_qss = (
             f"QPushButton {{ background: transparent; color: {theme.TEXT_MUTED};"

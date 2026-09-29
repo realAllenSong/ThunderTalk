@@ -108,6 +108,48 @@ def request_accessibility() -> bool:
         return True
 
 
+_MIC_STATUS = {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}
+
+
+def _mic_status_via_objc() -> str | None:
+    """AVCaptureDevice.authorizationStatusForMediaType: through the raw ObjC
+    runtime. pyobjc-framework-AVFoundation is not a dependency (and is not
+    bundled), so without this the check silently fell open and reported
+    "authorized" even when the user had denied access. Returns None if the
+    runtime call itself is unavailable."""
+    try:
+        ctypes.cdll.LoadLibrary(
+            "/System/Library/Frameworks/AVFoundation.framework/AVFoundation"
+        )
+        lib = ctypes.cdll.LoadLibrary(ctypes.util.find_library("objc"))
+        lib.objc_getClass.restype = ctypes.c_void_p
+        lib.objc_getClass.argtypes = [ctypes.c_char_p]
+        lib.sel_registerName.restype = ctypes.c_void_p
+        lib.sel_registerName.argtypes = [ctypes.c_char_p]
+        send = lib.objc_msgSend
+
+        send.restype = ctypes.c_void_p
+        send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_char_p]
+        media_audio = send(  # AVMediaTypeAudio == @"soun"
+            lib.objc_getClass(b"NSString"),
+            lib.sel_registerName(b"stringWithUTF8String:"),
+            b"soun",
+        )
+        device_cls = lib.objc_getClass(b"AVCaptureDevice")
+        if not device_cls or not media_audio:
+            return None
+        send.restype = ctypes.c_long
+        send.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_void_p]
+        status = send(
+            device_cls,
+            lib.sel_registerName(b"authorizationStatusForMediaType:"),
+            media_audio,
+        )
+        return _MIC_STATUS.get(int(status))
+    except Exception:
+        return None
+
+
 def check_microphone() -> str:
     """Return microphone permission status: 'authorized', 'denied', 'not_determined', 'restricted'."""
     if _SYSTEM != "Darwin":
@@ -117,13 +159,18 @@ def check_microphone() -> str:
         status = AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(
             AVFoundation.AVMediaTypeAudio
         )
-        return {0: "not_determined", 1: "restricted", 2: "denied", 3: "authorized"}.get(status, "authorized")
+        return _MIC_STATUS.get(status, "authorized")
     except ImportError:
-        return "authorized"
+        pass
+    return _mic_status_via_objc() or "authorized"
 
 
 def request_microphone(callback=None) -> None:
-    """Trigger the system microphone permission dialog."""
+    """Trigger the system microphone permission dialog.
+
+    Opening (then immediately closing) an input stream is what makes macOS
+    show the prompt when pyobjc's AVFoundation binding isn't available.
+    """
     if _SYSTEM != "Darwin":
         return
     try:
@@ -132,8 +179,21 @@ def request_microphone(callback=None) -> None:
             AVFoundation.AVMediaTypeAudio,
             callback or (lambda granted: None),
         )
+        return
     except ImportError:
         pass
+
+    import threading
+
+    def _probe() -> None:
+        try:
+            import sounddevice as sd
+            with sd.InputStream(channels=1, samplerate=16000):
+                sd.sleep(150)
+        except Exception:
+            pass
+
+    threading.Thread(target=_probe, daemon=True, name="mic-permission-probe").start()
 
 
 def open_accessibility_settings() -> None:

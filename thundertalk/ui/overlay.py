@@ -1,21 +1,35 @@
-"""Floating voice input capsule — polished pill overlay for recording state."""
+"""Floating dictation indicator — the only UI most people see while using
+the app.
+
+A flat ink bar at the top of the screen. Recording: an orange dot, "Listening",
+a live level meter, a seconds counter and the hotkey. Transcribing: plain text
+with cycling dots. Then a one-line result or error. It appears and disappears
+without animation; the only movement is the meter, which is real input level.
+"""
 
 from __future__ import annotations
 
-import math
 import time
+from collections import deque
 
-from PySide6.QtCore import QRectF, QTimer, Qt, QPointF
-from PySide6.QtGui import (
-    QBrush, QColor, QFont, QLinearGradient, QPainter, QPainterPath, QPen,
-    QRadialGradient,
-)
+from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import QWidget
 
 from thundertalk.core.i18n import t
 from thundertalk.ui import theme
+from thundertalk.ui.icons import paint_icon
+from thundertalk.ui.keys import display_combo
 
-_W, _H = 340, 56
+# The widget is a little larger than the bar so a faint edge shadow fits.
+_MX, _MY = 12, 10
+_PW, _PH = 420, 52
+_W, _H = _PW + 2 * _MX, _PH + 2 * _MY + 4
+_BARS = 34
+
+_INK = QColor(theme.INK)
+_PAPER = QColor("#FBFBFA")
+_DIM = QColor(251, 251, 250, 150)
 
 
 class VoiceOverlay(QWidget):
@@ -36,79 +50,100 @@ class VoiceOverlay(QWidget):
 
         self._state = self._IDLE
         self._text = ""
-        self._phase = 0.0
-        self._audio_rms: float = 0.0
-        self._smooth_rms: float = 0.0
-        self._progress: float = 0.0
-        self._t0: float = 0.0
+        self._audio_rms = 0.0
+        self._smooth = 0.0
+        self._levels: deque[float] = deque([0.0] * _BARS, maxlen=_BARS)
+        self._rec_t0 = 0.0
+        self._tick_n = 0
+        self._hotkey = ""
+
+        # Slow tick: advances the seconds counter and the "…" dots. (The level
+        # meter repaints itself whenever a new sample arrives.)
         self._anim = QTimer(self)
         self._anim.timeout.connect(self._tick)
 
+        # One cancellable timer — a stale singleShot used to hide the *next*
+        # recording's overlay if the user re-triggered within the delay.
+        self._hide_timer = QTimer(self)
+        self._hide_timer.setSingleShot(True)
+        self._hide_timer.timeout.connect(self.hide_overlay)
+
     # ── public API ──────────────────────────────────────────────────────
 
+    def set_hotkey(self, combo: str) -> None:
+        self._hotkey = combo
+        self.update()
+
     def show_recording(self) -> None:
+        self._hide_timer.stop()
         self._state = self._RECORDING
-        self._text = t("overlay.listening")
-        self._phase = 0.0
-        self._center()
-        self.show()
-        self._anim.start(16)
+        self._text = t("overlay.listening").rstrip("…").rstrip(".")
+        self._smooth = 0.0
+        self._audio_rms = 0.0
+        self._levels = deque([0.0] * _BARS, maxlen=_BARS)
+        self._rec_t0 = time.monotonic()
+        self._present()
+        self._anim.start(250)
 
     def set_audio_level(self, rms: float) -> None:
         self._audio_rms = rms
+        if self._state == self._RECORDING:
+            target = min(1.0, rms * 10.0)
+            k = 0.55 if target > self._smooth else 0.25
+            self._smooth += (target - self._smooth) * k
+            self._levels.append(self._smooth)
+            self.update()
 
     def show_transcribing(self) -> None:
+        self._hide_timer.stop()
         self._state = self._TRANSCRIBING
-        self._text = t("overlay.transcribing")
-        self._progress = 0.0
-        self._t0 = time.monotonic()
-        if not self._anim.isActive():
-            self._anim.start(16)
+        self._text = t("overlay.transcribing").rstrip("…").rstrip(".")
+        self._tick_n = 0
+        self._present()
+        self._anim.start(320)
         self.update()
 
     def complete_transcribing(self) -> None:
         if self._state == self._TRANSCRIBING:
-            self._progress = 1.0
-            self.update()
-            QTimer.singleShot(200, self.hide_overlay)
+            self._hide_timer.start(200)
         else:
             self.hide_overlay()
 
     def show_result(self, text: str) -> None:
         self._state = self._RESULT
-        self._text = text[:55] + ("…" if len(text) > 55 else "")
+        self._text = text[:80] + ("…" if len(text) > 80 else "")
         self._anim.stop()
-        self.update()
-        QTimer.singleShot(1500, self.hide_overlay)
+        self._present()
+        self._hide_timer.start(1500)
 
     def show_error(self, msg: str) -> None:
         self._state = self._ERROR
-        self._text = msg[:50]
+        self._text = msg[:70]
         self._anim.stop()
-        self.update()
-        QTimer.singleShot(2500, self.hide_overlay)
+        self._present()
+        self._hide_timer.start(2600)
 
     def hide_overlay(self) -> None:
+        self._hide_timer.stop()
         self._anim.stop()
         self._state = self._IDLE
         self.hide()
 
     # ── internals ───────────────────────────────────────────────────────
 
-    def _center(self) -> None:
-        s = self.screen()
-        if s:
-            g = s.availableGeometry()
-            self.move(g.x() + (g.width() - _W) // 2, g.y() + 80)
+    def _present(self) -> None:
+        if not self.isVisible():
+            s = self.screen()
+            if s:
+                g = s.availableGeometry()
+                self.move(QPoint(g.x() + (g.width() - _W) // 2, g.y() + 52))
+            self.show()
+        self.update()
 
     def _tick(self) -> None:
-        self._phase += 0.08
-        t = min(1.0, self._audio_rms * 10.0)
-        k = 0.22 if t > self._smooth_rms else 0.06
-        self._smooth_rms += (t - self._smooth_rms) * k
-        if self._state == self._TRANSCRIBING:
-            dt = time.monotonic() - self._t0
-            self._progress = 1.0 - 1.0 / (1.0 + dt * 0.7)
+        self._tick_n += 1
+        if self._state == self._RECORDING and self._audio_rms < 0.002:
+            self._smooth *= 0.9
         self.update()
 
     # ── paint ───────────────────────────────────────────────────────────
@@ -118,91 +153,90 @@ class VoiceOverlay(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        w, h = _W, _H
-        r = h / 2
+        bar = QRectF(_MX, _MY, _PW, _PH)
 
-        pill = QPainterPath()
-        pill.addRoundedRect(QRectF(0, 0, w, h), r, r)
+        # Two very faint layers stand in for a shadow (no blur, no glow).
+        for i, a in enumerate((16, 8)):
+            sh = QPainterPath()
+            sh.addRoundedRect(bar.adjusted(-i, 1 + i, i, 2 + i * 2), 13 + i, 13 + i)
+            p.fillPath(sh, QColor(0, 0, 0, a))
+        path = QPainterPath()
+        path.addRoundedRect(bar, 12, 12)
+        p.fillPath(path, QColor("#7F1D1D") if self._state == self._ERROR else _INK)
 
-        bg = QColor(40, 15, 15, 240) if self._state == self._ERROR else QColor(18, 18, 18, 240)
-        p.fillPath(pill, bg)
-        p.setPen(QPen(QColor(255, 255, 255, 15), 1))
-        p.drawPath(pill)
-
+        p.save()
+        p.translate(bar.topLeft())
         if self._state == self._RECORDING:
-            self._paint_recording(p, w, h)
+            self._paint_recording(p)
         elif self._state == self._TRANSCRIBING:
-            self._paint_transcribing(p, w, h)
+            self._paint_transcribing(p)
         else:
-            self._paint_text(p, w, h)
+            self._paint_message(p)
+        p.restore()
         p.end()
 
-    # ── recording ───────────────────────────────────────────────────────
-
-    def _paint_recording(self, p: QPainter, w: int, h: int) -> None:
-        # Label
-        f = QFont("Helvetica Neue", 13)
-        f.setWeight(QFont.Weight.Medium)
-        p.setFont(f)
-        p.setPen(QColor(theme.TEXT_PRIMARY))
-        p.drawText(24, int(h / 2 + 5), self._text)
-
-        # Waveform bars with smooth interpolation
-        lv = self._smooth_rms
-        bx, bw, nb = 150, 168, 28
-        sp = bw / nb
-        for i in range(nb):
-            x = bx + i * sp
-            wave = 0.5 + 0.5 * math.sin(self._phase * 2.0 + i * 0.32)
-            amp = 0.04 + 0.96 * lv * wave
-            bh = max(2, int(20 * amp))
-            y = int(h / 2 - bh / 2)
-            c = QColor(theme.ACCENT_ORANGE)
-            c.setAlpha(int(150 + 100 * amp))
-            p.setPen(QPen(c, 1.8, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
-            p.drawLine(int(x), y, int(x), y + bh)
-
-    # ── transcribing ────────────────────────────────────────────────────
-
-    def _paint_transcribing(self, p: QPainter, w: int, h: int) -> None:
-        # Soft, wide breathing orange glow behind the text — subtle warmth,
-        # no hard edges, reads as "thinking"
-        breath = 0.5 + 0.5 * math.sin(self._phase * 1.4)
-        glow = QRadialGradient(QPointF(w / 2, h / 2), w * 0.55)
-        glow.setColorAt(0.0, QColor(249, 115, 22, int(55 + 45 * breath)))
-        glow.setColorAt(0.5, QColor(234, 88, 12, int(18 + 14 * breath)))
-        glow.setColorAt(1.0, QColor(0, 0, 0, 0))
+    def _paint_recording(self, p: QPainter) -> None:
+        w, h = _PW, _PH
+        cy = h / 2
         p.setPen(Qt.PenStyle.NoPen)
-        p.setBrush(glow)
-        p.drawRoundedRect(QRectF(0, 0, w, h), h / 2, h / 2)
+        p.setBrush(QColor("#FF6B35"))
+        p.drawEllipse(QPointF(24, cy), 4.5, 4.5)
 
-        # Centered text — base color is muted, a travelling bright gradient
-        # sweeps across the text creating an Apple-style shimmer.
-        f = QFont("Helvetica Neue", 14)
-        f.setWeight(QFont.Weight.Medium)
-        p.setFont(f)
+        p.setFont(theme.font(13, bold=True))
+        p.setPen(_PAPER)
+        p.drawText(QRectF(40, 0, 96, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   self._text)
+
+        wx, ww = 132.0, 130.0
+        step = ww / _BARS
+        bw = max(1.8, step * 0.5)
+        p.setPen(Qt.PenStyle.NoPen)
+        for i, lv in enumerate(self._levels):
+            amp = max(0.0, min(1.0, lv))
+            bh = max(2.0, amp * (h - 20))
+            c = QColor(_PAPER)
+            c.setAlpha(70 if amp < 0.03 else int(120 + 135 * amp))
+            p.setBrush(c)
+            p.drawRoundedRect(QRectF(wx + i * step, cy - bh / 2, bw, bh), bw / 2, bw / 2)
+
+        secs = int(time.monotonic() - self._rec_t0)
+        p.setFont(theme.font_mono(12, bold=True))
+        p.setPen(_DIM)
+        p.drawText(QRectF(wx + ww + 14, 0, 44, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   f"{secs // 60}:{secs % 60:02d}")
+
+        if self._hotkey:
+            label = display_combo(self._hotkey)
+            f = theme.font_mono(11, bold=True)
+            p.setFont(f)
+            cw = QFontMetrics(f).horizontalAdvance(label) + 18
+            chip = QRectF(w - cw - 16, cy - 11, cw, 22)
+            p.setBrush(QColor(251, 251, 250, 30))
+            p.setPen(QPen(QColor(251, 251, 250, 70), 1))
+            p.drawRoundedRect(chip, 4, 4)
+            p.setPen(_PAPER)
+            p.drawText(chip, Qt.AlignmentFlag.AlignCenter, label)
+
+    def _paint_transcribing(self, p: QPainter) -> None:
+        h = _PH
+        p.setFont(theme.font(14, bold=True))
+        p.setPen(_PAPER)
         fm = p.fontMetrics()
-        tw = fm.horizontalAdvance(self._text)
-        tx = int((w - tw) / 2)
-        ty = int(h / 2 + fm.ascent() / 2 - 2)
+        x = 24
+        p.drawText(QRectF(x, 0, fm.horizontalAdvance(self._text) + 4, h),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self._text)
+        dots = "." * (self._tick_n % 4)
+        p.drawText(QRectF(x + fm.horizontalAdvance(self._text), 0, 40, h),
+                   Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, dots)
 
-        cyc = (self._phase * 0.04) % 1.0
-        sweep = (tw + 120) * cyc - 60
-        g = QLinearGradient(tx + sweep - 60, 0, tx + sweep + 60, 0)
-        g.setColorAt(0.0, QColor(180, 180, 185))
-        g.setColorAt(0.45, QColor(180, 180, 185))
-        g.setColorAt(0.5, QColor(255, 255, 255))
-        g.setColorAt(0.55, QColor(180, 180, 185))
-        g.setColorAt(1.0, QColor(180, 180, 185))
-        pen = QPen(QBrush(g), 1)
-        p.setPen(pen)
-        p.drawText(tx, ty, self._text)
-
-    # ── text (result / error) ───────────────────────────────────────────
-
-    def _paint_text(self, p: QPainter, w: int, h: int) -> None:
-        f = QFont("Helvetica Neue", 13)
+    def _paint_message(self, p: QPainter) -> None:
+        w, h = _PW, _PH
+        icon = "alert" if self._state == self._ERROR else "check"
+        color = "#F4A9A4" if self._state == self._ERROR else "#9AD7B0"
+        paint_icon(p, icon, QRectF(20, h / 2 - 9, 18, 18), color, 2.4)
+        f = theme.font(13, bold=self._state == self._ERROR)
         p.setFont(f)
-        c = QColor(theme.ERROR) if self._state == self._ERROR else QColor(theme.TEXT_PRIMARY)
-        p.setPen(c)
-        p.drawText(QRectF(24, 0, w - 48, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self._text)
+        p.setPen(_PAPER)
+        fm = QFontMetrics(f)
+        p.drawText(QRectF(50, 0, w - 50 - 20, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   fm.elidedText(self._text, Qt.TextElideMode.ElideRight, int(w - 72)))

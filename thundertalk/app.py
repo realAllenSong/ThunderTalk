@@ -10,8 +10,21 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, qInstallM
 from PySide6.QtWidgets import QApplication
 
 
-def _suppress_style_warnings(mode, context, message) -> None:
-    if "Could not parse stylesheet" not in message:
+_BENIGN_QT_NOISE = (
+    "propagateSizeHints",                 # Cocoa plugin, harmless
+    "Populating font family aliases",     # one-off font DB warm-up
+)
+
+
+def _qt_message_filter(mode, context, message) -> None:
+    """Drop known-benign Qt chatter but let real warnings through.
+
+    This used to hide every "Could not parse stylesheet" message, which is
+    how twelve broken stylesheets shipped unnoticed. tests/test_qss_valid.py
+    now guards against regressions, so those warnings stay visible."""
+    if any(n in message for n in _BENIGN_QT_NOISE):
+        return
+    if sys.stderr is not None:          # None in the windowed (console=False) bundle
         sys.stderr.write(message + "\n")
 
 from thundertalk.core.asr import AsrEngine
@@ -20,13 +33,14 @@ from thundertalk.core.device_watcher import get_watcher
 from thundertalk.core.history import HistoryStore
 from thundertalk.core.hotkey import HotkeyListener
 from thundertalk.core.settings import Settings
+from thundertalk.core.i18n import t
+from thundertalk.core import state as st
+from thundertalk.core.state import AppState
 from thundertalk.core.auto_learn import on_text_pasted as notify_auto_learn
 from thundertalk.core.auto_learn import set_callback as set_auto_learn_callback
 from thundertalk.core.platform_utils import (
-    set_accessory_app, activate_app, deactivate_app,
-    check_accessibility, request_accessibility,
-    check_microphone, request_microphone,
-    open_accessibility_settings, open_microphone_settings,
+    activate_app, request_accessibility,
+    request_microphone,
 )
 from thundertalk.core.system_audio import mute_system_audio, unmute_system_audio, force_unmute, ensure_audio_restored
 from thundertalk.core.text_output import paste_text, save_frontmost_app
@@ -268,8 +282,10 @@ class Pipeline(QObject):
 
 
 def main() -> None:
-    qInstallMessageHandler(_suppress_style_warnings)
+    qInstallMessageHandler(_qt_message_filter)
     app = QApplication(sys.argv)
+    from thundertalk.ui import theme as _theme
+    _theme.force_light(app)          # the palette is light-only
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("ThunderTalk")
 
@@ -280,31 +296,25 @@ def main() -> None:
     history = HistoryStore()
     pipe = Pipeline(settings)
     overlay = VoiceOverlay()
+    overlay.set_hotkey(settings.hotkey)
     from thundertalk.ui.review_overlay import ReviewOverlay
     review_overlay = ReviewOverlay()
     rewrite_overlay = ReviewOverlay()  # separate instance for grammar-fix popup
-    window = MainWindow(settings, history)
-    tray = TrayIcon()
+    state = AppState(settings.hotkey)
+    window = MainWindow(settings, history, state)
+    tray = TrayIcon(state)
 
-    # --- Startup permission checks (macOS) --------------------------------
+    # --- Startup permission state (macOS) ----------------------------------
+    # Onboarding walks first-run users through permissions; returning users
+    # get the same system prompts as before, and anything still missing shows
+    # up as a fix-it banner on Home (no modal dialog, no hard-coded language).
     def _check_permissions() -> None:
-        from PySide6.QtWidgets import QMessageBox
-
-        mic_status = check_microphone()
-        if mic_status == "not_determined":
+        state.refresh_permissions()
+        if not settings.get("onboarding_done"):
+            return
+        if state.mic_status == "not_determined":
             request_microphone()
-        elif mic_status == "denied":
-            dlg = QMessageBox(window)
-            dlg.setWindowTitle("需要麦克风权限")
-            dlg.setText("ThunderTalk 需要麦克风权限来进行语音识别。\n请在系统设置中开启麦克风权限。")
-            dlg.setIcon(QMessageBox.Icon.Warning)
-            open_btn = dlg.addButton("打开系统设置", QMessageBox.ButtonRole.AcceptRole)
-            dlg.addButton("稍后", QMessageBox.ButtonRole.RejectRole)
-            dlg.exec()
-            if dlg.clickedButton() == open_btn:
-                open_microphone_settings()
-
-        if not check_accessibility():
+        if not state.accessibility_ok:
             request_accessibility()
 
     QTimer.singleShot(800, _check_permissions)
@@ -364,6 +374,8 @@ def main() -> None:
             return
 
         window.models_page.set_loading(model_id, True)
+        if backend != "seamless-torch":
+            state.set_model_loading(model_id)
 
         # Translation models load into TranslationEngine, not AsrEngine.
         # AsrEngine.load_model() does not understand the SeamlessM4T-v2 family
@@ -382,10 +394,14 @@ def main() -> None:
             tray.set_model_status(mid)
             settings.set("active_model_id", mid)
             window.models_page.set_loading(mid, False)
+            state.set_model_ready(mid)
+            window.show_toast(t("toast.model_ready").format(name=state.model_name), "success")
 
         def _on_load_error(mid: str, msg: str) -> None:
             window.show_load_error(f"Failed to load {mid}: {msg}")
             window.models_page.set_loading(mid, False)
+            state.set_model_error(mid, msg[:160])
+            window.show_toast(t("toast.model_failed"), "error")
             traceback.print_exc()
 
         worker.loaded.connect(_on_load_finished)
@@ -394,7 +410,11 @@ def main() -> None:
         pipe._load_worker = worker
         worker.start()
 
-    # --- Restore last active model (sync on main thread via timer) --------
+    # --- Restore last active model (background thread) --------------------
+    # Loading weights used to run synchronously on the UI thread right after
+    # the window appeared, freezing it for seconds (and for the length of a
+    # download if the weights were missing). Now it goes through the same
+    # worker as a manual Activate, so the UI shows "Loading model…".
     def _restore_model() -> None:
         last_model = settings.active_model_id
         if not last_model:
@@ -406,22 +426,11 @@ def main() -> None:
         info = next((m for m in BUILTIN_MODELS if m.id == last_model), None)
         if not (path and info):
             return
-        # Skip translation engine models — they go through _maybe_load_translator,
-        # not the ASR active-model restore path.
+        # Translation engine models go through _maybe_load_translator instead.
         if info.backend == "seamless-torch":
             return
-        print(f"[Startup] Loading model sync: {last_model}")
-        try:
-            pipe.asr.load_model(
-                path, info.family, info.backend,
-                memory_mode=settings.memory_mode,
-            )
-            window.set_active_model(last_model)
-            tray.set_model_status(last_model)
-            settings.set("active_model_id", last_model)
-            print("[Startup] Model loaded OK")
-        except Exception as e:
-            print(f"[Startup] Model load failed: {e}")
+        print(f"[Startup] Loading model in background: {last_model}")
+        _start_model_load(last_model, path, info.family, info.backend)
 
     QTimer.singleShot(500, _restore_model)
 
@@ -466,6 +475,8 @@ def main() -> None:
     def _on_auto_learned_word(word: str) -> None:
         print(f"[AutoLearn] New hotword: {word}")
         QTimer.singleShot(0, lambda: window.hotwords_page.add_hotword_external(word))
+        QTimer.singleShot(0, lambda: window.show_toast(
+            t("toast.hotword_learned").format(w=word), "success"))
 
     set_auto_learn_callback(_on_auto_learned_word)
 
@@ -478,6 +489,7 @@ def main() -> None:
     def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float) -> None:
         # Audio is restored when recording stops (before ASR), not here.
         t_start = time.perf_counter()
+        state.set_recording(st.REC_IDLE)
         print("[Toggle] _on_asr_done called")
         # Note: do NOT clear pipe._worker here — the QThread's run() hasn't
         # fully unwound yet when this handler fires. Clearing now can drop the
@@ -540,10 +552,11 @@ def main() -> None:
                 _track_worker(t2t_worker)
                 t2t_worker.start()
         else:
-            overlay.show_error("No speech detected")
+            overlay.show_error(t("overlay.no_speech"))
 
     def _on_asr_error(msg: str) -> None:
         print("[Toggle] _on_asr_error called")
+        state.set_recording(st.REC_IDLE)
         print(f"[ASR] Error: {msg}")
         overlay.show_error(msg[:40])
 
@@ -620,6 +633,7 @@ def main() -> None:
             t_stop = time.perf_counter()
             print(f"[Toggle] Stop requested, capturing {TAIL_GRACE_MS}ms tail...")
             overlay.show_transcribing()
+            state.set_recording(st.REC_TRANSCRIBING)
             pipe._recording = False  # prevent re-entry during grace window
 
             def _finalize_stop() -> None:
@@ -631,7 +645,8 @@ def main() -> None:
 
                 if samples is None or len(samples) < 800:
                     print("[Toggle] Too short (audio already restored on stop)")
-                    overlay.show_error("Too short")
+                    state.set_recording(st.REC_IDLE)
+                    overlay.show_error(t("overlay.too_short"))
                     return
 
                 tgt = settings.get("translation_target")
@@ -642,7 +657,8 @@ def main() -> None:
                     translator = pipe.get_translator()
                     if not translator.is_loaded:
                         print(f"[Toggle] Direct translation but model not loaded")
-                        overlay.show_error("Translation model not loaded")
+                        state.set_recording(st.REC_IDLE)
+                        overlay.show_error(t("overlay.no_translator"))
                         return
                     print(f"[Toggle] Starting Direct translation → {tgt} on {len(samples)} samples")
                     worker = TranslationWorker(translator, samples, tgt)
@@ -657,7 +673,8 @@ def main() -> None:
                 # is pasted, then shows the review popup.
                 if not pipe.asr.is_loaded:
                     print("[Toggle] No ASR model (audio already restored on stop)")
-                    overlay.show_error("No model loaded")
+                    state.set_recording(st.REC_IDLE)
+                    overlay.show_error(t("overlay.no_model"))
                     return
 
                 if tgt and tgt != "off" and mode == "review":
@@ -674,7 +691,16 @@ def main() -> None:
         else:
             # ---- START recording ----
             if not pipe.asr.is_loaded:
-                overlay.show_error("Load a model first")
+                overlay.show_error(
+                    t("status.loading") if state.model_status == st.MODEL_LOADING
+                    else t("overlay.load_model")
+                )
+                return
+            # A denied microphone doesn't raise — PortAudio just yields silence,
+            # which used to surface as a baffling "No speech detected".
+            state.refresh_permissions()
+            if state.mic_status in ("denied", "restricted"):
+                overlay.show_error(t("overlay.mic_denied"))
                 return
             # Dismiss any leftover Review popup from a previous round
             review_overlay.hide_review()
@@ -691,11 +717,12 @@ def main() -> None:
                 pipe.recorder.start(device=None if mic == "auto" else mic)
             except Exception as exc:
                 print(f"[Toggle] recorder.start failed: {exc}")
-                overlay.show_error("Mic unavailable")
+                overlay.show_error(t("overlay.mic_unavailable"))
                 return
             if mute_on:
                 mute_system_audio()
             pipe._recording = True
+            state.set_recording(st.REC_RECORDING)
             print("[Toggle] Recording started")
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
@@ -741,7 +768,12 @@ def main() -> None:
     # recording so idle CPU stays near zero.
     _level_timer = QTimer()
     _level_timer.setInterval(40)
-    _level_timer.timeout.connect(lambda: overlay.set_audio_level(pipe.recorder.current_rms))
+    def _push_level() -> None:
+        rms = pipe.recorder.current_rms
+        overlay.set_audio_level(rms)
+        state.push_level(rms)
+
+    _level_timer.timeout.connect(_push_level)
 
     _orig_show_recording = overlay.show_recording
     def _show_recording_wrapped() -> None:
@@ -773,6 +805,8 @@ def main() -> None:
 
     def _on_hotkey_setting_changed(key_name: str) -> None:
         hotkey.set_hotkey(key_name)
+        state.set_hotkey(key_name)
+        overlay.set_hotkey(key_name)
 
     window.settings_page.hotkey_changed.connect(_on_hotkey_setting_changed)
 
@@ -909,9 +943,21 @@ def main() -> None:
     def _on_model_download_completed(model_id: str) -> None:
         if model_id == "seamless-m4t-v2-large":
             _maybe_load_translator()
+            return
+        from thundertalk.core.models import BUILTIN_MODELS
+        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+        if info is not None:
+            window.show_toast(t("models.downloaded").format(name=info.name), "success")
+        # First model on a fresh install: switch it on for the user instead of
+        # leaving them to find the Activate button.
+        if state.model_status in (st.MODEL_NONE, st.MODEL_ERROR):
+            window.models_page.activate_model(model_id)
 
     window.models_page.model_download_completed.connect(
         _on_model_download_completed
+    )
+    window.models_page.download_failed.connect(
+        lambda _mid, _msg: window.show_toast(t("toast.download_failed"), "error")
     )
 
     # --- Tray ----------------------------------------------------------
@@ -922,11 +968,20 @@ def main() -> None:
         window.activateWindow()
 
     tray.open_action.triggered.connect(_show_settings_window)
+    tray.toggle_requested.connect(pipe.toggle)
     tray.quit_action.triggered.connect(app.quit)
     tray.show()
 
     window.show()
     window.raise_()
+
+    # First run → guided setup. Anyone who already has a model (i.e. every
+    # existing user) is marked done silently so upgrades don't nag.
+    if not settings.get("onboarding_done"):
+        if settings.active_model_id:
+            settings.set("onboarding_done", True)
+        else:
+            QTimer.singleShot(450, window.show_onboarding)
 
     # Track the last running version in settings (used previously
     # to show a post-update permission hint dialog; the dialog was

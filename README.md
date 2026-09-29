@@ -55,9 +55,9 @@ Download the latest **ThunderTalk.app** from [Releases](https://github.com/realA
 |-------|------|---------|-----------|----------|----------|
 | SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | No |
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | Yes |
-| Qwen3-ASR-0.6B | ~1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
-| Qwen3-ASR-1.7B | ~3.4 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
-| MOSS-Transcribe-Diarize 0.9B | ~1.7 GB | MLX (Metal GPU) | 50+ | ★★★★★ | No |
+| Qwen3-ASR-0.6B | ~1.9 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
+| Qwen3-ASR-1.7B | ~4.7 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
+| MOSS-Transcribe-Diarize 0.9B | ~1.8 GB | MLX (Metal GPU) | 50+ | ★★★★★ | No |
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25 (European) | ★★★★★ | No |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | English | ★★★★★ | No |
 

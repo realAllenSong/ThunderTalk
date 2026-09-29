@@ -1,8 +1,7 @@
-"""Settings page — segment-control tabs: Hotkey, Audio, Transcription, System.
+"""Settings — hotkey, audio, transcription, general. One scrolling page.
 
-Layout and cards match 闪电说 style:
-- Rounded segment pill tab bar at top center
-- Card sections with bold in-card titles
+Every row goes through FormCard, so a live language switch re-labels the
+whole page (it used to leave most rows stale until restart).
 """
 
 from __future__ import annotations
@@ -12,181 +11,27 @@ import subprocess
 from pathlib import Path
 from typing import TYPE_CHECKING
 
-from PySide6.QtCore import Qt, Signal
-from PySide6.QtGui import QFont, QKeyEvent
+from PySide6.QtCore import QRectF, Qt, Signal, QTimer
+from PySide6.QtGui import QColor, QKeyEvent, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QComboBox,
-    QFrame,
     QHBoxLayout,
     QLabel,
-    QPushButton,
-    QScrollArea,
-    QTabBar,
+    QLineEdit,
     QVBoxLayout,
     QWidget,
 )
 
 from thundertalk.core.i18n import bus as i18n_bus, set_language, t
 from thundertalk.ui import theme
+from thundertalk.ui.keys import split_combo
+from thundertalk.ui.widgets import FormCard, IconButton, KeyCaps, PageHeader, SectionLabel, column_scroll
 
 if TYPE_CHECKING:
     from thundertalk.core.settings import Settings
 
 
-# Curated SeamlessM4T v2 target languages (ISO-639-3).
-# ── Hotkey Capture Widget ───────────────────────────────────────────────
-
-class HotkeyCapture(QWidget):
-    """Click the capsule, press a key combo to set hotkey.
-
-    Displays current hotkey as key-cap badges.
-    While capturing: shows held modifiers live.
-    """
-
-    key_captured = Signal(str)
-    capture_started = Signal()
-    capture_ended = Signal()
-
-    def __init__(self, current: str) -> None:
-        super().__init__()
-        self._capturing = False
-        self._combo_str = current
-        self._display = _display_combo(current)
-        self._saved_display = self._display
-        self._held_modifiers: list[str] = []
-        self._modifier_timer_id: int | None = None
-        self.setFixedHeight(80)
-        self.setCursor(Qt.CursorShape.PointingHandCursor)
-        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
-
-    def mousePressEvent(self, ev) -> None:
-        self._capturing = True
-        self._held_modifiers.clear()
-        self.setFocus(Qt.FocusReason.MouseFocusReason)
-        self.grabKeyboard()
-        self.capture_started.emit()
-        self.update()
-
-    def keyPressEvent(self, ev: QKeyEvent) -> None:
-        if not self._capturing:
-            return super().keyPressEvent(ev)
-
-        key_name = _qt_key_to_name(ev)
-        if not key_name:
-            return
-
-        if self._modifier_timer_id is not None:
-            self.killTimer(self._modifier_timer_id)
-            self._modifier_timer_id = None
-
-        if _is_modifier(key_name):
-            if key_name not in self._held_modifiers:
-                self._held_modifiers.append(key_name)
-            self._display = _display_combo("+".join(self._held_modifiers) + "+…")
-            self._modifier_timer_id = self.startTimer(1500)
-            self.update()
-            return
-
-        parts = self._held_modifiers + [key_name]
-        combo = "+".join(parts)
-        self._finalize(combo)
-
-    def keyReleaseEvent(self, ev: QKeyEvent) -> None:
-        if not self._capturing:
-            return super().keyReleaseEvent(ev)
-
-    def timerEvent(self, ev) -> None:
-        if ev.timerId() == self._modifier_timer_id:
-            self.killTimer(self._modifier_timer_id)
-            self._modifier_timer_id = None
-            if self._held_modifiers:
-                combo = "+".join(self._held_modifiers)
-                self._finalize(combo)
-
-    def _finalize(self, combo: str) -> None:
-        self._capturing = False
-        self.releaseKeyboard()
-        self._combo_str = combo
-        self._display = _display_combo(combo)
-        self._saved_display = self._display
-        self._held_modifiers.clear()
-        self.key_captured.emit(combo)
-        self.capture_ended.emit()
-        self.update()
-
-    def focusOutEvent(self, ev) -> None:
-        if self._capturing:
-            self._capturing = False
-            self._display = self._saved_display
-            self._held_modifiers.clear()
-            if self._modifier_timer_id is not None:
-                self.killTimer(self._modifier_timer_id)
-                self._modifier_timer_id = None
-            self.releaseKeyboard()
-            self.capture_ended.emit()
-            self.update()
-        super().focusOutEvent(ev)
-
-    def paintEvent(self, ev) -> None:
-        from PySide6.QtGui import QPainter, QColor, QPainterPath, QPen
-        from PySide6.QtCore import QRectF
-
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-
-        rect = QRectF(0, 0, self.width(), self.height())
-        bg = QPainterPath()
-        bg.addRoundedRect(rect, 14, 14)
-
-        if self._capturing:
-            p.fillPath(bg, QColor(theme.BG_ELEVATED))
-            p.setPen(QPen(QColor(theme.ACCENT_BLUE), 1.5))
-            p.drawPath(bg)
-            p.setFont(theme.font(14))
-            p.setPen(QColor(theme.ACCENT_BLUE))
-            label = self._display if self._held_modifiers else t("settings.hotkey.press_keys")
-            p.drawText(rect, Qt.AlignmentFlag.AlignCenter, label)
-        else:
-            p.fillPath(bg, QColor(theme.BG_ELEVATED))
-            p.setPen(QPen(QColor(theme.BORDER_SUBTLE), 1))
-            p.drawPath(bg)
-
-            # Draw key-cap badges
-            parts = [pt.strip() for pt in self._combo_str.split("+") if pt.strip()]
-            displayed = [_display_single(pt) for pt in parts]
-
-            total_width = 0
-            cap_widths = []
-            for d in displayed:
-                w = max(38, len(d) * 11 + 20)
-                cap_widths.append(w)
-                total_width += w
-            total_width += (len(displayed) - 1) * 8
-
-            start_x = (self.width() - total_width) / 2
-            cap_h = 34
-            cap_y = (self.height() - cap_h) / 2 - 6
-
-            for i, (d, cw) in enumerate(zip(displayed, cap_widths)):
-                cap_rect = QRectF(start_x, cap_y, cw, cap_h)
-                cap_path = QPainterPath()
-                cap_path.addRoundedRect(cap_rect, 8, 8)
-                p.fillPath(cap_path, QColor(theme.BG_ELEVATED))
-                p.setPen(QPen(QColor(theme.BORDER_DEFAULT), 1))
-                p.drawPath(cap_path)
-                p.setFont(theme.font_heading(13))
-                p.setPen(QColor(theme.TEXT_PRIMARY))
-                p.drawText(cap_rect, Qt.AlignmentFlag.AlignCenter, d)
-                start_x += cw + 8
-
-            # Hint
-            p.setFont(theme.font(11))
-            p.setPen(QColor(theme.TEXT_MUTED))
-            hint_rect = QRectF(0, cap_y + cap_h + 6, self.width(), 20)
-            p.drawText(hint_rect, Qt.AlignmentFlag.AlignCenter, t("settings.hotkey.click_to_change"))
-
-        p.end()
-
+# ── Hotkey capture ──────────────────────────────────────────────────────
 
 _MAC_NATIVE_VK: dict[int, str] = {
     0x37: "cmd_l", 0x36: "cmd_r",
@@ -195,9 +40,35 @@ _MAC_NATIVE_VK: dict[int, str] = {
     0x3B: "ctrl_l", 0x3E: "ctrl_r",
 }
 
+_MODIFIER_NAMES = {
+    "cmd", "cmd_l", "cmd_r", "alt", "alt_l", "alt_r",
+    "ctrl", "ctrl_l", "ctrl_r", "shift", "shift_l", "shift_r",
+}
+
+# Keys that are safe to bind on their own (they don't type a character).
+_STANDALONE_OK = {
+    "f1", "f2", "f3", "f4", "f5", "f6", "f7", "f8", "f9", "f10", "f11", "f12",
+    "caps_lock", "home", "end", "page_up", "page_down",
+}
+
+
+def _is_modifier(key_name: str) -> bool:
+    return key_name.lower().strip() in _MODIFIER_NAMES
+
+
+def combo_is_safe(combo: str) -> bool:
+    """A global hotkey must not fire while typing: it needs a modifier, or be
+    a modifier / function key by itself. A bare letter would start a
+    recording on every keystroke."""
+    parts = [p.lower() for p in split_combo(combo)]
+    if not parts:
+        return False
+    if any(_is_modifier(p) for p in parts):
+        return True
+    return len(parts) == 1 and parts[0] in _STANDALONE_OK
+
 
 def _qt_key_to_name(ev: QKeyEvent) -> str:
-    import platform
     from PySide6.QtCore import Qt as QtKey
 
     if platform.system() == "Darwin":
@@ -238,54 +109,173 @@ def _qt_key_to_name(ev: QKeyEvent) -> str:
     return ""
 
 
-_MODIFIER_NAMES = {
-    "cmd", "cmd_l", "cmd_r", "alt", "alt_l", "alt_r",
-    "ctrl", "ctrl_l", "ctrl_r", "shift", "shift_l", "shift_r",
-}
+class HotkeyCapture(QWidget):
+    """Click, then press a combo. Shows the current hotkey as key caps and
+    live-echoes held modifiers while capturing. Esc cancels; unsafe combos
+    (a bare letter) are rejected with an explanation."""
 
+    key_captured = Signal(str)
+    capture_started = Signal()
+    capture_ended = Signal()
 
-def _is_modifier(key_name: str) -> bool:
-    return key_name.lower().strip() in _MODIFIER_NAMES
+    def __init__(self, current: str) -> None:
+        super().__init__()
+        self._capturing = False
+        self._combo_str = current
+        self._held_modifiers: list[str] = []
+        self._modifier_timer_id: int | None = None
+        self._error = ""
+        self._hover = False
+        self.setFixedHeight(112)
+        self.setCursor(Qt.CursorShape.PointingHandCursor)
+        self.setFocusPolicy(Qt.FocusPolicy.StrongFocus)
+        self.setAttribute(Qt.WidgetAttribute.WA_Hover, True)
 
+        ly = QVBoxLayout(self)
+        ly.setContentsMargins(0, 16, 0, 12)
+        ly.setSpacing(8)
+        ly.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._caps = KeyCaps(current, height=40, accent=False)
+        ly.addWidget(self._caps, alignment=Qt.AlignmentFlag.AlignHCenter)
+        self._hint = QLabel(t("settings.hotkey.click_to_change"))
+        self._hint.setAlignment(Qt.AlignmentFlag.AlignHCenter)
+        self._hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        ly.addWidget(self._hint)
+        self._error_timer = QTimer(self)
+        self._error_timer.setSingleShot(True)
+        self._error_timer.timeout.connect(self._clear_error)
 
-_DISPLAY_NAMES: dict[str, str] = {
-    "space": "Space", "esc": "Esc", "tab": "Tab",
-    "caps_lock": "Caps Lock", "backspace": "⌫", "delete": "⌦",
-    "home": "Home", "end": "End",
-    "page_up": "PgUp", "page_down": "PgDn",
-    "right": "→", "left": "←", "up": "↑", "down": "↓",
-    "cmd": "⌘", "cmd_l": "⌘", "cmd_r": "Right ⌘",
-    "alt": "⌥", "alt_l": "⌥", "alt_r": "Right ⌥",
-    "ctrl": "⌃", "ctrl_l": "⌃", "ctrl_r": "Right ⌃",
-    "shift": "⇧", "shift_l": "⇧", "shift_r": "Right ⇧",
-}
+    # ── state ──
+    def combo(self) -> str:
+        return self._combo_str
 
+    def retranslate(self) -> None:
+        self._sync_labels()
 
-def _display_single(key_name: str) -> str:
-    low = key_name.lower().strip()
-    if low in _DISPLAY_NAMES:
-        return _DISPLAY_NAMES[low]
-    if low.startswith("f") and low[1:].isdigit():
-        return low.upper()
-    if len(low) == 1:
-        return low.upper()
-    return key_name.upper()
+    def _sync_labels(self) -> None:
+        if self._error:
+            self._hint.setText(self._error)
+            self._hint.setStyleSheet(f"color: {theme.WARNING}; font-size: 12px; background: transparent;")
+        elif self._capturing:
+            self._hint.setText(t("settings.hotkey.press_keys") + "   ·   Esc")
+            self._hint.setStyleSheet(f"color: {theme.ACCENT_ORANGE}; font-size: 12px; font-weight: 600; background: transparent;")
+        else:
+            self._hint.setText(t("settings.hotkey.click_to_change"))
+            self._hint.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
 
+    def _clear_error(self) -> None:
+        self._error = ""
+        self._sync_labels()
 
-def _display_combo(combo_str: str) -> str:
-    parts = [p.strip() for p in combo_str.split("+") if p.strip()]
-    if not parts:
-        return "None"
-    if parts[-1] == "…":
-        displayed = [_display_single(p) for p in parts[:-1]]
-        return " + ".join(displayed) + " + …"
-    displayed = [_display_single(p) for p in parts]
-    return " + ".join(displayed)
+    def _show_caps(self) -> None:
+        if self._capturing:
+            if self._held_modifiers:
+                self._caps.set_combo("+".join(self._held_modifiers))
+                self._caps.show()
+            else:
+                self._caps.hide()
+        else:
+            self._caps.set_combo(self._combo_str)
+            self._caps.show()
 
+    # ── interaction ──
+    def mousePressEvent(self, ev) -> None:
+        if self._capturing:
+            return
+        self._capturing = True
+        self._error = ""
+        self._held_modifiers.clear()
+        self.setFocus(Qt.FocusReason.MouseFocusReason)
+        self.grabKeyboard()
+        self.capture_started.emit()
+        self._show_caps()
+        self._sync_labels()
+        self.update()
 
-# ── Mode selection card ─────────────────────────────────────────────────
+    def _stop_capture(self) -> None:
+        self._capturing = False
+        self._held_modifiers.clear()
+        if self._modifier_timer_id is not None:
+            self.killTimer(self._modifier_timer_id)
+            self._modifier_timer_id = None
+        self.releaseKeyboard()
+        self._show_caps()
+        self._sync_labels()
+        self.capture_ended.emit()
+        self.update()
 
-# Removed _ModeCard
+    def keyPressEvent(self, ev: QKeyEvent) -> None:
+        if not self._capturing:
+            return super().keyPressEvent(ev)
+        if ev.key() == Qt.Key.Key_Escape:
+            self._stop_capture()               # Esc cancels — it used to bind Esc as the hotkey
+            return
+
+        key_name = _qt_key_to_name(ev)
+        if not key_name:
+            return
+        if self._modifier_timer_id is not None:
+            self.killTimer(self._modifier_timer_id)
+            self._modifier_timer_id = None
+
+        if _is_modifier(key_name):
+            if key_name not in self._held_modifiers:
+                self._held_modifiers.append(key_name)
+            self._show_caps()
+            self._modifier_timer_id = self.startTimer(1500)
+            self.update()
+            return
+        self._finalize("+".join(self._held_modifiers + [key_name]))
+
+    def timerEvent(self, ev) -> None:
+        if ev.timerId() == self._modifier_timer_id:
+            self.killTimer(self._modifier_timer_id)
+            self._modifier_timer_id = None
+            if self._held_modifiers:
+                self._finalize("+".join(self._held_modifiers))
+
+    def _finalize(self, combo: str) -> None:
+        if not combo_is_safe(combo):
+            self._error = t("settings.hotkey.needs_modifier")
+            self._error_timer.start(4000)
+            self._held_modifiers.clear()
+            self._stop_capture()
+            return
+        self._combo_str = combo
+        self._stop_capture()
+        self.key_captured.emit(combo)
+
+    def focusOutEvent(self, ev) -> None:
+        if self._capturing:
+            self._stop_capture()
+        super().focusOutEvent(ev)
+
+    def enterEvent(self, ev) -> None:
+        self._hover = True
+        self.update()
+        super().enterEvent(ev)
+
+    def leaveEvent(self, ev) -> None:
+        self._hover = False
+        self.update()
+        super().leaveEvent(ev)
+
+    def paintEvent(self, ev) -> None:
+        p = QPainter(self)
+        p.setRenderHint(QPainter.RenderHint.Antialiasing)
+        rect = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
+        path = QPainterPath()
+        path.addRoundedRect(rect, 8, 8)
+        if self._capturing:
+            p.fillPath(path, QColor(217, 72, 15, 12))
+            pen = QPen(QColor(theme.ACCENT_ORANGE), 1.4)
+            pen.setStyle(Qt.PenStyle.DashLine)
+            p.setPen(pen)
+        else:
+            p.fillPath(path, QColor(31, 30, 27, 10 if self._hover else 5))
+            p.setPen(QPen(theme._BORDER_STRONG_C if self._hover else theme._BORDER_DEFAULT_C, 1))
+        p.drawPath(path)
+        p.end()
 
 
 # ── SettingsPage ────────────────────────────────────────────────────────
@@ -295,133 +285,74 @@ class SettingsPage(QWidget):
     settings_changed = Signal()
     capture_started = Signal()
     capture_ended = Signal()
+    run_setup_requested = Signal()
 
-    def __init__(self, settings: Settings) -> None:
+    def __init__(self, settings: "Settings") -> None:
         super().__init__()
         self._settings = settings
-        # Section title labels we control so retranslate() can update them
-        # if the UI language switches at runtime.
-        self._section_titles: list[tuple[QLabel, str]] = []
-        # Track which section corresponds to which content widget so we can
-        # show/hide them as a single scrollable list (no tabs).
-        self._sections: list[tuple[QLabel, QWidget]] = []
+        self._cards: list[FormCard] = []
+        self._section_labels: list[SectionLabel] = []
 
         root = QVBoxLayout(self)
-        root.setContentsMargins(32, 28, 32, 20)
-        root.setSpacing(0)
+        root.setContentsMargins(0, 0, 0, 0)
+        scroll, self._col = column_scroll(spacing=14)
+        root.addWidget(scroll)
 
-        self._heading = QLabel(t("settings.title"))
-        self._heading.setFont(theme.font_heading(20))
-        self._heading.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
-        root.addWidget(self._heading)
-        root.addSpacing(20)
+        self._header = PageHeader(t("settings.title"), t("settings.subtitle"))
+        self._col.addWidget(self._header)
+        self._col.addSpacing(6)
 
-        # Single scroll area — all settings live in one flat list.
-        scroll = QScrollArea()
-        scroll.setWidgetResizable(True)
-        scroll.setStyleSheet("QScrollArea { border: none; background: transparent; }")
-        root.addWidget(scroll, stretch=1)
-
-        container = QWidget()
-        container.setStyleSheet("background: transparent;")
-        self._stack_area = QVBoxLayout(container)
-        self._stack_area.setContentsMargins(0, 0, 0, 0)
-        self._stack_area.setSpacing(28)
-        scroll.setWidget(container)
-
-        self._next_section_title_key = "settings.tab_hotkey"
-        self._build_hotkey_tab()
-        self._next_section_title_key = "settings.tab_audio"
-        self._build_audio_tab()
-        self._next_section_title_key = "settings.tab_transcription"
-        self._build_transcription_tab()
-        self._next_section_title_key = "settings.tab_general"
-        self._build_general_tab()
-
-        self._stack_area.addStretch()
+        self._build_hotkey()
+        self._build_audio()
+        self._build_transcription()
+        self._build_general()
+        self._col.addStretch()
 
         i18n_bus.language_changed.connect(self.retranslate)
 
         # Live mic dropdown: react to hot-plug, BT pairing, and BT profile
-        # transitions surfaced by DeviceWatcher. Connecting here is safe
-        # even when the watcher hasn't been started yet — get_watcher()
-        # lazily constructs the QObject and emissions only begin after
-        # app.main() calls watcher.start().
+        # transitions surfaced by DeviceWatcher.
         from thundertalk.core.device_watcher import get_watcher
         get_watcher().devices_changed.connect(self._apply_device_names)
 
-    def _add_page(self, widget: QWidget) -> None:
-        """Append `widget` as a section beneath an uppercase title header.
+    # ── helpers ──
+    def _section(self, icon: str, key: str) -> None:
+        self._col.addSpacing(8)
+        lbl = SectionLabel(icon, key)
+        self._section_labels.append(lbl)
+        self._col.addWidget(lbl)
 
-        The "tab" name (e.g. settings.tab_hotkey) is now used as the
-        section heading. Tab bar removed — everything stacks vertically
-        in one scrollable list.
-        """
-        title_key = self._next_section_title_key
-        title_lbl = QLabel(t(title_key).upper())
-        title_lbl.setStyleSheet(
-            f"color: {theme.TEXT_MUTED}; font-size: 11px;"
-            " font-weight: 700; letter-spacing: 1.4px;"
-            " background: transparent; border: none;"
-            " padding-bottom: 8px;"
-        )
-        self._section_titles.append((title_lbl, title_key))
-        self._stack_area.addWidget(title_lbl)
-        self._stack_area.addWidget(widget)
-        self._sections.append((title_lbl, widget))
+    def _card(self, title_key: str | None = None, badge: QWidget | None = None) -> FormCard:
+        card = FormCard(title_key, badge)
+        self._cards.append(card)
+        self._col.addWidget(card)
+        return card
 
-    # ── Hotkey tab ──
+    @staticmethod
+    def _combo(width: int) -> QComboBox:
+        c = QComboBox()
+        c.setFixedWidth(width)
+        c.setFixedHeight(38)
+        theme.style_combo(c)
+        return c
 
-    def _build_hotkey_tab(self) -> None:
-        page = QWidget()
-        ly = QVBoxLayout(page)
-        ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(20)
-
-        card = theme.make_card()
-        cl = QVBoxLayout(card)
-        cl.setContentsMargins(20, 18, 20, 18)
-        cl.setSpacing(16)
-
-        header = QLabel(t("settings.section.activation_hotkey"))
-        header.setFont(theme.font(14, bold=False))
-        header.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; border: none;")
-        cl.addWidget(header)
-
+    # ── Hotkey ──
+    def _build_hotkey(self) -> None:
+        self._section("keyboard", "settings.tab_hotkey")
+        card = self._card("settings.section.activation_hotkey")
         self._hotkey_capture = HotkeyCapture(self._settings.hotkey)
         self._hotkey_capture.key_captured.connect(self._on_hotkey_changed)
         self._hotkey_capture.capture_started.connect(self.capture_started.emit)
         self._hotkey_capture.capture_ended.connect(self.capture_ended.emit)
-        cl.addWidget(self._hotkey_capture)
+        card.add_widget(self._hotkey_capture)
 
-        cl.addSpacing(4)
-        cl.addWidget(theme.separator())
-        cl.addSpacing(4)
-
-        mode_row, _ = theme.setting_row(
-            t("settings.section.activation_mode"),
-            t("settings.section.activation_mode_desc"),
-        )
-
-        self._mode_combo = QComboBox()
-        theme.style_combo(self._mode_combo)
+        self._mode_combo = self._combo(170)
         self._mode_combo.addItem(t("settings.mode.toggle_click"))
-        # self._mode_combo.addItem(t("settings.mode.hold_record"))  # TODO: not yet stable
-        self._mode_combo.setFixedWidth(160)
-
-        # Force toggle mode; hold mode is hidden until stable
+        # "Hold to record" stays hidden until it is stable; force toggle.
         self._settings.set("press_mode", "toggle")
-        self._mode_combo.setCurrentIndex(0)
-        self._mode_combo.currentIndexChanged.connect(
-            lambda i: self._set_mode("toggle")
-        )
-        mode_row.addWidget(self._mode_combo)
-        cl.addLayout(mode_row)
-
-        ly.addWidget(card)
-
-        ly.addStretch()
-        self._add_page(page)
+        self._mode_combo.currentIndexChanged.connect(lambda i: self._set_mode("toggle"))
+        card.add_row("settings.section.activation_mode", "settings.section.activation_mode_desc",
+                     self._mode_combo, sep=True)
 
     def _on_hotkey_changed(self, key_name: str) -> None:
         self._settings.set("hotkey", key_name)
@@ -431,86 +362,43 @@ class SettingsPage(QWidget):
         self._settings.set("press_mode", mode)
         self.settings_changed.emit()
 
-    # ── Audio tab ──
+    # ── Audio ──
+    def _build_audio(self) -> None:
+        self._section("mic", "settings.tab_audio")
+        card = self._card("settings.section.input_device")
 
-    def _build_audio_tab(self) -> None:
-        page = QWidget()
-        ly = QVBoxLayout(page)
-        ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(16)
-
-        # --- Input device card ---
-        card1 = theme.make_card()
-        c1 = QVBoxLayout(card1)
-        c1.setContentsMargins(20, 18, 20, 18)
-        c1.setSpacing(12)
-
-        sec1 = QLabel(t("settings.section.input_device"))
-        sec1.setFont(theme.font(14, bold=True))
-        sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c1.addWidget(sec1)
-
-        c1.addWidget(theme.separator())
-
-        mic_row, _ = theme.setting_row(
-            t("settings.mic.label"),
-            t("settings.mic.desc"),
-        )
-        self._mic_combo = QComboBox()
-        self._mic_combo.setFixedWidth(220)
-        theme.style_combo(self._mic_combo)
+        mic_ctl = QWidget()
+        mic_ctl.setStyleSheet("background: transparent;")
+        h = QHBoxLayout(mic_ctl)
+        h.setContentsMargins(0, 0, 0, 0)
+        h.setSpacing(6)
+        self._mic_combo = self._combo(250)
         self._mic_combo.addItem(t("settings.mic.auto"))
         self._refresh_mic_list()
         self._mic_combo.currentIndexChanged.connect(self._on_mic_changed)
-        mic_row.addWidget(self._mic_combo)
-        c1.addLayout(mic_row)
-        ly.addWidget(card1)
+        h.addWidget(self._mic_combo)
+        rescan = IconButton("refresh", 34, t("settings.mic.rescan"))
+        rescan.clicked.connect(lambda: self._refresh_mic_list(force_rescan=True))
+        h.addWidget(rescan)
+        card.add_row("settings.mic.label", "settings.mic.desc", mic_ctl)
 
-        # --- Recording options card ---
-        card2 = theme.make_card()
-        c2 = QVBoxLayout(card2)
-        c2.setContentsMargins(20, 18, 20, 18)
-        c2.setSpacing(12)
-
-        sec2 = QLabel(t("settings.section.recording"))
-        sec2.setFont(theme.font(14, bold=True))
-        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c2.addWidget(sec2)
-
-        c2.addWidget(theme.separator())
-
-        mute_row, _ = theme.setting_row(
-            t("settings.mute.label"),
-            t("settings.mute.desc"),
-        )
+        card2 = self._card("settings.section.recording")
         self._mute_toggle = theme.ToggleSwitch(self._settings.get("mute_speakers"))
         self._mute_toggle.toggled_signal.connect(lambda v: self._settings.set("mute_speakers", v))
-        mute_row.addWidget(self._mute_toggle)
-        c2.addLayout(mute_row)
-        ly.addWidget(card2)
-
-        ly.addStretch()
-        self._add_page(page)
+        card2.add_row("settings.mute.label", "settings.mute.desc", self._mute_toggle)
 
     def _refresh_mic_list(self, *, force_rescan: bool = False) -> None:
         """Rebuild the mic dropdown from AudioRecorder's executor-backed
         device list. ``force_rescan=True`` triggers a Pa_Terminate+Initialize
-        cycle on the audio worker thread (with watchdog) — only used when
-        the user explicitly asks for a refresh."""
+        cycle on the audio worker thread (with watchdog)."""
         from thundertalk.core.audio import AudioRecorder
-
-        names = (
-            AudioRecorder.refresh_devices()
-            if force_rescan
-            else AudioRecorder.list_devices()
-        )
+        names = (AudioRecorder.refresh_devices() if force_rescan
+                 else AudioRecorder.list_devices())
         self._apply_device_names(names)
 
     def _apply_device_names(self, names: list[str]) -> None:
-        """Repopulate the mic combo from a pre-fetched list. Used both by
-        ``_refresh_mic_list`` and by ``DeviceWatcher.devices_changed`` —
-        the latter has already paid the Pa_Terminate cost on a worker
-        thread, so we must NOT call back into AudioRecorder here."""
+        """Repopulate the mic combo from a pre-fetched list (must NOT call
+        back into AudioRecorder — the watcher already paid that cost)."""
         self._mic_combo.blockSignals(True)
         while self._mic_combo.count() > 1:
             self._mic_combo.removeItem(1)
@@ -530,202 +418,63 @@ class SettingsPage(QWidget):
     def _on_mic_changed(self, idx: int) -> None:
         self._settings.set("microphone", "auto" if idx == 0 else self._mic_combo.currentText())
 
-    # ── Transcription tab ──
+    # ── Transcription ──
+    def _build_transcription(self) -> None:
+        self._section("waveform", "settings.tab_transcription")
 
-    def _build_transcription_tab(self) -> None:
-        page = QWidget()
-        ly = QVBoxLayout(page)
-        ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(16)
-
-        # -- Language card --
-        card1 = theme.make_card()
-        c1 = QVBoxLayout(card1)
-        c1.setContentsMargins(20, 18, 20, 18)
-        c1.setSpacing(12)
-
-        sec1 = QLabel(t("settings.section.language"))
-        sec1.setFont(theme.font(14, bold=True))
-        sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c1.addWidget(sec1)
-
-        c1.addWidget(theme.separator())
-
-        lang_row, _ = theme.setting_row(
-            t("settings.recog.label"),
-            t("settings.recog.desc"),
-        )
-        self._lang_combo = QComboBox()
-        self._lang_combo.setFixedWidth(180)
-        theme.style_combo(self._lang_combo)
-        langs = [
-            (t("settings.recog.auto"), "auto"),
-            (t("settings.recog.en"), "en"),
-            (t("settings.recog.zh"), "zh"),
-            (t("settings.recog.ja"), "ja"),
-            (t("settings.recog.ko"), "ko"),
-            (t("settings.recog.es"), "es"),
-            (t("settings.recog.fr"), "fr"),
-            (t("settings.recog.de"), "de"),
-            (t("settings.recog.ar"), "ar"),
-            (t("settings.recog.hi"), "hi"),
-            (t("settings.recog.it"), "it"),
-            (t("settings.recog.pt"), "pt"),
-            (t("settings.recog.ru"), "ru"),
-            (t("settings.recog.nl"), "nl"),
-            (t("settings.recog.tr"), "tr"),
-        ]
-        for display, code in langs:
-            self._lang_combo.addItem(display, code)
+        card = self._card("settings.section.language")
+        self._lang_combo = self._combo(190)
+        self._lang_codes = ["auto", "en", "zh", "ja", "ko", "es", "fr", "de", "ar", "hi", "it", "pt", "ru", "nl", "tr"]
+        for code in self._lang_codes:
+            self._lang_combo.addItem(t(f"settings.recog.{code}"), code)
         cur = self._settings.transcription_language
-        for i, (_, code) in enumerate(langs):
-            if code == cur:
-                self._lang_combo.setCurrentIndex(i)
-                break
+        if cur in self._lang_codes:
+            self._lang_combo.setCurrentIndex(self._lang_codes.index(cur))
         self._lang_combo.currentIndexChanged.connect(self._on_lang_changed)
-        lang_row.addWidget(self._lang_combo)
-        c1.addLayout(lang_row)
-        ly.addWidget(card1)
+        card.add_row("settings.recog.label", "settings.recog.desc", self._lang_combo)
 
-        # -- Output card --
-        card2 = theme.make_card()
-        c2 = QVBoxLayout(card2)
-        c2.setContentsMargins(20, 18, 20, 18)
-        c2.setSpacing(12)
-
-        sec2 = QLabel(t("settings.section.output"))
-        sec2.setFont(theme.font(14, bold=True))
-        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c2.addWidget(sec2)
-
-        c2.addWidget(theme.separator())
-
-        clip_row, _ = theme.setting_row(
-            t("settings.clipboard.label"),
-            t("settings.clipboard.desc"),
-        )
+        card2 = self._card("settings.section.output")
         ct = theme.ToggleSwitch(self._settings.get("save_to_clipboard"))
         ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
-        clip_row.addWidget(ct)
-        c2.addLayout(clip_row)
-        ly.addWidget(card2)
+        card2.add_row("settings.clipboard.label", "settings.clipboard.desc", ct)
 
-        # -- Grammar correction card --
-        card3 = theme.make_card()
-        c3 = QVBoxLayout(card3)
-        c3.setContentsMargins(20, 18, 20, 18)
-        c3.setSpacing(12)
-
-        sec3_row = QHBoxLayout()
-        sec3_row.setSpacing(8)
-        sec3 = QLabel(t("settings.llm_rewrite.label"))
-        sec3.setFont(theme.font(14, bold=True))
-        sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        sec3_row.addWidget(sec3)
-        exp_badge = QLabel(t("common.experimental"))
-        exp_badge.setStyleSheet(
-            f"color: {theme.ACCENT_ORANGE}; background: {theme.ACCENT_ORANGE_DIM};"
-            " font-size: 9px; font-weight: 700; letter-spacing: 0.8px;"
-            f" border: 1px solid {theme.ACCENT_ORANGE}55; border-radius: 7px; padding: 1px 7px;"
-        )
-        sec3_row.addWidget(exp_badge)
-        sec3_row.addStretch()
-        c3.addLayout(sec3_row)
-        c3.addWidget(theme.separator())
-
-        rewrite_row, _ = theme.setting_row(
-            t("settings.llm_rewrite.label"),
-            t("settings.llm_rewrite.desc"),
-        )
+        card3 = self._card("settings.llm_rewrite.label", theme.badge(t("common.experimental"), "orange"))
         rw_toggle = theme.ToggleSwitch(self._settings.get("llm_rewrite_enabled"))
-        rw_toggle.toggled_signal.connect(
-            lambda v: self._settings.set("llm_rewrite_enabled", v)
-        )
-        rewrite_row.addWidget(rw_toggle)
-        c3.addLayout(rewrite_row)
+        rw_toggle.toggled_signal.connect(lambda v: self._settings.set("llm_rewrite_enabled", v))
+        card3.add_row("settings.llm_rewrite.label", "settings.llm_rewrite.desc", rw_toggle)
 
-        model_row, _ = theme.setting_row(
-            t("settings.llm_rewrite.model_label"),
-            t("settings.llm_rewrite.model_hint"),
-        )
-        from PySide6.QtWidgets import QLineEdit
         self._rewrite_model_edit = QLineEdit()
         self._rewrite_model_edit.setFixedWidth(300)
+        self._rewrite_model_edit.setFixedHeight(38)
         self._rewrite_model_edit.setPlaceholderText("mlx-community/Qwen3-8B-4bit")
         self._rewrite_model_edit.setText(
-            self._settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit"
-        )
-        self._rewrite_model_edit.setStyleSheet(
-            f"background: {theme.BG_ELEVATED}; color: {theme.TEXT_PRIMARY}; "
-            f"border: 1px solid {theme.BORDER_DEFAULT}; border-radius: 6px; padding: 4px 8px;"
-        )
+            self._settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit")
+        self._rewrite_model_edit.setStyleSheet(theme.INPUT_QSS)
         self._rewrite_model_edit.editingFinished.connect(
-            lambda: self._settings.set("llm_rewrite_model", self._rewrite_model_edit.text().strip())
-        )
-        model_row.addWidget(self._rewrite_model_edit)
-        c3.addLayout(model_row)
+            lambda: self._settings.set("llm_rewrite_model", self._rewrite_model_edit.text().strip()))
+        card3.add_row("settings.llm_rewrite.model_label", "settings.llm_rewrite.model_hint",
+                      self._rewrite_model_edit, sep=True)
 
-        ly.addWidget(card3)
+    def _on_lang_changed(self, idx: int) -> None:
+        code = self._lang_combo.itemData(idx)
+        if code:
+            self._settings.set("transcription_language", code)
+            self.settings_changed.emit()
 
-        ly.addStretch()
-        self._add_page(page)
+    # ── General ──
+    def _build_general(self) -> None:
+        self._section("sliders", "settings.tab_general")
 
-    # ── General tab ──
-
-    def _build_general_tab(self) -> None:
-        page = QWidget()
-        ly = QVBoxLayout(page)
-        ly.setContentsMargins(0, 0, 0, 0)
-        ly.setSpacing(16)
-
-        # -- Appearance card --
-        card1 = theme.make_card()
-        c1 = QVBoxLayout(card1)
-        c1.setContentsMargins(20, 18, 20, 18)
-        c1.setSpacing(12)
-
-        sec1 = QLabel(t("settings.section.appearance"))
-        sec1.setFont(theme.font(14, bold=True))
-        sec1.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c1.addWidget(sec1)
-
-        c1.addWidget(theme.separator())
-
-        # Language selector — applies instantly
-        lang_row, lang_label = theme.setting_row(
-            t("settings.language"), t("settings.language_desc")
-        )
-        self._ui_lang_label = lang_label
-        self._ui_lang_combo = QComboBox()
-        self._ui_lang_combo.setFixedWidth(160)
-        theme.style_combo(self._ui_lang_combo)
+        card = self._card("settings.section.appearance")
+        self._ui_lang_combo = self._combo(170)
         self._ui_lang_combo.addItem("English", "en")
         self._ui_lang_combo.addItem("中文", "zh")
         cur_lang = self._settings.get("language") or "en"
         self._ui_lang_combo.setCurrentIndex(1 if cur_lang == "zh" else 0)
         self._ui_lang_combo.currentIndexChanged.connect(self._on_ui_lang_changed)
-        lang_row.addWidget(self._ui_lang_combo)
-        c1.addLayout(lang_row)
+        card.add_row("settings.language", "settings.language_desc", self._ui_lang_combo)
 
-        ly.addWidget(card1)
-
-        # -- Startup card --
-        card2 = theme.make_card()
-        c2 = QVBoxLayout(card2)
-        c2.setContentsMargins(20, 18, 20, 18)
-        c2.setSpacing(12)
-
-        sec2 = QLabel(t("settings.section.startup"))
-        sec2.setFont(theme.font(14, bold=True))
-        sec2.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c2.addWidget(sec2)
-
-        c2.addWidget(theme.separator())
-
-        r1, _ = theme.setting_row(
-            t("settings.startup.launch.label"),
-            t("settings.startup.launch.desc"),
-        )
+        card2 = self._card("settings.section.startup")
         t1 = theme.ToggleSwitch(self._settings.get("launch_at_startup"))
 
         def _on_launch_toggled(v: bool) -> None:
@@ -736,104 +485,43 @@ class SettingsPage(QWidget):
                 print(f"[Settings] autostart.set_enabled({v}) failed: {err}")
 
         t1.toggled_signal.connect(_on_launch_toggled)
-        r1.addWidget(t1)
-        c2.addLayout(r1)
-
-        c2.addWidget(theme.separator())
-
-        r2, _ = theme.setting_row(
-            t("settings.startup.silent.label"),
-            t("settings.startup.silent.desc"),
-        )
+        card2.add_row("settings.startup.launch.label", "settings.startup.launch.desc", t1)
         t2 = theme.ToggleSwitch(self._settings.get("silent_launch"))
         t2.toggled_signal.connect(lambda v: self._settings.set("silent_launch", v))
-        r2.addWidget(t2)
-        c2.addLayout(r2)
-        ly.addWidget(card2)
+        card2.add_row("settings.startup.silent.label", "settings.startup.silent.desc", t2, sep=True)
 
-        # -- Performance card --
-        perf_card = theme.make_card()
-        cp = QVBoxLayout(perf_card)
-        cp.setContentsMargins(20, 18, 20, 18)
-        cp.setSpacing(12)
-
-        secp = QLabel(t("settings.section.performance"))
-        secp.setFont(theme.font(14, bold=True))
-        secp.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        cp.addWidget(secp)
-        cp.addWidget(theme.separator())
-
-        mem_row, _ = theme.setting_row(
-            t("settings.memory.label"),
-            t("settings.memory.desc"),
-        )
-        self._mem_combo = QComboBox()
-        self._mem_combo.setFixedWidth(220)
-        theme.style_combo(self._mem_combo)
+        perf = self._card("settings.section.performance")
+        self._mem_combo = self._combo(230)
         self._mem_combo.addItem(t("settings.memory.high"), "high")
         self._mem_combo.addItem(t("settings.memory.low"), "low")
-        # Restore saved value
         cur_mem = self._settings.memory_mode
         for i in range(self._mem_combo.count()):
             if self._mem_combo.itemData(i) == cur_mem:
                 self._mem_combo.setCurrentIndex(i)
                 break
         self._mem_combo.currentIndexChanged.connect(self._on_memory_mode_changed)
-        mem_row.addWidget(self._mem_combo)
-        cp.addLayout(mem_row)
-
-        # Restart-required hint, hidden until the user actually changes
-        # the value — picks up its own font + accent color so it reads
-        # as "important" rather than just a description.
+        perf.add_row("settings.memory.label", "settings.memory.desc", self._mem_combo)
         self._mem_restart_hint = QLabel(t("settings.memory.restart_hint"))
         self._mem_restart_hint.setStyleSheet(
-            f"color: {theme.ACCENT_ORANGE}; font-size: 11px; border: none;"
-            " padding-top: 4px;"
-        )
+            f"color: {theme.WARNING}; font-size: 12px; background: transparent;")
         self._mem_restart_hint.setWordWrap(True)
         self._mem_restart_hint.hide()
-        cp.addWidget(self._mem_restart_hint)
-        ly.addWidget(perf_card)
+        perf.add_widget(self._mem_restart_hint)
 
-        # -- Logs card --
-        card3 = theme.make_card()
-        c3 = QVBoxLayout(card3)
-        c3.setContentsMargins(20, 18, 20, 18)
-        c3.setSpacing(12)
-
-        sec3 = QLabel(t("settings.section.logs"))
-        sec3.setFont(theme.font(14, bold=True))
-        sec3.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; border: none;")
-        c3.addWidget(sec3)
-
-        c3.addWidget(theme.separator())
-
-        log_row, _ = theme.setting_row(
-            t("settings.logs.enable.label"),
-            t("settings.logs.enable.desc"),
-        )
+        logs = self._card("settings.section.logs")
         lt = theme.ToggleSwitch(self._settings.get("log_enabled"))
         lt.toggled_signal.connect(lambda v: self._settings.set("log_enabled", v))
-        log_row.addWidget(lt)
-        c3.addLayout(log_row)
+        logs.add_row("settings.logs.enable.label", "settings.logs.enable.desc", lt)
+        self._open_btn = theme.make_button(t("settings.logs.open"), "secondary", 34, font_px=12)
+        self._open_btn.setMinimumWidth(120)
+        self._open_btn.clicked.connect(self._open_log_dir)
+        logs.add_row("settings.logs.dir", "", self._open_btn, sep=True)
 
-        c3.addWidget(theme.separator())
-
-        dir_row, _ = theme.setting_row(t("settings.logs.dir"))
-        open_btn = theme.pill_button(t("settings.logs.open"), width=110, height=32)
-        open_btn.clicked.connect(self._open_log_dir)
-        dir_row.addWidget(open_btn)
-        c3.addLayout(dir_row)
-        ly.addWidget(card3)
-
-        ly.addStretch()
-        self._add_page(page)
-
-    def _on_lang_changed(self, idx: int) -> None:
-        code = self._lang_combo.itemData(idx)
-        if code:
-            self._settings.set("transcription_language", code)
-            self.settings_changed.emit()
+        setup = self._card("onb.rerun")
+        self._setup_btn = theme.make_button(t("onb.rerun"), "secondary", 34, font_px=12)
+        self._setup_btn.setMinimumWidth(170)
+        self._setup_btn.clicked.connect(self.run_setup_requested)
+        setup.add_row("onb.rerun", "onb.rerun.desc", self._setup_btn)
 
     def _on_ui_lang_changed(self, idx: int) -> None:
         code = self._ui_lang_combo.itemData(idx)
@@ -842,20 +530,31 @@ class SettingsPage(QWidget):
             set_language(code)
 
     def retranslate(self) -> None:
-        self._heading.setText(t("settings.title"))
-        for label, key in self._section_titles:
-            label.setText(t(key).upper())
-        self._ui_lang_label.setText(t("settings.language"))
+        self._header.set_title(t("settings.title"))
+        self._header.set_subtitle(t("settings.subtitle"))
+        for lbl in self._section_labels:
+            lbl.retranslate()
+        for card in self._cards:
+            card.retranslate()
+        self._hotkey_capture.retranslate()
+        # Dropdown entries that carry translated text
+        self._mode_combo.setItemText(0, t("settings.mode.toggle_click"))
+        for i, code in enumerate(self._lang_codes):
+            self._lang_combo.setItemText(i, t(f"settings.recog.{code}"))
+        self._mem_combo.setItemText(0, t("settings.memory.high"))
+        self._mem_combo.setItemText(1, t("settings.memory.low"))
+        self._mem_restart_hint.setText(t("settings.memory.restart_hint"))
+        self._open_btn.setText(t("settings.logs.open"))
+        self._setup_btn.setText(t("onb.rerun"))
+        self._mic_combo.setItemText(0, t("settings.mic.auto"))
 
     def _on_memory_mode_changed(self, idx: int) -> None:
         mode = self._mem_combo.itemData(idx)
-        if mode not in ("high", "low"):
-            return
-        if mode == self._settings.memory_mode:
+        if mode not in ("high", "low") or mode == self._settings.memory_mode:
             return
         self._settings.set("memory_mode", mode)
-        # ASR is already loaded with the previous setting; new value
-        # only takes effect on next load_model. Surface that fact.
+        # ASR is already loaded with the previous setting; the new value
+        # only takes effect on the next model load.
         self._mem_restart_hint.show()
 
     def _open_log_dir(self) -> None:
@@ -867,4 +566,3 @@ class SettingsPage(QWidget):
             subprocess.run(["xdg-open", str(log_dir)], check=False)
         elif platform.system() == "Windows":
             subprocess.run(["explorer", str(log_dir)], check=False)
-

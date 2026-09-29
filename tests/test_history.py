@@ -3,8 +3,6 @@
 from __future__ import annotations
 
 import json
-import os
-import time
 from pathlib import Path
 
 import pytest
@@ -115,17 +113,52 @@ def test_existing_jsonl_is_never_truncated_by_add(tmp_history) -> None:
     assert size_after > size_before
 
 
-def test_max_entries_only_caps_in_memory_view(tmp_history) -> None:
-    """In-memory cap protects UI/stat performance without ever
-    truncating disk. Disk grows monotonically."""
+def test_no_in_memory_cap_and_disk_keeps_everything(tmp_history) -> None:
+    """b8a0bdd removed the old 1000-entry in-memory cap: every entry stays
+    visible to the UI *and* on disk (disk grows monotonically)."""
     s = HistoryStore()
-    for i in range(hist_mod._MAX_ENTRIES + 5):
+    n = 1205
+    for i in range(n):
         s.add(text=f"e{i}", duration_secs=0.1, inference_ms=10, model="m")
 
-    # In-memory list is capped (existing v1.1.13 behaviour kept)
-    assert len(s._entries) == hist_mod._MAX_ENTRIES
-    # ...but every single entry is on disk.
-    assert len(_read_jsonl(hist_mod._JSONL_PATH)) == hist_mod._MAX_ENTRIES + 5
+    assert len(s._entries) == n
+    assert len(_read_jsonl(hist_mod._JSONL_PATH)) == n
+
+
+def test_remove_appends_tombstone_and_hides_entry(tmp_history) -> None:
+    s = HistoryStore()
+    s.add(text="keep me", duration_secs=1.0, inference_ms=10, model="m")
+    s.add(text="delete me", duration_secs=1.0, inference_ms=10, model="m")
+    victim = next(e for e in s.entries if e.text == "delete me")
+    size_before = hist_mod._JSONL_PATH.stat().st_size
+
+    assert s.remove(victim.id) is True
+    assert [e.text for e in s.entries] == ["keep me"]
+
+    # Append-only: the file only grew, and the original entry line is intact.
+    assert hist_mod._JSONL_PATH.stat().st_size > size_before
+    lines = _read_jsonl(hist_mod._JSONL_PATH)
+    assert [ln["kind"] for ln in lines] == ["entry", "entry", "delete"]
+    assert lines[1]["text"] == "delete me"
+    assert lines[2]["id"] == victim.id
+
+    # ...and the deletion survives a reload.
+    assert [e.text for e in HistoryStore().entries] == ["keep me"]
+
+
+def test_remove_unknown_id_is_a_noop(tmp_history) -> None:
+    s = HistoryStore()
+    s.add(text="x", duration_secs=1.0, inference_ms=10, model="m")
+    size = hist_mod._JSONL_PATH.stat().st_size
+    assert s.remove("nope") is False
+    assert hist_mod._JSONL_PATH.stat().st_size == size
+
+
+def test_count_units_handles_english_and_cjk() -> None:
+    assert hist_mod.count_units("Hello there, don't stop") == 4
+    assert hist_mod.count_units("今天下午三点开会") == 8
+    assert hist_mod.count_units("Send it to 张伟 by 5pm") == 7  # Send it to 张 伟 by 5pm
+    assert hist_mod.count_units("") == 0
 
 
 def test_update_translation_appends_event_does_not_rewrite_entry(tmp_history) -> None:

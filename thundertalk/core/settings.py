@@ -42,6 +42,8 @@ DEFAULTS: dict[str, Any] = {
     # MOSS dictation: prefix each speaker turn with S01:/S02: labels when
     # two or more speakers are detected in the utterance.
     "moss_speaker_labels": False,
+    # First-run setup flow (welcome → permissions → model → try it).
+    "onboarding_done": False,
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

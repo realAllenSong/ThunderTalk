@@ -71,65 +71,22 @@ class _DownloadWorker(QThread):
             self.failed.emit(str(e))
 
 
-class _LogoWidget(QLabel):
-    """Large app icon for the about page."""
-
-    def __init__(self) -> None:
-        super().__init__()
-        self.setFixedSize(80, 80)
-        import os
-        from PySide6.QtGui import QPixmap
-        from thundertalk import asset_path
-        icon_file = asset_path("icon.png")
-        if os.path.isfile(icon_file):
-            pm = QPixmap(icon_file).scaled(
-                80, 80,
-                Qt.AspectRatioMode.KeepAspectRatio,
-                Qt.TransformationMode.SmoothTransformation,
-            )
-            self.setPixmap(pm)
-
-
 class AboutPage(QWidget):
     def __init__(self) -> None:
         super().__init__()
         ly = QVBoxLayout(self)
         ly.setContentsMargins(32, 28, 32, 32)
 
-        # ── Segment tab bar (to match settings page) ──
-        from PySide6.QtWidgets import QTabBar
-        tab_container = QHBoxLayout()
-        tab_container.addStretch()
-        tabs = QTabBar()
-        tabs.setExpanding(False)
-        tabs.setDrawBase(False)
-        tabs.setStyleSheet(theme.segment_tab_qss())
-        for name in ("Hotkey", "Microphone", "System", "Hotwords", "About"):
-            tabs.addTab(name)
-        tabs.setCurrentIndex(4)
-        # These tabs are display-only since About is a separate page
-        tabs.setEnabled(False)
-        tabs.setStyleSheet(
-            tabs.styleSheet()
-            + f"QTabBar::tab:disabled {{ color: {theme.TEXT_SECONDARY}; }}"
-            + f"QTabBar::tab:selected {{ color: {theme.TEXT_PRIMARY};"
-            f" background: {theme.BG_ELEVATED}; border: 1px solid {theme.BORDER_SUBTLE}; }}"
-        )
-        tab_container.addWidget(tabs)
-        tab_container.addStretch()
-        # Don't show fake tabs — keep the page clean
-        # ly.addLayout(tab_container)
-
         ly.addStretch()
 
         # ── Logo ──
-        logo = _LogoWidget()
-        ly.addWidget(logo, alignment=Qt.AlignmentFlag.AlignCenter)
-        ly.addSpacing(16)
+        from thundertalk.ui.widgets import GlowLogo
+        ly.addWidget(GlowLogo(84), alignment=Qt.AlignmentFlag.AlignCenter)
+        ly.addSpacing(4)
 
         # ── Title ──
         title = QLabel("ThunderTalk")
-        title.setFont(theme.font_heading(24))
+        title.setFont(theme.font_display(32))
         title.setStyleSheet(f"color: {theme.TEXT_PRIMARY};")
         title.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(title)
@@ -141,34 +98,16 @@ class AboutPage(QWidget):
         # in macOS's default (11,11,11,11) contentsMargins on top of
         # the parent VBox spacing, ballooning the gap between
         # "v1.1.2" and the "Download Update" button to ~40 px.
-        version = QLabel(f"v{thundertalk.__version__}")
-        version.setStyleSheet(
-            f"color: {theme.TEXT_SECONDARY}; font-size: 12px;"
-            f" background: transparent; border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 12px; padding: 5px 16px;"
-        )
+        version = theme.badge(f"v{thundertalk.__version__}", "muted")
         ly.addWidget(version, alignment=Qt.AlignmentFlag.AlignHCenter)
         ly.addSpacing(6)
 
         self._action_btn = QPushButton(t("about.check_updates"))
         self._action_btn.setCursor(Qt.CursorShape.PointingHandCursor)
-        self._action_btn_base_qss = (
-            f"QPushButton {{ color: {theme.TEXT_SECONDARY}; font-size: 12px;"
-            f" background: transparent; border: 1px solid {theme.BORDER_DEFAULT};"
-            " border-radius: 12px; padding: 5px 16px; }}"
-            f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY};"
-            f" border: 1px solid {theme.BORDER_STRONG}; }}"
-            f"QPushButton:disabled {{ color: {theme.TEXT_MUTED};"
-            f" border: 1px solid {theme.BORDER_SUBTLE}; }}"
-        )
-        self._action_btn_accent_qss = (
-            f"QPushButton {{ color: #ffffff; font-size: 12px;"
-            f" background: {theme.ACCENT_BLUE};"
-            f" border: 1px solid {theme.ACCENT_BLUE};"
-            " border-radius: 12px; padding: 5px 16px; font-weight: 600; }}"
-            f"QPushButton:hover {{ background: {theme.ACCENT_BLUE_HOVER};"
-            f" border: 1px solid {theme.ACCENT_BLUE_HOVER}; }}"
-        )
+        self._action_btn.setFixedHeight(38)
+        self._action_btn.setMinimumWidth(190)
+        self._action_btn_base_qss = theme.button_qss("secondary", 38, 13)
+        self._action_btn_accent_qss = theme.button_qss("primary", 38, 13)
         self._action_btn.setStyleSheet(self._action_btn_base_qss)
         self._action_btn.clicked.connect(self._on_action)
         ly.addWidget(
@@ -201,8 +140,8 @@ class AboutPage(QWidget):
         self._progress.setStyleSheet(
             f"QProgressBar {{ background: {theme.BG_ELEVATED};"
             " border: none; border-radius: 3px; }"
-            f"QProgressBar::chunk {{ background: {theme.ACCENT_BLUE};"
-            " border-radius: 3px; }}"
+            f"QProgressBar::chunk {{ background: {theme.ACCENT_ORANGE};"
+            " border-radius: 3px; }"
         )
         self._progress.hide()
         ly.addWidget(self._progress, alignment=Qt.AlignmentFlag.AlignCenter)
@@ -256,7 +195,7 @@ class AboutPage(QWidget):
             btn.setCursor(Qt.CursorShape.PointingHandCursor)
             btn.setStyleSheet(
                 f"QPushButton {{ color: {theme.TEXT_MUTED}; background: transparent;"
-                " border: none; font-size: 12px; padding: 4px 12px; }}"
+                " border: none; font-size: 12px; padding: 4px 12px; }"
                 f"QPushButton:hover {{ color: {theme.TEXT_PRIMARY}; }}"
             )
             btn.clicked.connect(lambda: webbrowser.open(url))
