@@ -28,6 +28,7 @@ from thundertalk.core.updater import (
     UpdateInfo,
     check_for_update,
     download_update,
+    prepare_update,
     install_update,
     installed_app_path,
 )
@@ -53,7 +54,8 @@ class _DownloadWorker(QThread):
     """Background streaming download with progress callback."""
 
     progress = Signal(int, int)   # downloaded, total
-    finished_ok = Signal(str)     # zip path as string
+    preparing = Signal()          # download done, extracting
+    finished_ok = Signal(str)     # extracted ThunderTalk.app path
     failed = Signal(str)          # error message
 
     def __init__(self, info: UpdateInfo) -> None:
@@ -66,7 +68,9 @@ class _DownloadWorker(QThread):
                 self._info,
                 progress_cb=lambda d, t: self.progress.emit(d, t),
             )
-            self.finished_ok.emit(str(path))
+            # Extract here, off the UI thread (~15 s), so "install" is instant.
+            self.preparing.emit()
+            self.finished_ok.emit(str(prepare_update(path)))
         except Exception as e:
             self.failed.emit(str(e))
 
@@ -162,7 +166,7 @@ class AboutPage(QWidget):
         # Internal state
         self._mode = "idle"  # idle / checking / available / downloading / ready / installing
         self._update_info: Optional[UpdateInfo] = None
-        self._zip_path: Optional[pathlib.Path] = None
+        self._new_app: Optional[pathlib.Path] = None   # extracted update
         self._check_worker: Optional[_CheckWorker] = None
         self._download_worker: Optional[_DownloadWorker] = None
         # Pop the proactive prompt at most once per session so a slow
@@ -347,6 +351,7 @@ class AboutPage(QWidget):
 
         self._download_worker = _DownloadWorker(info)
         self._download_worker.progress.connect(self._on_download_progress)
+        self._download_worker.preparing.connect(self._on_preparing)
         self._download_worker.finished_ok.connect(self._on_download_done)
         self._download_worker.failed.connect(self._on_download_failed)
         self._download_worker.finished.connect(
@@ -362,8 +367,12 @@ class AboutPage(QWidget):
         self._progress.setValue(pct)
         self._action_btn.setText(t("about.update.downloading").format(pct=pct))
 
-    def _on_download_done(self, zip_path_str: str) -> None:
-        self._zip_path = pathlib.Path(zip_path_str)
+    def _on_preparing(self) -> None:
+        self._progress.setRange(0, 0)  # indeterminate while extracting
+        self._action_btn.setText(t("about.update.preparing"))
+
+    def _on_download_done(self, app_path_str: str) -> None:
+        self._new_app = pathlib.Path(app_path_str)
         self._mode = "ready"
         self._progress.hide()
         self._set_status("")
@@ -388,7 +397,7 @@ class AboutPage(QWidget):
         self._set_status(t("about.update.download_failed"), muted=False)
 
     def _start_install(self) -> None:
-        if self._zip_path is None:
+        if self._new_app is None or not self._new_app.is_dir():
             return
         app_path = installed_app_path()
         if app_path is None:
@@ -400,7 +409,7 @@ class AboutPage(QWidget):
         self._action_btn.setStyleSheet(self._action_btn_base_qss)
         self._set_status(t("about.update.installing"), muted=True)
         try:
-            install_update(self._zip_path, app_path)
+            install_update(self._new_app, app_path)
         except Exception as e:
             print(f"[Updater] install failed: {e}")
             self._set_status(str(e), muted=False)

@@ -129,31 +129,25 @@ def download_update(
     return target
 
 
-def install_update(zip_path: pathlib.Path, app_path: pathlib.Path) -> None:
-    """Schedule a detached helper that swaps the running .app once
-    we exit, then relaunches. After this call returns, the caller
-    should immediately QApplication.quit() — the helper is already
-    waiting on our PID.
+def prepare_update(zip_path: pathlib.Path) -> pathlib.Path:
+    """Extract and check the downloaded bundle; returns the new .app.
 
-    Layout:
-      tmpdir/
-        ThunderTalk.app   ← extracted from the zip
-        install.sh        ← waits, swaps, relaunches, self-cleans
+    Slow (about 15 s for the ~950 MB bundle), so it runs on the download
+    thread right after the download. The later "install" click then only
+    has to quit: running it on the UI thread froze the window.
     """
-    tmpdir = pathlib.Path(tempfile.mkdtemp(prefix="thundertalk-update-"))
+    _CACHE_DIR.mkdir(parents=True, exist_ok=True)
+    for stale in _CACHE_DIR.glob("thundertalk-update-*"):   # earlier, never installed
+        shutil.rmtree(stale, ignore_errors=True)
+    tmpdir = pathlib.Path(tempfile.mkdtemp(prefix="thundertalk-update-", dir=_CACHE_DIR))
     try:
         # IMPORTANT: don't use zipfile.extractall here. Python's zipfile
         # ignores the Unix permission bits stored in the ZIP's extra
         # data, so it strips the +x bit on Contents/MacOS/ThunderTalk
         # and silently drops the AppleDouble (._*) sidecars that carry
-        # resource forks for signed Qt frameworks. The result was a
-        # bundle that the helper's `ditto` copy faithfully reproduced
-        # — broken — at /Applications, with errors:
-        #   "code object is not signed at all"
-        #   NSPOSIXErrorDomain Code=111 "Launch failed"
-        # ditto -x -k is the symmetric Mac-aware extractor for the
-        # same archive format we use to create the zip on the build
-        # side; it preserves perms, xattrs, and AppleDouble metadata.
+        # resource forks for signed Qt frameworks. ditto -x -k is the
+        # symmetric Mac-aware extractor for the archive we build with
+        # ditto; it preserves perms, xattrs, and AppleDouble metadata.
         subprocess.run(
             ["/usr/bin/ditto", "-x", "-k", str(zip_path), str(tmpdir)],
             check=True,
@@ -166,27 +160,32 @@ def install_update(zip_path: pathlib.Path, app_path: pathlib.Path) -> None:
 
     # The zip ditto produces normally has ThunderTalk.app at the
     # root, but accept any depth as a defensive read.
-    candidates = list(tmpdir.glob("ThunderTalk.app"))
-    if not candidates:
-        candidates = list(tmpdir.rglob("ThunderTalk.app"))
+    candidates = list(tmpdir.glob("ThunderTalk.app")) or list(tmpdir.rglob("ThunderTalk.app"))
     if not candidates:
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise RuntimeError("ThunderTalk.app not found in update zip")
     new_app = candidates[0]
 
-    # Sanity-check: the extracted binary must be executable, else the
-    # spawn helper will faithfully reproduce a broken bundle. If the
-    # +x bit is missing we'd rather fail in-process — the user still
-    # has the running binary intact — than commit to a broken swap.
+    # The extracted binary must be executable, else the helper would
+    # faithfully install a broken bundle. Fail here instead — the running
+    # app is still intact.
     new_binary = new_app / "Contents" / "MacOS" / "ThunderTalk"
     if not new_binary.is_file() or not os.access(new_binary, os.X_OK):
         shutil.rmtree(tmpdir, ignore_errors=True)
         raise RuntimeError(
             "Extracted bundle's executable is missing or not +x — refusing "
-            "to install a broken bundle. Check /tmp/thundertalk-install.log "
-            "or re-download manually from Releases."
+            "to install a broken bundle. Re-download manually from Releases."
         )
+    zip_path.unlink(missing_ok=True)   # extracted; no need to keep ~300 MB around
+    return new_app
 
+
+def install_update(new_app: pathlib.Path, app_path: pathlib.Path) -> None:
+    """Schedule a detached helper that swaps the running .app once we
+    exit, then relaunches. *new_app* comes from ``prepare_update``. After
+    this call returns, the caller should immediately QApplication.quit().
+    """
+    tmpdir = new_app.parent
     helper = tmpdir / "install.sh"
     helper.write_text(
         "#!/bin/bash\n"
@@ -204,12 +203,11 @@ def install_update(zip_path: pathlib.Path, app_path: pathlib.Path) -> None:
         "# Wait for the previous ThunderTalk to exit so macOS lets us\n"
         "# overwrite the bundle. Bound at 30 s; if the user refused to\n"
         "# quit, force-kill so the install isn't a permanent hang.\n"
-        "for i in {1..60}; do\n"
+        "for i in {1..150}; do\n"
         "    if ! pgrep -x ThunderTalk > /dev/null; then break; fi\n"
-        "    sleep 0.5\n"
+        "    sleep 0.2\n"
         "done\n"
-        "pkill -x ThunderTalk 2>/dev/null || true\n"
-        "sleep 0.5\n"
+        "if pkill -x ThunderTalk 2>/dev/null; then sleep 0.5; fi\n"
         "if [ ! -d \"$NEW\" ]; then\n"
         "    echo 'ERROR: new bundle missing'\n"
         "    exit 1\n"
@@ -217,27 +215,28 @@ def install_update(zip_path: pathlib.Path, app_path: pathlib.Path) -> None:
         "BAK=\"${OLD}.update-old.$$\"\n"
         "echo \"backing up old to $BAK\"\n"
         "mv \"$OLD\" \"$BAK\" || { echo 'mv failed'; exit 1; }\n"
-        "# IMPORTANT: use `ditto`, not `cp -R`. cp on macOS sometimes\n"
-        "# strips the executable bit on the main binary inside\n"
-        "# Contents/MacOS/, leaving the .app installed but unlaunchable\n"
-        "# (\"can't open\" / \"cannot find code object on disk\"). ditto\n"
-        "# is Apple's blessed bundle-aware copy and preserves perms,\n"
-        "# extended attrs, code-sign integrity, and resource forks.\n"
-        "echo 'copying with ditto'\n"
-        "if ! ditto \"$NEW\" \"$OLD\"; then\n"
-        "    echo 'ditto failed; rolling back'\n"
+        "# The update is extracted under ~/Library/Caches, normally on the\n"
+        "# same volume as /Applications, so a rename swaps it instantly.\n"
+        "# Otherwise copy with ditto — never cp -R, which can strip the +x\n"
+        "# bit on Contents/MacOS/ThunderTalk and break the signature.\n"
+        "if mv \"$NEW\" \"$OLD\" 2>/dev/null; then\n"
+        "    echo 'swapped by rename'\n"
+        "elif ditto \"$NEW\" \"$OLD\"; then\n"
+        "    echo 'swapped by ditto copy'\n"
+        "else\n"
+        "    echo 'swap failed; rolling back'\n"
         "    rm -rf \"$OLD\" 2>/dev/null || true\n"
         "    mv \"$BAK\" \"$OLD\"\n"
+        "    open \"$OLD\"\n"
         "    exit 1\n"
         "fi\n"
         "xattr -dr com.apple.quarantine \"$OLD\" 2>/dev/null || true\n"
-        "echo 'codesign verify:'\n"
-        "codesign --verify --verbose=2 \"$OLD\" 2>&1 | tail -3 || true\n"
-        "echo 'removing backup'\n"
-        "rm -rf \"$BAK\"\n"
         "echo 'relaunching'\n"
         "open \"$OLD\"\n"
-        "sleep 2\n"
+        "# Housekeeping after the relaunch, off the critical path.\n"
+        "rm -rf \"$BAK\"\n"
+        "echo 'codesign verify:'\n"
+        "codesign --verify --verbose=2 \"$OLD\" 2>&1 | tail -3 || true\n"
         f"rm -rf {shlex_quote(str(tmpdir))}\n"
         "echo \"=== install done: $(date) ===\"\n"
     )

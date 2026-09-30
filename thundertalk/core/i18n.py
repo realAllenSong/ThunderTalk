@@ -438,6 +438,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Install & Restart",
         "zh": "安装并重启",
     },
+    "about.update.preparing": {
+        "en": "Preparing the update…",
+        "zh": "正在准备更新…",
+    },
     "about.update.installing": {
         "en": "Installing — ThunderTalk will relaunch in a moment.",
         "zh": "正在安装，ThunderTalk 将自动重启。",

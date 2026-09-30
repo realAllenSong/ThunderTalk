@@ -58,3 +58,23 @@ gender), and are used by both VoxCPM2 and IndexTTS.
   `array_api_compat` to `scipy._external`, so that module is named explicitly.
   wetext's data (`contractions`, `anyascii`) is collected too. All three engines
   and cloning pass `--selftest` inside the packaged app.
+
+## 1.6.1 follow-ups
+
+- **Voice previews.** Every built-in voice has a ~3–6 s clip spoken by its
+  own engine (`assets/voices/previews/<engine>/<voice>.flac`, rendered and
+  read back with Qwen3-ASR 1.7B by `tools/make_voice_previews.py`). The ▶ on
+  a voice chip plays it without selecting; "My voices" play their recording.
+- **MOSS dictation on silence.** With nobody speaking, MOSS emitted bare
+  markers (`[0.00][S01][0.86]`), sound tags (`[clear throat]`) or looped on
+  timestamps until the 2048-token budget ran out — ~13–20 s, and the raw
+  markers were pasted. Found in 40 of 1,718 dictation-history entries.
+  Now: marker-only output is empty, sound tags are dropped, and dictation
+  uses a budget of 96 + 24 tokens/s (2× the fastest measured speech), so a
+  loop on 1.4 s of noise ends in ~1 s instead of 20 s.
+- **Update install.** Extracting the ~950 MB bundle (≈14 s) ran on the UI
+  thread after "Install and relaunch", hence the beach ball; the helper then
+  copied the bundle with ditto and verified the signature (≈11 s) before
+  relaunching. Now the download thread extracts it, the click only quits,
+  and the helper swaps by rename (same volume, instant) and relaunches
+  before the signature check.

@@ -82,6 +82,30 @@ def check_asr(path: str) -> bool:
                 text=t.to_text()[:200])
 
 
+def check_moss(path: str) -> bool:
+    """MOSS dictation: noise with nobody speaking must come back empty and
+    fast (it used to loop for ~20 s and paste bare timestamps); *path*, if
+    given, must come back as words."""
+    import time
+
+    import numpy as np
+
+    from thundertalk.core import audio_io, diarize
+    from thundertalk.core.asr import AsrEngine
+    eng = AsrEngine()
+    eng._load_mlx_moss(diarize.resolve_model_path())
+    noise = (0.006 * np.random.default_rng(0).standard_normal(22400)).astype(np.float32)
+    t0 = time.perf_counter()
+    quiet = eng.recognize(noise, 16000).text
+    quiet_s = time.perf_counter() - t0
+    ok = quiet == "" and quiet_s < 5.0
+    said = ""
+    if path:
+        said = eng.recognize(audio_io.decode_audio(path, 16000), 16000).text
+        ok &= bool(said.strip()) and "[" not in said
+    return _say(ok, "moss", noise_text=quiet, noise_seconds=round(quiet_s, 2), text=said[:200])
+
+
 def check_clone(path: str, text: str, engine: str = "") -> bool:
     from thundertalk.core import audio_io, speech, tts, tts_verify, voices
     bid = engine or speech.DEFAULT_CLONE_BACKEND
@@ -102,7 +126,7 @@ def check_clone(path: str, text: str, engine: str = "") -> bool:
 
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "clone", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
     ap.add_argument("--engine", default="", help="kokoro | voxcpm2 (default: all downloaded / the clone default)")
@@ -115,6 +139,8 @@ def run(argv: list[str]) -> int:
             ok &= check_tts(a.engine)
         if a.what == "asr":
             ok &= check_asr(a.file)
+        if a.what == "moss":
+            ok &= check_moss(a.file)
         if a.what == "clone":
             ok &= check_clone(a.file, a.text, a.engine)
     except Exception as exc:                                    # noqa: BLE001

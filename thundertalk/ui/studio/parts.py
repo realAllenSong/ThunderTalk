@@ -312,6 +312,7 @@ class PlayerBar(QWidget):
     """Play/pause, a seekable waveform, elapsed/total time and a Save menu."""
 
     save_requested = Signal(str)          # "wav" | "m4a"
+    started = Signal()                    # playback (re)started
 
     def __init__(self, with_save: bool = True) -> None:
         super().__init__()
@@ -393,12 +394,17 @@ class PlayerBar(QWidget):
     def retranslate(self) -> None:
         self._save.setText(t("studio.save"))
 
+    def pause(self) -> None:
+        if self._player.is_playing:
+            self.toggle()
+
     def toggle(self) -> None:
         if self._player.is_playing:
             self._player.pause()
             self._btn.set_icon("play")
             self._timer.stop()
         elif self._player.play():
+            self.started.emit()
             self._btn.set_icon("pause")
             self._timer.start()
         else:
@@ -545,10 +551,18 @@ class TranscriptView(QWidget):
 class VoiceChip(QAbstractButton):
     """A selectable voice: name on top, one-line description under it."""
 
-    def __init__(self, name: str, sub: str = "", *, dashed: bool = False, icon: str = "") -> None:
+    preview = Signal()          # the round play button on the right was clicked
+
+    _PREVIEW_W = 30             # width of the play-button zone
+
+    def __init__(self, name: str, sub: str = "", *, dashed: bool = False, icon: str = "",
+                 previewable: bool = False) -> None:
         super().__init__()
         self._name, self._sub, self._dashed, self._icon = name, sub, dashed, icon
         self._hover = False
+        self._previewable, self._playing, self._press_preview = previewable, False, False
+        if previewable:
+            self.setToolTip(t("studio.voices.preview"))
         self.setCheckable(not dashed)
         self.setCursor(Qt.CursorShape.PointingHandCursor)
         self.setSizePolicy(QSizePolicy.Policy.Fixed, QSizePolicy.Policy.Fixed)
@@ -564,7 +578,41 @@ class VoiceChip(QAbstractButton):
         f1, f2 = theme.font(13, bold=True), theme.font(11)
         w = max(QFontMetrics(f1).horizontalAdvance(self._name),
                 QFontMetrics(f2).horizontalAdvance(self._sub) if self._sub else 0)
-        return QSize(int(w) + 36 + (22 if self._icon else 0), 54 if self._sub else 42)
+        return QSize(int(w) + 36 + (22 if self._icon else 0) + (self._PREVIEW_W if self._previewable else 0),
+                     54 if self._sub else 42)
+
+    # -- preview button ---------------------------------------------------
+    def set_playing(self, playing: bool) -> None:
+        if playing != self._playing:
+            self._playing = playing
+            self.update()
+
+    def is_playing(self) -> bool:
+        return self._playing
+
+    def _preview_rect(self) -> QRectF:
+        s = 24.0
+        return QRectF(self.width() - self._PREVIEW_W - 4 + (self._PREVIEW_W - s) / 2,
+                      (self.height() - s) / 2, s, s)
+
+    def _in_preview(self, pos) -> bool:
+        return self._previewable and pos.x() >= self.width() - self._PREVIEW_W - 6
+
+    def mousePressEvent(self, ev) -> None:
+        self._press_preview = ev.button() == Qt.MouseButton.LeftButton and self._in_preview(ev.position())
+        if self._press_preview:
+            ev.accept()
+            return
+        super().mousePressEvent(ev)
+
+    def mouseReleaseEvent(self, ev) -> None:
+        if self._press_preview:
+            self._press_preview = False
+            if self._in_preview(ev.position()) and self.rect().contains(ev.position().toPoint()):
+                self.preview.emit()
+            ev.accept()
+            return
+        super().mouseReleaseEvent(ev)
 
     def enterEvent(self, ev) -> None:
         self._hover = True
@@ -590,13 +638,22 @@ class VoiceChip(QAbstractButton):
         if self._icon:
             paint_icon(p, self._icon, QRectF(14, (self.height() - 14) / 2, 14, 14), theme.TEXT_SECONDARY, 2.0)
             x = 36.0
+        right = 8 + (self._PREVIEW_W if self._previewable else 0)
         p.setPen(theme.qcolor(theme.TEXT_PRIMARY))
         p.setFont(theme.font(13, bold=True))
         if self._sub:
-            p.drawText(QRectF(x, 9, self.width() - x - 8, 18), Qt.AlignmentFlag.AlignVCenter, self._name)
+            p.drawText(QRectF(x, 9, self.width() - x - right, 18), Qt.AlignmentFlag.AlignVCenter, self._name)
             p.setPen(theme.qcolor(theme.TEXT_MUTED))
             p.setFont(theme.font(11))
-            p.drawText(QRectF(x, 28, self.width() - x - 8, 16), Qt.AlignmentFlag.AlignVCenter, self._sub)
+            p.drawText(QRectF(x, 28, self.width() - x - right, 16), Qt.AlignmentFlag.AlignVCenter, self._sub)
         else:
-            p.drawText(QRectF(x, 0, self.width() - x - 8, self.height()), Qt.AlignmentFlag.AlignVCenter, self._name)
+            p.drawText(QRectF(x, 0, self.width() - x - right, self.height()), Qt.AlignmentFlag.AlignVCenter,
+                       self._name)
+        if self._previewable:
+            pr = self._preview_rect()
+            p.setPen(QPen(theme.qcolor(theme.INK if self._playing else theme.BORDER_STRONG), 1))
+            p.setBrush(theme.qcolor(theme.INK if self._playing else theme.BG_CARD))
+            p.drawEllipse(pr)
+            paint_icon(p, "stop" if self._playing else "play", pr.adjusted(7, 7, -7, -7),
+                       theme.BG_CARD if self._playing else theme.TEXT_SECONDARY, 1.6)
         p.end()

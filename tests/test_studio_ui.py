@@ -390,3 +390,81 @@ def test_eta_appears_after_two_parts_and_counts_down(studio):
     assert tab.eta_seconds(now=14.0) == pytest.approx(3.0 * 8 - 2.0)
     tab._note_part(10, 10, now=33.0)
     assert tab.eta_seconds(now=34.0) == pytest.approx(3.0 - 1.0)
+
+
+# ── voice previews ───────────────────────────────────────────────────────
+
+class FakePlayer:
+    """Stands in for playback.Player: no audio hardware."""
+
+    def __init__(self):
+        self.loaded, self.is_playing = None, False
+
+    def load(self, x, sr):
+        self.loaded = (len(x), sr)
+
+    def play(self, start=None):
+        self.is_playing = True
+        return True
+
+    def stop(self):
+        self.is_playing = False
+
+    def poll(self):
+        return self.is_playing
+
+
+def _click_preview(chip):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    QTest.mouseClick(chip, Qt.MouseButton.LeftButton, pos=QPoint(chip.width() - 16, chip.height() // 2))
+
+
+def test_every_built_in_voice_has_a_shipped_preview():
+    from thundertalk.core import speech
+    from thundertalk.core.tts_backends.previews import load_preview
+    for bid in speech.BACKEND_ORDER:
+        for v in speech.backend(bid).voices():
+            clip = load_preview(v.id)
+            assert clip is not None, v.id
+            x, sr = clip
+            assert sr == 24000 and 1.5 < len(x) / sr < 12 and np.max(np.abs(x)) > 0.3, v.id
+
+
+def test_preview_plays_without_selecting_and_toggles(speak):
+    speak._preview = FakePlayer()
+    pick_engine(speak, "kokoro")
+    before = speak._voice_id
+    chip = speak._chips["kokoro:58"]
+    _click_preview(chip)
+    assert speak._preview.is_playing and speak._preview.loaded[1] == 24000
+    assert chip.is_playing() and speak._voice_id == before           # listening doesn't select
+    _click_preview(speak._chips["kokoro:3"])                         # another voice takes over
+    assert not chip.is_playing() and speak._chips["kokoro:3"].is_playing()
+    _click_preview(speak._chips["kokoro:3"])                         # second click stops
+    assert not speak._preview.is_playing and not speak._chips["kokoro:3"].is_playing()
+    chip.click()                                                     # the rest of the chip still selects
+    assert speak._voice_id == "kokoro:58"
+
+
+def test_preview_of_my_voice_plays_my_recording_and_ends_cleanly(speak):
+    voices.VoiceLibrary().add("Me", voices.prepare_reference(_talk(6.0, 1), SR).audio, "hi")
+    speak._preview = FakePlayer()
+    pick_engine(speak, "voxcpm2")
+    _click_preview(speak._chips["my:me"])
+    assert speak._preview.is_playing and speak._preview.loaded[1] == 24000
+    speak._preview.is_playing = False                                # clip finished
+    assert wait_for(lambda: not speak._chips["my:me"].is_playing())
+
+
+def test_preview_stops_when_generating_or_switching_engine(speak):
+    speak._preview = FakePlayer()
+    pick_engine(speak, "voxcpm2")
+    _click_preview(speak._chips["voxcpm2:female-en"])
+    pick_engine(speak, "indextts")
+    assert not speak._preview.is_playing
+    _click_preview(speak._chips["indextts:female-en"])
+    speak._text.setPlainText("Hello there.")
+    speak._go.click()
+    assert not speak._preview.is_playing
+    assert wait_for(lambda: speak._result_card.isVisible())

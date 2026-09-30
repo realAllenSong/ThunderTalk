@@ -172,6 +172,8 @@ STUDIO: dict[str, dict[str, str]] = {
         "zh": "其中一段可能听起来不自然——{snippet}。再生成一次通常就能解决。",
     },
     "studio.player.keys": {"en": "Space: play / pause · ← →: back / forward 5 s", "zh": "空格：播放 / 暂停 · ← →：后退 / 前进 5 秒"},
+    "studio.voices.preview": {"en": "Click ▶ on the right to hear this voice",
+                              "zh": "点右侧 ▶ 试听这个声音"},
     "studio.play_failed": {"en": "Couldn't play — check your output device", "zh": "无法播放——请检查输出设备"},
     "studio.save.wav": {"en": "lossless", "zh": "无损"},
     "studio.save.m4a": {"en": "small file", "zh": "体积小"},

@@ -26,6 +26,10 @@ _MODEL_LOCK = threading.Lock()
 _SEGMENT_RE = re.compile(
     r"\[(\d+(?:\.\d+)?)\]\[(S\d+)\](.*?)\[(\d+(?:\.\d+)?)\]", re.DOTALL
 )
+# Bare markers left over when the model emits timestamps / speaker tags
+# with nothing between them (silence, or a degenerate timestamp loop).
+# A trailing "[12." / "[S0" is a marker cut off by the token budget.
+_MARKER_RE = re.compile(r"\[(?:\d+(?:\.\d+)?|S\d+)\]|\[[\dS.]*$")
 
 
 @dataclass
@@ -70,9 +74,10 @@ def parse_transcript(raw: str) -> list[DiarizedSegment]:
     ]
     if segs:
         return segs
-    # Model returned no [t][SXX] markers (e.g. silence-only or plain text):
-    # surface the raw text as a single unattributed segment.
-    raw = raw.strip()
+    # No text-bearing segment. Plain text without markers is kept as one
+    # unattributed segment; markers with nothing between them (silence, or
+    # a "[0.00][S01][0.06][S02]…" loop) are not speech and yield nothing.
+    raw = _MARKER_RE.sub("", raw).strip()
     if raw:
         return [DiarizedSegment(start=0.0, end=0.0, speaker="", text=raw)]
     return []
@@ -94,7 +99,16 @@ def max_tokens_for(audio) -> int:
     return int(min(max(2048, seconds * 16 + 512), 120_000))
 
 
-def transcribe(audio) -> list[DiarizedSegment]:
+def dictation_max_tokens(seconds: float) -> int:
+    """Tight budget for short dictation clips. Measured on 1,600 real
+    dictations: at most ~21 tokens for a 1 s clip and ~14 tokens/s on
+    longer ones (text plus timestamps and speaker tags). On silence the
+    model can loop on timestamps until the budget runs out (13 s with the
+    2048 default); this caps that at about a second or two."""
+    return int(96 + 24 * max(seconds, 0.0))
+
+
+def transcribe(audio, max_tokens: int | None = None) -> list[DiarizedSegment]:
     """Transcribe *audio* with speaker labels.
 
     *audio* is either a path to a 16 kHz mono WAV file or a 1-D float32
@@ -102,7 +116,7 @@ def transcribe(audio) -> list[DiarizedSegment]:
     """
     model = load_model()
     with _MODEL_LOCK:
-        result = model.generate(audio, max_tokens=max_tokens_for(audio))
+        result = model.generate(audio, max_tokens=max_tokens or max_tokens_for(audio))
     raw = result.text if hasattr(result, "text") else str(result)
     return parse_transcript(raw)
 

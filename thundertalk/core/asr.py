@@ -40,6 +40,9 @@ from thundertalk.core.gpu_lock import GPU_LOCK
 # match a full tag. Only well-formed tag tokens get stripped.
 _RX_PIPE_TOKEN = re.compile(r"<\|[^|>\s]*\|>")
 _RX_XML_TAG = re.compile(r"</?[a-zA-Z][a-zA-Z0-9_]*(\s+[^>]*)?>")
+# MOSS labels non-speech sounds ("[clear throat]", "[sniff]", "[Clapping]");
+# they are not dictated words.
+_RX_SOUND_EVENT = re.compile(r"\[[A-Za-z][A-Za-z _'-]{1,30}\]")
 
 
 def _strip_special_tokens(text: str) -> str:
@@ -441,7 +444,8 @@ class AsrEngine:
         duration_secs = len(samples) / sample_rate
         print(f"[ASR-MOSS] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s)...")
         t0 = time.perf_counter()
-        segs = diarize.transcribe(samples.astype(np.float32))
+        segs = diarize.transcribe(samples.astype(np.float32),
+                                  max_tokens=diarize.dictation_max_tokens(duration_secs))
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MOSS] Transcribe done in {inference_ms}ms ({len(segs)} segments)")
         mx.clear_cache()
@@ -458,7 +462,7 @@ class AsrEngine:
             )
         else:
             text = diarize.plain_text(segs)
-        cleaned = _strip_special_tokens(text)
+        cleaned = _RX_SOUND_EVENT.sub("", _strip_special_tokens(text)).strip()
         if cleaned != text:
             print(f"[ASR-CLEAN] '{text}' → '{cleaned}'")
             text = cleaned

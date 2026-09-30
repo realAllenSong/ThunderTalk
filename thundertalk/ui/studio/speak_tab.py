@@ -21,6 +21,8 @@ from PySide6.QtWidgets import (
 
 from thundertalk.core import audio_io, i18n, speech, tts
 from thundertalk.core.i18n import t
+from thundertalk.core.playback import Player
+from thundertalk.core.tts_backends.previews import load_preview, preview_path
 from thundertalk.core.voices import SavedVoice, VoiceLibrary
 from thundertalk.ui import theme
 from thundertalk.ui.studio.clone_dialog import CloneDialog
@@ -79,6 +81,8 @@ class SpeakTab(QWidget):
         self._result: Optional[tts.SynthResult] = None
         self._t0 = 0.0
         self._phase = ""
+        self._preview = Player()                    # voice previews, separate from the result player
+        self._preview_vid: Optional[str] = None
 
         root = QVBoxLayout(self)
         root.setContentsMargins(0, 0, 0, 0)
@@ -217,6 +221,7 @@ class SpeakTab(QWidget):
         rly.setSpacing(10)
         self._player = PlayerBar()
         self._player.save_requested.connect(self._save)
+        self._player.started.connect(self._stop_preview)
         rly.addWidget(self._player)
         self._result_info = _muted(size=12)
         rly.addWidget(self._result_info)
@@ -236,6 +241,9 @@ class SpeakTab(QWidget):
         self._idle.setSingleShot(True)
         self._idle.setInterval(IDLE_UNLOAD_MS)
         self._idle.timeout.connect(self._unload_idle)
+        self._preview_timer = QTimer(self)
+        self._preview_timer.setInterval(150)
+        self._preview_timer.timeout.connect(self._on_preview_tick)
 
         self._rebuild_languages(self._pref("studio_language", "auto") or "auto")
         self._rebuild_voices()
@@ -255,10 +263,12 @@ class SpeakTab(QWidget):
 
     def stop_playback(self) -> None:
         self._player.shutdown()
+        self._stop_preview()
 
     def shutdown(self) -> None:
         """App is quitting: stop audio and let any running job wind down."""
         self._player.shutdown()
+        self._stop_preview()
         for w in (self._synth, self._dl):
             if w is not None:
                 w.cancel()
@@ -304,6 +314,7 @@ class SpeakTab(QWidget):
                 w.deleteLater()
 
     def _rebuild_voices(self) -> None:
+        self._stop_preview()
         self._clear_flow(self._builtin_host, self._builtin_flow)
         self._clear_flow(self._mine_host, self._mine_flow)
         self._chips.clear()
@@ -311,15 +322,17 @@ class SpeakTab(QWidget):
         b = speech.backend(self._engine_id)
         self._engine_tag.setText(t(f"studio.engine.tag.{b.info.id}"))
         for v in b.voices():
-            chip = VoiceChip(v.name, _voice_tag(v, zh))
+            chip = VoiceChip(v.name, _voice_tag(v, zh), previewable=preview_path(v.id).is_file())
             chip.clicked.connect(lambda _=False, vid=v.id: self._select(vid))
+            chip.preview.connect(lambda vid=v.id: self._toggle_preview(vid))
             self._builtin_flow.addWidget(chip)
             self._chips[v.id] = chip
         clone = b.info.supports_clone
         mine = self._lib.list() if clone else []
         for v in mine:
-            chip = VoiceChip(v.name, t("studio.voices.mine_sub").format(sec=f"{v.duration:.0f}"))
+            chip = VoiceChip(v.name, t("studio.voices.mine_sub").format(sec=f"{v.duration:.0f}"), previewable=True)
             chip.clicked.connect(lambda _=False, vid=MY_PREFIX + v.id: self._select(vid))
+            chip.preview.connect(lambda vid=MY_PREFIX + v.id: self._toggle_preview(vid))
             self._mine_flow.addWidget(chip)
             self._chips[MY_PREFIX + v.id] = chip
         if clone:
@@ -334,6 +347,46 @@ class SpeakTab(QWidget):
         if self._voice_id not in self._chips:
             self._voice_id = self._default_for(b)
         self._mark_selected()
+
+    # ── voice previews ────────────────────────────────────────────────
+    def _preview_audio(self, vid: str):
+        """A built-in voice's shipped clip, or a saved voice's own recording."""
+        if vid.startswith(MY_PREFIX):
+            v = next((v for v in self._lib.list() if v.id == vid[len(MY_PREFIX):]), None)
+            try:
+                return audio_io.read_wav(str(v.wav_path)) if v else None
+            except Exception:
+                return None
+        return load_preview(vid)
+
+    def _toggle_preview(self, vid: str) -> None:
+        playing = self._preview_vid == vid and self._preview.is_playing
+        self._stop_preview()
+        if playing:
+            return
+        clip = self._preview_audio(vid)
+        if clip is None:
+            return
+        self._player.pause()
+        self._preview.load(*clip)
+        if not self._preview.play():
+            self.toast.emit(t("studio.play_failed"), "warn")
+            return
+        self._preview_vid = vid
+        if vid in self._chips:
+            self._chips[vid].set_playing(True)
+        self._preview_timer.start()
+
+    def _stop_preview(self) -> None:
+        self._preview_timer.stop()
+        self._preview.stop()
+        if self._preview_vid in self._chips:
+            self._chips[self._preview_vid].set_playing(False)
+        self._preview_vid = None
+
+    def _on_preview_tick(self) -> None:
+        if not self._preview.poll():
+            self._stop_preview()
 
     def _mark_selected(self) -> None:
         for vid, chip in self._chips.items():
@@ -557,6 +610,7 @@ class SpeakTab(QWidget):
     def _generate(self) -> None:
         if self.busy():
             return
+        self._stop_preview()
         text = self._text.toPlainText().strip()
         if not text:
             return
