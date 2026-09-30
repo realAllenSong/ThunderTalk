@@ -19,18 +19,34 @@ from PySide6.QtWidgets import (
     QWidget,
 )
 
-from thundertalk.core import audio_io, i18n, tts
+from thundertalk.core import audio_io, i18n, speech, tts
 from thundertalk.core.i18n import t
 from thundertalk.core.voices import SavedVoice, VoiceLibrary
 from thundertalk.ui import theme
 from thundertalk.ui.studio.clone_dialog import CloneDialog
 from thundertalk.ui.studio.parts import PlayerBar, VoiceChip, fmt_seconds
-from thundertalk.ui.studio.workers import RepoDownloadWorker, SynthWorker, friendly_error
-from thundertalk.ui.widgets import FlowLayout, Rule, ThinProgress
+from thundertalk.ui.studio.workers import BackendDownloadWorker, SynthWorker, friendly_error
+from thundertalk.ui.widgets import FlowLayout, Rule, SegmentedControl, ThinProgress
 
 SPEEDS = [("0.75", 0.75), ("0.9", 0.9), ("1.0", 1.0), ("1.15", 1.15), ("1.3", 1.3), ("1.5", 1.5)]
 IDLE_UNLOAD_MS = 5 * 60 * 1000
 MY_PREFIX = "my:"
+
+
+def _voice_tag(v, zh: bool) -> str:
+    """Short second line for a voice chip: "中文 · 女声" / "Chinese · female"."""
+    lang = {"chinese": ("中文", "Chinese"), "english": ("英文", "English")}.get(v.language, ("多语言", "Multilingual"))
+    sex = {"f": ("女声", "female"), "m": ("男声", "male")}.get(v.gender, ("", ""))
+    return f"{lang[0]} · {sex[0]}" if zh else f"{lang[1]} · {sex[1]}"
+
+
+def default_voice() -> str:
+    """The first voice to offer: Kokoro when it is already on disk (small and
+    instant), otherwise VoxCPM2's warm voice in the UI language."""
+    zh = i18n.LANG == "zh"
+    if speech.backend("kokoro").is_ready() and not speech.backend("voxcpm2").is_ready():
+        return "kokoro:3" if zh else "kokoro:0"
+    return "voxcpm2:warm-female-zh" if zh else "voxcpm2:female-en"
 
 
 def _muted(text: str = "", size: int = 12) -> QLabel:
@@ -55,10 +71,11 @@ class SpeakTab(QWidget):
         self._settings = settings
         self._asr = None
         self._lib = VoiceLibrary()
-        self._voice_id = self._pref("studio_voice", "") or ("vivian" if i18n.LANG == "zh" else "ryan")
+        self._voice_id = self._pref("studio_voice", "") or default_voice()
+        self._engine_id = speech.BACKEND_ORDER[0]
         self._chips: dict[str, VoiceChip] = {}
         self._synth: Optional[SynthWorker] = None
-        self._dl: Optional[RepoDownloadWorker] = None
+        self._dl: Optional[BackendDownloadWorker] = None
         self._result: Optional[tts.SynthResult] = None
         self._t0 = 0.0
         self._phase = ""
@@ -100,12 +117,26 @@ class SpeakTab(QWidget):
         vly = QVBoxLayout(vcard)
         vly.setContentsMargins(24, 20, 24, 20)
         vly.setSpacing(12)
+        erow2 = QHBoxLayout()
+        erow2.setSpacing(12)
+        self._cap_engine = _caption(t("studio.engine.pick"))
+        erow2.addWidget(self._cap_engine)
+        self._engine_pick = SegmentedControl([(b.info.id, b.info.name) for b in speech.backends()],
+                                             self._initial_engine())
+        self._engine_pick.changed.connect(self._on_engine)
+        erow2.addWidget(self._engine_pick)
+        erow2.addStretch()
+        vly.addLayout(erow2)
+        self._engine_tag = _muted(size=12)
+        vly.addWidget(self._engine_tag)
+        vly.addWidget(Rule())
         self._cap_builtin = _caption(t("studio.voices.builtin"))
         vly.addWidget(self._cap_builtin)
         self._builtin_host = QWidget()
         self._builtin_flow = FlowLayout(self._builtin_host, 10, 10)
         vly.addWidget(self._builtin_host)
-        vly.addWidget(Rule())
+        self._mine_rule = Rule()
+        vly.addWidget(self._mine_rule)
         head = QHBoxLayout()
         self._cap_mine = _caption(t("studio.voices.mine"))
         head.addWidget(self._cap_mine)
@@ -119,6 +150,8 @@ class SpeakTab(QWidget):
         vly.addWidget(self._mine_host)
         self._mine_hint = _muted(t("studio.voices.mine_hint"), 12)
         vly.addWidget(self._mine_hint)
+        self._no_clone = _muted(t("studio.voices.no_clone"), 12)
+        vly.addWidget(self._no_clone)
         root.addWidget(vcard)
 
         # ── text ──────────────────────────────────────────────────────
@@ -236,6 +269,8 @@ class SpeakTab(QWidget):
         self._cap_mine.setText(t("studio.voices.mine"))
         self._manage_btn.setText(t("studio.voices.manage"))
         self._mine_hint.setText(t("studio.voices.mine_hint"))
+        self._cap_engine.setText(t("studio.engine.pick"))
+        self._no_clone.setText(t("studio.voices.no_clone"))
         self._text.setPlaceholderText(t("studio.text.placeholder"))
         self._lang_lbl.setText(t("studio.lang.label"))
         self._speed_lbl.setText(t("studio.speed.label"))
@@ -262,32 +297,42 @@ class SpeakTab(QWidget):
     def _clear_flow(host: QWidget, flow: FlowLayout) -> None:
         while flow.count():
             it = flow.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
+            w = it.widget()
+            if w:
+                w.hide()                       # gone now, not when the deferred delete runs
+                w.setParent(None)
+                w.deleteLater()
 
     def _rebuild_voices(self) -> None:
         self._clear_flow(self._builtin_host, self._builtin_flow)
         self._clear_flow(self._mine_host, self._mine_flow)
         self._chips.clear()
         zh = i18n.LANG == "zh"
-        for v in tts.PRESET_VOICES:
-            chip = VoiceChip(v.name, v.blurb_zh if zh else v.blurb_en)
+        b = speech.backend(self._engine_id)
+        self._engine_tag.setText(t(f"studio.engine.tag.{b.info.id}"))
+        for v in b.voices():
+            chip = VoiceChip(v.name, _voice_tag(v, zh))
             chip.clicked.connect(lambda _=False, vid=v.id: self._select(vid))
             self._builtin_flow.addWidget(chip)
             self._chips[v.id] = chip
-        mine = self._lib.list()
+        clone = b.info.supports_clone
+        mine = self._lib.list() if clone else []
         for v in mine:
             chip = VoiceChip(v.name, t("studio.voices.mine_sub").format(sec=f"{v.duration:.0f}"))
             chip.clicked.connect(lambda _=False, vid=MY_PREFIX + v.id: self._select(vid))
             self._mine_flow.addWidget(chip)
             self._chips[MY_PREFIX + v.id] = chip
-        add = VoiceChip(t("studio.voices.clone"), dashed=True, icon="plus")
-        add.clicked.connect(self._clone_new)
-        self._mine_flow.addWidget(add)
-        self._mine_hint.setVisible(not mine)
+        if clone:
+            add = VoiceChip(t("studio.voices.clone"), dashed=True, icon="plus")
+            add.clicked.connect(self._clone_new)
+            self._mine_flow.addWidget(add)
+        for w in (self._cap_mine, self._mine_host, self._mine_rule):
+            w.setVisible(clone)
+        self._mine_hint.setVisible(clone and not mine)
         self._manage_btn.setVisible(bool(mine))
+        self._no_clone.setVisible(not clone)
         if self._voice_id not in self._chips:
-            self._voice_id = "vivian" if zh else "ryan"
+            self._voice_id = self._default_for(b)
         self._mark_selected()
 
     def _mark_selected(self) -> None:
@@ -378,27 +423,68 @@ class SpeakTab(QWidget):
                                 body=t("studio.voices.delete_body"), accept_label=t("studio.voices.delete"),
                                 cancel_label=t("common.cancel"), destructive=True):
             self._lib.delete(v.id)
-            self._voice_id = "vivian" if i18n.LANG == "zh" else "ryan"
+            self._voice_id = default_voice()
             self._save_pref("studio_voice", "")
             self._rebuild_voices()
             self._refresh()
 
     # ── engine readiness ──────────────────────────────────────────────
-    def _needed_repo(self) -> str:
-        return tts.BASE_REPO if self._voice_id.startswith(MY_PREFIX) else tts.CUSTOM_REPO
+    def _needed_backend(self):
+        """The speech engine that will speak with the selected voice."""
+        if self._voice_id.startswith(MY_PREFIX):
+            return speech.backend(self._clone_backend())
+        return speech.backend(speech.backend_id_for(self._voice_id))
+
+    def _clone_backend(self) -> str:
+        """My voices are spoken by the selected engine when it can clone."""
+        b = speech.backend(self._engine_id)
+        return b.info.id if b.info.supports_clone else speech.DEFAULT_CLONE_BACKEND
+
+    def _initial_engine(self) -> str:
+        saved = self._pref("studio_engine", "")
+        if saved in speech.BACKEND_ORDER:
+            self._engine_id = saved
+        elif self._voice_id.startswith(MY_PREFIX):
+            self._engine_id = speech.DEFAULT_CLONE_BACKEND
+        else:
+            try:
+                self._engine_id = speech.backend_id_for(self._voice_id)
+            except ValueError:
+                self._engine_id = speech.BACKEND_ORDER[0]
+        return self._engine_id
+
+    @staticmethod
+    def _default_for(b) -> str:
+        zh = i18n.LANG == "zh"
+        vs = b.voices()
+        want = "chinese" if zh else "english"
+        return next((v.id for v in vs if v.language == want), vs[0].id if vs else default_voice())
+
+    def _on_engine(self, bid: str) -> None:
+        self._engine_id = bid
+        self._save_pref("studio_engine", bid)
+        keep_mine = self._voice_id.startswith(MY_PREFIX) and speech.backend(bid).info.supports_clone
+        if not keep_mine:
+            self._voice_id = self._default_for(speech.backend(bid))
+            self._save_pref("studio_voice", self._voice_id)
+        self._rebuild_voices()
+        self._refresh()
 
     def _engine_ready(self) -> bool:
-        return tts.repo_ready(self._needed_repo())
+        return self._needed_backend().is_ready()
 
     def _refresh(self) -> None:
-        clone = self._voice_id.startswith(MY_PREFIX)
-        ready = self._engine_ready()
+        b = self._needed_backend()
+        ready = b.is_ready()
         downloading = self._dl is not None
+        zh = i18n.LANG == "zh"
+        size = b.info.size_mb
+        size_txt = f"{size / 1000:.1f} GB" if size >= 1000 else f"{size} MB"
         self._engine_card.setVisible(not ready or downloading)
-        self._engine_title.setText(t("studio.engine.title_clone" if clone else "studio.engine.title"))
-        self._engine_body.setText(t("studio.engine.body_clone" if clone else "studio.engine.body")
-                                  .format(size=f"{tts.repo_size_gb(self._needed_repo()):.1f} GB"))
-        self._dl_btn.setText(t("studio.engine.download"))
+        self._engine_title.setText(t("studio.engine.title_named").format(name=b.info.name))
+        self._engine_body.setText((b.info.blurb_zh if zh else b.info.blurb_en) + "  "
+                                  + t("studio.engine.size").format(size=size_txt))
+        self._dl_btn.setText(t("studio.engine.download_named").format(name=b.info.name, size=size_txt))
         self._dl_btn.setVisible(not downloading)
         self._dl_cancel.setVisible(downloading)
         self._dl_bar.setVisible(downloading)
@@ -411,8 +497,7 @@ class SpeakTab(QWidget):
     def _download(self) -> None:
         if self._dl is not None:
             return
-        repo = self._needed_repo()
-        w = RepoDownloadWorker(repo, tts.repo_ready)
+        w = BackendDownloadWorker(self._needed_backend().info)
         self._dl = w
         w.progress.connect(self._on_dl_progress)
         w.done.connect(lambda _r: self.toast.emit(t("studio.engine.ready"), "success"))
@@ -458,7 +543,7 @@ class SpeakTab(QWidget):
         self._go.setEnabled(self._engine_ready() and not self.busy() and n > 0)
 
     # ── generate ──────────────────────────────────────────────────────
-    def _voice_ref(self) -> Optional[tts.VoiceRef]:
+    def _voice_ref(self):
         if self._voice_id.startswith(MY_PREFIX):
             v = self._saved_voice()
             if v is None:
@@ -480,7 +565,8 @@ class SpeakTab(QWidget):
             return
         self._player.shutdown()
         self._synth = SynthWorker(text, ref, self._lang.currentData() or "auto",
-                                  None, float(self._speed.currentData() or 1.0), self._asr)
+                                  float(self._speed.currentData() or 1.0), self._asr,
+                                  clone_backend=self._clone_backend())
         w = self._synth
         w.step.connect(self._on_step)
         w.done.connect(self._on_done)
@@ -520,7 +606,7 @@ class SpeakTab(QWidget):
         self._result = res
         self._player.set_audio(res.audio, res.sample_rate)
         v = self._saved_voice()
-        name = v.name if v else next((p.name for p in tts.PRESET_VOICES if p.id == self._voice_id), "")
+        name = v.name if v else next((p.name for p in speech.all_voices() if p.id == self._voice_id), "")
         self._result_info.setText(t("studio.speak.done").format(
             dur=fmt_seconds(res.duration), took=fmt_seconds(res.seconds_taken), voice=name))
         warns = res.warnings
@@ -546,7 +632,7 @@ class SpeakTab(QWidget):
     def _unload_idle(self) -> None:
         """Free the ~3–4 GB the voice model holds once it's been idle for a while."""
         if self._synth is None:
-            tts.get_engine().unload()
+            speech.get_engine().unload()
 
     # ── save ──────────────────────────────────────────────────────────
     def _save(self, fmt: str) -> None:

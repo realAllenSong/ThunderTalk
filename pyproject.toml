@@ -30,6 +30,14 @@ api = [
 mcp = [
     "mcp>=1.0",
 ]
+indextts = [
+    # IndexTTS-2.5 via third_party/mlx_indextts (torch comes from `translation`)
+    "torchaudio>=2.4",
+    "omegaconf>=2.3",
+    "wetext>=0.1.2",
+    "einops>=0.8",
+    "psutil>=5.9",
+]
 translation = [
     "torch>=2.4",
     "transformers>=4.40,<6.0",

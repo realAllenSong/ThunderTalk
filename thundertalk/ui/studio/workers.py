@@ -85,14 +85,15 @@ class TranscribeWorker(_Worker):
 class SynthWorker(_Worker):
     step = Signal(int, int)              # finished pieces, total pieces
 
-    def __init__(self, text: str, voice: tts.VoiceRef, language: Optional[str],
-                 style: Optional[str], speed: float, asr_engine=None) -> None:
+    def __init__(self, text: str, voice, language: Optional[str], speed: float,
+                 asr_engine=None, clone_backend: Optional[str] = None) -> None:
         super().__init__()
-        self._a = (text, voice, language, style, speed)
+        self._a = (text, voice, language, speed, clone_backend)
         self._asr = asr_engine            # reads each piece back to catch skipped/garbled text
 
     def work(self):
-        text, voice, language, style, speed = self._a
+        from thundertalk.core import speech
+        text, voice, language, speed, clone_backend = self._a
         last = [-1]
 
         def prog(i: int, n: int, _seg: str) -> None:
@@ -100,9 +101,23 @@ class SynthWorker(_Worker):
                 last[0] = i
                 self.step.emit(i, n)
 
-        return tts.get_engine().synthesize(text, voice, language=language, style=style, speed=speed,
-                                           progress=prog, cancel=self._cancel,
-                                           verifier=tts_verify.make_verifier(self._asr))
+        return speech.get_engine().synthesize(text, voice, language=language, speed=speed,
+                                              progress=prog, cancel=self._cancel,
+                                              verifier=tts_verify.make_verifier(self._asr),
+                                              clone_backend=clone_backend)
+
+
+class BackendDownloadWorker(_Worker):
+    """Fetch everything a speech backend needs (HF repos and/or archives)."""
+
+    def __init__(self, info) -> None:
+        super().__init__()
+        self._info = info
+
+    def work(self):
+        from thundertalk.core import speech
+        speech.download_backend(self._info, lambda p, m: self.progress.emit(p, m), self._cancel)
+        return self._info.id
 
 
 class RepoDownloadWorker(_Worker):

@@ -18,11 +18,12 @@ def test_audio_selftest_passes(capsys):
 
 
 def test_missing_voice_engine_fails_cleanly(monkeypatch, capsys):
-    from thundertalk.core import tts
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: False)
+    from thundertalk.core import speech
+    for bid in speech.BACKEND_ORDER:
+        monkeypatch.setattr(speech.backend(bid), "is_ready", lambda: False)
     assert selftest.run(["tts"]) == 1
     out = capsys.readouterr().out
-    assert "not downloaded" in out and "SELFTEST FAIL" in out
+    assert "not downloaded" in out and "no speech engine downloaded" in out and "SELFTEST FAIL" in out
 
 
 def test_app_main_routes_the_flag(monkeypatch):

@@ -41,18 +41,30 @@ def check_audio() -> bool:
     return _say(abs(hz - 300) < 6 and abs(dur - 2.0) < 0.2, "audio", m4a_roundtrip_hz=round(hz, 1), duration=round(dur, 2))
 
 
-def check_tts() -> bool:
-    from thundertalk.core import tts
-    eng = tts.get_engine()
-    if not tts.repo_ready(tts.CUSTOM_REPO):
-        return _say(False, "tts", error="voice engine not downloaded", repo=tts.CUSTOM_REPO)
-    t0 = time.monotonic()
-    r = eng.synthesize("Hello from the packaged app. This sentence checks that speech comes out.", "ryan",
-                       language="english", seed=7)
-    rms = float(np.sqrt(np.mean(r.audio ** 2)))
-    return _say(3.0 < r.duration < 14.0 and rms > 0.02 and all(s.ok for s in r.segments), "tts",
-                seconds_audio=round(r.duration, 1), seconds_taken=round(time.monotonic() - t0, 1), rms=round(rms, 3),
-                pieces=len(r.segments))
+def check_tts(engine: str = "") -> bool:
+    """Speak one English sentence with every downloaded engine (or just ``engine``)."""
+    from thundertalk.core import speech
+    ok_all, ran = True, 0
+    for b in speech.backends():
+        if engine and b.info.id != engine:
+            continue
+        if not b.is_ready():
+            _say(True, f"tts:{b.info.id}", skipped="not downloaded")
+            continue
+        voice = next(v.id for v in b.voices() if v.language in ("english", "multi")) if any(
+            v.language in ("english", "multi") for v in b.voices()) else b.voices()[0].id
+        t0 = time.monotonic()
+        r = speech.get_engine().synthesize("Hello from the packaged app. This sentence checks that speech comes out.",
+                                           voice, language="english", seed=7)
+        rms = float(np.sqrt(np.mean(r.audio ** 2)))
+        ok = 2.0 < r.duration < 14.0 and rms > 0.02
+        ok_all &= _say(ok, f"tts:{b.info.id}", voice=voice, seconds_audio=round(r.duration, 1),
+                       seconds_taken=round(time.monotonic() - t0, 1), rms=round(rms, 3), sample_rate=r.sample_rate)
+        ran += 1
+        speech.get_engine().unload()
+    if ran == 0:
+        return _say(False, "tts", error="no speech engine downloaded")
+    return ok_all
 
 
 def _load_asr():
@@ -70,19 +82,21 @@ def check_asr(path: str) -> bool:
                 text=t.to_text()[:200])
 
 
-def check_clone(path: str, text: str) -> bool:
-    from thundertalk.core import audio_io, tts, tts_verify, voices
-    if not tts.repo_ready(tts.BASE_REPO):
-        return _say(False, "clone", error="clone model not downloaded", repo=tts.BASE_REPO)
+def check_clone(path: str, text: str, engine: str = "") -> bool:
+    from thundertalk.core import audio_io, speech, tts, tts_verify, voices
+    bid = engine or speech.DEFAULT_CLONE_BACKEND
+    if not speech.backend(bid).is_ready():
+        return _say(False, "clone", error=f"{bid} not downloaded")
     x = audio_io.decode_audio(path, tts.SR)
     chk = voices.prepare_reference(x, tts.SR)
     prompt = tts.ClonePrompt(chk.audio, text, "selftest")
-    eng = tts.get_engine()
     src = "Now the cloned voice reads a brand new sentence that was never in the recording."
-    r = eng.synthesize(src, prompt, language="english", seed=11)
+    r = speech.get_engine().synthesize(src, prompt, language="english", seed=11, clone_backend=bid)
+    speech.get_engine().unload()
     asr = _load_asr()
-    err = tts_verify.make_verifier(asr)(r.audio, src, "english")
-    return _say(2.0 < r.duration < 14.0 and (err is None or err < 0.3), "clone", reference_ok=chk.ok,
+    a24 = audio_io.resample(r.audio, r.sample_rate, 24000)
+    err = tts_verify.make_verifier(asr)(a24, src, "english")
+    return _say(2.0 < r.duration < 14.0 and (err is None or err < 0.3), "clone", engine=bid, reference_ok=chk.ok,
                 seconds_audio=round(r.duration, 1), read_back_error=None if err is None else round(err, 3))
 
 
@@ -91,17 +105,18 @@ def run(argv: list[str]) -> int:
     ap.add_argument("what", choices=["audio", "tts", "asr", "clone", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
+    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
     ok = True
     try:
         if a.what in ("audio", "all"):
             ok &= check_audio()
         if a.what in ("tts", "all"):
-            ok &= check_tts()
+            ok &= check_tts(a.engine)
         if a.what == "asr":
             ok &= check_asr(a.file)
         if a.what == "clone":
-            ok &= check_clone(a.file, a.text)
+            ok &= check_clone(a.file, a.text, a.engine)
     except Exception as exc:                                    # noqa: BLE001
         import traceback
         traceback.print_exc()

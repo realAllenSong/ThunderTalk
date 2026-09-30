@@ -48,6 +48,7 @@ DEFAULTS: dict[str, Any] = {
     "studio_voice": "",
     "studio_language": "auto",
     "studio_speed": 1.0,
+    "studio_engine": "",            # Speak engine: voxcpm2 | indextts | kokoro ("" = from the voice)
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

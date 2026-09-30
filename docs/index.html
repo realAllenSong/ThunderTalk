@@ -69,7 +69,7 @@
       {
         "@type": "Question",
         "name": "What is Studio?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Studio is new in 1.5. Transcribe turns an audio or video recording into a timestamped transcript, with optional speaker labels, and exports TXT, Markdown, SRT, VTT or JSON. Speak turns text into speech with nine built-in voices, or a voice you clone from a 5 to 15 second recording. It all runs locally." }
+        "acceptedAnswer": { "@type": "Answer", "text": "Studio is new in 1.5. Transcribe turns an audio or video recording into a timestamped transcript, with optional speaker labels, and exports TXT, Markdown, SRT, VTT or JSON. Speak turns text into speech with three local engines, VoxCPM2, IndexTTS-2.5 and Kokoro, using built-in voices or a voice you clone from a 5 to 15 second recording. It all runs locally." }
       },
       {
         "@type": "Question",
@@ -84,7 +84,7 @@
       {
         "@type": "Question",
         "name": "How is it different from Typeless, Wispr Flow or superwhisper?",
-        "acceptedAnswer": { "@type": "Answer", "text": "They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free, open source and always local. See the <a href="#compare">comparison</a> for sources." }
+        "acceptedAnswer": { "@type": "Answer", "text": "They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free, open source and always local. See the comparison on this page for sources." }
       }
     ]
   }
@@ -436,6 +436,14 @@
     .vc span { display: block; font-size: 11px; line-height: 1.35; color: var(--t3); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .vc:hover { background: var(--wash); }
     .vc[aria-pressed="true"] { border-color: var(--ink); box-shadow: inset 0 0 0 0.6px var(--ink); background: var(--card); }
+    #voices .voices, #myVoices { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+    #myVoices .dash { grid-column: span 2; }
+    .eng { margin: 12px 0 6px; font-size: 12px; line-height: 1.4; color: var(--t3); }
+    .eng:first-child { margin-top: 0; }
+    .eng b { color: var(--t2); font-weight: 700; }
+    .mine-row { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin: 14px 0 8px; padding-top: 14px; border-top: 1px solid var(--line-1); }
+    .mine-row .cap { margin: 0 auto 0 0; }
+    .mine-row .with { font-size: 12px; color: var(--t3); }
     .vc.dash { border-style: dashed; border-color: var(--line-3); display: flex; align-items: center; gap: 8px; text-decoration: none; color: var(--t2); font-size: 13px; font-weight: 600; }
     .ta { display: block; width: 100%; margin-top: 16px; min-height: 92px; resize: vertical; padding: 10px 12px; font: 400 14px/1.55 var(--sans); color: var(--t1); background: var(--card); border: 1px solid var(--line-2); border-radius: 6px; }
     .ta:focus { outline: none; border-color: var(--ink); }
@@ -450,6 +458,7 @@
     .wave i { flex: 1 1 0; height: 100%; border-inline: 0.9px solid transparent; background: var(--t4); background-clip: padding-box; border-radius: 2px; transform: scaleY(var(--h, 0.3)); }
     .wave i.on { background: var(--ink); }
     .ptime { font: 400 12px/1 var(--mono); color: var(--t3); white-space: nowrap; }
+    #pInfo { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
     .pfoot { display: flex; align-items: center; justify-content: space-between; gap: 10px; margin-top: 10px; font-size: 12px; color: var(--t3); }
     .savewrap { position: relative; }
     .menu { position: absolute; right: 0; bottom: calc(100% + 6px); z-index: 4; min-width: 140px; padding: 5px; background: var(--card); border: 1px solid var(--line-2); border-radius: 8px; box-shadow: 0 8px 24px rgba(31,30,27,0.06); }
@@ -621,6 +630,9 @@
       .ov-txt { min-width: 0; }
       .fact { grid-template-columns: 1fr; gap: 4px; }
       .voices { grid-template-columns: 1fr 1fr; }
+      #voices .voices, #myVoices { grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+      #speak .vc { padding: 8px 7px; }
+      #speak .vc b { font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
       .player { grid-template-columns: 40px minmax(0, 1fr); }
       .player .ptime { grid-column: 1 / -1; text-align: right; }
       .foot { flex-direction: column; align-items: flex-start; }
@@ -884,12 +896,15 @@
         <!-- Speak -->
         <article class="card b5 rv" id="speak">
           <p class="card-k" data-i18n="sp.k">Speak</p>
-          <h3 data-i18n="sp.h">Nine voices, or your own.</h3>
-          <p data-i18n="sp.p">Text to speech with Qwen3-TTS in Chinese, English, Japanese, Korean and more. Set the speed, scrub through the result, and save it as WAV or M4A.</p>
+          <h3 data-i18n="sp.h">Three engines, or your own voice.</h3>
+          <p data-i18n="sp.p">Three local engines: VoxCPM2 for studio-quality 48 kHz speech, IndexTTS-2.5 for faithful cloning, Kokoro for small and fast. Each downloads once, when you first pick one of its voices. Set the speed, scrub through the result, and save it as WAV or M4A.</p>
           <div class="mock" role="group" aria-labelledby="sp-lab">
             <span class="sr" id="sp-lab" data-i18n="sp.aria">Interactive Speak preview. This page plays no sound.</span>
             <div class="cap" data-i18n="sp.builtin">Built-in voices</div>
-            <div class="voices" id="voices"></div>
+            <div id="voices"></div>
+            <div class="mine-row"><span class="cap" data-i18n="sp.mine">My voices</span><span class="with" id="spWithLab" data-i18n="sp.with">Clone engine</span><div class="seg" id="cloneSeg" role="group" aria-labelledby="spWithLab"><button type="button" data-e="voxcpm2" aria-pressed="true">VoxCPM2</button><button type="button" data-e="indextts" aria-pressed="false">IndexTTS</button></div></div>
+            <div class="voices" id="myVoices"></div>
+            <p class="hint" data-i18n="sp.designed">Built-in VoxCPM2 and IndexTTS voices are designed from a text description, not recorded from real people.</p>
             <textarea class="ta" id="spText" rows="3" spellcheck="false" aria-label="Text"></textarea>
             <div class="speed"><span class="lab" data-i18n="sp.speed">Speed</span><div class="seg" id="speedSeg" role="group" aria-label="Speed"></div></div>
             <div class="gen"><button class="btn btn-ink btn-sm" id="genBtn" type="button" data-i18n="sp.gen">Generate speech</button><span class="lang-note" data-i18n="sp.lang">Language: detect automatically</span></div>
@@ -899,7 +914,7 @@
               <span class="ptime" id="pTime">0:00 / 0:07</span>
             </div>
             <div class="pfoot">
-              <span id="pInfo">Ryan · 1.0×</span>
+              <span id="pInfo">Clara (EN) · VoxCPM2 · 1.0×</span>
               <div class="savewrap"><button class="mbtn" id="saveBtn" type="button" aria-haspopup="true" aria-expanded="false"><span data-i18n="sp.save">Save…</span>&nbsp;<svg width="9" height="9" viewBox="0 0 10 10" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m2 3.5 3 3 3-3"/></svg></button>
                 <div class="menu" id="saveMenu" hidden><button type="button" data-save="WAV"><b>WAV</b> <span data-i18n="sp.wav">lossless</span></button><button type="button" data-save="M4A"><b>M4A</b> <span data-i18n="sp.m4a">small file</span></button></div></div>
             </div>
@@ -913,7 +928,7 @@
             <div>
               <p class="card-k" data-i18n="cl.k">My voices</p>
               <h3 data-i18n="cl.h">Clone your voice from 5 to 15 seconds of audio.</h3>
-              <p class="lead" data-i18n="cl.p">Record yourself reading a short passage, or import a clean recording. The reference is kept on your Mac under My voices, ready whenever you want to hear your own voice read something. Only clone voices you have the right to use.</p>
+              <p class="lead" data-i18n="cl.p">Record yourself reading a short passage, or import a clean recording. The reference is kept on your Mac under My voices, ready whenever you want to hear your own voice read something. It is spoken with VoxCPM2 or IndexTTS, whichever you choose. Measured on an M3 Max, cloning a 3.6-second recording of the maintainer: an independent speech recogniser read the result back with 0 to 3.4% error, and speaker similarity was 0.97 to 0.98, with either engine. Only clone voices you have the right to use.</p>
               <ol class="msteps">
                 <li><b>01</b><div><strong data-i18n="cl.s1h">Record or import</strong><span data-i18n="cl.s1p">Five to fifteen seconds of natural speech in a quiet room, or a clean recording of one person.</span></div></li>
                 <li><b>02</b><div><strong data-i18n="cl.s2h">Check the words</strong><span data-i18n="cl.s2p">The recording is written out on your Mac. A wrong transcript makes the clone worse, so correct it.</span></div></li>
@@ -1022,8 +1037,9 @@
         <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v2</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.len">English</span><span class="c-note" data-i18n="md.n7">Fast English dictation on the CPU (about 50× real time on an M3 Max).</span></div>
 
         <div class="mt-group" data-i18n="md.g2">Studio</div>
-        <div class="mt-row"><span class="c-name">Qwen3-TTS 1.7B CustomVoice <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size" data-i18n="md.first">3.1 GB, once</span><span class="c-lang" data-i18n="md.ltts">Chinese, English, Japanese, Korean and more</span><span class="c-note" data-i18n="md.n8">The nine built-in voices.</span></div>
-        <div class="mt-row"><span class="c-name">Qwen3-TTS 1.7B Base <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size" data-i18n="md.first2">3.1 GB, once</span><span class="c-lang" data-i18n="md.ltts2">Chinese, English, Japanese, Korean and more</span><span class="c-note" data-i18n="md.n8b">Reads in a voice you cloned.</span></div>
+        <div class="mt-row"><span class="c-name">VoxCPM2 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">3.2 GB</span><span class="c-lang" data-i18n="md.ltts">Chinese, English and more</span><span class="c-note" data-i18n="md.n8">Studio-quality 48 kHz speech and voice cloning, about real time. Apache-2.0.</span></div>
+        <div class="mt-row"><span class="c-name">IndexTTS-2.5 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">1.7 + 2.3 GB</span><span class="c-lang" data-i18n="md.lidx">5 languages</span><span class="c-note" data-i18n="md.n8b">Very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic, about real time. 1.7 GB model plus a 2.3 GB encoder. bilibili Model Use License.</span></div>
+        <div class="mt-row"><span class="c-name">Kokoro v1.1 82M <span class="tag blue">Speak</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">364 MB</span><span class="c-lang" data-i18n="md.lkok">Chinese, English</span><span class="c-note" data-i18n="md.n8c">Small and fast, about 4× real time. 103 built-in voices (100 Chinese, 3 English). Apache-2.0.</span></div>
 
         <div class="mt-group" data-i18n="md.g3">Translation</div>
         <div class="mt-row"><span class="c-name">SeamlessM4T v2 Large</span><span class="c-run">PyTorch · MPS / CPU</span><span class="c-size">~9 GB</span><span class="c-lang" data-i18n="md.l100">100+ languages</span><span class="c-note" data-i18n="md.n9">Speech and text translation. Best with 16 GB of RAM or more.</span></div>
@@ -1048,7 +1064,7 @@
           </tbody>
         </table>
       </div>
-      <p class="cmp-note rv" data-i18n="cp.note">ThunderTalk also transcribes meetings with speaker labels, reads text aloud in nine voices and clones your own voice, all on your Mac. We have not checked whether the others offer these, so they are not in the table. Where ThunderTalk falls short: it needs an Apple Silicon Mac with macOS 15, and it is not yet notarised by Apple.</p>
+      <p class="cmp-note rv" data-i18n="cp.note">ThunderTalk also transcribes meetings with speaker labels, reads text aloud with three local speech engines and clones your own voice, all on your Mac. We have not checked whether the others offer these, so they are not in the table. Where ThunderTalk falls short: it needs an Apple Silicon Mac with macOS 15, and it is not yet notarised by Apple.</p>
     </section>
 
     <section class="sec wrap" id="faq" aria-labelledby="fq-h">
@@ -1061,7 +1077,7 @@
         <details open><summary><span data-i18n="faq.1q">Is ThunderTalk free?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.1a">Yes. ThunderTalk is MIT licensed and free to use. There is no account, no subscription and no usage limit, and the source code is on GitHub.</p></div></details>
         <details><summary><span data-i18n="faq.2q">Does it work offline?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.2a">Yes. Once a model is downloaded, speech recognition, translation, Studio transcription and text to speech all run on your Mac without a connection. The network is only used to download models and to check GitHub for updates.</p></div></details>
         <details><summary><span data-i18n="faq.3q">Which apps can I dictate into?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.3a">Any app with a text cursor: browsers, editors, Slack, mail, terminals. ThunderTalk pastes the text where the cursor is, so it asks for Microphone and Accessibility permission the first time you run it.</p></div></details>
-        <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio is new in 1.5 and replaces the old Lab page. Transcribe turns an audio or video recording into a timestamped transcript, with optional speaker labels, and exports TXT, Markdown, SRT, VTT or JSON. Speak turns text into speech with nine built-in voices, or with a voice you clone from a 5 to 15 second recording. It all runs locally.</p></div></details>
+        <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio is new in 1.5 and replaces the old Lab page. Transcribe turns an audio or video recording into a timestamped transcript, with optional speaker labels, and exports TXT, Markdown, SRT, VTT or JSON. Speak turns text into speech with three local engines, VoxCPM2, IndexTTS-2.5 and Kokoro, using built-in voices or a voice you clone from a 5 to 15 second recording. It all runs locally.</p></div></details>
         <details><summary><span data-i18n="faq.5q">Do I need ffmpeg for Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.5a">No. Studio decodes audio and video with the tools that come with macOS, so there is nothing else to install.</p></div></details>
         <details><summary><span data-i18n="faq.6q">Where does a cloned voice go?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.6a">Nowhere. The short reference recording and its transcript are stored in <code>~/.thundertalk/voices</code> on your Mac, and nothing is uploaded. Delete a voice in the app, or delete the folder, to remove it. Please only clone voices you have the right to use.</p></div></details>
         <details><summary><span data-i18n="faq.7q">Does it handle Chinese and mixed Chinese-English?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.7a">Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the app itself is available in English and Chinese.</p></div></details>
@@ -1146,12 +1162,12 @@
       "tc.p": "音频或视频均可：m4a、mp3、wav、mp4、mov 等。多人对话打开“多人对话”，每一轮发言都会带上说话人标签，点击标签即可改名。解码由 macOS 自带完成，无需额外安装。",
       "tc.aria": "转写功能交互预览", "tc.file": "点击更换文件", "tc.sample": "示例", "tc.fast": "单人", "tc.multi": "多人对话",
       "tc.export": "导出", "tc.view": "转写稿", "tc.time": "时间戳", "tc.plain": "纯文本", "tc.hint": "点击说话人名字即可改名，导出内容会随之更新。",
-      "sp.k": "朗读", "sp.h": "九种声音，或者你自己的。",
-      "sp.p": "用 Qwen3-TTS 把文字读出来，支持中文、英文、日语、韩语等。可调语速、拖动进度试听，并保存为 WAV 或 M4A。",
-      "sp.aria": "朗读功能交互预览，本页不会发出声音。", "sp.builtin": "内置音色", "sp.speed": "语速", "sp.save": "保存…", "sp.gen": "生成语音", "sp.lang": "语言：自动识别", "sp.wav": "无损", "sp.m4a": "体积小",
+      "sp.k": "朗读", "sp.h": "三个引擎，或者你自己的声音。",
+      "sp.p": "三个本地引擎：VoxCPM2 提供 48 kHz 录音棚音质，IndexTTS-2.5 克隆还原度高，Kokoro 小巧快速。第一次选中某个引擎的音色时，它才需要下载，且只下载一次。可调语速、拖动进度试听，并保存为 WAV 或 M4A。",
+      "sp.aria": "朗读功能交互预览，本页不会发出声音。", "sp.builtin": "内置音色", "sp.speed": "语速", "sp.mine": "我的声音", "sp.designed": "VoxCPM2 和 IndexTTS 的内置音色根据文字描述设计生成，不是真人录音。", "sp.with": "克隆引擎", "sp.save": "保存…", "sp.gen": "生成语音", "sp.lang": "语言：自动识别", "sp.wav": "无损", "sp.m4a": "体积小",
       "sp.demo": "仅为界面预览：不会播放声音，也不会写入文件。",
       "cl.k": "我的声音", "cl.h": "用 5 到 15 秒录音克隆你的声音。",
-      "cl.p": "读一小段文字录下自己的声音，或导入一段干净的录音。参考音频保存在你 Mac 的“我的声音”里，随时可以让它用你的声音朗读。请只克隆你有权使用的声音。",
+      "cl.p": "读一小段文字录下自己的声音，或导入一段干净的录音。参考音频保存在你 Mac 的“我的声音”里，随时可以让它用你的声音朗读，朗读引擎可选 VoxCPM2 或 IndexTTS。在 M3 Max 上实测，克隆维护者一段 3.6 秒的录音：用独立的语音识别模型回读，错误率为 0 到 3.4%，说话人相似度为 0.97 到 0.98，两个引擎都是如此。请只克隆你有权使用的声音。",
       "cl.aria": "模拟的录音过程，本页不会使用你的麦克风。", "cl.said": "录音里说的内容", "cl.name": "名称",
       "cl.s1h": "录音或导入", "cl.s1p": "在安静的环境里录 5 到 15 秒自然的说话，或导入一段只有一个人、干净的录音。",
       "cl.s2h": "核对文字", "cl.s2p": "录音里说的话会在你的 Mac 上自动写出来。文字有误会让克隆效果变差，所以请核对。",
@@ -1173,22 +1189,22 @@
       "md.c1": "模型", "md.c2": "运行于", "md.c3": "大小", "md.c4": "语言", "md.c5": "适合",
       "md.g1": "语音识别", "md.g2": "工作室", "md.g3": "翻译",
       "md.l5": "5 种语言", "md.l52": "52 种语言", "md.l52b": "52 种语言", "md.l52c": "52 种语言", "md.l50": "50 多种语言", "md.l25": "25 种欧洲语言", "md.len": "英语", "md.l100": "100 多种语言",
-      "md.ltts": "中文、英文、日语、韩语等", "md.ltts2": "中文、英文、日语、韩语等", "md.first": "3.1 GB，一次性", "md.first2": "3.1 GB，一次性", "md.def": "默认",
+      "md.ltts": "中文、英文等", "md.lidx": "5 种语言", "md.lkok": "中文、英文", "md.def": "默认",
       "md.n1": "最小、启动最快。不支持热词。", "md.n2": "所有 Mac 都能跑，支持热词。", "md.n3": "Apple Silicon 上的默认选择，支持热词。",
       "md.n4": "更难的口音和嘈杂音频，建议 16 GB 内存。", "md.n5": "说话人标签和时间戳，驱动多说话人模式。",
       "md.n6": "自带标点和大小写。", "md.n7": "只用 CPU 的快速英语听写（M3 Max 上约为实时的 50 倍）。",
-      "md.n8": "九种内置音色。", "md.n8b": "用你克隆的声音朗读。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
+      "md.n8": "48 kHz 录音棚音质与声音克隆，约为实时速度。Apache-2.0。", "md.n8b": "克隆还原度很高，支持中、英、日、西、阿语，约为实时速度。模型 1.7 GB，另需 2.3 GB 编码器。bilibili 模型使用许可。", "md.n8c": "小巧快速，约为实时的 4 倍。103 种内置音色（100 种中文、3 种英文）。Apache-2.0。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
       "cp.kicker": "对比", "cp.h2": "和同类产品比一比。", "cp.p": "内容取自各产品官网，核对日期 2026 年 9 月 29 日。价格会变，请以链接为准。",
       "cp.r1": "价格", "cp.tt1": "免费", "cp.w1": "每周 2,000 词以内免费；Pro 每月 15 美元（按年付每月 12 美元）", "cp.s1": "有免费版；Pro 可订阅或买断", "cp.v1": "免费试用；付费授权",
       "cp.r2": "开源", "cp.tt2": "是，MIT", "cp.no": "否", "cp.no2": "否", "cp.v2": "是，GPL-3.0",
       "cp.r3": "语音在哪里处理", "cp.tt3": "你的 Mac 上", "cp.w3": "云端（<a href=\"https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq\" rel=\"noopener\">见其安全 FAQ</a>）", "cp.s3": "本机或云端，可自选", "cp.v3": "你的 Mac 上",
       "cp.r4": "平台", "cp.tt4": "macOS 15 及以上（Apple Silicon）", "cp.w4": "Mac、Windows、iOS、Android", "cp.s4": "Mac、Windows、iOS、Android", "cp.v4": "macOS 15 及以上",
-      "cp.note": "ThunderTalk 还能转写会议并区分说话人、用九种音色朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 的不足：需要 Apple Silicon 且 macOS 15 的 Mac，也还没有经过 Apple 公证。",
+      "cp.note": "ThunderTalk 还能转写会议并区分说话人、用三个本地语音引擎朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 的不足：需要 Apple Silicon 且 macOS 15 的 Mac，也还没有经过 Apple 公证。",
       "faq.kicker": "常见问题", "faq.h2": "直接回答。", "faq.p": "这里没讲到的问题？在 GitHub 上提一个 issue，就会有回复。",
       "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "不收费。ThunderTalk 以 MIT 协议开源，可以免费使用。无需账号，无订阅，无使用次数限制，源码就在 GitHub 上。",
       "faq.2q": "能离线使用吗？", "faq.2a": "可以。模型下载完成后，语音识别、翻译、工作室转写和语音合成都在你的 Mac 上运行，无需联网。网络只用于下载模型和向 GitHub 检查更新。",
       "faq.3q": "可以在哪些应用里听写？", "faq.3a": "任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。ThunderTalk 会把文字粘贴到光标处，所以第一次运行时会请求“麦克风”和“辅助功能”权限。",
-      "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室是 1.5 的新功能，取代了原来的“实验室”页。“转写”把音频或视频录音变成带时间戳的文字稿，可选说话人标签，并可导出 TXT、Markdown、SRT、VTT 或 JSON。“朗读”用九种内置声音把文字读出来，也可以用你自己 5 到 15 秒录音克隆的声音。全部在本机运行。",
+      "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室是 1.5 的新功能，取代了原来的“实验室”页。“转写”把音频或视频录音变成带时间戳的文字稿，可选说话人标签，并可导出 TXT、Markdown、SRT、VTT 或 JSON。“朗读”用三个本地引擎（VoxCPM2、IndexTTS-2.5 和 Kokoro）把文字读出来，可以用内置音色，也可以用你自己 5 到 15 秒录音克隆的声音。全部在本机运行。",
       "faq.5q": "使用工作室需要安装 ffmpeg 吗？", "faq.5a": "不需要。工作室用 macOS 自带的工具解码音频和视频，无需再安装别的东西。",
       "faq.6q": "克隆出的声音会存到哪里？", "faq.6a": "哪里也不去。那段简短的参考录音和它的文字保存在你 Mac 上的 <code>~/.thundertalk/voices</code>，不会上传。在应用里删除声音，或直接删掉该文件夹即可移除。请只克隆你有权使用的声音。",
       "faq.7q": "支持中文和中英混说吗？", "faq.7a": "支持。Qwen3-ASR 支持 52 种语言，包括同一句话里中英混说，应用界面也有中文和英文两种语言。",
@@ -1575,40 +1591,67 @@
     onLang(renderTranscript);
 
     /* ════════════ Studio: Speak ════════════ */
+    /* Engine-grouped picker, as in the app. The VoxCPM2 and IndexTTS voices are the same eight
+       designed voices (created by VoxCPM2 from a text description); a few are shown per engine. */
+    var ENGINES = [
+      ["voxcpm2", "VoxCPM2", "studio quality, cloning \u00B7 Apple GPU", "录音棚音质、可克隆 \u00B7 Apple GPU"],
+      ["indextts", "IndexTTS-2.5", "faithful cloning \u00B7 Apple GPU", "克隆还原度高 \u00B7 Apple GPU"],
+      ["kokoro", "Kokoro", "small and fast \u00B7 CPU", "小巧快速 \u00B7 CPU"]
+    ];
     var VOICES = [
-      ["vivian", "Vivian", "Bright, clear young woman", "明亮清晰的年轻女声"],
-      ["serena", "Serena", "Warm and gentle", "温暖柔和的女声"],
-      ["uncle_fu", "Uncle Fu", "Low, mellow, seasoned man", "低沉醇厚的成熟男声"],
-      ["dylan", "Dylan", "Youthful, Beijing accent", "年轻的北京口音男声"],
-      ["eric", "Eric", "Lively, Sichuan accent", "活泼的四川口音男声"],
-      ["ryan", "Ryan", "Dynamic, rhythmic man", "富有节奏感的男声"],
-      ["aiden", "Aiden", "Sunny American man", "阳光的美式男声"],
-      ["ono_anna", "Ono Anna", "Playful Japanese woman", "活泼的日语女声"],
-      ["sohee", "Sohee", "Warm Korean woman", "温暖的韩语女声"]
+      ["voxcpm2", "warm-female-zh", "温婉女声", "温婉女声", "Warm", "温暖柔和"],
+      ["voxcpm2", "calm-male-zh", "沉稳男声", "沉稳男声", "Calm", "沉稳平和"],
+      ["voxcpm2", "female-en", "Clara (EN)", "Clara (EN)", "American", "美式英语"],
+      ["indextts", "news-anchor-zh", "新闻播音", "新闻播音", "Newsreader", "字正腔圆"],
+      ["indextts", "storyteller-zh", "讲故事", "讲故事", "Storyteller", "不紧不慢"],
+      ["indextts", "male-en", "Arthur (EN)", "Arthur (EN)", "British", "英式旁白"],
+      ["kokoro", "3", "Female 1", "中文女声 1", "Chinese", "普通话"],
+      ["kokoro", "58", "Male 1", "中文男声 1", "Chinese", "普通话"],
+      ["kokoro", "0", "Maple", "Maple", "English", "英文"]
     ];
     var SPEEDS = [0.75, 0.9, 1, 1.15, 1.3, 1.5];
     var SAMPLE = { en: "The quarterly review has moved to Thursday. Please send your slides by Wednesday evening.", zh: "季度评审改到了周四，请在周三晚上之前把幻灯片发给我。" };
     var sp = { voice: null, chosen: false, speed: 1, edited: false, playing: false, pos: 0, base: 7.2, raf: 0, last: 0 };
     var vbox = $("#voices"), spText = $("#spText"), waveEl = $("#wave"), pTime = $("#pTime"), pInfo = $("#pInfo"), pBtn = $("#pBtn");
     var CLONE_HREF = "#clone";
+    var myBox = $("#myVoices"), cloneSeg = $("#cloneSeg");
+    function vid(v) { return v[0] + ":" + v[1]; }
     function renderVoices() {
-      if (!sp.chosen) sp.voice = lang === "zh" ? "vivian" : "ryan";
+      var zh = lang === "zh";
+      if (!sp.chosen) sp.voice = zh ? "voxcpm2:warm-female-zh" : "voxcpm2:female-en";
       vbox.textContent = "";
-      VOICES.forEach(function (v) {
-        var b = document.createElement("button"); b.type = "button"; b.className = "vc"; b.setAttribute("data-v", v[0]);
-        b.setAttribute("aria-pressed", String(v[0] === sp.voice)); b.title = lang === "zh" ? v[3] : v[2];
-        b.innerHTML = "<b></b><span></span>"; b.firstChild.textContent = v[1]; b.lastChild.textContent = lang === "zh" ? v[3] : v[2];
-        vbox.appendChild(b);
+      ENGINES.forEach(function (e) {
+        var cap = document.createElement("p"); cap.className = "eng";
+        cap.innerHTML = "<b></b> \u00B7 <span></span>"; cap.firstChild.textContent = e[1]; cap.lastChild.textContent = zh ? e[3] : e[2];
+        vbox.appendChild(cap);
+        var grid = document.createElement("div"); grid.className = "voices"; grid.setAttribute("role", "group"); grid.setAttribute("aria-label", e[1]);
+        VOICES.forEach(function (v) {
+          if (v[0] !== e[0]) return;
+          var b = document.createElement("button"); b.type = "button"; b.className = "vc"; b.setAttribute("data-v", vid(v));
+          b.setAttribute("aria-pressed", String(vid(v) === sp.voice)); b.title = zh ? v[5] : v[4];
+          b.innerHTML = "<b></b><span></span>"; b.firstChild.textContent = zh ? v[3] : v[2]; b.lastChild.textContent = zh ? v[5] : v[4];
+          grid.appendChild(b);
+        });
+        vbox.appendChild(grid);
       });
+      myBox.textContent = "";
       var a = document.createElement("a"); a.className = "vc dash"; a.href = CLONE_HREF;
       a.innerHTML = '<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M12 5v14M5 12h14"/></svg><span></span>';
-      a.lastChild.textContent = lang === "zh" ? "克隆我的声音" : "Clone my voice";
+      a.lastChild.textContent = zh ? "克隆我的声音" : "Clone my voice";
       a.lastChild.style.cssText = "font-size:13px;color:inherit";
-      vbox.appendChild(a);
+      myBox.appendChild(a);
       if (!sp.edited) spText.value = SAMPLE[lang];
       renderPlayer();
     }
-    function vname() { return (VOICES.filter(function (v) { return v[0] === sp.voice; })[0] || VOICES[5])[1]; }
+    function vname() {
+      var v = VOICES.filter(function (x) { return vid(x) === sp.voice; })[0] || VOICES[2];
+      var e = ENGINES.filter(function (x) { return x[0] === v[0]; })[0];
+      return (lang === "zh" ? v[3] : v[2]) + " \u00B7 " + e[1].split("-")[0];
+    }
+    cloneSeg.addEventListener("click", function (e) {
+      var b = e.target.closest("button"); if (!b) return;
+      $$("button", cloneSeg).forEach(function (x) { x.setAttribute("aria-pressed", String(x === b)); });
+    });
     var wr = rng(21), WBARS = 56, wvals = [];
     (function () { for (var i = 0; i < WBARS; i++) { var e = 0.55 + 0.45 * Math.sin(i * 0.5) * Math.sin(i * 0.17 + 1); var pause = (i % 19 > 15) ? 0.28 : 1; wvals.push(Math.max(0.12, Math.min(1, (0.3 + 0.7 * wr()) * e * pause))); } })();
     wvals.forEach(function (h) { var b = document.createElement("i"); b.style.setProperty("--h", h.toFixed(2)); waveEl.appendChild(b); });

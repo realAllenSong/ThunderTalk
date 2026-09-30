@@ -38,11 +38,14 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 **转写。** 把音频或视频录音（m4a、mp3、wav、mp4、mov 等）拖进来，就能得到带时间戳的文字稿。多人对话请选择“多人对话”，MOSS-Transcribe-Diarize 会给每一轮发言标上说话人，点击说话人即可改名。可导出为 TXT、Markdown、SRT、VTT 或 JSON。解码使用 macOS 自带的工具，不需要安装 ffmpeg。
 
-**朗读。** 用 Qwen3-TTS 把文字读出来，支持中文、英文、日语、韩语等。
+**朗读。** 把文字读出来，可在三个本地引擎之间选择：
 
-- 九种内置音色：Vivian、Serena、Uncle Fu、Dylan、Eric、Ryan、Aiden、Ono Anna、Sohee。
+- **VoxCPM2**（OpenBMB）：48 kHz 录音棚音质，支持声音克隆；在 Apple 芯片上约为实时速度。
+- **IndexTTS-2.5**（bilibili）：克隆还原度很高，支持中、英、日、西、阿语；约为实时速度。
+- **Kokoro**（8200 万参数）：小巧快速（CPU 上约为实时的 4 倍），内置 100 多种中文音色和几种英文音色。
+- VoxCPM2 与 IndexTTS 的内置音色是“设计”出来的音色（由 VoxCPM2 根据文字描述生成，不是真人录音），随应用一起提供。
 - 可调语速（0.75x 到 1.5x），带可拖动进度的播放器。结果可保存为 WAV（无损）或 M4A（体积小）。
-- **我的声音：** 录制或导入 5 到 15 秒你自己的声音，它就能朗读你输入的任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
+- **我的声音：** 录制或导入 5 到 15 秒你自己的声音，就能用 VoxCPM2 或 IndexTTS 以你的声音朗读任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
 
 语音引擎只需下载一次，之后工作室里的一切都可以离线使用。
 
@@ -116,10 +119,11 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 
 | 模型 | 大小 | 后端 | 用途 |
 |------|------|------|------|
-| Qwen3-TTS 1.7B CustomVoice（8-bit） | 3.1 GB | MLX (Metal GPU) | 九种内置音色 |
-| Qwen3-TTS 1.7B Base（8-bit） | 3.1 GB | MLX (Metal GPU) | 用你克隆的声音朗读 |
+| VoxCPM2（8-bit，Apache-2.0） | 3.2 GB | MLX (Metal GPU) | 内置音色、声音克隆 |
+| IndexTTS-2.5（8-bit，bilibili 模型使用许可） | 1.7 GB + 2.3 GB 编码器 | MLX (Metal GPU) | 内置音色、声音克隆 |
+| Kokoro v1.1 多语言版（Apache-2.0） | 364 MB | ONNX (CPU) | 103 种内置音色（100 种中文、3 种英文） |
 
-两者都是一次性下载，由应用在“朗读”标签页里提示下载。需要 Apple Silicon。
+都是一次性下载：在“朗读”里选中某个引擎的音色时，应用会提示下载。IndexTTS 使用打过补丁的 [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX 移植版（见 `third_party/README.md`）。
 
 ### 翻译
 
@@ -274,7 +278,7 @@ uv run python run.py
 
 - **UI：** [PySide6](https://doc.qt.io/qtforpython-6/)（Qt 6），颜色、字体和间距集中定义在一个主题模块里
 - **语音识别：** [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（ONNX）、[mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) 与 [mlx-audio](https://github.com/Blaizzy/mlx-audio)（MLX）
-- **文字转语音：** 通过 mlx-audio 进程内运行的 Qwen3-TTS
+- **文字转语音：** VoxCPM2（mlx-audio）、IndexTTS-2.5（内置的 MLX 移植版）、Kokoro（sherpa-onnx），全部在进程内运行
 - **翻译：** 通过 PyTorch 与 Transformers 运行的 SeamlessM4T v2
 - **音频：** 采集用 [sounddevice](https://python-sounddevice.readthedocs.io/)，文件解码用 macOS 自带的 `afconvert`
 - **快捷键：** macOS 原生 NSEvent
@@ -302,7 +306,7 @@ ThunderTalk 基于 [MIT License](LICENSE) 开源。随意使用、fork、集成�
 
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)：跨平台 ASR 推理
 - [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr)：MLX 原生的 Qwen3 ASR
-- [mlx-audio](https://github.com/Blaizzy/mlx-audio)：MOSS-Transcribe-Diarize 与 Qwen3-TTS 的 MLX 推理
+- [mlx-audio](https://github.com/Blaizzy/mlx-audio)：MOSS-Transcribe-Diarize 与 VoxCPM2 的 MLX 推理
 - [SenseVoice](https://github.com/FunAudioLLM/SenseVoice)：轻量级 ASR 模型
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR)：业界领先的 ASR 模型
 - [OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)：MOSS-Transcribe-Diarize

@@ -29,7 +29,31 @@ hidden_imports += collect_submodules("safetensors")
 hidden_imports += collect_submodules("tokenizers")
 hidden_imports += collect_submodules("sentencepiece")
 
+# IndexTTS-2.5: vendored MLX port (third_party/mlx_indextts) and its extra deps.
+import sys as _sys
+_sys.path.insert(0, 'third_party')
+hidden_imports += collect_submodules("mlx_indextts")
+hidden_imports += collect_submodules("torchaudio")
+hidden_imports += collect_submodules("omegaconf")
+hidden_imports += collect_submodules("wetext")
+hidden_imports += collect_submodules("einops")
+hidden_imports += ["psutil", "kaldifst", "tiktoken", "tiktoken_ext"]
+# scipy imports parts of itself dynamically (array_api_compat backends); once it
+# is in the bundle, transformers also imports it, so collect the whole tree.
+hidden_imports += collect_submodules("scipy")
+# ...and name this one explicitly: it is listed by collect_submodules but still
+# dropped from the archive (PyInstaller 6.19's scipy hook predates scipy 1.18's
+# move of array_api_compat from scipy._lib to scipy._external).
+hidden_imports += ["scipy._external.array_api_compat.numpy.fft", "scipy._external.array_api_compat.numpy.linalg"]
+
 custom_datas = [('assets', 'assets')]
+# (assets/voices — built-in reference voices shared by IndexTTS and VoxCPM2 — ship with assets/)
+custom_datas += collect_data_files("mlx_indextts")
+custom_datas += collect_data_files("wetext")
+custom_datas += collect_data_files("contractions")      # wetext → contractions_dict.json
+custom_datas += collect_data_files("anyascii")
+custom_datas += collect_data_files("textsearch")
+custom_datas += collect_data_files("torchaudio")
 custom_datas += collect_data_files("mlx")
 custom_datas += collect_data_files("mlx_qwen3_asr")
 custom_datas += collect_data_files("mlx_audio")
@@ -44,17 +68,20 @@ custom_binaries += collect_dynamic_libs("mlx")
 custom_binaries += collect_dynamic_libs("sherpa_onnx")
 custom_binaries += collect_dynamic_libs("sounddevice")
 custom_binaries += collect_dynamic_libs("torch")
+custom_binaries += collect_dynamic_libs("torchaudio")
+custom_binaries += collect_dynamic_libs("kaldifst")
 
 a = Analysis(
     ['thundertalk/__main__.py'],
-    pathex=[],
+    pathex=['third_party'],
     binaries=custom_binaries,
     datas=custom_datas,
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
     runtime_hooks=[],
-    excludes=['tensorflow', 'keras', 'scipy', 'matplotlib', 'pandas'],
+    # scipy is needed by VoxCPM2 (reference resampling in mlx-audio) and IndexTTS.
+    excludes=['tensorflow', 'keras', 'matplotlib', 'pandas'],
     noarchive=False,
     optimize=0,
 )

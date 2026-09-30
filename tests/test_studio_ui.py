@@ -142,10 +142,12 @@ def test_no_dictation_model_points_to_models_page(studio):
 class FakeTts:
     def __init__(self):
         self.calls = []
+        self.kw = []
 
-    def synthesize(self, text, voice, language=None, style=None, speed=1.0, progress=None, cancel=None,
+    def synthesize(self, text, voice, language=None, speed=1.0, progress=None, cancel=None,
                    verifier=None, **kw):
         self.calls.append((text, voice, language, speed, verifier is not None))
+        self.kw.append(kw)
         n = 3
         for i in range(n):
             if progress:
@@ -158,11 +160,19 @@ class FakeTts:
         pass
 
 
+def set_ready(monkeypatch, **ready):
+    """Pretend speech engines are (not) downloaded: set_ready(mp, voxcpm2=True, kokoro=False)."""
+    from thundertalk.core import speech
+    for bid in speech.BACKEND_ORDER:
+        monkeypatch.setattr(speech.backend(bid), "is_ready", lambda v=ready.get(bid, True): v)
+
+
 @pytest.fixture
 def speak(studio, monkeypatch):
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    from thundertalk.core import speech
+    set_ready(monkeypatch)
     fake = FakeTts()
-    monkeypatch.setattr(tts, "get_engine", lambda: fake)
+    monkeypatch.setattr(speech, "get_engine", lambda: fake)
     studio.show_tab("speak")
     tab = studio.speak_tab
     tab.refresh()
@@ -170,64 +180,83 @@ def speak(studio, monkeypatch):
     return tab
 
 
-def test_builtin_voices_are_listed_and_selectable(speak):
-    ids = [v.id for v in tts.PRESET_VOICES]
-    assert all(i in speak._chips for i in ids)
-    speak._chips["serena"].click()
-    assert speak._voice_id == "serena" and speak._chips["serena"].isChecked()
-    assert not speak._chips["ryan"].isChecked()
+def pick_engine(tab, bid):
+    tab._engine_pick.set_current(bid)
+    tab._on_engine(bid)
+
+
+def test_engine_picker_shows_that_engines_voices(speak):
+    from thundertalk.core import speech
+    for bid in speech.BACKEND_ORDER:
+        pick_engine(speak, bid)
+        ids = {v.id for v in speech.backend(bid).voices()}
+        builtin = {k for k in speak._chips if not k.startswith("my:")}
+        assert builtin == ids                                   # only this engine's voices
+        assert speak._voice_id in ids                           # switching picks one of them
+    pick_engine(speak, "kokoro")
+    speak._chips["kokoro:58"].click()
+    assert speak._voice_id == "kokoro:58" and speak._chips["kokoro:58"].isChecked()
+
+
+def test_kokoro_hides_my_voices(speak):
+    voices.VoiceLibrary().add("Me", voices.prepare_reference(_talk(6.0, 1), SR).audio, "hi")
+    pick_engine(speak, "kokoro")
+    assert "my:me" not in speak._chips and speak._no_clone.isVisibleTo(speak)
+    pick_engine(speak, "indextts")
+    assert "my:me" in speak._chips and not speak._no_clone.isVisibleTo(speak)
 
 
 def test_generate_speech_end_to_end(speak):
-    speak._chips["ryan"].click()
+    pick_engine(speak, "voxcpm2")
+    speak._chips["voxcpm2:female-en"].click()
     assert not speak._go.isEnabled()                            # empty text
     speak._text.setPlainText("Hello from ThunderTalk. This is a test of the speech pipeline.")
     assert speak._go.isEnabled() and "characters" in speak._count.text()
     speak._go.click()
     assert wait_for(lambda: speak._result_card.isVisible())
     text, voice, lang, speed, has_verifier = speak._fake.calls[0]
-    assert voice == "ryan" and lang == "auto" and speed == 1.0 and has_verifier      # ASR read-back is wired
+    assert voice == "voxcpm2:female-en" and lang == "auto" and speed == 1.0 and has_verifier
     assert speak._player.player.has_audio and speak._player.player.duration == pytest.approx(2.0, abs=0.01)
     assert speak._go.isVisible() and not speak._cancel.isVisible()
 
 
-def test_engine_missing_shows_download_card(studio, monkeypatch):
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: False)
+def test_each_engine_offers_its_own_download(studio, monkeypatch):
+    set_ready(monkeypatch, voxcpm2=False, indextts=False, kokoro=True)
     studio.show_tab("speak")
     tab = studio.speak_tab
     tab.refresh()
-    assert tab._engine_card.isVisible() and "GB" in tab._engine_body.text()
+    pick_engine(tab, "kokoro")
+    assert not tab._engine_card.isVisible()                     # Kokoro is on disk
+    pick_engine(tab, "voxcpm2")
+    assert tab._engine_card.isVisible()
+    assert "VoxCPM2" in tab._engine_title.text() and "GB" in tab._dl_btn.text()
     tab._text.setPlainText("hello")
     assert not tab._go.isEnabled()
 
 
-def test_cloned_voice_needs_the_base_model(studio, monkeypatch):
-    ready = {tts.CUSTOM_REPO: True, tts.BASE_REPO: False}
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: ready[repo])
-    ref = _talk(6.0, 1)
-    voices.VoiceLibrary().add("Me", voices.prepare_reference(ref, SR).audio, "some words here")
-    studio.show_tab("speak")
-    tab = studio.speak_tab
-    tab.refresh()
-    assert not tab._engine_card.isVisible()                      # built-in voice: custom model is enough
-    tab._chips["my:me"].click()
-    assert tab._engine_card.isVisible() and "own voice" in tab._engine_body.text()
-
-
-def test_cloned_voice_is_passed_as_a_prompt(studio, monkeypatch):
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
-    fake = FakeTts()
-    monkeypatch.setattr(tts, "get_engine", lambda: fake)
+def test_my_voice_is_spoken_by_the_selected_engine(studio, monkeypatch):
+    from thundertalk.core import speech
+    set_ready(monkeypatch, voxcpm2=True, indextts=False)
     voices.VoiceLibrary().add("Me", voices.prepare_reference(_talk(6.0, 1), SR).audio, "some words here")
     studio.show_tab("speak")
     tab = studio.speak_tab
     tab.refresh()
+    pick_engine(tab, "voxcpm2")
     tab._chips["my:me"].click()
+    assert not tab._engine_card.isVisible()
+    pick_engine(tab, "indextts")                                # keeps my voice, needs IndexTTS now
+    assert tab._voice_id == "my:me"
+    assert tab._engine_card.isVisible() and "IndexTTS" in tab._engine_title.text()
+    set_ready(monkeypatch)
+    fake = FakeTts()
+    monkeypatch.setattr(speech, "get_engine", lambda: fake)
+    tab.refresh()
     tab._text.setPlainText("Say this in my voice, please.")
     tab._go.click()
     assert wait_for(lambda: tab._result_card.isVisible())
     voice = fake.calls[0][1]
     assert isinstance(voice, tts.ClonePrompt) and voice.text == "some words here"
+    assert fake.kw[0]["clone_backend"] == "indextts"
 
 
 def test_save_exports_wav(speak, tmp_path, monkeypatch):
@@ -293,14 +322,16 @@ def test_drop_anywhere_switches_to_transcribe(studio, tmp_path):
 def test_speak_remembers_voice_language_and_speed(qapp, isolated_home, monkeypatch):
     from thundertalk.core.settings import Settings
     from thundertalk.ui.studio.speak_tab import SpeakTab
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    set_ready(monkeypatch)
     s = Settings()
     tab = SpeakTab(s)
-    tab._chips["serena"].click()
+    pick_engine(tab, "kokoro")
+    tab._chips["kokoro:58"].click()
     tab._lang.setCurrentIndex(tab._lang.findData("english"))
     tab._speed.setCurrentIndex(4)                              # 1.3x
     again = SpeakTab(Settings())                               # fresh read from disk
-    assert again._voice_id == "serena" and again._chips["serena"].isChecked()
+    assert again._voice_id == "kokoro:58" and again._chips["kokoro:58"].isChecked()
+    assert again._engine_pick.current() == "kokoro"
     assert again._lang.currentData() == "english"
     assert again._speed.currentData() == pytest.approx(1.3)
 
@@ -308,11 +339,12 @@ def test_speak_remembers_voice_language_and_speed(qapp, isolated_home, monkeypat
 def test_speak_falls_back_when_the_remembered_voice_was_deleted(qapp, isolated_home, monkeypatch):
     from thundertalk.core.settings import Settings
     from thundertalk.ui.studio.speak_tab import SpeakTab
-    monkeypatch.setattr(tts, "repo_ready", lambda repo: True)
+    set_ready(monkeypatch)
     s = Settings()
     s.set("studio_voice", "my:gone")
     tab = SpeakTab(s)
-    assert tab._voice_id in ("ryan", "vivian")
+    from thundertalk.ui.studio.speak_tab import default_voice
+    assert tab._voice_id == default_voice()
 
 
 # ── player keyboard (#4) ─────────────────────────────────────────────────

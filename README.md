@@ -38,11 +38,14 @@ Studio replaces the old Lab page and is the headline of the 1.5 release. It has 
 
 **Transcribe.** Drop an audio or video recording (m4a, mp3, wav, mp4, mov and more) and get a timestamped transcript. For a conversation, choose **Multiple speakers** and MOSS-Transcribe-Diarize labels every turn; click a speaker to rename it. Export as TXT, Markdown, SRT, VTT or JSON. Decoding uses the tools built into macOS, so ffmpeg is not needed.
 
-**Speak.** Turn text into speech with Qwen3-TTS, in Chinese, English, Japanese, Korean and more.
+**Speak.** Turn text into speech with your choice of three local engines:
 
-- Nine built-in voices: Vivian, Serena, Uncle Fu, Dylan, Eric, Ryan, Aiden, Ono Anna and Sohee.
+- **VoxCPM2** (OpenBMB): studio-quality 48 kHz speech and voice cloning; about real time on Apple silicon.
+- **IndexTTS-2.5** (bilibili): very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic; about real time.
+- **Kokoro** (82M): small and fast (about 4 times faster than real time, on the CPU), with 100+ Chinese and a few English voices.
+- Built-in voices for VoxCPM2 and IndexTTS are designed voices (created by VoxCPM2 from a text description, not recordings of real people) that ship with the app.
 - Speed control (0.75x to 1.5x) and a seekable player. Save the result as WAV (lossless) or M4A (small).
-- **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
+- **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2 or IndexTTS. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
 
 The speech engines are one-time downloads. After that, everything in Studio works offline.
 
@@ -116,10 +119,11 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 
 | Model | Size | Backend | Used for |
 |-------|------|---------|----------|
-| Qwen3-TTS 1.7B CustomVoice (8-bit) | 3.1 GB | MLX (Metal GPU) | The nine built-in voices |
-| Qwen3-TTS 1.7B Base (8-bit) | 3.1 GB | MLX (Metal GPU) | Reading in a voice you cloned |
+| VoxCPM2 (8-bit, Apache-2.0) | 3.2 GB | MLX (Metal GPU) | Built-in voices, cloning |
+| IndexTTS-2.5 (8-bit, bilibili Model Use License) | 1.7 GB + 2.3 GB encoder | MLX (Metal GPU) | Built-in voices, cloning |
+| Kokoro v1.1 multi-lang (Apache-2.0) | 364 MB | ONNX (CPU) | 103 built-in voices (100 Chinese, 3 English) |
 
-Both are one-time downloads that the app offers from the Speak tab. Apple Silicon is required.
+Each is a one-time download offered from the Speak tab when you pick one of its voices. IndexTTS runs through a patched copy of the [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX port (see `third_party/README.md`).
 
 ### Translation
 
@@ -274,7 +278,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - **UI:** [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6), with the colours, type and spacing defined in one theme module
 - **Speech recognition:** [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (ONNX), [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) and [mlx-audio](https://github.com/Blaizzy/mlx-audio) (MLX)
-- **Text to speech:** Qwen3-TTS through mlx-audio, running in-process
+- **Text to speech:** VoxCPM2 through mlx-audio, IndexTTS-2.5 through a vendored MLX port, Kokoro through sherpa-onnx; all in-process
 - **Translation:** SeamlessM4T v2 through PyTorch and Transformers
 - **Audio:** [sounddevice](https://python-sounddevice.readthedocs.io/) for capture; macOS `afconvert` for decoding files
 - **Hotkeys:** native NSEvent on macOS
@@ -302,7 +306,7 @@ ThunderTalk is open source under the [MIT License](LICENSE). Use it, fork it, sh
 
 - [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) for cross-platform ASR inference
 - [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) for MLX-native Qwen3 ASR
-- [mlx-audio](https://github.com/Blaizzy/mlx-audio) for MLX inference of MOSS-Transcribe-Diarize and Qwen3-TTS
+- [mlx-audio](https://github.com/Blaizzy/mlx-audio) for MLX inference of MOSS-Transcribe-Diarize and VoxCPM2
 - [SenseVoice](https://github.com/FunAudioLLM/SenseVoice) for a lightweight ASR model
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR) for state-of-the-art ASR
 - [OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize) for MOSS-Transcribe-Diarize
