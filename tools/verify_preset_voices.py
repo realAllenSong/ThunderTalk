@@ -43,7 +43,8 @@ def main() -> int:
         heard = asr.recognize(x, 16000).text
         err = tts_verify.error_rate(it["text"], heard, it["language"]) or 0.0
         f0 = median_f0(x)
-        gender_ok = (f0 >= 150) if it["gender"] == "f" else (60 <= f0 < 165)
+        # Adult male speech is ~85–180 Hz; energetic delivery (YouTuber) sits at the top of it.
+        gender_ok = (f0 >= 150) if it["gender"] == "f" else (60 <= f0 < 185)
         ok = err <= 0.05 and gender_ok
         ok_all &= ok
         print(f"{'OK ' if ok else 'BAD'} {it['slug']:18} {it['duration_s']:4.1f}s  err {100 * err:4.1f}%  "

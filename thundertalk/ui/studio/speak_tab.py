@@ -48,7 +48,7 @@ def default_voice() -> str:
     zh = i18n.LANG == "zh"
     if speech.backend("kokoro").is_ready() and not speech.backend("voxcpm2").is_ready():
         return "kokoro:3" if zh else "kokoro:0"
-    return "voxcpm2:warm-female-zh" if zh else "voxcpm2:female-en"
+    return "voxcpm2:warm-female-zh" if zh else "voxcpm2:male-en"
 
 
 def _muted(text: str = "", size: int = 12) -> QLabel:

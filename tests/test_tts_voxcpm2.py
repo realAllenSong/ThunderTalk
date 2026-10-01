@@ -61,8 +61,18 @@ def test_voices_unique_and_described():
         assert v.id.startswith("voxcpm2:")
         assert v.name and v.blurb_en and v.blurb_zh
         assert v.gender in ("f", "m") and v.language in ("chinese", "english", "multi")
-        assert vx._BY_ID[v.id].instruct
     assert {v.language for v in vs} >= {"chinese", "english"}
+
+
+def test_built_in_voices_are_the_shipped_clips_shared_with_indextts():
+    from thundertalk.core.tts_backends.indextts import IndexTTSBackend
+    from thundertalk.core.tts_backends.presets import load_presets
+    clips = {p.slug: p for p in load_presets()}
+    vs = vx.VoxCPM2Backend().voices()
+    assert [v.id.split(":")[1] for v in vs] == list(clips)
+    assert [v.id.split(":")[1] for v in IndexTTSBackend().voices()] == list(clips)
+    for p in clips.values():
+        assert p.wav.is_file() and p.text.strip() and p.description.strip()
 
 
 def test_not_ready_raises(tmp_path, monkeypatch):

@@ -208,14 +208,14 @@ def test_kokoro_hides_my_voices(speak):
 
 def test_generate_speech_end_to_end(speak):
     pick_engine(speak, "voxcpm2")
-    speak._chips["voxcpm2:female-en"].click()
+    speak._chips["voxcpm2:male-en"].click()
     assert not speak._go.isEnabled()                            # empty text
     speak._text.setPlainText("Hello from ThunderTalk. This is a test of the speech pipeline.")
     assert speak._go.isEnabled() and "characters" in speak._count.text()
     speak._go.click()
     assert wait_for(lambda: speak._result_card.isVisible())
     text, voice, lang, speed, has_verifier = speak._fake.calls[0]
-    assert voice == "voxcpm2:female-en" and lang == "auto" and speed == 1.0 and has_verifier
+    assert voice == "voxcpm2:male-en" and lang == "auto" and speed == 1.0 and has_verifier
     assert speak._player.player.has_audio and speak._player.player.duration == pytest.approx(2.0, abs=0.01)
     assert speak._go.isVisible() and not speak._cancel.isVisible()
 
@@ -460,10 +460,10 @@ def test_preview_of_my_voice_plays_my_recording_and_ends_cleanly(speak):
 def test_preview_stops_when_generating_or_switching_engine(speak):
     speak._preview = FakePlayer()
     pick_engine(speak, "voxcpm2")
-    _click_preview(speak._chips["voxcpm2:female-en"])
+    _click_preview(speak._chips["voxcpm2:male-en"])
     pick_engine(speak, "indextts")
     assert not speak._preview.is_playing
-    _click_preview(speak._chips["indextts:female-en"])
+    _click_preview(speak._chips["indextts:male-en"])
     speak._text.setPlainText("Hello there.")
     speak._go.click()
     assert not speak._preview.is_playing

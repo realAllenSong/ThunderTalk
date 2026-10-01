@@ -72,30 +72,14 @@ _DESIGNS: tuple[_Design, ...] = (
             "A young Chinese woman, warm and gentle voice, speaking Mandarin softly at a relaxed pace",
             "Asked for: a young woman, warm and gentle, soft relaxed Mandarin.",
             "设定：年轻女性，温暖柔和，语速舒缓的普通话。", 11),
-    _Design("bright-female-zh", "明亮女声", "chinese", "f",
-            "A cheerful young Chinese woman, bright and lively voice, clear Mandarin with energy",
-            "Asked for: a cheerful young woman, bright and lively, clear energetic Mandarin.",
-            "设定：开朗的年轻女性，声音明亮活泼，吐字清晰有活力。", 12),
     _Design("calm-male-zh", "沉稳男声", "chinese", "m",
             "A middle-aged Chinese man, calm and steady voice, clear Mandarin at an even pace",
             "Asked for: a middle-aged man, calm and steady, even-paced clear Mandarin.",
             "设定：中年男性，沉稳平和，语速均匀、吐字清楚。", 13),
-    _Design("deep-male-zh", "低沉男声", "chinese", "m",
-            "A Chinese man with a deep, low and resonant voice, speaking Mandarin slowly and warmly",
-            "Asked for: a man with a deep, low, resonant voice, slow and warm Mandarin.",
-            "设定：嗓音低沉浑厚的男性，语速偏慢，温和有磁性。", 14),
     _Design("news-anchor-zh", "新闻播音", "chinese", "f",
             "A professional Chinese news anchor woman, formal, crisp and authoritative standard Mandarin broadcast voice",
             "Asked for: a professional female news anchor, formal, crisp standard Mandarin.",
             "设定：专业女新闻主播，正式、干脆、字正腔圆的标准普通话。", 15),
-    _Design("storyteller-zh", "讲故事", "chinese", "m",
-            "An elderly Chinese man telling a story, kind, warm and expressive voice, unhurried Mandarin",
-            "Asked for: an elderly male storyteller, kind, warm and expressive, unhurried.",
-            "设定：讲故事的老爷爷，慈祥温暖、富有表现力、不紧不慢。", 26),
-    _Design("female-en", "Clara (EN)", "english", "f",
-            "A young American woman, friendly and clear voice, natural conversational English",
-            "Asked for: a young American woman, friendly and clear, conversational English.",
-            "设定：年轻美国女性，友好清晰，自然的口语化英语。", 17),
     _Design("male-en", "Arthur (EN)", "english", "m",
             "A British man in his forties, calm, warm and articulate narrator voice",
             "Asked for: a British man in his forties, calm, warm, articulate narration.",
@@ -156,9 +140,15 @@ class VoxCPM2Backend(TtsBackend):
         return _cache_complete(self.repo)
 
     def voices(self) -> list[BackendVoice]:
-        return [BackendVoice(id=f"voxcpm2:{d.slug}", name=d.name, language=d.language,
-                             gender=d.gender, blurb_en=d.blurb_en, blurb_zh=d.blurb_zh)
-                for d in _DESIGNS]
+        """The shipped reference voices (assets/voices, shared with IndexTTS)."""
+        from thundertalk.core.tts_backends.presets import load_presets
+        presets = load_presets()
+        if not presets or not self.use_shipped:          # regenerating: the designs themselves
+            return [BackendVoice(id=f"voxcpm2:{d.slug}", name=d.name, language=d.language,
+                                 gender=d.gender, blurb_en=d.blurb_en, blurb_zh=d.blurb_zh)
+                    for d in _DESIGNS]
+        return [BackendVoice(id=f"voxcpm2:{p.slug}", name=p.name, language=p.language, gender=p.gender,
+                             blurb_en=p.blurb_en, blurb_zh=p.blurb_zh) for p in presets]
 
     def load(self) -> None:
         if self._model is not None:
@@ -187,10 +177,7 @@ class VoxCPM2Backend(TtsBackend):
         self.load()
         ctx = context if context is not None else {}
         if isinstance(voice, str):
-            design = _BY_ID.get(voice)
-            if design is None:
-                raise ValueError(f"unknown VoxCPM2 voice: {voice}")
-            ref, ref_text = self._designed_ref(design, ctx)
+            ref, ref_text = self._preset_ref(voice, ctx)
         else:                                    # ClonePrompt (24 kHz)
             ref, ref_text = self._clone_ref(voice, ctx)
         return self._run(text, seed, ref_audio=ref, prompt_audio=ref, prompt_text=ref_text)
@@ -207,6 +194,23 @@ class VoxCPM2Backend(TtsBackend):
         ctx[_CTX_REF] = (prompt, a, prompt.text)
         return a, prompt.text
 
+    def _preset_ref(self, voice: str, ctx: dict) -> tuple[np.ndarray, str]:
+        """A built-in voice: its shipped clip; failing that (a source checkout
+        without assets, or regenerating them) the design it came from."""
+        slug = voice.split(":", 1)[1] if voice.startswith("voxcpm2:") else ""
+        held = ctx.get(_CTX_REF)
+        if held and held[0] == slug:
+            return held[1], held[2]
+        ref = self._refs.get(slug) or self._read_shipped_slug(slug)
+        if ref is None:
+            design = _BY_ID.get(voice)
+            if design is None:
+                raise ValueError(f"unknown VoxCPM2 voice: {voice}")
+            return self._designed_ref(design, ctx)
+        self._refs[slug] = ref
+        ctx[_CTX_REF] = (slug, ref[0], ref[1])
+        return ref
+
     def _designed_ref(self, d: _Design, ctx: dict) -> tuple[np.ndarray, str]:
         held = ctx.get(_CTX_REF)
         if held and held[0] == d.slug:
@@ -220,11 +224,14 @@ class VoxCPM2Backend(TtsBackend):
         return self.cache_dir / f"{d.slug}.wav", self.cache_dir / f"{d.slug}.json"
 
     def _read_shipped(self, d: _Design) -> Optional[tuple[np.ndarray, str]]:
+        return self._read_shipped_slug(d.slug)
+
+    def _read_shipped_slug(self, slug: str) -> Optional[tuple[np.ndarray, str]]:
         """The reference clip shipped in assets/voices (the same one
         IndexTTS uses), so a built-in voice sounds the same in every engine and
         never has to be designed on the user's machine."""
         from thundertalk.core.tts_backends.presets import load_presets
-        clip = next((p for p in load_presets() if p.slug == d.slug), None)
+        clip = next((p for p in load_presets() if p.slug == slug), None)
         if clip is None or not self.use_shipped:
             return None
         try:

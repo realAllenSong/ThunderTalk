@@ -42,8 +42,9 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 - **VoxCPM2**（OpenBMB）：48 kHz 录音棚音质，支持声音克隆；在 Apple 芯片上约为实时速度。
 - **IndexTTS-2.5**（bilibili）：克隆还原度很高，支持中、英、日、西、阿语；约为实时速度。
-- **Kokoro**（8200 万参数）：小巧快速（CPU 上约为实时的 4 倍），内置 100 多种中文音色和几种英文音色。
-- VoxCPM2 与 IndexTTS 的内置音色是“设计”出来的音色（由 VoxCPM2 根据文字描述生成，不是真人录音），随应用一起提供。
+- **Kokoro**（8200 万参数）：小巧快速（CPU 上约为实时的 4 倍），内置 23 个精选音色（20 个中文、3 个英文）。
+- VoxCPM2 与 IndexTTS 内置 14 个音色，都是短视频、Vlog、播客里常见的风格：影视解说、纪录片旁白、新闻主播、霸道总裁、两种闺蜜分享、台湾腔，以及英文 YouTuber、播客和旁白。全部是“设计”出来的音色（由 VoxCPM2 根据文字描述生成，不是真人录音，也不模仿任何平台的音色），随应用一起提供。
+- 每个音色都能试听：点音色上的 ▶，不用生成就能先听一听。
 - 可调语速（0.75x 到 1.5x），带可拖动进度的播放器。结果可保存为 WAV（无损）或 M4A（体积小）。
 - **我的声音：** 录制或导入 5 到 15 秒你自己的声音，就能用 VoxCPM2 或 IndexTTS 以你的声音朗读任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
 
@@ -121,7 +122,7 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 |------|------|------|------|
 | VoxCPM2（8-bit，Apache-2.0） | 3.2 GB | MLX (Metal GPU) | 内置音色、声音克隆 |
 | IndexTTS-2.5（8-bit，bilibili 模型使用许可） | 1.7 GB + 2.3 GB 编码器 | MLX (Metal GPU) | 内置音色、声音克隆 |
-| Kokoro v1.1 多语言版（Apache-2.0） | 364 MB | ONNX (CPU) | 103 种内置音色（100 种中文、3 种英文） |
+| Kokoro v1.1 多语言版（Apache-2.0） | 364 MB | ONNX (CPU) | 23 种内置音色（20 种中文、3 种英文） |
 
 都是一次性下载：在“朗读”里选中某个引擎的音色时，应用会提示下载。IndexTTS 使用打过补丁的 [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX 移植版（见 `third_party/README.md`）。
 

@@ -1039,7 +1039,7 @@
         <div class="mt-group" data-i18n="md.g2">Studio</div>
         <div class="mt-row"><span class="c-name">VoxCPM2 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">3.2 GB</span><span class="c-lang" data-i18n="md.ltts">Chinese, English and more</span><span class="c-note" data-i18n="md.n8">Studio-quality 48 kHz speech and voice cloning, about real time. Apache-2.0.</span></div>
         <div class="mt-row"><span class="c-name">IndexTTS-2.5 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">1.7 + 2.3 GB</span><span class="c-lang" data-i18n="md.lidx">5 languages</span><span class="c-note" data-i18n="md.n8b">Very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic, about real time. 1.7 GB model plus a 2.3 GB encoder. bilibili Model Use License.</span></div>
-        <div class="mt-row"><span class="c-name">Kokoro v1.1 82M <span class="tag blue">Speak</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">364 MB</span><span class="c-lang" data-i18n="md.lkok">Chinese, English</span><span class="c-note" data-i18n="md.n8c">Small and fast, about 4× real time. 103 built-in voices (100 Chinese, 3 English). Apache-2.0.</span></div>
+        <div class="mt-row"><span class="c-name">Kokoro v1.1 82M <span class="tag blue">Speak</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">364 MB</span><span class="c-lang" data-i18n="md.lkok">Chinese, English</span><span class="c-note" data-i18n="md.n8c">Small and fast, about 4× real time. 23 built-in voices (20 Chinese, 3 English). Apache-2.0.</span></div>
 
         <div class="mt-group" data-i18n="md.g3">Translation</div>
         <div class="mt-row"><span class="c-name">SeamlessM4T v2 Large</span><span class="c-run">PyTorch · MPS / CPU</span><span class="c-size">~9 GB</span><span class="c-lang" data-i18n="md.l100">100+ languages</span><span class="c-note" data-i18n="md.n9">Speech and text translation. Best with 16 GB of RAM or more.</span></div>
@@ -1193,7 +1193,7 @@
       "md.n1": "最小、启动最快。不支持热词。", "md.n2": "所有 Mac 都能跑，支持热词。", "md.n3": "Apple Silicon 上的默认选择，支持热词。",
       "md.n4": "更难的口音和嘈杂音频，建议 16 GB 内存。", "md.n5": "说话人标签和时间戳，驱动多说话人模式。",
       "md.n6": "自带标点和大小写。", "md.n7": "只用 CPU 的快速英语听写（M3 Max 上约为实时的 50 倍）。",
-      "md.n8": "48 kHz 录音棚音质与声音克隆，约为实时速度。Apache-2.0。", "md.n8b": "克隆还原度很高，支持中、英、日、西、阿语，约为实时速度。模型 1.7 GB，另需 2.3 GB 编码器。bilibili 模型使用许可。", "md.n8c": "小巧快速，约为实时的 4 倍。103 种内置音色（100 种中文、3 种英文）。Apache-2.0。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
+      "md.n8": "48 kHz 录音棚音质与声音克隆，约为实时速度。Apache-2.0。", "md.n8b": "克隆还原度很高，支持中、英、日、西、阿语，约为实时速度。模型 1.7 GB，另需 2.3 GB 编码器。bilibili 模型使用许可。", "md.n8c": "小巧快速，约为实时的 4 倍。23 种内置音色（20 种中文、3 种英文）。Apache-2.0。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
       "cp.kicker": "对比", "cp.h2": "和同类产品比一比。", "cp.p": "内容取自各产品官网，核对日期 2026 年 9 月 29 日。价格会变，请以链接为准。",
       "cp.r1": "价格", "cp.tt1": "免费", "cp.w1": "每周 2,000 词以内免费；Pro 每月 15 美元（按年付每月 12 美元）", "cp.s1": "有免费版；Pro 可订阅或买断", "cp.v1": "免费试用；付费授权",
       "cp.r2": "开源", "cp.tt2": "是，MIT", "cp.no": "否", "cp.no2": "否", "cp.v2": "是，GPL-3.0",
@@ -1601,10 +1601,11 @@
     var VOICES = [
       ["voxcpm2", "warm-female-zh", "温婉女声", "温婉女声", "Warm", "温暖柔和"],
       ["voxcpm2", "calm-male-zh", "沉稳男声", "沉稳男声", "Calm", "沉稳平和"],
-      ["voxcpm2", "female-en", "Clara (EN)", "Clara (EN)", "American", "美式英语"],
+      ["voxcpm2", "film-recap-zh", "影视解说", "影视解说", "Film recap", "悬念解说"],
+      ["voxcpm2", "youtuber-en", "YouTuber (EN)", "YouTuber (EN)", "Upbeat", "活力博主"],
+      ["indextts", "bestie-zh", "温柔闺蜜", "温柔闺蜜", "Lifestyle", "好物分享"],
       ["indextts", "news-anchor-zh", "新闻播音", "新闻播音", "Newsreader", "字正腔圆"],
-      ["indextts", "storyteller-zh", "讲故事", "讲故事", "Storyteller", "不紧不慢"],
-      ["indextts", "male-en", "Arthur (EN)", "Arthur (EN)", "British", "英式旁白"],
+      ["indextts", "podcast-calm-en", "Calm Podcast (EN)", "Calm Podcast (EN)", "Podcast", "播客"],
       ["kokoro", "3", "Female 1", "中文女声 1", "Chinese", "普通话"],
       ["kokoro", "58", "Male 1", "中文男声 1", "Chinese", "普通话"],
       ["kokoro", "0", "Maple", "Maple", "English", "英文"]
@@ -1618,7 +1619,7 @@
     function vid(v) { return v[0] + ":" + v[1]; }
     function renderVoices() {
       var zh = lang === "zh";
-      if (!sp.chosen) sp.voice = zh ? "voxcpm2:warm-female-zh" : "voxcpm2:female-en";
+      if (!sp.chosen) sp.voice = zh ? "voxcpm2:warm-female-zh" : "voxcpm2:youtuber-en";
       vbox.textContent = "";
       ENGINES.forEach(function (e) {
         var cap = document.createElement("p"); cap.className = "eng";
