@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light" />
 
   <title>ThunderTalk — Free, open-source voice input for macOS</title>
-  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Press a key in any app, speak, and the text lands at your cursor. Recognition runs on your Mac: no account, no subscription, no cloud. New in 1.5: Studio for file transcription with speaker labels, text to speech and voice cloning." />
+  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Press a key in any app, speak, and the text lands at your cursor. Recognition runs on your Mac: no account, no subscription, no cloud. New in v1.7.0: live preview, AI cleanup, Studio links, batch exports, subtitles and meeting notes; a smaller download." />
   <link rel="canonical" href="https://realallensong.github.io/ThunderTalk/" />
   <meta name="robots" content="index, follow" />
 
@@ -16,16 +16,16 @@
   <meta property="og:url" content="https://realallensong.github.io/ThunderTalk/" />
   <meta property="og:locale" content="en_US" />
   <meta property="og:locale:alternate" content="zh_CN" />
-  <meta property="og:title" content="ThunderTalk — Talk, and it types. Nothing leaves your Mac." />
-  <meta property="og:description" content="Free, open-source voice input for macOS. Recognition runs on your own machine. New in 1.5: Studio for transcription, speech and voice cloning." />
+  <meta property="og:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
+  <meta property="og:description" content="Free, open-source voice input for macOS. Recognition runs on your own machine. New in v1.7.0: live preview, AI cleanup, Studio links, batch exports, subtitles and meeting notes." />
   <meta property="og:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
 
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
-  <meta name="twitter:title" content="ThunderTalk — Talk, and it types. Nothing leaves your Mac." />
-  <meta name="twitter:description" content="Free, open-source voice input for macOS. 100% on-device." />
+  <meta name="twitter:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
+  <meta name="twitter:description" content="Free, open-source voice input for macOS. Speech processing stays on-device; optional AI features use your chosen provider." />
   <meta name="twitter:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
 
   <link rel="icon" type="image/svg+xml" href="assets/mark.svg" />
@@ -59,32 +59,37 @@
       {
         "@type": "Question",
         "name": "Is ThunderTalk free?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. ThunderTalk is MIT licensed and free to use. There is no account, no subscription and no usage limit, and the source code is on GitHub." }
+        "acceptedAnswer": {"@type": "Answer", "text": "Yes. ThunderTalk is MIT licensed and free to use. There is no account, no subscription and no usage limit, and the source code is on GitHub."}
       },
       {
         "@type": "Question",
         "name": "Does it work offline?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Once a model is downloaded, speech recognition, translation, Studio transcription and text to speech all run on your Mac without a connection. The network is only used to download models and to check GitHub for updates." }
+        "acceptedAnswer": {"@type": "Answer", "text": "Yes. After downloading the models and any required component, speech recognition, translation, file transcription and text to speech work offline. Studio links need a connection. Optional AI cleanup and meeting notes depend on your chosen provider: Ollama and LM Studio use local servers; cloud providers need a connection and receive text."}
       },
       {
         "@type": "Question",
         "name": "What is Studio?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Studio is new in 1.5. Transcribe turns an audio or video recording into a timestamped transcript, with optional speaker labels, and exports TXT, Markdown, SRT, VTT or JSON. Speak turns text into speech with three local engines, VoxCPM2, IndexTTS-2.5 and Kokoro, using built-in voices or a voice you clone from a 5 to 15 second recording. It all runs locally." }
+        "acceptedAnswer": {"@type": "Answer", "text": "Studio has Transcribe and Speak. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model in Settings ▸ AI cleanup, even with cleanup off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection."}
       },
       {
         "@type": "Question",
         "name": "Does it handle Chinese and mixed Chinese-English?",
-        "acceptedAnswer": { "@type": "Answer", "text": "Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the app itself is available in English and Chinese." }
+        "acceptedAnswer": {"@type": "Answer", "text": "Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the app itself is available in English and Chinese."}
       },
       {
         "@type": "Question",
         "name": "Which Macs are supported?",
-        "acceptedAnswer": { "@type": "Answer", "text": "An Apple Silicon Mac (M1 or newer) with macOS 15 or later. Intel Macs are not supported by the release build." }
+        "acceptedAnswer": {"@type": "Answer", "text": "An Apple Silicon Mac (M1 or newer) with macOS 15 or later. The download is built for Apple Silicon only, and the bundled speech libraries need macOS 15. Intel Macs are not supported by the release build."}
       },
       {
         "@type": "Question",
         "name": "How is it different from Typeless, Wispr Flow or superwhisper?",
-        "acceptedAnswer": { "@type": "Answer", "text": "They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free, open source and always local. See the comparison on this page for sources." }
+        "acceptedAnswer": {"@type": "Answer", "text": "They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free and open source, with speech processed on your Mac. Optional AI cleanup and notes use your selected provider. See the comparison for sources."}
+      },
+      {
+        "@type": "Question",
+        "name": "Do I need ffmpeg for Studio?",
+        "acceptedAnswer": {"@type": "Answer", "text": "Common formats such as M4A, MP3, WAV, MP4 and MOV decode with macOS tools. Burning subtitles into a video copy requires ffmpeg, and WebM/Opus link audio or other formats may need it too. ffmpeg is not bundled. With Homebrew installed, run brew install ffmpeg in Terminal, then retry."}
       }
     ]
   }
@@ -691,7 +696,7 @@
     <!-- ═════════════ Hero ═════════════ -->
     <section class="hero wrap" aria-labelledby="h1">
       <p class="eyebrow rv"><span class="live" aria-hidden="true"></span><span data-i18n="hero.eyebrow">Free · Open source · Runs on your Mac</span></p>
-      <h1 id="h1" class="rv"><span data-i18n="hero.h1a">Talk, and it types.</span><em data-i18n="hero.h1b">Nothing leaves your Mac.</em></h1>
+      <h1 id="h1" class="rv"><span data-i18n="hero.h1a">Talk, and it types.</span><em data-i18n="hero.h1b">Speech stays on your Mac.</em></h1>
 
       <div class="hero-row">
         <p class="lede rv" data-i18n="hero.lede">ThunderTalk is a voice input app for macOS. Press a key in any app, speak, and your words appear at the cursor. Recognition runs on your own machine: no account, no subscription, no cloud.</p>
@@ -708,8 +713,8 @@
       </div>
 
       <a class="news rv" href="#studio">
-        <span class="tag" data-i18n="hero.newtag">New in 1.5</span>
-        <span class="txt" data-i18n="hero.newtxt">Studio: transcribe recordings, read text aloud, clone your voice</span>
+        <span class="tag" data-i18n="hero.newtag">New in v1.7.0</span>
+        <span class="txt" data-i18n="hero.newtxt">Live preview, AI cleanup, Studio links, batch exports and meeting notes</span>
         <svg class="arrow" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
       </a>
 
@@ -801,13 +806,13 @@
         <div class="step rv">
           <span class="n">02</span>
           <h3 data-i18n="s2.h">Speak</h3>
-          <p data-i18n="s2.p">A speech model on your Mac's own chip does the listening. Chinese, English, or both in the same sentence.</p>
+          <p data-i18n="s2.p">A speech model on your Mac's own chip does the listening. Chinese, English, or both in the same sentence. Live Preview shows provisional words in the recording bar while you speak. It is on by default in Settings; Direct translation mode hides it. Preview may pause or stop for a recording if the model cannot keep up.</p>
           <div class="sv"><span class="meter sv-wave" id="svWave" aria-hidden="true"></span></div>
         </div>
         <div class="step rv">
           <span class="n">03</span>
           <h3 data-i18n="s3.h">Done</h3>
-          <p data-i18n="s3.p">The text is pasted at the cursor and kept in a private, searchable history. Spoken numbers turn into digits, and your hotwords stay spelled your way.</p>
+          <p data-i18n="s3.p">After you stop, the full recording is recognized for the final pasted text; preview words can change. The text goes to your cursor and private, searchable history. Spoken numbers turn into digits, and hotwords stay spelled your way.</p>
           <div class="sv"><span class="sv-text" aria-hidden="true"><span data-i18n="s3.demo">Budget is up 25%</span><span class="caret"></span></span></div>
         </div>
       </div>
@@ -822,8 +827,9 @@
           </div>
         </article>
         <article class="card b7 rv">
-          <h3 data-i18n="itn.h">Numbers written as numbers</h3>
-          <p data-i18n="itn.p">Inverse text normalisation turns spoken numbers into digits in English and Chinese, and leaves titles such as <span lang="zh-CN">《一千零一夜》</span> alone.</p>
+          <h3 data-i18n="itn.h">Numbers and cleaner text</h3>
+          <p data-i18n="itn.p">Inverse text normalisation turns spoken numbers into digits in English and Chinese, and leaves titles such as <span lang="zh-CN">《一千零一夜》</span> alone. Optional AI cleanup removes fillers and repetitions and fixes punctuation while preserving meaning and language, including mixed Chinese-English.</p>
+          <p data-i18n="itn.cleanup">Enable AI cleanup in Settings and choose an existing logged-in Codex, Claude Code, Gemini, Grok or Cursor CLI, an installed Ollama / LM Studio model, Cherry Studio's API server or a custom OpenAI-compatible API. No AI model is bundled or downloaded. Set styles per app or turn cleanup off for an app. It applies to plain dictation, not translation. Raw text is pasted first; cleanup replaces it only if you have not typed, clicked, scrolled or switched apps. Failures and timeouts keep raw text; terminal replacement is skipped.</p>
           <div class="mock" aria-hidden="true">
             <div class="ledger2">
               <div class="lr h"><span data-i18n="itn.say">You say</span><span></span><span data-i18n="itn.get">You get</span></div>
@@ -835,7 +841,7 @@
         </article>
         <article class="card b7 rv">
           <h3 data-i18n="tr.h">Speak one language, paste another</h3>
-          <p data-i18n="tr.p">Direct mode translates as you speak. Review mode transcribes first, then shows the translation so you can Replace it or Keep the original. Over 100 languages through SeamlessM4T v2, which needs about 9 GB of disk and is comfortable on 16 GB of RAM or more.</p>
+          <p data-i18n="tr.p">Direct mode pastes a translation after you stop speaking; translation to Chinese (Mandarin) now returns Chinese instead of leaving English speech untranslated. Review mode transcribes first, then lets you Replace it or Keep the original. Over 100 languages through SeamlessM4T v2, which needs about 9 GB of disk and is comfortable on 16 GB of RAM or more.</p>
           <div class="mock" aria-hidden="true">
             <div class="rev">
               <div class="orig" lang="zh-CN">下周一的会议改到周三下午三点。</div>
@@ -860,22 +866,27 @@
         <div><h4 data-i18n="f2.h">History on your disk</h4><p data-i18n="f2.p">Every dictation is saved to a file in <code>~/.thundertalk</code>. Search it from Home, delete a line, or clear it all.</p></div>
         <div><h4 data-i18n="f3.h">Updates itself</h4><p data-i18n="f3.p">When a release is published a small prompt appears. One click downloads it, swaps the app and relaunches.</p></div>
       </div>
+      <p class="sec-p rv" data-i18n="dic.commands">Voice commands work in English and Chinese: “new line / 换行”, “new paragraph / 新段落”, “delete that / 删掉上一句” (undo the last untouched dictation) and “tab key / 制表符”. Say the command as the whole utterance. Commands are on by default and can be disabled in Settings independently of cleanup. With cleanup enabled for the app, select text before recording and say “make this shorter / 简短一点”, “make this more formal / 改得正式一点” or “translate to English / 翻译成英文” (also “translate to Chinese / 翻译成中文”). Selection reading needs macOS Accessibility support; the full clipboard is restored.</p>
     </section>
 
     <!-- ═════════════ 02 Studio ═════════════ -->
     <section class="sec wrap" id="studio" aria-labelledby="st-h">
-      <div class="sec-head rv"><p class="kicker"><b>02</b><span data-i18n="st.kicker">Studio</span></p><span class="tag" data-i18n="st.tag">New in 1.5</span></div>
+      <div class="sec-head rv"><p class="kicker"><b>02</b><span data-i18n="st.kicker">Studio</span></p><span class="tag" data-i18n="st.tag">Expanded in v1.7.0</span></div>
       <div class="sec-title">
         <h2 id="st-h" class="rv" data-i18n="st.h2">Studio turns recordings into text, and text into speech.</h2>
-        <p class="sec-p rv" data-i18n="st.p">Two workbenches: one for the audio you already have, one for the words you would rather hear. Everything runs on your Mac and nothing is uploaded.</p>
+        <p class="sec-p rv" data-i18n="st.p">Transcribe recordings or web links, save a batch of transcripts, add subtitles to a video copy, or turn text into speech. Speech processing stays on your Mac. Optional AI meeting notes use your chosen provider.</p>
       </div>
 
       <div class="bento rise">
         <!-- Transcribe -->
         <article class="card b7 rv" id="transcribe">
           <p class="card-k" data-i18n="tc.k">Transcribe</p>
-          <h3 data-i18n="tc.h">Drop in a recording, get a transcript with timestamps.</h3>
-          <p data-i18n="tc.p">Audio or video: m4a, mp3, wav, mp4, mov and more. Switch on Multiple speakers for a conversation and every turn is labelled. Click a speaker to rename it. Decoding uses macOS itself, so there is nothing extra to install.</p>
+          <h3 data-i18n="tc.h">Drop in a recording or paste a link, get a timestamped transcript.</h3>
+          <p data-i18n="tc.p">Audio or video: m4a, mp3, wav, mp4, mov and more. Switch on Multiple speakers to label each turn; click a speaker to rename it. Export TXT, Markdown, SRT, VTT or JSON. Common formats decode with macOS tools; WebM, MKV and some other formats may need ffmpeg.</p>
+          <p data-i18n="tc.links">Paste single-video links from YouTube, Bilibili or other yt-dlp-supported sites; yt-dlp ships with the app. Audio downloads temporarily, is transcribed locally, then is deleted. Members-only and sign-in restrictions are flagged; the app does not sign in for you. A noticeably shorter preview than the advertised duration is flagged as a partial transcript. Playlists, channels and live streams are unsupported.</p>
+          <p data-i18n="tc.batch">Add several files or links to the queue, choose formats and a destination folder, then Transcribe all. Items run one at a time and save automatically. Or save beside source files, with link results in Downloads. Cancel one item or the whole queue; View opens finished transcripts. Duplicate export names get a numbered suffix.</p>
+          <p data-i18n="tc.burn">After transcribing a local video, Burn into video… saves a copy with subtitles drawn into the picture, optionally with a selectable subtitle track too. It needs ffmpeg: with <a href="https://brew.sh/" rel="noopener">Homebrew</a> installed, run <code>brew install ffmpeg</code>. Link transcription downloads audio only, so burn-in needs a local video.</p>
+          <p data-i18n="tc.notes">AI meeting notes turn a transcript into a summary, key points, decisions, action items and open questions in English or Chinese. Reuse the provider/model in Settings ▸ AI cleanup, even with dictation cleanup off; no AI model is downloaded. Copy or save Markdown, include notes in a Markdown transcript export, or enable notes after each queue item. Review notes against the transcript; failed notes keep the transcript.</p>
           <div class="mock" role="group" aria-labelledby="tc-lab">
             <span class="sr" id="tc-lab" data-i18n="tc.aria">Interactive Transcribe preview</span>
             <div class="fname"><div><div class="t">onboarding-review.m4a</div><div class="s"><span data-i18n="tc.file">click to choose another</span></div></div><span class="tag neutral" data-i18n="tc.sample">Sample</span></div>
@@ -934,7 +945,7 @@
                 <li><b>02</b><div><strong data-i18n="cl.s2h">Check the words</strong><span data-i18n="cl.s2p">The recording is written out on your Mac. A wrong transcript makes the clone worse, so correct it.</span></div></li>
                 <li><b>03</b><div><strong data-i18n="cl.s3h">Name it and save</strong><span data-i18n="cl.s3p">It appears under My voices, next to the built-in ones.</span></div></li>
               </ol>
-              <p class="local-note"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.4"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg><span data-i18n="st.local">Speech models download once, then everything works offline.</span></p>
+              <p class="local-note"><svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="5" y="10.5" width="14" height="10" rx="2.4"/><path d="M8 10.5V7.5a4 4 0 0 1 8 0v3"/></svg><span data-i18n="st.local">After downloads, file transcription and speech generation work offline. Web links and cloud AI providers need a connection.</span></p>
             </div>
             <div class="mock" role="group" aria-labelledby="cl-lab">
               <span class="sr" id="cl-lab" data-i18n="cl.aria">Simulated voice recording. This page never uses your microphone.</span>
@@ -963,19 +974,19 @@
       <div class="sec-head rv"><p class="kicker"><b>03</b><span data-i18n="pv.kicker">Privacy</span></p></div>
       <div class="sec-title">
         <h2 id="pv-h" class="rv" data-i18n="pv.h2">Your voice has nowhere to go.</h2>
-        <p class="sec-p rv" data-i18n="pv.p">There is no account to sign into and no server to send audio to. Recognition, translation, transcription and speech synthesis all run inside an app on your own Mac. And because the code is open, you do not have to take our word for it.</p>
+        <p class="sec-p rv" data-i18n="pv.p">Recognition, translation, transcription and speech synthesis run on your own Mac; audio is never uploaded. Optional AI cleanup and meeting notes can send text to the provider you choose. The code is open, so you can check how it works.</p>
       </div>
       <div class="pv rise">
         <dl class="facts rv">
           <div class="fact"><dt data-i18n="pv.r1k">Audio</dt><dd data-i18n="pv.r1v">Recognised on your Mac and never sent anywhere.</dd></div>
           <div class="fact"><dt data-i18n="pv.r2k">History</dt><dd data-i18n="pv.r2v">A plain file in <code>~/.thundertalk</code> on your disk. Search it, delete a line, or clear it.</dd></div>
-          <div class="fact"><dt data-i18n="pv.r3k">Network</dt><dd data-i18n="pv.r3v">Used for two things only: downloading models and checking GitHub for updates.</dd></div>
-          <div class="fact"><dt data-i18n="pv.r4k">Account</dt><dd data-i18n="pv.r4v">None. No sign-up, no subscription, no usage limit.</dd></div>
+          <div class="fact"><dt data-i18n="pv.r3k">Network</dt><dd data-i18n="pv.r3v">Model/component downloads, GitHub update checks and Studio links. Optional cleanup/notes send text to your chosen provider: cloud CLIs use your account; Ollama and LM Studio use local servers; Cherry Studio and custom APIs may forward text to cloud models. Dictation cleanup is off by default.</dd></div>
+          <div class="fact"><dt data-i18n="pv.r4k">Account</dt><dd data-i18n="pv.r4v">No ThunderTalk account, subscription or usage limit. Optional AI providers use your own account or server.</dd></div>
           <div class="fact"><dt data-i18n="pv.r5k">Code</dt><dd data-i18n="pv.r5v">MIT licensed. Read it, build it yourself, fork it.</dd></div>
         </dl>
         <div class="card diagram-card rv">
           <svg class="diagram" id="diagram" viewBox="0 0 520 300" role="img" aria-labelledby="dgT">
-            <title id="dgT" data-i18n="pv.d.title">Audio goes from your voice to a speech model to text at the cursor, all inside your Mac. Nothing crosses the boundary to the internet.</title>
+            <title id="dgT" data-i18n="pv.d.title">Speech recognition turns your audio into text at the cursor on your Mac. Audio is not uploaded; optional AI cleanup can send text to your chosen provider.</title>
             <defs>
               <marker id="arr" viewBox="0 0 8 8" refX="6.5" refY="4" markerWidth="8" markerHeight="8" orient="auto"><path d="M1 1.2 6 4 1 6.8" fill="none" stroke="#1F1E1B" stroke-width="1.3" stroke-linecap="round" stroke-linejoin="round"/></marker>
             </defs>
@@ -985,7 +996,7 @@
             <text class="dg-m" x="28" y="102" data-i18n="pv.d.mac">On your Mac</text>
             <path d="M260 138V44" stroke="#A9A69D" stroke-width="1.2" stroke-dasharray="3 4" fill="none"/>
             <g stroke="#D9480F" stroke-width="2" stroke-linecap="round"><path d="M254 70l12 12M266 70l-12 12"/></g>
-            <text class="dg-c" x="278" y="66" data-i18n="pv.d.line">Nothing crosses this line</text>
+            <text class="dg-c" x="278" y="66" data-i18n="pv.d.line">Audio stays on your Mac</text>
             <g>
               <rect x="20" y="138" width="136" height="88" rx="8" fill="#fff" stroke="rgba(31,30,27,0.26)"/>
               <g transform="translate(32 152)" fill="none" stroke="#1F1E1B" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round"><rect x="6.5" y="1.5" width="7" height="12" rx="3.5"/><path d="M3.5 9.5a6.5 6.5 0 0 0 13 0M10 16v3"/></g>
@@ -1021,8 +1032,10 @@
       <div class="sec-head rv"><p class="kicker"><b>04</b><span data-i18n="md.kicker">Models</span></p></div>
       <div class="sec-title">
         <h2 id="md-h" class="rv" data-i18n="md.h2">Choose the engine that suits your Mac.</h2>
-        <p class="sec-p rv" data-i18n="md.p">Every model runs on-device. The app reads your hardware and marks the ones that fit, then downloads them with real progress.</p>
+        <p class="sec-p rv" data-i18n="md.p">Every speech model runs on-device. The app reads your hardware and marks the ones that fit, then downloads them with real progress. AI cleanup and notes use an existing provider/model selected in Settings; no AI model is bundled or downloaded for them.</p>
       </div>
+
+      <p class="sec-p rv" data-i18n="md.runtime">Smaller in v1.7.0: about 592 MiB installed and 224 MB zipped (214 MiB), down from 961 MiB and a 330 MB zip in v1.6.4. Translation and IndexTTS share an optional 90 MB PyTorch component, downloaded by the app when needed into <code>~/.thundertalk/runtime/</code>. Restart once if prompted. Dictation, Studio transcription, VoxCPM2 and Kokoro do not need it. Model weights below are extra.</p>
 
       <div class="mt rv">
         <div class="mt-head"><span data-i18n="md.c1">Model</span><span data-i18n="md.c2">Runs on</span><span data-i18n="md.c3">Size</span><span data-i18n="md.c4">Languages</span><span data-i18n="md.c5">Good for</span></div>
@@ -1075,15 +1088,15 @@
       </div>
       <div class="faq rv">
         <details open><summary><span data-i18n="faq.1q">Is ThunderTalk free?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.1a">Yes. ThunderTalk is MIT licensed and free to use. There is no account, no subscription and no usage limit, and the source code is on GitHub.</p></div></details>
-        <details><summary><span data-i18n="faq.2q">Does it work offline?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.2a">Yes. Once a model is downloaded, speech recognition, translation, Studio transcription and text to speech all run on your Mac without a connection. The network is only used to download models and to check GitHub for updates.</p></div></details>
+        <details><summary><span data-i18n="faq.2q">Does it work offline?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.2a">Yes. After downloading the models and any required component, speech recognition, translation, file transcription and text to speech work offline. Studio links need a connection. Optional AI cleanup and meeting notes depend on your chosen provider: Ollama and LM Studio use local servers; cloud providers need a connection and receive text.</p></div></details>
         <details><summary><span data-i18n="faq.3q">Which apps can I dictate into?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.3a">Any app with a text cursor: browsers, editors, Slack, mail, terminals. ThunderTalk pastes the text where the cursor is, so it asks for Microphone and Accessibility permission the first time you run it.</p></div></details>
-        <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio is new in 1.5 and replaces the old Lab page. Transcribe turns an audio or video recording into a timestamped transcript, with optional speaker labels, and exports TXT, Markdown, SRT, VTT or JSON. Speak turns text into speech with three local engines, VoxCPM2, IndexTTS-2.5 and Kokoro, using built-in voices or a voice you clone from a 5 to 15 second recording. It all runs locally.</p></div></details>
-        <details><summary><span data-i18n="faq.5q">Do I need ffmpeg for Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.5a">No. Studio decodes audio and video with the tools that come with macOS, so there is nothing else to install.</p></div></details>
+        <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio has Transcribe and Speak. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model in Settings ▸ AI cleanup, even with cleanup off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection.</p></div></details>
+        <details><summary><span data-i18n="faq.5q">Do I need ffmpeg for Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.5a">Common formats such as M4A, MP3, WAV, MP4 and MOV decode with macOS tools. Burning subtitles into a video copy requires ffmpeg, and WebM/Opus link audio or other formats may need it too. ffmpeg is not bundled. With <a href="https://brew.sh/" rel="noopener">Homebrew</a> installed, run <code>brew install ffmpeg</code> in Terminal, then retry.</p></div></details>
         <details><summary><span data-i18n="faq.6q">Where does a cloned voice go?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.6a">Nowhere. The short reference recording and its transcript are stored in <code>~/.thundertalk/voices</code> on your Mac, and nothing is uploaded. Delete a voice in the app, or delete the folder, to remove it. Please only clone voices you have the right to use.</p></div></details>
         <details><summary><span data-i18n="faq.7q">Does it handle Chinese and mixed Chinese-English?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.7a">Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the app itself is available in English and Chinese.</p></div></details>
         <details><summary><span data-i18n="faq.8q">Which Macs are supported?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.8a">An Apple Silicon Mac (M1 or newer) with macOS 15 or later. The download is built for Apple Silicon only, and the bundled speech libraries need macOS 15. Intel Macs are not supported by the release build.</p></div></details>
         <details><summary><span data-i18n="faq.9q">Why does macOS warn me the first time I open it?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.9a">ThunderTalk is not notarised by Apple, which would cost $99 a year, so Gatekeeper shows a warning after a browser download. Open System Settings, go to Privacy &amp; Security and click Open Anyway. Updates that arrive through the in-app updater skip this step, although macOS may ask you to grant Accessibility and Microphone access again.</p></div></details>
-        <details><summary><span data-i18n="faq.10q">How is it different from Typeless, Wispr Flow or superwhisper?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.10a">They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free, open source and always local. See the <a href="#compare">comparison</a> for sources.</p></div></details>
+        <details><summary><span data-i18n="faq.10q">How is it different from Typeless, Wispr Flow or superwhisper?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.10a">They are closed-source products with paid plans; Wispr Flow processes speech in the cloud, and Superwhisper lets you choose local or cloud models. ThunderTalk is free and open source, with speech processed on your Mac. Optional AI cleanup and notes use your selected provider. See the <a href="#compare">comparison</a> for sources.</p></div></details>
       </div>
     </section>
   </main>
@@ -1093,7 +1106,7 @@
     <div class="wrap close-in">
       <div class="close-row">
         <div>
-          <h2 class="rv" data-i18n="cta.h">Try it. It costs nothing and sends nothing.</h2>
+          <h2 class="rv" data-i18n="cta.h">Try it. Voice input, without a subscription.</h2>
           <p class="fine rv" data-i18n="cta.fine">Apple Silicon, macOS 15 or later. MIT licence. Downloads come from GitHub Releases, or <code>brew install --cask realallensong/tap/thundertalk</code>.</p>
         </div>
         <div class="close-btns rv">
@@ -1136,7 +1149,7 @@
       "hero.lede": "ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就出现在光标处。识别全部在你自己的电脑上完成：无需账号，无需订阅，没有云端。",
       "hero.cta1": "下载 macOS 版", "hero.cta2": "查看源码",
       "hero.fine": "免费，MIT 协议。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
-      "hero.newtag": "1.5 新增", "hero.newtxt": "工作室（Studio）：转写录音、朗读文字、克隆你的声音",
+      "hero.newtag": "v1.7.0 新增", "hero.newtxt": "实时预览、AI 润色、工作室链接转写、批量导出与会议纪要",
       "scene.cap": "主页界面的交互式复刻，数据为示例。点击按键即可试一次听写。",
       "app.home": "主页", "app.models": "模型", "app.hotwords": "热词", "app.settings": "设置", "app.studio": "工作室", "app.about": "关于",
       "app.todictate": "开始听写", "app.words": "已听写字数", "app.speak": "发声时长", "app.saved": "预计节省时间", "app.sessions": "次数",
@@ -1144,22 +1157,28 @@
       "note.title": "新邮件", "note.to": "收件人", "note.subj": "主题", "note.subjv": "周四评审", "note.hi": "Mei，你好：",
       "dic.kicker": "听写", "dic.h2": "一个按键，任意应用。",
       "dic.p": "ThunderTalk 常驻菜单栏。光标在哪里，文字就落在哪里：浏览器、编辑器、Slack、终端都可以。",
+      "dic.commands": "语音命令支持中英双语：“换行 / new line”“新段落 / new paragraph”“删掉上一句 / delete that”（撤销最后一段未被操作的听写）和“制表符 / tab key”。请单独说完整条命令。命令默认开启，可在设置中关闭，不依赖润色。为该应用开启润色后，在录音前选中文字，再说“简短一点 / make this shorter”“改得正式一点 / make this more formal”或“翻译成英文 / translate to English”（也支持“翻译成中文 / translate to Chinese”）。读取选区需要 macOS 辅助功能支持，完整剪贴板会恢复。",
       "s1.h": "按下", "s1.p": "按一下快捷键开始，再按一下结束，默认是 Right ⌘。喜欢按住说话？在设置里把按键模式改成“长按”即可。", "s1.toggle": "切换", "s1.hold": "长按",
-      "s2.h": "说话", "s2.p": "由你 Mac 自己芯片上的语音模型来听。中文、英文，甚至同一句话里中英混说，都可以。",
-      "s3.h": "完成", "s3.p": "文字直接粘贴到光标处，并保存到只在本机的可搜索历史里。口述的数字会变成阿拉伯数字，热词也会保持你要的写法。", "s3.demo": "预算涨了 25%",
+      "s2.h": "说话", "s2.p": "由你 Mac 自己芯片上的语音模型来听。中文、英文，甚至同一句话里中英混说，都可以。“实时预览”在说话时于录音条中显示临时文字，设置中默认开启，“直译”模式不显示预览。模型跟不上时，预览可能暂停或停止到本次录音结束。",
+      "s3.h": "完成", "s3.p": "结束录音后会完整识别整段音频，生成最终粘贴文字；预览文字可能修订。文字落在光标处，并保存到只在本机的可搜索历史里。口述的数字会变成阿拉伯数字，热词也会保持你要的写法。", "s3.demo": "预算涨了 25%",
       "hw.h": "热词", "hw.p": "把它总是听错的词教给它：产品名、缩写、同事的名字。适用于 Qwen3-ASR 系列模型。", "hw.add": "添加词语",
-      "itn.h": "数字就写成数字", "itn.p": "逆文本规整会把口述的数字转成阿拉伯数字，中英文都支持，并保留《一千零一夜》这类书名不动。", "itn.say": "你说的", "itn.get": "你得到的",
-      "tr.h": "说一种语言，贴出另一种", "tr.p": "“直译”模式边说边译；“审阅”模式先转写，再给出译文，由你选择替换或保留原文。通过 SeamlessM4T v2 支持 100 多种语言，约需 9 GB 磁盘空间，建议 16 GB 及以上内存。", "tr.replace": "替换", "tr.keep": "保留原文",
+      "itn.h": "数字与文字润色", "itn.p": "逆文本规整会把口述的数字转成阿拉伯数字，中英文都支持，并保留《一千零一夜》这类书名不动。可选的 AI 润色去除语气词和重复内容、修正标点，同时保留原意与语言，包括中英混说。", "itn.say": "你说的", "itn.get": "你得到的",
+      "itn.cleanup": "在设置中开启“AI 润色”，选择已有且登录的 Codex、Claude Code、Gemini、Grok 或 Cursor CLI，已安装模型的 Ollama / LM Studio，Cherry Studio API 服务，或自定义 OpenAI 兼容 API。不内置或下载 AI 模型。可为各应用设置风格或关闭润色。仅用于普通听写，不用于翻译。先粘贴原文，仅在没有输入、点击、滚动或切换应用时才替换。失败或超时保留原文，终端跳过替换。",
+      "tr.h": "说一种语言，贴出另一种", "tr.p": "“直译”模式结束录音后粘贴译文；以中文（普通话）为目标语言时，现在会输出中文，不再保留英文语音原文。“审阅”模式先转写，再由你选择替换或保留原文。通过 SeamlessM4T v2 支持 100 多种语言，约需 9 GB 磁盘空间，建议 16 GB 及以上内存。", "tr.replace": "替换", "tr.keep": "保留原文",
       "dl.h": "老老实实的下载", "dl.p": "进度来自真实的字节数，中断后可以续传，“取消”立即生效。", "dl.resume": "断网后可续传", "dl.cancel": "取消",
       "f1.h": "第一次运行有引导", "f1.p": "四个简短步骤：欢迎、权限、选模型、在输入框里试一试。",
       "f2.h": "历史保存在本机", "f2.p": "每次听写都保存在 <code>~/.thundertalk</code> 里的文件中。可以在主页搜索、删除单条，或全部清空。",
       "f3.h": "自动更新", "f3.p": "有新版本发布时会弹出一个小提示。点一下就会下载、替换应用并重新启动。",
-      "st.kicker": "工作室", "st.tag": "1.5 新增",
+      "st.kicker": "工作室", "st.tag": "v1.7.0 功能扩展",
       "st.h2": "工作室：把录音变成文字，把文字变成声音。",
-      "st.p": "两个工作台：一个处理你已有的音频，一个把你想听的文字读出来。全部在你的 Mac 上运行，什么都不会上传。",
-      "st.local": "语音模型只需下载一次，之后完全离线可用。",
-      "tc.k": "转写", "tc.h": "拖入一段录音，得到带时间戳的转写稿。",
-      "tc.p": "音频或视频均可：m4a、mp3、wav、mp4、mov 等。多人对话打开“多人对话”，每一轮发言都会带上说话人标签，点击标签即可改名。解码由 macOS 自带完成，无需额外安装。",
+      "st.p": "转写录音或网页链接、批量保存文稿、为视频副本添加字幕，或把文字读出来。语音处理在你的 Mac 上完成，可选的 AI 会议纪要使用你选择的服务。",
+      "st.local": "下载完成后，文件转写与语音生成可离线使用。网页链接和云端 AI 服务需要联网。",
+      "tc.k": "转写", "tc.h": "拖入录音或粘贴链接，得到带时间戳的文稿。",
+      "tc.p": "音频或视频均可：m4a、mp3、wav、mp4、mov 等。打开“多人对话”即可标注每轮发言，点击说话人改名。可导出 TXT、Markdown、SRT、VTT 或 JSON。常见格式用 macOS 自带的工具解码；WebM、MKV 等部分格式可能需要 ffmpeg。",
+      "tc.links": "粘贴 YouTube、Bilibili 或 yt-dlp 支持的其他网站的单个视频链接，应用已内置 yt-dlp。音频临时下载，在本机转写后删除。会员专享及登录限制会给出提示，应用不会代你登录。如果试看片段明显短于标示总时长，会提示文稿仅包含部分内容。不支持播放列表、频道或直播。",
+      "tc.batch": "把多个文件或链接加入队列，选择格式与目标文件夹，再点“全部转写”。每次处理一项，自动保存。也可保存到原文件旁，此时链接结果保存到“下载”文件夹。可取消单项或整个队列，完成后点“查看”检查文稿。导出重名时会添加编号。",
+      "tc.burn": "本地视频转写完成后，点“烧录进视频…”保存字幕已画入画面的视频副本，还可同时添加可选择的字幕轨。需要 ffmpeg：安装 <a href=\"https://brew.sh/\" rel=\"noopener\">Homebrew</a> 后运行 <code>brew install ffmpeg</code>。链接转写只下载音频，因此烧录需要本地视频。",
+      "tc.notes": "AI 会议纪要按文稿的中文或英文生成摘要、要点、决定、行动项与待解决问题。复用“设置 ▸ AI 润色”的服务与模型，听写润色开关可保持关闭，不会下载 AI 模型。可复制或保存 Markdown、将纪要纳入文稿的 Markdown 导出，或勾选队列中每项完成后生成纪要。请对照文稿核对纪要；生成失败会保留文稿。",
       "tc.aria": "转写功能交互预览", "tc.file": "点击更换文件", "tc.sample": "示例", "tc.fast": "单人", "tc.multi": "多人对话",
       "tc.export": "导出", "tc.view": "转写稿", "tc.time": "时间戳", "tc.plain": "纯文本", "tc.hint": "点击说话人名字即可改名，导出内容会随之更新。",
       "sp.k": "朗读", "sp.h": "三个引擎，或者你自己的声音。",
@@ -1174,18 +1193,19 @@
       "cl.s3h": "起名并保存", "cl.s3p": "它会出现在“我的声音”里，和内置音色放在一起。",
       "cl.save": "保存声音", "cl.sim": "仅为模拟，本页不会访问你的麦克风。", "cl.mine": "我的声音", "cl.none": "还没有保存的声音",
       "pv.kicker": "隐私", "pv.h2": "你的声音无处可去。",
-      "pv.p": "没有账号可登录，也没有服务器可上传。识别、翻译、转写和语音合成全都在你自己 Mac 上的应用里完成。代码是开源的，所以你不必只听我们一面之词。",
+      "pv.p": "识别、翻译、转写和语音合成都在你的 Mac 上运行，音频不会上传。可选的 AI 润色与会议纪要可能把文字发送给你选择的服务。代码开源，可以查看处理方式。",
       "pv.r1k": "音频", "pv.r1v": "在你的 Mac 上识别，不发往任何地方。",
       "pv.r2k": "历史", "pv.r2v": "保存在你磁盘上 <code>~/.thundertalk</code> 里的普通文件。可搜索、可删除单条、可清空。",
-      "pv.r3k": "网络", "pv.r3v": "只用于两件事：下载模型，以及向 GitHub 检查更新。",
-      "pv.r4k": "账号", "pv.r4v": "没有。无需注册，无订阅，无使用次数限制。",
+      "pv.r3k": "网络", "pv.r3v": "下载模型/组件、检查 GitHub 更新和获取工作室链接。可选的润色/纪要会把文字发送给你选择的服务：云端 CLI 使用你的账号，Ollama 和 LM Studio 使用本机服务，Cherry Studio 和自定义 API 可能转发给云端模型。听写润色默认关闭。",
+      "pv.r4k": "账号", "pv.r4v": "ThunderTalk 无需账号、无订阅、无使用次数限制。可选的 AI 服务使用你已有的账号或服务器。",
       "pv.r5k": "代码", "pv.r5v": "MIT 协议。可以阅读、自行构建、自由 fork。",
-      "pv.d.title": "音频从你的声音进入语音模型，再变成光标处的文字，全程都在你的 Mac 内部。没有任何内容越过边界去往互联网。",
-      "pv.d.net": "互联网", "pv.d.mac": "在你的 Mac 上", "pv.d.line": "没有任何内容越过这条线",
+      "pv.d.title": "语音识别在你的 Mac 上把音频变成光标处的文字。音频不会上传；可选的 AI 润色可能把文字发送给你选择的服务。",
+      "pv.d.net": "互联网", "pv.d.mac": "在你的 Mac 上", "pv.d.line": "音频留在你的 Mac 上",
       "pv.d.a": "你的声音", "pv.d.a2": "麦克风", "pv.d.b": "语音模型", "pv.d.b2": "在你的芯片上运行", "pv.d.c": "光标处的文字", "pv.d.c2": "任意应用",
       "pv.d.cap": "音频进，文字出。没有网络这一跳。",
       "md.kicker": "模型", "md.h2": "选一个适合你 Mac 的引擎。",
-      "md.p": "所有模型都在本机运行。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。",
+      "md.p": "所有语音模型都在本机运行。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。AI 润色与纪要使用设置中选择的已有服务和模型，不为它们内置或下载 AI 模型。",
+      "md.runtime": "v1.7.0 更小：安装后约 592 MiB，zip 约 224 MB（214 MiB）；v1.6.4 分别为 961 MiB 和 330 MB。翻译与 IndexTTS 共用可选的 90 MB PyTorch 组件，由应用按需下载到 <code>~/.thundertalk/runtime/</code>，出现提示后重启一次。听写、工作室转写、VoxCPM2 和 Kokoro 无需它。下列模型权重另计。",
       "md.c1": "模型", "md.c2": "运行于", "md.c3": "大小", "md.c4": "语言", "md.c5": "适合",
       "md.g1": "语音识别", "md.g2": "工作室", "md.g3": "翻译",
       "md.l5": "5 种语言", "md.l52": "52 种语言", "md.l52b": "52 种语言", "md.l52c": "52 种语言", "md.l50": "50 多种语言", "md.l25": "25 种欧洲语言", "md.len": "英语", "md.l100": "100 多种语言",
@@ -1202,16 +1222,16 @@
       "cp.note": "ThunderTalk 还能转写会议并区分说话人、用三个本地语音引擎朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 的不足：需要 Apple Silicon 且 macOS 15 的 Mac，也还没有经过 Apple 公证。",
       "faq.kicker": "常见问题", "faq.h2": "直接回答。", "faq.p": "这里没讲到的问题？在 GitHub 上提一个 issue，就会有回复。",
       "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "不收费。ThunderTalk 以 MIT 协议开源，可以免费使用。无需账号，无订阅，无使用次数限制，源码就在 GitHub 上。",
-      "faq.2q": "能离线使用吗？", "faq.2a": "可以。模型下载完成后，语音识别、翻译、工作室转写和语音合成都在你的 Mac 上运行，无需联网。网络只用于下载模型和向 GitHub 检查更新。",
+      "faq.2q": "能离线使用吗？", "faq.2a": "可以。下载模型及所需组件后，语音识别、翻译、文件转写和文字转语音可离线使用。工作室链接需要联网。可选的 AI 润色与会议纪要取决于所选服务：Ollama 和 LM Studio 使用本机服务；云端服务需要联网并接收文字。",
       "faq.3q": "可以在哪些应用里听写？", "faq.3a": "任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。ThunderTalk 会把文字粘贴到光标处，所以第一次运行时会请求“麦克风”和“辅助功能”权限。",
-      "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室是 1.5 的新功能，取代了原来的“实验室”页。“转写”把音频或视频录音变成带时间戳的文字稿，可选说话人标签，并可导出 TXT、Markdown、SRT、VTT 或 JSON。“朗读”用三个本地引擎（VoxCPM2、IndexTTS-2.5 和 Kokoro）把文字读出来，可以用内置音色，也可以用你自己 5 到 15 秒录音克隆的声音。全部在本机运行。",
-      "faq.5q": "使用工作室需要安装 ffmpeg 吗？", "faq.5a": "不需要。工作室用 macOS 自带的工具解码音频和视频，无需再安装别的东西。",
+      "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室分为“转写”和“朗读”。“转写”支持音频/视频文件及 YouTube、Bilibili 等 yt-dlp 支持的网站的单个视频链接，提供时间戳、可选说话人标签、批量导出和本地视频字幕烧录。可导出 TXT、Markdown、SRT、VTT 或 JSON。AI 会议纪要复用“设置 ▸ AI 润色”的服务与模型，润色开关可保持关闭。纪要最多处理约 6,000 字符的 16 段加一次合并，每次请求限 60 秒，可取消；过长录音需拆分。“朗读”使用本地 VoxCPM2、IndexTTS-2.5 或 Kokoro，可用内置音色或你自己 5 到 15 秒录音克隆的声音。链接和云端 AI 服务需要联网。",
+      "faq.5q": "使用工作室需要安装 ffmpeg 吗？", "faq.5a": "M4A、MP3、WAV、MP4、MOV 等常见格式使用 macOS 自带的工具解码。把字幕烧录进视频副本需要 ffmpeg，WebM/Opus 链接音频等格式也可能需要它。应用未内置 ffmpeg。安装 <a href=\"https://brew.sh/\" rel=\"noopener\">Homebrew</a> 后在终端运行 <code>brew install ffmpeg</code>，再重试。",
       "faq.6q": "克隆出的声音会存到哪里？", "faq.6a": "哪里也不去。那段简短的参考录音和它的文字保存在你 Mac 上的 <code>~/.thundertalk/voices</code>，不会上传。在应用里删除声音，或直接删掉该文件夹即可移除。请只克隆你有权使用的声音。",
       "faq.7q": "支持中文和中英混说吗？", "faq.7a": "支持。Qwen3-ASR 支持 52 种语言，包括同一句话里中英混说，应用界面也有中文和英文两种语言。",
       "faq.8q": "支持哪些 Mac？", "faq.8a": "需要 Apple Silicon（M1 或更新）的 Mac，以及 macOS 15 或更高版本。下载版只为 Apple Silicon 构建，内置的语音库也需要 macOS 15。发布版不支持 Intel Mac。",
       "faq.9q": "为什么第一次打开时 macOS 会有警告？", "faq.9a": "ThunderTalk 没有经过 Apple 公证（公证每年要 99 美元），所以浏览器下载后 Gatekeeper 会弹出警告。打开“系统设置”，进入“隐私与安全性”，点“仍要打开”即可。通过应用内更新升级则不会有这一步，不过 macOS 可能要你重新授予“辅助功能”和“麦克风”权限。",
-      "faq.10q": "和 Typeless、Wispr Flow、superwhisper 有什么区别？", "faq.10a": "它们是闭源产品，有付费方案；Wispr Flow 在云端处理语音，Superwhisper 可选本地或云端模型。ThunderTalk 免费、开源，并且始终在本地运行。出处见<a href=\"#compare\">对比</a>。",
-      "cta.h": "试一试。不花一分钱，也不上传任何东西。", "cta.fine": "Apple Silicon，macOS 15 或更高版本。MIT 协议。从 GitHub Releases 下载，或运行 <code>brew install --cask realallensong/tap/thundertalk</code>。",
+      "faq.10q": "和 Typeless、Wispr Flow、superwhisper 有什么区别？", "faq.10a": "它们是闭源产品，有付费方案；Wispr Flow 在云端处理语音，Superwhisper 可选本地或云端模型。ThunderTalk 免费、开源，语音在你的 Mac 上处理。可选的 AI 润色与纪要使用你选择的服务。出处见<a href=\"#compare\">对比</a>。",
+      "cta.h": "试一试。语音输入，无需订阅。", "cta.fine": "Apple Silicon，macOS 15 或更高版本。MIT 协议。从 GitHub Releases 下载，或运行 <code>brew install --cask realallensong/tap/thundertalk</code>。",
       "cta.btn": "下载 macOS 版", "cta.btn2": "阅读源码",
       "foot.rel": "版本发布", "foot.issues": "反馈问题", "foot.lic": "MIT 协议"
     };
@@ -1221,7 +1241,7 @@
     };
     var DESC = {
       en: $('meta[name="description"]').getAttribute("content"),
-      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就落在光标处。识别在你的 Mac 上完成：无需账号，无需订阅，没有云端。1.5 新增 Studio：带说话人标签的文件转写、文字转语音和声音克隆。"
+      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就落在光标处。识别在你的 Mac 上完成：无需账号，无需订阅，没有云端。v1.7.0 新增实时预览、AI 润色、工作室链接转写、批量导出、字幕和会议纪要，下载更小。"
     };
 
     var i18nNodes = $$("[data-i18n]");
