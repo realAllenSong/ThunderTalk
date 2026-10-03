@@ -249,14 +249,15 @@ def test_build_command_hard_and_soft():
     cmd = burn.build_command("ffmpeg", "/v/in.mp4", "cues.ffconcat", "/v/out.mp4", info, "libx264",
                              soft_srt="subs.srt", language="chi")
     s = " ".join(cmd)
-    assert cmd[cmd.index("-i") + 1] == "/v/in.mp4" and "-f concat -safe 0 -i cues.ffconcat" in s
-    assert "overlay=x=(W-w)/2:y=H-h" in s and "-map [v] -map 0:a?" in s
-    assert "-map 2:s -c:s mov_text -metadata:s:s:0 language=chi" in s
-    assert "-c:v libx264" in s and "-c:a copy" in s and cmd[-1] == "/v/out.mp4"
+    assert cmd[cmd.index("-i") + 1] == "/v/in.mp4"
+    assert "overlay" not in s and "-map 0:v:0 -map 0:a?" in s
+    assert "-map 1:s" in s and "-c:s mov_text -metadata:s:s:0 language=chi" in s
+    assert "-c:v copy" in s and "-c:a copy" in s and cmd[-1] == "/v/out.mp4"
     assert "-progress pipe:1" in s
     hard = burn.build_command("ffmpeg", "/v/in.webm", "c", "/v/out.mp4", burn.VideoInfo(640, 360, 5, True, "opus"),
                               "h264_videotoolbox")
     s = " ".join(hard)
+    assert "overlay=x=(W-w)/2:y=H-h" in s
     assert "mov_text" not in s and "-c:a aac" in s and "h264_videotoolbox" in s
     silent = burn.build_command("ffmpeg", "a.mov", "c", "b.mov", burn.VideoInfo(640, 360, 5, False), "libx264")
     assert "0:a?" not in silent and "-c:a" not in silent
@@ -299,6 +300,7 @@ def test_renderer_draws_white_text_with_dark_outline(qapp, tmp_path):
     px = [img.pixelColor(x, y) for x in range(0, 640, 2) for y in range(0, r.band_h, 2)]
     assert any(c.alpha() == 255 and c.red() > 240 for c in px)            # white fill
     assert any(c.alpha() > 200 and c.red() < 30 for c in px)              # dark outline
+    assert any(165 <= c.alpha() <= 175 and c.red() < 10 for c in px)  # 67% box
     assert img.pixelColor(2, 2).alpha() == 0                              # transparent elsewhere
 
 
@@ -327,3 +329,16 @@ def test_burn_without_ffmpeg_says_so(tmp_path, monkeypatch):
     with pytest.raises(burn.BurnError) as ei:
         burn.burn(str(tmp_path / "a.mp4"), tr.Transcript([], 0, "x"), str(tmp_path / "b.mp4"))
     assert ei.value.code == "no_ffmpeg"
+
+
+def test_portrait_cues_fit_large_font_without_losing_words(qapp):
+    renderer = burn.CueRenderer(720, 1280)
+    text = "这是需要在竖屏视频中显示的很长的一段中文字幕。" * 4
+    cues = renderer.fit_cues([tr.Segment(0, 12, text)])
+    assert len(cues) > 1
+    assert "".join(c.text.replace("\n", "") for c in cues) == text
+    assert cues[0].start == 0 and cues[-1].end == pytest.approx(12)
+    assert all(len(renderer.lines(c.text)) <= renderer.style.max_lines for c in cues)
+    assert all(renderer.metrics.horizontalAdvance(line) <= renderer.w * .9
+               for c in cues for line in renderer.lines(c.text))
+    assert burn.wrap_text("abcdefghijk", len, 4) == ["abcd", "efgh", "ijk"]
