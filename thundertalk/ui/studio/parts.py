@@ -56,9 +56,11 @@ def fmt_seconds(secs: float) -> str:
 # ── drop zone ────────────────────────────────────────────────────────────
 
 class DropZone(QFrame):
-    """A dashed target for one audio/video file. Click to browse, or drop."""
+    """A dashed target for audio/video files. Click to browse, or drop.
+    One file emits ``file_chosen``; several at once emit ``files_chosen``."""
 
     file_chosen = Signal(str)
+    files_chosen = Signal(list)
 
     def __init__(self) -> None:
         super().__init__()
@@ -69,6 +71,7 @@ class DropZone(QFrame):
         self._hover = False
         self._drag = False
         self._path = ""
+        self._link: tuple[str, str] = ("", "")          # url, title
 
         ly = QVBoxLayout(self)
         ly.setContentsMargins(24, 18, 24, 18)
@@ -97,17 +100,30 @@ class DropZone(QFrame):
 
     def set_file(self, path: str, duration: float = 0.0) -> None:
         self._path = path
+        self._link = ("", "")
         self._duration = duration
+        self._refresh_text()
+
+    def set_link(self, url: str, title: str = "") -> None:
+        self._path = ""
+        self._link = (url, title)
         self._refresh_text()
 
     def clear(self) -> None:
         self._path = ""
+        self._link = ("", "")
         self._refresh_text()
 
     def retranslate(self) -> None:
         self._refresh_text()
 
     def _refresh_text(self) -> None:
+        url, title = self._link
+        if url:
+            from thundertalk.core.links import site_name
+            self._title.setText(title or url)
+            self._sub.setText(t("studio.link.sub").format(site=site_name(url)))
+            return
         if not self._path:
             self._title.setText(t("studio.drop.hint"))
             self._sub.setText(t("studio.drop.sub"))
@@ -126,11 +142,16 @@ class DropZone(QFrame):
     # -- events ---------------------------------------------------------
     def _browse(self) -> None:
         exts = " ".join(f"*{e}" for e in sorted(audio_io.AUDIO_EXTS))
-        path, _ = QFileDialog.getOpenFileName(
+        paths, _ = QFileDialog.getOpenFileNames(
             self, t("studio.drop.dialog"), str(Path.home()),
             f"{t('studio.drop.filter')} ({exts});;All files (*)")
-        if path:
-            self.file_chosen.emit(path)
+        self._emit(paths)
+
+    def _emit(self, paths: list[str]) -> None:
+        if len(paths) == 1:
+            self.file_chosen.emit(paths[0])
+        elif paths:
+            self.files_chosen.emit(list(paths))
 
     def mouseReleaseEvent(self, ev) -> None:
         if ev.button() == Qt.MouseButton.LeftButton and self.rect().contains(ev.position().toPoint()):
@@ -163,10 +184,8 @@ class DropZone(QFrame):
     def dropEvent(self, ev) -> None:
         self._drag = False
         self.update()
-        for u in ev.mimeData().urls():
-            if u.isLocalFile() and os.path.isfile(u.toLocalFile()):
-                self.file_chosen.emit(u.toLocalFile())
-                break
+        self._emit([u.toLocalFile() for u in ev.mimeData().urls()
+                    if u.isLocalFile() and os.path.isfile(u.toLocalFile())])
 
     def paintEvent(self, ev) -> None:
         p = QPainter(self)
@@ -174,11 +193,108 @@ class DropZone(QFrame):
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         on = self._hover or self._drag or self.hasFocus()
         p.setBrush(theme.qcolor(theme.HOVER_FILL if on else theme.BG_CARD))
+        empty = not self._path and not self._link[0]
         pen = QPen(theme.qcolor(theme.INK if on else theme.BORDER_STRONG), 1.2,
-                   Qt.PenStyle.DashLine if not self._path else Qt.PenStyle.SolidLine)
+                   Qt.PenStyle.DashLine if empty else Qt.PenStyle.SolidLine)
         p.setPen(pen)
         p.drawRoundedRect(r, theme.RADIUS_CARD, theme.RADIUS_CARD)
         p.end()
+
+
+# ── queue row ────────────────────────────────────────────────────────────
+
+class _ElidedLabel(QLabel):
+    """One line, elided in the middle when narrow (keeps the extension visible)."""
+
+    def __init__(self, text: str = "") -> None:
+        super().__init__()
+        self._full = text
+        self.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
+        self.setMinimumWidth(60)
+        self._apply()
+
+    def set_full(self, text: str) -> None:
+        self._full = text
+        self.setToolTip(text)
+        self._apply()
+
+    def full(self) -> str:
+        return self._full
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._apply()
+
+    def _apply(self) -> None:
+        super().setText(self.fontMetrics().elidedText(self._full, Qt.TextElideMode.ElideMiddle,
+                                                      max(40, self.width())))
+
+
+class QueueRow(QWidget):
+    """One queued file or link: name, status, a thin bar while it runs, and
+    one action — remove (waiting), cancel (running) or view (done)."""
+
+    action = Signal(str)                  # "remove" | "cancel" | "view"
+
+    def __init__(self, name: str) -> None:
+        super().__init__()
+        from thundertalk.ui.widgets import IconButton, ThinProgress
+        self.setStyleSheet("background: transparent;")
+        self.state = "waiting"
+        col = QVBoxLayout(self)
+        col.setContentsMargins(0, 8, 0, 8)
+        col.setSpacing(6)
+        row = QHBoxLayout()
+        row.setSpacing(10)
+        self._name = _ElidedLabel()
+        self._name.setFont(theme.font(13, bold=True))
+        self._name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
+        self._name.set_full(name)
+        row.addWidget(self._name, 3)
+        self._status = _ElidedLabel()
+        self._status.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        self._status.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignVCenter)
+        row.addWidget(self._status, 2)
+        self._view = theme.make_button(t("studio.batch.view"), "ghost", 28, font_px=12)
+        self._view.clicked.connect(lambda: self.action.emit("view"))
+        self._view.setVisible(False)
+        row.addWidget(self._view)
+        self._x = IconButton("x", 26)
+        self._x.clicked.connect(lambda: self.action.emit("cancel" if self.state == "running" else "remove"))
+        row.addWidget(self._x)
+        col.addLayout(row)
+        self._bar = ThinProgress(2)
+        self._bar.setVisible(False)
+        col.addWidget(self._bar)
+        self.set_state("waiting", t("studio.batch.waiting"))
+
+    def name(self) -> str:
+        return self._name.full()
+
+    def set_name(self, name: str) -> None:
+        self._name.set_full(name)
+
+    def status_text(self) -> str:
+        return self._status.full()
+
+    def set_state(self, state: str, text: str, pct: int = -1) -> None:
+        self.state = state
+        self._status.set_full(text)
+        running = state == "running"
+        self._bar.setVisible(running)
+        if running:
+            if pct >= 0:
+                self._bar.set_value(pct)
+            else:
+                self._bar.set_indeterminate(True)
+        self._view.setVisible(state == "done")
+        self._x.setToolTip(t("studio.batch.cancel_item") if running else t("studio.batch.remove"))
+        self._status.setStyleSheet(
+            f"color: {theme.ERROR if state == 'failed' else theme.TEXT_MUTED}; font-size: 12px;"
+            " background: transparent;")
+
+    def retranslate(self) -> None:
+        self._view.setText(t("studio.batch.view"))
 
 
 # ── waveform scrubber ────────────────────────────────────────────────────

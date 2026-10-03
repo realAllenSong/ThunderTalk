@@ -4,6 +4,8 @@
     ThunderTalk.app/Contents/MacOS/ThunderTalk --selftest tts
     ThunderTalk.app/Contents/MacOS/ThunderTalk --selftest asr --file talk.m4a
     ThunderTalk.app/Contents/MacOS/ThunderTalk --selftest clone --file me.wav --text "what I said"
+    ThunderTalk.app/Contents/MacOS/ThunderTalk --selftest link --file https://…   (downloads the audio only)
+    ThunderTalk.app/Contents/MacOS/ThunderTalk --selftest burn                   (needs ffmpeg installed)
 
 The old Lab worked from source but not from the shipped app (missing server,
 ffmpeg, scipy). These exist so a release can prove each Studio feature works
@@ -124,9 +126,49 @@ def check_clone(path: str, text: str, engine: str = "") -> bool:
                 seconds_audio=round(r.duration, 1), read_back_error=None if err is None else round(err, 3))
 
 
+def check_link(url: str) -> bool:
+    """Download the audio of a web link (no model) and decode it."""
+    from thundertalk.core import audio_io, links
+    t0 = time.monotonic()
+    got = links.fetch_audio(url)
+    try:
+        size = Path(got.path).stat().st_size
+        x = audio_io.decode_audio(got.path, 16000)
+    finally:
+        import shutil
+        shutil.rmtree(got.workdir, ignore_errors=True)
+    secs = len(x) / 16000
+    return _say(secs > 1.0, "link", title=got.title, format=Path(got.path).suffix, bytes=size,
+                seconds_audio=round(secs, 1), seconds_advertised=got.duration,
+                seconds_taken=round(time.monotonic() - t0, 1))
+
+
+def check_burn() -> bool:
+    """Burn a two-line Chinese/English transcript into a generated clip (needs ffmpeg)."""
+    from PySide6.QtGui import QGuiApplication
+
+    from thundertalk.core import audio_io, burn
+    from thundertalk.core.transcribe import Segment, Transcript
+    ff = audio_io.find_ffmpeg()
+    if not ff:
+        return _say(False, "burn", error="ffmpeg not found")
+    app = QGuiApplication.instance() or QGuiApplication(["selftest"])  # noqa: F841 - fonts need it
+    with tempfile.TemporaryDirectory() as d:
+        src, out = str(Path(d) / "clip.mp4"), str(Path(d) / "out.mp4")
+        import subprocess
+        subprocess.run([ff, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=640x360:rate=25", "-f", "lavfi",
+                        "-i", "sine=frequency=300", "-t", "4", "-pix_fmt", "yuv420p", "-c:a", "aac", src], check=True)
+        tr = Transcript([Segment(0.2, 1.8, "你好，这是字幕测试。"), Segment(2.0, 3.8, "Subtitles in the packaged app.")],
+                        4.0, "selftest")
+        r = burn.burn(src, tr, out, soft=True, ffmpeg=ff)
+        info = burn.probe(ff, out)
+    return _say(info is not None and info.width == 640 and r.cues == 2, "burn", bytes=r.size,
+                seconds_taken=round(r.seconds, 2), encoder=burn.pick_encoder(ff))
+
+
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
     ap.add_argument("--engine", default="", help="kokoro | voxcpm2 (default: all downloaded / the clone default)")
@@ -143,6 +185,10 @@ def run(argv: list[str]) -> int:
             ok &= check_moss(a.file)
         if a.what == "clone":
             ok &= check_clone(a.file, a.text, a.engine)
+        if a.what == "link":
+            ok &= check_link(a.file)
+        if a.what == "burn":
+            ok &= check_burn()
     except Exception as exc:                                    # noqa: BLE001
         import traceback
         traceback.print_exc()

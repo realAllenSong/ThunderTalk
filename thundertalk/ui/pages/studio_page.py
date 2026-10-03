@@ -93,14 +93,22 @@ class StudioPage(QWidget):
         self._transcribe.shutdown()
         self._speak.shutdown()
 
-    # Drop a recording anywhere on the page to transcribe it.
+    # Drop recordings (or a link dragged from the browser) anywhere on the page to transcribe them.
     def dragEnterEvent(self, ev) -> None:
-        if ev.mimeData().hasUrls() and any(u.isLocalFile() for u in ev.mimeData().urls()):
+        if ev.mimeData().hasUrls() and any(u.isLocalFile() or u.scheme() in ("http", "https")
+                                           for u in ev.mimeData().urls()):
             ev.acceptProposedAction()
 
     def dropEvent(self, ev) -> None:
-        for u in ev.mimeData().urls():
-            if u.isLocalFile():
-                self.show_tab("transcribe")
-                self._transcribe.load_file(u.toLocalFile())
-                break
+        urls = ev.mimeData().urls()
+        files = [u.toLocalFile() for u in urls if u.isLocalFile()]
+        web = [u.toString() for u in urls if u.scheme() in ("http", "https")]
+        if not files and not web:
+            return
+        self.show_tab("transcribe")
+        if len(files) == 1 and not web:
+            self._transcribe.load_file(files[0])
+        elif files:
+            self._transcribe.add_files(files)
+        if web:
+            self._transcribe.add_links(" ".join(web))

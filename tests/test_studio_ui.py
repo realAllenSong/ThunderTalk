@@ -5,6 +5,7 @@ from __future__ import annotations
 
 import time
 import wave
+from pathlib import Path
 from types import SimpleNamespace
 
 import numpy as np
@@ -540,6 +541,205 @@ def test_batch_select_and_delete(speak, monkeypatch):
     speak._del_sel_btn.click()
     assert voices.VoiceLibrary().list() == []
     assert not speak._select_btn.isVisibleTo(speak) and not speak._done_btn.isVisibleTo(speak)
+
+
+# ── transcribe from a link ───────────────────────────────────────────────
+
+@pytest.fixture
+def fake_link(monkeypatch):
+    import yt_dlp
+
+    from tests.test_links_burn import FakeYDL
+    from thundertalk.core import links
+    FakeYDL.errors, FakeYDL.info, FakeYDL.calls, FakeYDL.opts_seen = [], {}, 0, []
+    monkeypatch.setattr(yt_dlp, "YoutubeDL", FakeYDL)
+    monkeypatch.setattr(links.time, "sleep", lambda s: None)
+    return FakeYDL
+
+
+def test_transcribe_a_link_end_to_end(studio, fake_link, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QFileDialog
+    tab = studio.transcribe_tab
+    tab._link.setText("看看这个 https://www.youtube.com/watch?v=abc123 很有意思")
+    tab._link_btn.click()
+    assert tab._url == "https://www.youtube.com/watch?v=abc123" and tab._link.text() == ""
+    assert "youtube.com" in tab._drop._sub.text() and tab._go.isEnabled() and not tab.queue_mode()
+    tab._go.click()
+    assert wait_for(lambda: tab._result.isVisible() and not tab.busy())
+    assert tab._transcript.title == "My Talk: part 1/2" and tab._drop._title.text() == "My Talk: part 1/2"
+    assert "My Talk" in tab._stats.text() and not tab._burn_btn.isVisible()     # audio only: nothing to burn
+    asked = {}
+    monkeypatch.setattr(QFileDialog, "getSaveFileName",
+                        staticmethod(lambda _p, _c, path, _f: asked.setdefault("path", path) and ("", "")))
+    tab._export("md", ".md")
+    assert asked["path"].endswith("My Talk part 1 2.md")
+    assert not tab._summary_btn.isVisibleTo(tab)                               # placeholder only
+
+
+def test_link_errors_are_friendly(studio, fake_link):
+    fake_link.errors = ["ERROR: [youtube] abc: Private video. Sign in if you've been granted access"]
+    tab = studio.transcribe_tab
+    tab.add_links("https://youtu.be/abc")
+    tab._go.click()
+    assert wait_for(lambda: studio._toasts and not tab.busy())
+    kind, msg = studio._toasts[-1]
+    assert kind == "error" and "private" in msg.lower()
+    tab._link.setText("not a link at all")
+    tab._on_add_link()
+    assert studio._toasts[-1][0] == "warn" and tab._link.text() == "not a link at all"
+
+
+# ── queue ────────────────────────────────────────────────────────────────
+
+class CountingAsr(FakeAsr):
+    """Fails the test if two recognitions ever overlap; optionally slow."""
+
+    def __init__(self, delay=0.0):
+        super().__init__()
+        self.delay, self.active, self.max_active = delay, 0, 0
+
+    def recognize(self, x, sr):
+        self.active += 1
+        self.max_active = max(self.max_active, self.active)
+        time.sleep(self.delay)
+        self.active -= 1
+        return super().recognize(x, sr)
+
+
+def _wavs(folder, names, seconds=9.0, n=2):
+    folder.mkdir(exist_ok=True)
+    out = []
+    for name in names:
+        p = folder / name
+        audio_io.write_wav(str(p), _talk(seconds, n), SR)
+        out.append(str(p))
+    return out
+
+
+def test_queue_of_three_files_runs_one_at_a_time(studio, tmp_path):
+    from thundertalk.core import i18n
+    tab = studio.transcribe_tab
+    asr = CountingAsr(0.02)
+    tab.set_engine(asr)
+    paths = _wavs(tmp_path / "in", ["a.wav", "b.wav", "c.wav"])
+    tab.add_files(paths)
+    assert tab.queue_mode() and len(tab._rows) == 3 and tab._queue.isVisible()
+    assert tab._go.text() == "Transcribe all (3)" and tab._go.isEnabled()
+    i18n.LANG = "zh"
+    try:
+        tab.retranslate()
+        assert "全部转写" in tab._go.text()
+    finally:
+        i18n.LANG = "en"
+        tab.retranslate()
+    tab._go.click()
+    assert tab._cancel.text() == "Cancel all"
+    assert wait_for(lambda: not tab.busy(), 20)
+    assert [r.state for r in tab._rows] == ["done"] * 3 and asr.max_active == 1
+    for p in paths:
+        assert Path(p).with_suffix(".txt").is_file() and Path(p).with_suffix(".srt").is_file()
+    assert "words" in Path(paths[1]).with_suffix(".txt").read_text(encoding="utf-8")
+    assert studio._toasts[-1] == ("success", "Queue finished: 3 of 3 saved")
+    assert not tab._result.isVisible()
+    tab._rows[1]._view.click()
+    assert tab._result.isVisible() and tab._transcript is tab._rows[1].transcript
+    assert tab._go.text() == "Transcribe all (0)" and not tab._go.isEnabled()
+
+
+def test_queue_to_a_folder_with_a_link_and_one_cancelled(studio, tmp_path, fake_link, monkeypatch):
+    from PySide6.QtWidgets import QFileDialog
+    tab = studio.transcribe_tab
+    tab.set_engine(CountingAsr(0.15))
+    out = tmp_path / "out"
+    out.mkdir()
+    monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(out)))
+    tab.add_files(_wavs(tmp_path / "in", ["a.wav", "b.wav"]))
+    tab.add_links("https://www.bilibili.com/video/BV1abc")
+    assert [r.item.is_url for r in tab._rows] == [False, False, True]
+    tab._dest.set_current("folder")
+    tab._on_dest("folder")
+    tab._toggle_format("md", True)
+    tab._toggle_format("txt", False)
+    assert tab._formats == ["srt", "md"] or tab._formats == ["md", "srt"]
+    tab._go.click()
+    assert wait_for(lambda: tab._rows[0].state == "running")
+    tab._rows[1]._x.click()                                  # skip the waiting one
+    assert wait_for(lambda: not tab.busy(), 20)
+    assert [r.state for r in tab._rows] == ["done", "cancelled", "done"]
+    assert tab._rows[2].name() == "My Talk: part 1/2"
+    names = sorted(p.name for p in out.iterdir())
+    assert names == ["My Talk part 1 2.md", "My Talk part 1 2.srt", "a.md", "a.srt"]
+    assert studio._toasts[-1][0] == "warn"
+
+
+def test_cancel_all_stops_the_queue(studio, tmp_path):
+    tab = studio.transcribe_tab
+    tab.set_engine(CountingAsr(0.25))
+    tab.add_files(_wavs(tmp_path / "in", ["a.wav", "b.wav", "c.wav"], 9.0, 4))
+    tab._go.click()
+    assert wait_for(lambda: tab._rows[0].state == "running")
+    tab._cancel.click()
+    assert wait_for(lambda: not tab.busy(), 10)
+    assert [r.state for r in tab._rows] == ["cancelled"] * 3
+    assert not any(p.suffix == ".txt" for p in (tmp_path / "in").iterdir())
+
+
+def test_single_file_flow_is_unchanged_and_queue_collapses(studio, tmp_path):
+    tab = studio.transcribe_tab
+    a, b = _wavs(tmp_path / "in", ["a.wav", "b.wav"], 3.0, 1)
+    tab.add_files([a])                                       # one file: the old single flow
+    assert not tab.queue_mode() and tab._path == a
+    tab.load_file(b)                                         # choosing another replaces it
+    assert tab._path == b and not tab.queue_mode()
+    tab.add_files([a, b])
+    assert tab.queue_mode() and tab._path == ""
+    tab._rows[0]._x.click()                                  # remove one → back to a single file
+    assert not tab.queue_mode() and tab._path == b and "b.wav" in tab._drop._title.text()
+
+
+def test_dropping_a_browser_link_on_the_page(studio, fake_link):
+    from PySide6.QtCore import QMimeData, QPointF, Qt, QUrl
+    from PySide6.QtGui import QDropEvent
+    md = QMimeData()
+    md.setUrls([QUrl("https://www.youtube.com/watch?v=abc123")])
+    studio.dropEvent(QDropEvent(QPointF(5, 5), Qt.DropAction.CopyAction, md, Qt.MouseButton.LeftButton,
+                                Qt.KeyboardModifier.NoModifier))
+    assert studio.transcribe_tab._url == "https://www.youtube.com/watch?v=abc123"
+
+
+# ── burn subtitles into a video ──────────────────────────────────────────
+
+def test_burn_is_offered_for_local_videos_and_explains_missing_ffmpeg(studio, tmp_path, monkeypatch):
+    from thundertalk.ui import styled_dialog
+    tab = studio.transcribe_tab
+    clip = tmp_path / "clip.mp4"
+    clip.write_bytes(b"\0" * 10)
+    t = tr.Transcript([tr.Segment(0, 1, "hi")], 1.0, "Fake", 0.1)
+    tab._show_result(t, str(clip))
+    assert tab._burn_btn.isVisible()
+    tab._show_result(t, str(tmp_path / "talk.wav"))
+    assert not tab._burn_btn.isVisible()
+    tab._show_result(t, str(clip))
+    monkeypatch.setattr(audio_io, "find_ffmpeg", lambda: None)
+    monkeypatch.setattr(styled_dialog.StyledDialog, "confirm", staticmethod(lambda *a, **k: True))
+    tab.burn_subtitles()
+    assert QApplication.clipboard().text() == "brew install ffmpeg" and not tab.busy()
+
+
+@pytest.mark.skipif(audio_io.find_ffmpeg() is None, reason="needs ffmpeg")
+def test_burn_from_the_result_card(studio, tmp_path):
+    import subprocess
+    ff = audio_io.find_ffmpeg()
+    clip, out = tmp_path / "clip.mov", tmp_path / "clip (subtitled).mov"
+    subprocess.run([ff, "-v", "error", "-y", "-f", "lavfi", "-i", "testsrc2=size=320x180:rate=25", "-f", "lavfi",
+                    "-i", "sine=frequency=300", "-t", "3", "-pix_fmt", "yuv420p", "-c:a", "aac", str(clip)], check=True)
+    tab = studio.transcribe_tab
+    tab._show_result(tr.Transcript([tr.Segment(0.2, 2.5, "你好，字幕")], 3.0, "Fake", 0.1), str(clip))
+    tab.burn_subtitles(soft=True, out=str(out))
+    assert tab.busy() and tab._cancel.isVisible()
+    assert wait_for(lambda: not tab.busy(), 20)
+    assert out.is_file() and studio._toasts[-1][0] == "success" and "clip (subtitled).mov" in studio._toasts[-1][1]
+    assert tab._go.isVisible() and not tab._cancel.isVisible()
 
 
 def test_done_leaves_pick_mode_and_keeps_voices(speak):

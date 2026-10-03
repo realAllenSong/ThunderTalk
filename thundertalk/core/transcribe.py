@@ -6,15 +6,18 @@
     sentence-level timestamps for free;
   * speaker path: MOSS-Transcribe-Diarize returns speaker turns with
     timestamps in a single pass (up to ~90 minutes);
+  * web links (YouTube, Bilibili, …) are fetched audio-only via links.py;
   * results export to TXT / Markdown / SRT / VTT / JSON.
 """
 
 from __future__ import annotations
 
 import json
+import shutil
 import threading
 import time
 from dataclasses import dataclass, field
+from pathlib import Path
 from typing import Callable, Optional
 
 import numpy as np
@@ -46,8 +49,17 @@ class Transcript:
     seconds_taken: float = 0.0
     has_speakers: bool = False
     speaker_names: dict[str, str] = field(default_factory=dict)
+    title: str = ""                       # e.g. the video title for a link
+    source_url: str = ""
+    expected_duration: float = 0.0        # length the site advertised for a link
 
     # -- derived -------------------------------------------------------
+    @property
+    def is_partial(self) -> bool:
+        """The site served noticeably less than the advertised length (e.g. a
+        30 s preview of a members-only Bilibili video)."""
+        return self.expected_duration > 0 and self.duration < 0.8 * self.expected_duration - 1.0
+
     @property
     def realtime_factor(self) -> float:
         """How many times faster than real time (e.g. 18.0 = 18×)."""
@@ -99,8 +111,11 @@ class Transcript:
             out += sep + s.text
         return out
 
-    def to_markdown(self, title: str = "Transcript") -> str:
+    def to_markdown(self, title: str = "") -> str:
+        title = title or self.title or "Transcript"
         meta = f"*{fmt_time(self.duration)} · {self.engine}*"
+        if self.source_url:
+            meta += f"  \n<{self.source_url}>"
         if self.has_speakers:
             body = "\n\n".join(f"**{self.label(t.speaker)}** ({fmt_time(t.start)})  \n{t.text}" for t in self.turns())
         else:
@@ -122,7 +137,9 @@ class Transcript:
         return "\n".join(blocks)
 
     def to_json(self) -> str:
+        head = {k: v for k, v in (("title", self.title), ("source_url", self.source_url)) if v}
         return json.dumps({
+            **head,
             "duration": round(self.duration, 3), "engine": self.engine, "speakers": self.speakers,
             "speaker_names": self.speaker_names,
             "segments": [{"start": round(s.start, 3), "end": round(s.end, 3), "speaker": s.speaker, "text": s.text}
@@ -155,6 +172,79 @@ def srt_time(secs: float, sep: str = ",") -> str:
         secs, ms = secs + 1, 0
     h, m, s = int(secs // 3600), int(secs % 3600 // 60), int(secs % 60)
     return f"{h:02d}:{m:02d}:{s:02d}{sep}{ms:03d}"
+
+
+# ── on-screen subtitle cues ──────────────────────────────────────────────
+
+_CLAUSE_END = "。！？；!?;，,、：:"
+
+
+def _cjk_heavy(text: str) -> bool:
+    return sum(_ends_cjk(c) for c in text) > len(text) * 0.3
+
+
+def _split_long(text: str, limit: int) -> list[str]:
+    """Split ``text`` into pieces of at most ``limit`` characters: at clause
+    punctuation first, then at spaces, then hard (CJK has no spaces)."""
+    pieces: list[str] = []
+    buf = ""
+    for ch in text:
+        buf += ch
+        if ch in _CLAUSE_END:
+            pieces.append(buf)
+            buf = ""
+    if buf:
+        pieces.append(buf)
+    out: list[str] = []
+    for piece in pieces:
+        while len(piece) > limit:
+            target = len(piece) // -(-len(piece) // limit)       # balanced, not 84 + 6
+            spaces = [i for i, c in enumerate(piece[: limit + 1]) if c == " " and i > target // 2]
+            cut = min(spaces, key=lambda i: abs(i - target)) if spaces else target
+            out.append(piece[:cut])
+            piece = piece[cut:].lstrip()
+        if piece:
+            out.append(piece)
+    lines: list[str] = []
+    for piece in out:                              # greedily re-pack short clauses
+        if lines and len(lines[-1]) + len(piece) <= limit:
+            lines[-1] += piece
+        else:
+            lines.append(piece)
+    return [s.strip() for s in lines if s.strip()]
+
+
+def subtitle_cues(tr: Transcript, cjk_chars: int = 32, latin_chars: int = 84) -> list[Segment]:
+    """Segments cut to subtitle size (about two lines on screen). Fast-mode
+    segments run 10–30 s, far too long to read as one caption, so each is split
+    at clause boundaries and its time shared out by character count. A speaker
+    label is shown only when the speaker changes."""
+    cues: list[Segment] = []
+    last_speaker = ""
+    for s in tr.segments:
+        text = s.text.strip()
+        if not text:
+            continue
+        limit = cjk_chars if _cjk_heavy(text) else latin_chars
+        parts = _split_long(text, limit)
+        total = sum(len(p) for p in parts) or 1
+        span = max(s.end - s.start, 0.5 * len(parts))
+        t = s.start
+        for i, p in enumerate(parts):
+            dur = span * len(p) / total
+            label = ""
+            if i == 0 and s.speaker and s.speaker != last_speaker:
+                label = f"{tr.label(s.speaker)}: "
+            cues.append(Segment(t, t + dur, label + p, s.speaker))
+            t += dur
+        if s.speaker:
+            last_speaker = s.speaker
+    return cues
+
+
+def cues_to_srt(cues: list[Segment]) -> str:
+    return "\n".join(f"{i}\n{srt_time(c.start)} --> {srt_time(max(c.end, c.start + 0.3))}\n{c.text}\n"
+                     for i, c in enumerate(cues, 1))
 
 
 # ── segmentation at natural pauses ───────────────────────────────────────
@@ -308,3 +398,63 @@ def transcribe_file(
         raise RuntimeError("no_speech")
     _p(100, "done")
     return Transcript(segs, duration, getattr(engine, "current_model", "") or "ASR", time.monotonic() - t0)
+
+
+def transcribe_link(
+    url: str,
+    engine,
+    speakers: bool = False,
+    progress: Optional[ProgressCB] = None,
+    cancel: Optional[threading.Event] = None,
+    on_title: Optional[Callable[[str], None]] = None,
+) -> Transcript:
+    """Download the audio of a web link, transcribe it, delete the download.
+
+    Progress messages: "fetch", then "download:<bytes done>:<bytes total>",
+    then the same ones as ``transcribe_file``."""
+    from thundertalk.core import links
+
+    if progress:
+        progress(-1, "fetch")
+
+    def dl(pct: int, done: int, total: int) -> None:
+        if progress:
+            progress(pct, f"download:{done}:{total}")
+
+    try:
+        got = links.fetch_audio(url, dl, cancel, on_title)
+    except links.LinkCancelled:
+        raise TranscribeCancelled() from None
+    try:
+        tr = transcribe_file(got.path, engine, speakers=speakers, progress=progress, cancel=cancel)
+    finally:
+        shutil.rmtree(got.workdir, ignore_errors=True)
+    tr.title, tr.source_url, tr.expected_duration = got.title, url, got.duration
+    return tr
+
+
+# ── saving ───────────────────────────────────────────────────────────────
+
+EXPORT_EXTS = {"txt": ".txt", "md": ".md", "srt": ".srt", "vtt": ".vtt", "json": ".json"}
+
+
+def unique_path(path: Path) -> Path:
+    """``path``, or "name (2).ext", "name (3).ext"… if it already exists."""
+    if not path.exists():
+        return path
+    for i in range(2, 1000):
+        cand = path.with_name(f"{path.stem} ({i}){path.suffix}")
+        if not cand.exists():
+            return cand
+    return path
+
+
+def save_outputs(tr: Transcript, folder: str, stem: str, formats: list[str]) -> list[str]:
+    """Write ``tr`` as each format into ``folder``; never overwrites a file."""
+    out: list[str] = []
+    Path(folder).mkdir(parents=True, exist_ok=True)
+    for fmt in formats:
+        p = unique_path(Path(folder) / f"{stem}{EXPORT_EXTS[fmt]}")
+        p.write_text(tr.export(fmt), encoding="utf-8")
+        out.append(str(p))
+    return out
