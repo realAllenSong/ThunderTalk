@@ -443,3 +443,78 @@ def test_settings_toggle_and_strings(qapp, isolated_home, no_audio_hw):
     page = SettingsPage(s)
     page._live_toggle.toggled_signal.emit(False)
     assert Settings().get("live_preview") is False
+
+
+@pytest.mark.parametrize("text", [
+    "我们来看一下机器人机器人机器人，接下来继续", "你好你好你好你好",
+    "Let us try fallback fallback fallback fallback now.",
+    "we should try again, try again, try again!",
+    "介绍 humanoid机器人humanoid机器人humanoid机器人humanoid机器人",
+    "GPT 的 Astra、Luna，humanoid 机器人 humanoid 机器人 humanoid 机器人",
+])
+def test_guard_realistic_loops(text):
+    from thundertalk.core.preview_guard import preview_is_looping
+    assert preview_is_looping(text, 8)
+
+
+@pytest.mark.parametrize("text", [
+    "今天介绍GPT的Astra、Luna、Terra以及humanoid机器人。",
+    "This is a fairly fast English sentence with GPT-6.1 and Claude Opus.",
+    "我们试试机器人机器人，继续。", "www.example.com", "1234567890", "",
+])
+def test_guard_clean_text(text):
+    from thundertalk.core.preview_guard import preview_is_looping
+    assert not preview_is_looping(text, 8)
+
+
+def test_guard_implausible_length():
+    from thundertalk.core.preview_guard import preview_is_looping
+    text = " ".join(f"word{i}" for i in range(100))
+    assert preview_is_looping(text, 1)
+    assert not preview_is_looping(text, 60)
+
+
+def test_loop_window_never_committed_or_used_as_reference(qapp):
+    rec = FakeRecorder(_speech(16, pauses=(5, 11)))
+    responses = iter(["今天使用Astra模型。", "前面是Luna，humanoid机器人" * 4, "干净的尾巴。"])
+    p, got = _preview(rec, FakeAsr(text_fn=lambda _: next(responses)), window_s=8)
+    p.start()
+    p._timer.stop()
+    rec.feed(3)
+    p._on_result(p._gen, p._decode(p._gen))
+    assert p.last_clean_text() == "今天使用Astra模型。"
+    rec.feed(7)
+    p._on_result(p._gen, p._decode(p._gen))
+    assert p.loop_detected
+    assert "Luna" not in p._committed_text
+    assert p.last_clean_text() == "干净的尾巴。"
+    p.stop()
+    assert p.last_clean_text() == "干净的尾巴。"
+    p.reset()
+    assert p.last_clean_text() == "" and not p.loop_detected
+
+
+def test_recording_setting_and_translations(qapp, isolated_home, no_audio_hw):
+    from thundertalk.core import i18n
+    from thundertalk.core.settings import Settings
+    from thundertalk.ui.pages.settings_page import SettingsPage
+    s = Settings()
+    assert s.get("keep_recent_recordings") is True
+    page = SettingsPage(s)
+    page._recordings_toggle.toggled_signal.emit(False)
+    assert Settings().get("keep_recent_recordings") is False
+    for key in ("settings.keep_recent_recordings.label", "settings.keep_recent_recordings.desc"):
+        assert i18n._STRINGS[key]["en"] and i18n._STRINGS[key]["zh"]
+
+
+def test_guard_long_repeated_phrase():
+    from thundertalk.core.preview_guard import preview_is_looping
+    phrase = " ".join(f"technicalTerm{i}" for i in range(10))
+    assert preview_is_looping(phrase * 3, 30)
+
+
+def test_guard_single_letter_words_and_punctuation_runaway():
+    from thundertalk.core.preview_guard import preview_is_looping
+    assert preview_is_looping("I I I cannot stop", 3)
+    assert preview_is_looping("." * 1000, 3)
+    assert not preview_is_looping("www and AAA batteries", 3)

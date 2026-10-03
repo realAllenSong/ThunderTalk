@@ -3,8 +3,8 @@
 While the hotkey recording runs, a timer on the UI thread periodically takes
 the audio captured so far and re-recognizes it with the loaded model on a
 background thread. The result is only shown in the floating indicator — the
-pasted text still comes from the normal full-clip recognition after stop, so
-accuracy never depends on the preview.
+pasted text comes from full-clip recognition after stop; clean previews can
+provide Latin terms to the conservative final-text merge.
 
 Cost is bounded for long dictations: earlier speech is decoded once and kept
 ("committed") at a pause, and each tick only re-decodes the uncommitted tail
@@ -29,6 +29,7 @@ import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.preview_guard import preview_is_looping
 
 SAMPLE_RATE = 16_000
 
@@ -168,6 +169,19 @@ class LivePreview(QObject):
     def window_s(self) -> float:
         return self._window
 
+    def last_clean_text(self) -> str:
+        """Last displayed clean committed + tail text; survives stop()."""
+        return self._last_text
+
+    @property
+    def loop_detected(self) -> bool:
+        return bool(self.stats.get("loops", 0))
+
+    def reset(self) -> None:
+        """Clear the reference even when preview is disabled for the next take."""
+        self._last_text = ""
+        self.stats = {}
+
     def start(self) -> None:
         self._gen += 1
         self._active = True
@@ -179,7 +193,7 @@ class LivePreview(QObject):
         self._interval = self._base_interval
         self._window = self._max_window
         self.stats = {"ran": 0, "skipped_busy": 0, "skipped_lock": 0, "errors": 0,
-                      "decode_s": [], "latency_s": [], "commits": 0}
+                      "decode_s": [], "latency_s": [], "commits": 0, "loops": 0}
         self._timer.start(self._first_tick)
 
     def stop(self) -> None:
@@ -280,6 +294,10 @@ class LivePreview(QObject):
         self.stats["ran"] += 1
         self.stats["decode_s"].append(dt)
         self._adapt(dt, len(samples) / self._sr)
+        if preview_is_looping(text, len(samples) / self._sr):
+            self.stats["loops"] += 1
+            print("[Preview] discarded looping/implausibly long window")
+            return ""
         return text.strip()
 
     def _adapt(self, decode_s: float, audio_s: float) -> None:

@@ -485,3 +485,38 @@ def test_api_settings_file_is_private(isolated_home):
     from thundertalk.core.settings import Settings
     Settings().set("cleanup_api_key", "synthetic-key")
     assert stat.S_IMODE((isolated_home / ".thundertalk/settings.json").stat().st_mode) == 0o600
+
+
+@pytest.mark.parametrize("supports_reference", [True, False])
+def test_worker_cleanup_reference_api_compatibility(qapp, monkeypatch, supports_reference):
+    from thundertalk.app import LlmRewriteWorker
+    seen = []
+
+    def modern(provider, text, model, style, timeout, cancel, *, reference_text=None):
+        seen.append(reference_text)
+        return text
+
+    def legacy(provider, text, model, style, timeout, cancel):
+        seen.append("legacy")
+        return text
+
+    monkeypatch.setattr(ai, "cleanup", modern if supports_reference else legacy)
+    worker = LlmRewriteWorker(object(), "raw", "fake", object(), "light", 1, False,
+                              reference_text="GPT 的 Astra、Luna")
+    worker.run()
+    assert seen == (["GPT 的 Astra、Luna"] if supports_reference else ["legacy"])
+
+
+def test_worker_does_not_retry_internal_typeerror(qapp, monkeypatch):
+    from thundertalk.app import LlmRewriteWorker
+    seen = []
+
+    def broken(provider, text, model, style, timeout, cancel, *, reference_text=None):
+        seen.append(reference_text)
+        raise TypeError("provider bug")
+
+    monkeypatch.setattr(ai, "cleanup", broken)
+    worker = LlmRewriteWorker(object(), "raw", "fake", object(), "light", 1, False,
+                              reference_text="clean preview")
+    worker.run()
+    assert seen == ["clean preview"]

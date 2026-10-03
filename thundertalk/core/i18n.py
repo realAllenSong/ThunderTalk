@@ -371,6 +371,13 @@ _STRINGS: dict[str, dict[str, str]] = {
               "The pasted text is still recognized from the full recording.",
         "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字仍按完整录音识别。",
     },
+    "settings.keep_recent_recordings.label": {
+        "en": "Keep recent recordings", "zh": "保留最近录音",
+    },
+    "settings.keep_recent_recordings.desc": {
+        "en": "Keep the last 20 dictations for troubleshooting, stored only on this Mac.",
+        "zh": "保留最近 20 次听写以排查问题，仅储存在这台 Mac 上。",
+    },
     "settings.llm_rewrite.label": {
         "en": "Grammar Correction", "zh": "语法修正",
     },

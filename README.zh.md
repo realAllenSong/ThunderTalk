@@ -71,13 +71,14 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 **听写**
 
 - 一个全局快捷键，任意应用都能用。默认是 Right ⌘；可以在“设置”里选择“切换”（按一下开始、再按一下结束）或“长按”，也可以更换按键或组合键。
-- **实时预览：**说话时可在悬浮录音条里看到临时文字。“设置 ▸ 实时预览”默认开启。文字可能随后续语音修订，结束录音后仍会完整识别整段音频，生成最终粘贴内容。“直译”模式不显示预览；模型跟不上时，预览可能暂停或停止到本次录音结束。
+- **实时预览：**说话时可在悬浮录音条里看到临时文字。“设置 ▸ 实时预览”默认开启。文字可能随后续语音修订，结束录音后仍会完整识别整段音频，生成最终粘贴内容。重复循环的预览窗口会被丢弃；保守合并可在干净预览与最终中文片段准确对齐时恢复拉丁字母术语。“直译”模式不显示预览；模型跟不上时，预览可能暂停或停止到本次录音结束。
 - 多种语音模型：Qwen3-ASR 0.6B 与 1.7B、SenseVoice-Small、NVIDIA Parakeet-TDT、MOSS-Transcribe-Diarize。应用会读取你的硬件并推荐合适的模型。
 - 中文、英文，以及同一句话里的中英混说。界面本身也有英文和中文两种语言。
 - 热词：把总是听错的产品名、缩写、人名教给它（适用于 Qwen3-ASR 系列模型）。
 - 逆文本规整：口述的数字会变成阿拉伯数字，中英文都支持（“twenty five”变成 25，“三百五十二”变成 352）。
 - 可选的翻译，通过 SeamlessM4T v2 支持 100+ 种语言：“直译”模式结束录音后粘贴译文，“审阅”模式先转写，再由你选择替换或保留原文。
 - 可搜索的历史记录，保存为 `~/.thundertalk` 里的普通文件。
+- **最近录音：**默认开启，将最近 20 次听写以 16 kHz 单声道 WAV 和识别元数据保存到 `~/.thundertalk/recordings/`，仅储存在这台 Mac 上，绝不上传。在“设置 ▸ 保留最近录音”关闭后不再保存新录音，已有录音仍保留。
 - **AI 润色与语音编辑：**使用已有且登录的 Codex、Claude Code、Gemini、Grok 或 Cursor CLI，已安装模型的 Ollama / LM Studio，Cherry Studio API 服务，或自定义 OpenAI 兼容 API。不内置或下载 AI 模型。在设置中启用、选择服务与模型，并为各应用选择风格或关闭。润色去除语气词和重复内容、修正标点，同时保留原意与语言，包括中英混说。仅用于普通听写，不用于“直译”或“审阅”翻译。先立即粘贴原文；没有输入、点击、滚动或切换应用时才替换为整理结果。超时保留原文。终端没有标准的粘贴撤销，因此跳过替换。
 - 中英双语整句语音命令（默认开启，不依赖 AI 润色，可在设置中关闭）：「换行 / new line」「新段落 / new paragraph」「删掉上一句 / delete that」（撤销最后一段未被操作的听写）及「制表符 / tab key」。为该应用开启 AI 润色后，录音前选中文字，再说「改得正式一点 / make this more formal」「简短一点 / make this shorter」或「翻译成英文 / translate to English」（也支持「翻译成中文 / translate to Chinese」）即可编辑选中内容。读取选区需要 macOS 辅助功能支持，完整剪贴板会保存并恢复。
 
@@ -367,3 +368,12 @@ ThunderTalk 基于 [MIT License](LICENSE) 开源。随意使用、fork、集成�
 - [SenseVoice](https://github.com/FunAudioLLM/SenseVoice)：轻量级 ASR 模型
 - [Qwen3-ASR](https://github.com/QwenLM/Qwen3-ASR)：业界领先的 ASR 模型
 - [OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)：MOSS-Transcribe-Diarize
+
+### 复现听写问题
+
+在项目目录中使用 `PYTHONPATH=$PWD <python> tools/replay_dictation.py RECORDING.wav`，
+工具读取同名 JSON 中的模型、语言和热词，输出整段识别、分块预览和合并结果。
+共享机器上应通过 `~/Library/Caches/ThunderTalk-bench/lock.py gpu -- <命令>` 运行；
+已下载模型可设置 `HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`。
+`--model`、`--language`、`--hotword`、`--step`、`--limit-seconds` 可用于对比。
+工具同步模拟音频推进，复用预览的窗口、提交和循环保护逻辑，不模拟定时器跳帧或慢模型停用；输出仅保存在本机。

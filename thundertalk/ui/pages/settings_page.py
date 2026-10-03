@@ -441,6 +441,12 @@ class SettingsPage(QWidget):
         card2.add_row("settings.live_preview.label", "settings.live_preview.desc",
                       self._live_toggle, sep=True)
 
+        self._recordings_toggle = theme.ToggleSwitch(self._settings.get("keep_recent_recordings"))
+        self._recordings_toggle.toggled_signal.connect(
+            lambda v: self._settings.set("keep_recent_recordings", v))
+        card2.add_row("settings.keep_recent_recordings.label",
+                      "settings.keep_recent_recordings.desc", self._recordings_toggle, sep=True)
+
         from thundertalk.ui.cleanup_settings import CleanupSettings
         self.cleanup_settings = CleanupSettings(self._settings)
         self._col.addWidget(self.cleanup_settings)
