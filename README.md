@@ -35,7 +35,7 @@ The interface is deliberately quiet: warm paper background, near-black ink, one 
 ## New in v1.7.0
 
 - **See text while you speak:** Live Preview shows provisional words in the recording bar. It is on by default; the final text still comes from recognition of the full recording.
-- **Clean up and edit by voice:** optional AI cleanup uses your existing provider, with app-specific styles and English/Chinese voice commands.
+- **AI proofreading:** optional AI Proofread fixes misrecognized names, terms and homophones using your existing provider, without rewriting what you said.
 - **Do more in Studio:** transcribe web links, queue several files or links, burn subtitles into a video copy, and generate AI meeting notes.
 - **Smaller download:** about 224 MB zipped and 592 MiB installed, down from 330 MB and 961 MiB. Translation and IndexTTS share an optional 90 MB PyTorch download; model weights are extra.
 - **Chinese translation fixed:** Direct mode with Chinese (Mandarin) as the target now returns Chinese instead of leaving the speech in English.
@@ -52,7 +52,7 @@ Studio replaces the old Lab page. It has two parts: Transcribe and Speak.
 
 **Subtitles in a video.** After transcribing a local video, choose **Burn into video…** to save a copy with subtitles drawn into the picture. You can also add a selectable subtitle track. This action needs ffmpeg, which is not bundled: if you use [Homebrew](https://brew.sh/), install it with `brew install ffmpeg` in Terminal, then try again. Normal transcription of common formats does not need it. Link transcription downloads audio, so burn-in requires a local video file.
 
-**AI meeting notes.** After transcription, generate a short summary, key points, decisions, action items and open questions in the transcript's English or Chinese. Notes reuse the provider and model selected in **Settings ▸ AI cleanup**, even with dictation cleanup switched off; no model is downloaded. Copy or save notes as Markdown, or include them in the transcript's Markdown export. A queue checkbox generates notes after each transcription and also saves Markdown. Long transcripts use up to 16 chunks of about 6,000 characters plus one merge, with a 60-second timeout per call and Cancel. Cloud CLIs send transcript text to their provider; Ollama and LM Studio use your local server. Notes are asked to mark missing owners or deadlines as “not mentioned”. Review the generated notes against the transcript.
+**AI meeting notes.** After transcription, generate a short summary, key points, decisions, action items and open questions in the transcript's English or Chinese. Notes reuse the provider and model selected on the **AI Proofread** page, even with proofreading switched off; no model is downloaded. Copy or save notes as Markdown, or include them in the transcript's Markdown export. A queue checkbox generates notes after each transcription and also saves Markdown. Long transcripts use up to 16 chunks of about 6,000 characters plus one merge, with a 60-second timeout per call and Cancel. Cloud CLIs send transcript text to their provider; Ollama and LM Studio use your local server. Notes are asked to mark missing owners or deadlines as “not mentioned”. Review the generated notes against the transcript.
 
 **Speak.** Turn text into speech with your choice of three local engines:
 
@@ -78,8 +78,7 @@ The speech engines are one-time downloads. After that, file transcription and sp
 - Inverse text normalisation: spoken numbers become digits, in English and Chinese ("twenty five" becomes 25, "三百五十二" becomes 352).
 - Optional translation into 100+ languages with SeamlessM4T v2, in **Direct** mode (paste the translation after you stop) or **Review** mode (transcribe first, then choose Replace or Keep original).
 - A searchable history, stored as a plain file in `~/.thundertalk`.
-- **AI cleanup and voice editing:** use your existing logged-in Codex, Claude Code, Gemini, Grok or Cursor CLI, an already installed Ollama / LM Studio model, Cherry Studio's API server, or a custom OpenAI-compatible API. No AI model is bundled or downloaded. Enable it in Settings, choose a provider/model, and set app-specific styles or turn it off per app. Cleanup removes fillers and repetitions and fixes punctuation while preserving meaning and language, including mixed Chinese-English. It applies to plain dictation, not Direct or Review translation. Raw text is pasted immediately; cleanup replaces it only if you haven't typed, clicked, scrolled or switched apps. Timeouts leave raw text untouched. Terminal results are skipped because terminal input has no standard paste undo.
-- Whole-utterance voice commands in English and Chinese (on by default, independently of AI cleanup; switch them off in Settings): “new line / 换行”, “new paragraph / 新段落”, “delete that / 删掉上一句” (undo the last untouched dictation), and “tab key / 制表符”. With AI cleanup enabled for the app, select text before recording and say “make this shorter / 简短一点”, “make this more formal / 改得正式一点” or “translate to English / 翻译成英文” (also “translate to Chinese / 翻译成中文”) to edit the selection. Selection reading requires macOS Accessibility support; the full clipboard is saved and restored.
+- **AI Proofread:** use your existing logged-in Codex, Claude Code, Gemini, Grok or Cursor CLI, an already installed Ollama / LM Studio model, Cherry Studio's API server, or a custom OpenAI-compatible API. No AI model is bundled or downloaded. Open **AI Proofread** in the sidebar: providers are detected automatically, each shows whether it is ready, needs a login or isn't running, and models are listed from the provider (a test call checks models that can't be listed). Proofreading fixes misrecognized words — product and model names, jargon, homophones — using the sentence's context, your hotwords and the model's knowledge. It makes minimal edits: it never translates, switches between Chinese and English, reformats or answers. It applies to plain dictation, not Direct or Review translation. Raw text is pasted immediately; the proofread text replaces it only if you haven't typed, clicked, scrolled or switched apps. Timeouts and failures leave raw text untouched. Terminal results are skipped because terminal input has no standard paste undo.
 
 **Everyday details**
 
@@ -93,7 +92,7 @@ The speech engines are one-time downloads. After that, file transcription and sp
 
 - No account, no subscription, no usage limits.
 - Audio is recognised on your Mac and never uploaded.
-- Network traffic includes model/component downloads, GitHub update checks and fetching Studio links. AI cleanup is off by default; optional cleanup and meeting notes use your selected provider. Cloud CLIs send dictated, selected or transcript text to that provider using your account. Ollama and LM Studio inference stays local; Cherry Studio and custom APIs may forward text to cloud models.
+- Network traffic includes model/component downloads, GitHub update checks and fetching Studio links. AI Proofread is off by default; optional proofreading and meeting notes use your selected provider. Cloud CLIs send dictated or transcript text to that provider using your account. Ollama and LM Studio inference stays local; Cherry Studio and custom APIs may forward text to cloud models.
 - The code is open. Read it, build it, fork it.
 
 ## Download
@@ -228,9 +227,9 @@ Use a single-video page link, not a playlist, channel or live stream. Sites may 
 
 Burning subtitles into a video copy requires ffmpeg. Some formats, including WebM/Opus audio from links, may also need it to decode. With [Homebrew](https://brew.sh/) installed, run `brew install ffmpeg` in Terminal and retry. Common formats such as M4A, MP3, WAV, MP4 and MOV use macOS's built-in decoder.
 
-### AI cleanup or meeting notes are unavailable
+### AI Proofread or meeting notes are unavailable
 
-Open **Settings ▸ AI cleanup**, choose an available provider and model, and check that its CLI is signed in or its API/local server is running. Dictation cleanup must be enabled to clean or edit text; Studio notes only need the provider/model selected. Cloud CLIs, Cherry Studio and custom APIs may send text to cloud models; Ollama and LM Studio use your local server. Failed or timed-out cleanup keeps the original text; failed notes keep the transcript. For the notes limit of 16 parts, split a very long recording and try again.
+Open **AI Proofread** in the sidebar, choose a provider marked Ready and a model, and follow its action: **Verify**, **How to log in**, or start the app's local server. Proofreading must be switched on for dictation; Studio notes only need the provider/model selected. Cloud CLIs, Cherry Studio and custom APIs may send text to cloud models; Ollama and LM Studio use your local server. Failed or timed-out proofreading keeps the original text; failed notes keep the transcript. For the notes limit of 16 parts, split a very long recording and try again.
 
 ### Translation or IndexTTS asks for a component or restart
 
@@ -345,9 +344,9 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Is ThunderTalk free?** Yes. It is MIT licensed, with no account, no subscription and no usage limits.
 
-**Does it work offline?** Yes. Once a model is downloaded, recognition, translation, file transcription and text to speech run on your Mac. Studio links need a connection. Optional AI cleanup and meeting notes depend on your chosen provider; cloud providers require a connection.
+**Does it work offline?** Yes. Once a model is downloaded, recognition, translation, file transcription and text to speech run on your Mac. Studio links need a connection. Optional AI proofreading and meeting notes depend on your chosen provider; cloud providers require a connection.
 
-**How is it different from Typeless, Wispr Flow or superwhisper?** Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free and open source, with speech processed on your Mac. Optional AI cleanup and meeting notes use your selected provider; you can read the code, and your voice stays on your machine.
+**How is it different from Typeless, Wispr Flow or superwhisper?** Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free and open source, with speech processed on your Mac. Optional AI proofreading and meeting notes use your selected provider; you can read the code, and your voice stays on your machine.
 
 **Does it support Chinese and mixed Chinese-English dictation?** Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the interface is available in English and 中文.
 
