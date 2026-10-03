@@ -247,6 +247,8 @@ def test_speaker_path_uses_moss(monkeypatch, wav_file):
     monkeypatch.setattr(diarize, "transcribe", lambda x: [
         SimpleNamespace(start=0.0, end=3.0, speaker="S01", text="hi"),
         SimpleNamespace(start=3.0, end=5.0, speaker="S02", text="hello")])
+    from contextlib import nullcontext
+    monkeypatch.setattr(transcribe, "selected_engine", lambda *a: nullcontext(None))
     t = transcribe.transcribe_file(path, None, speakers=True)
     assert t.has_speakers and t.speakers == ["S01", "S02"]
     assert t.engine == "MOSS-Transcribe-Diarize"
@@ -258,3 +260,82 @@ def test_moss_token_budget_scales_with_length():
     eight_min = diarize.max_tokens_for(np.zeros(SR * 518, np.float32))
     assert eight_min > 518 * 6 * 2                                               # ~6 tok/s observed; 2x headroom
     assert diarize.max_tokens_for(np.zeros(SR * 3600 * 3, np.float32)) == 120_000  # capped
+
+
+@pytest.mark.parametrize("failure", [False, True])
+def test_selected_model_unloads_then_restores_dictation(monkeypatch, tmp_path, failure):
+    from thundertalk.core import diarize, models
+    calls = []
+    class Engine:
+        is_loaded = True
+        current_model = "qwen3-asr-06b-int8"
+        active_backend = "onnx"
+        _model_dir = "/models/qwen3-asr-06b-int8"
+        _model_family = "Qwen3-ASR"
+        _memory_mode = "low"
+        def unload(self):
+            calls.append("unload")
+            self.is_loaded = False
+        def load_model(self, path, family, backend, memory_mode):
+            assert not self.is_loaded
+            calls.append((family, memory_mode))
+            self.is_loaded = True
+            self.current_model = "sensevoice-small-int8" if family == "SenseVoice" else "qwen3-asr-06b-int8"
+        def recognize(self, x, sr):
+            if failure:
+                raise ValueError("fake inference failure")
+            return SimpleNamespace(text="Selected model words")
+    monkeypatch.setattr(models, "is_downloaded", lambda _id: True)
+    monkeypatch.setattr(models, "get_model_path", lambda _id: "/models/" + _id)
+    monkeypatch.setattr(diarize, "unload_model", lambda: calls.append("release_moss"))
+    monkeypatch.setattr(audio_io, "decode_audio", lambda *a: _talk([(2, .5)]))
+    engine = Engine()
+    if failure:
+        with pytest.raises(ValueError):
+            transcribe.transcribe_file("x.wav", engine, model_id="sensevoice-small-int8")
+    else:
+        result = transcribe.transcribe_file("x.wav", engine, model_id="sensevoice-small-int8")
+        assert result.model_id == "sensevoice-small-int8" and result.to_text() == "Selected model words"
+    assert engine.current_model == "qwen3-asr-06b-int8"
+    assert calls == ["unload", "release_moss", ("SenseVoice", "low"), "unload", "release_moss", ("Qwen3-ASR", "low")]
+
+
+def test_moss_can_transcribe_without_speaker_labels(monkeypatch):
+    from contextlib import nullcontext
+    from thundertalk.core import diarize
+    monkeypatch.setattr(transcribe, "selected_engine", lambda *a: nullcontext(None))
+    monkeypatch.setattr(audio_io, "decode_audio", lambda *a: _talk([(2, .5)]))
+    monkeypatch.setattr(diarize, "load_model", lambda: object())
+    monkeypatch.setattr(diarize, "transcribe", lambda x: [SimpleNamespace(start=0, end=2, text="Hello", speaker="S01")])
+    result = transcribe.transcribe_file("x.wav", None, model_id="moss-transcribe-diarize-mlx")
+    assert result.to_text() == "Hello" and not result.has_speakers and not result.speakers
+
+
+def test_cancelled_job_never_loads_selected_model(monkeypatch):
+    monkeypatch.setattr(transcribe, "selected_engine", lambda *a: pytest.fail("Loaded after cancel"))
+    cancel = threading.Event()
+    cancel.set()
+    with pytest.raises(transcribe.TranscribeCancelled):
+        transcribe.transcribe_file("x.wav", None, cancel=cancel, model_id="sensevoice-small-int8")
+
+
+def test_unloaded_engine_does_not_count_as_active():
+    assert transcribe.active_model_id(SimpleNamespace(is_loaded=False, _model_dir="/models/qwen3-asr-06b-int8")) == ""
+
+
+def test_cpu_dictation_waits_for_studio_model_switch(monkeypatch):
+    from thundertalk.core.asr import AsrEngine
+    from thundertalk.core.gpu_lock import GPU_LOCK
+    engine = AsrEngine()
+    entered, done = threading.Event(), threading.Event()
+    monkeypatch.setattr(engine, "_recognize", lambda *a, **k: done.set())
+    def recognize():
+        entered.set()
+        engine.recognize(np.ones(SR, np.float32))
+    with GPU_LOCK:
+        worker = threading.Thread(target=recognize)
+        worker.start()
+        assert entered.wait(1)
+        assert not done.wait(.03)
+    worker.join(1)
+    assert done.is_set() and not worker.is_alive()

@@ -239,7 +239,7 @@ def test_worker_reports_errors_without_mutating_transcript(qapp):
 
 
 @pytest.mark.parametrize("fail", [False, True])
-def test_batch_notes_sequential_and_failure_keeps_transcript(qapp, tmp_path, monkeypatch, fail):
+def test_batch_notes_sequential_and_failure_keeps_transcript(qapp, tmp_path, isolated_home, monkeypatch, fail):
     calls = []
     def transcribe(path, *args, **kwargs):
         calls.append("asr:" + path)
@@ -271,13 +271,14 @@ def test_queue_checkbox_requires_provider_then_saves_markdown(tab, tmp_path, mon
     s._detected([Fake()])
     w._start_batch()
     assert wait_for(lambda: not w.busy())
-    assert all(r.transcript.notes == EN for r in w._rows)
+    assert not w._rows and w._history_list.count() == 2
+    assert w._transcript.notes == EN
     assert all((tmp_path / f"{name}.md").is_file() for name in ("a", "b"))
-    w._on_row_action(w._rows[1], "view")
+    w._open_history(w._history_list.item(1))
     assert w._notes_card.isVisible() and w._notes_view.toPlainText().startswith("Summary")
 
 
-def test_cancel_batch_notes_stops_future_items(qapp, tmp_path, monkeypatch):
+def test_cancel_batch_notes_stops_future_items(qapp, tmp_path, isolated_home, monkeypatch):
     monkeypatch.setattr(tr, "transcribe_file", lambda *a, **k: transcript())
     p = Fake(action=lambda cancel: w.cancel())
     w = BatchWorker([BatchItem("a.wav"), BatchItem("b.wav")], None, False, ["md"], str(tmp_path),
@@ -286,7 +287,7 @@ def test_cancel_batch_notes_stops_future_items(qapp, tmp_path, monkeypatch):
     w.item_cancelled.connect(cancelled.append)
     assert w.work() == 0
     assert cancelled == [0, 1] and len(p.calls) == 1
-    assert not list(tmp_path.iterdir())
+    assert not list(tmp_path.glob("*.md")) and not (isolated_home / ".thundertalk" / "transcripts").exists()
 
 
 def test_add_to_running_notes_queue(tab, tmp_path, monkeypatch):
@@ -304,8 +305,8 @@ def test_add_to_running_notes_queue(tab, tmp_path, monkeypatch):
     w.add_files([str(tmp_path / "c.wav")])
     release.set()
     assert wait_for(lambda: not w.busy())
-    assert len(w._rows) == 3
-    assert all(r.state == "done" and r.transcript.notes == EN and not r.notes_error for r in w._rows)
+    assert not w._rows and w._history_list.count() == 3
+    assert w._transcript.notes == EN
 
 
 def test_settings_link_navigates_to_cleanup_section(qapp, isolated_home, no_audio_hw, monkeypatch):

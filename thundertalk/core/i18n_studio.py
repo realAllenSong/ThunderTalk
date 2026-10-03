@@ -48,16 +48,17 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.drop.change": {"en": "click to choose another", "zh": "点击更换文件"},
     "studio.drop.dialog": {"en": "Choose a recording", "zh": "选择录音文件"},
     "studio.drop.filter": {"en": "Audio and video", "zh": "音频和视频"},
-    "studio.mode.fast": {"en": "One speaker", "zh": "单人"},
-    "studio.mode.speakers": {"en": "Multiple speakers", "zh": "多人对话"},
-    "studio.mode.fast.desc": {
-        "en": "Uses your dictation model ({model}) — nothing extra to download.",
-        "zh": "使用你的听写模型（{model}），无需额外下载。",
+    "studio.model": {"en": "Model", "zh": "模型"},
+    "studio.model.active": {"en": "Active dictation model", "zh": "当前听写模型"},
+    "studio.model.desc": {
+        "en": "Runs on this Mac. Your dictation model is the fast default.",
+        "zh": "在本机运行。默认使用你的听写模型，速度最快。",
     },
-    "studio.mode.speakers.desc": {
-        "en": "Labels who said what. Uses MOSS-Transcribe-Diarize — also the faster, more accurate choice for long recordings.",
-        "zh": "标出谁说了什么，使用 MOSS-Transcribe-Diarize——处理长录音时也更快、更准。",
+    "studio.model.moss.desc": {
+        "en": "Can label who said what — also the faster, more accurate choice for long recordings.",
+        "zh": "可以标出谁说了什么——处理长录音时也更快、更准。",
     },
+    "studio.label_speakers": {"en": "Label speakers", "zh": "标注说话人"},
     "studio.moss.missing": {
         "en": "The speaker model needs a one-time {size} download.",
         "zh": "说话人模型需要一次性下载 {size}。",
@@ -67,6 +68,7 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.transcribe.go": {"en": "Transcribe", "zh": "开始转写"},
     "studio.progress.decode": {"en": "Reading the audio…", "zh": "正在读取音频…"},
     "studio.progress.load_moss": {"en": "Loading the speaker model…", "zh": "正在加载说话人模型…"},
+    "studio.progress.load_model": {"en": "Loading the selected model…", "zh": "正在加载所选模型…"},
     "studio.progress.diarize": {
         "en": "Listening for speakers — long recordings take a while…",
         "zh": "正在识别说话人——较长的录音需要一些时间…",
@@ -198,13 +200,23 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.batch.cancel_item": {"en": "Cancel this one", "zh": "取消这一项"},
     "studio.batch.finished": {"en": "Queue finished: {ok} of {n} saved", "zh": "队列完成：{n} 项中已保存 {ok} 项"},
 
-    # ── transcribe: burn subtitles into a video ──────────────────────
-    "studio.burn": {"en": "Burn into video…", "zh": "烧录进视频…"},
-    "studio.burn.hard": {"en": "Subtitles drawn into the picture", "zh": "字幕烧进画面"},
-    "studio.burn.hard_soft": {
-        "en": "Drawn in, plus a subtitle track players can switch",
-        "zh": "烧进画面，并附带一条可开关的字幕轨",
+    # ── transcribe: history ──────────────────────────────────────────
+    "studio.history": {"en": "History", "zh": "历史记录"},
+    "studio.history.search": {"en": "Search titles and transcript text…", "zh": "搜索标题和文稿内容…"},
+    "studio.history.more": {"en": "Load more", "zh": "加载更多"},
+    "studio.history.rename": {"en": "Rename", "zh": "重命名"},
+    "studio.history.delete": {"en": "Delete", "zh": "删除"},
+    "studio.history.title": {"en": "Transcript title", "zh": "文稿标题"},
+    "studio.history.delete_body": {
+        "en": "Delete this saved transcript and its notes from this Mac?",
+        "zh": "从本机删除这份文稿及其纪要？",
     },
+    "studio.history.error": {"en": "Could not save or open history: {msg}", "zh": "无法保存或打开历史记录：{msg}"},
+
+    # ── transcribe: burn subtitles into a video ──────────────────────
+    "studio.burn": {"en": "Add subtitles to video…", "zh": "给视频加字幕…"},
+    "studio.burn.hard": {"en": "Burn subtitles into the video (always visible)", "zh": "把字幕直接印在画面上（始终可见）"},
+    "studio.burn.soft": {"en": "Add a subtitle track (viewer can turn on/off)", "zh": "添加字幕轨（观看时可以开关）"},
     "studio.burn.dialog": {"en": "Save the subtitled video", "zh": "保存带字幕的视频"},
     "studio.burn.need_ffmpeg": {"en": "Burning subtitles needs ffmpeg", "zh": "烧录字幕需要 ffmpeg"},
     "studio.burn.need_ffmpeg_body": {

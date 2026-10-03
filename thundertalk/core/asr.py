@@ -213,6 +213,10 @@ class AsrEngine:
         print(f"[ASR] Language set to: {self._language or 'auto-detect'}")
 
     def unload(self) -> None:
+        with GPU_LOCK:
+            self._unload()
+
+    def _unload(self) -> None:
         self._recognizer = None
         self._mlx_model = None
         self._moss_model = None
@@ -220,7 +224,12 @@ class AsrEngine:
 
     # -- Loading ----------------------------------------------------------
 
-    def load_model(
+    def load_model(self, model_dir: str, family: str, backend: str = "onnx",
+                   memory_mode: str = "high") -> None:
+        with GPU_LOCK:
+            self._load_model(model_dir, family, backend, memory_mode)
+
+    def _load_model(
         self,
         model_dir: str,
         family: str,
@@ -236,6 +245,7 @@ class AsrEngine:
         self.unload()
         self._model_dir = model_dir
         self._model_family = family
+        self._memory_mode = memory_mode
         self._active_backend = backend
 
         if backend == "mlx":
@@ -387,6 +397,13 @@ class AsrEngine:
     # -- Inference --------------------------------------------------------
 
     def recognize(self, samples: np.ndarray, sample_rate: int = 16000,
+                  *, preview: bool = False) -> AsrResult:
+        # Studio may temporarily replace this engine, including CPU models.
+        # Check readiness only after acquiring the same lock as model loading.
+        with GPU_LOCK:
+            return self._recognize(samples, sample_rate, preview=preview)
+
+    def _recognize(self, samples: np.ndarray, sample_rate: int = 16000,
                   *, preview: bool = False) -> AsrResult:
         """*preview*: a live-preview decode of a partial clip. Generation is
         capped by clip length (with the 4096-token limit, Qwen3 MLX once ran

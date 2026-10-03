@@ -17,6 +17,7 @@ import shutil
 import threading
 import time
 from dataclasses import dataclass, field
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -53,6 +54,9 @@ class Transcript:
     source_url: str = ""
     expected_duration: float = 0.0        # length the site advertised for a link
     notes: str = ""                       # optional AI meeting notes (Markdown)
+
+    model_id: str = ""                    # catalog variant used in Studio
+    history_id: str = ""                  # persistent Studio entry
 
     # -- derived -------------------------------------------------------
     @property
@@ -337,12 +341,89 @@ def _has_speech(x: np.ndarray, sr: int = SR) -> bool:
 
 # ── transcription ────────────────────────────────────────────────────────
 
-def transcribe_file(
+def active_model_id(engine) -> str:
+    """Map the engine's display/repository name back to a catalog variant."""
+    from thundertalk.core.models import BUILTIN_MODELS
+    if not getattr(engine, "is_loaded", False):
+        return ""
+    current = getattr(engine, "current_model", "") or ""
+    path = getattr(engine, "_model_dir", "")
+    for m in BUILTIN_MODELS:
+        if current == m.id or path == m.download_url or Path(path).name == m.id:
+            return m.id
+        if current == m.name and getattr(engine, "active_backend", "") == m.backend:
+            return m.id
+    return ""
+
+
+@contextmanager
+def selected_engine(engine, model_id: str, progress=None):
+    """Temporarily use one model, then restore dictation even on failure.
+
+    The shared lock covers unload, load, inference and restoration, so
+    dictation cannot run against a temporary model or partially loaded state.
+    """
+    from thundertalk.core import diarize
+    from thundertalk.core.asr import AsrEngine
+    from thundertalk.core.models import BUILTIN_MODELS, get_model_path, is_downloaded
+    with GPU_LOCK:
+        current = active_model_id(engine)
+        if model_id == current and getattr(engine, "is_loaded", False):
+            yield engine
+            return
+        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+        if info is None or not is_downloaded(model_id):
+            raise RuntimeError("no_model")
+        restore = None
+        if getattr(engine, "is_loaded", False):
+            restore = (engine._model_dir, engine._model_family, engine.active_backend,
+                       getattr(engine, "_memory_mode", "high"))
+        temporary = engine or AsrEngine()
+        temporary.unload()
+        diarize.unload_model()
+        try:
+            if progress:
+                progress(-1, "load_model")
+            temporary.load_model(get_model_path(model_id), info.family, info.backend,
+                                 memory_mode=getattr(engine, "_memory_mode", "high"))
+            yield temporary
+        finally:
+            temporary.unload()
+            diarize.unload_model()
+            if restore:
+                engine.load_model(*restore[:3], memory_mode=restore[3])
+
+
+def transcribe_file(path: str, engine, speakers: bool = False,
+                    progress: Optional[ProgressCB] = None,
+                    cancel: Optional[threading.Event] = None,
+                    model_id: str = "") -> Transcript:
+    if cancel is not None and cancel.is_set():
+        raise TranscribeCancelled()
+    selected = model_id or ("moss-transcribe-diarize-mlx" if speakers else "")
+    speakers = speakers and selected == "moss-transcribe-diarize-mlx"
+    if selected and selected == active_model_id(engine) and selected != "moss-transcribe-diarize-mlx":
+        tr = _transcribe_file(path, engine, False, progress, cancel)
+        tr.model_id = selected
+        return tr
+    if selected:
+        with selected_engine(engine, selected, progress) as chosen:
+            tr = _transcribe_file(path, chosen, speakers, progress, cancel,
+                                  moss=selected == "moss-transcribe-diarize-mlx")
+        tr.model_id = selected
+        return tr
+    tr = _transcribe_file(path, engine, speakers, progress, cancel)
+    tr.model_id = active_model_id(engine)
+    return tr
+
+
+def _transcribe_file(
     path: str,
     engine,                                   # AsrEngine (active dictation model)
     speakers: bool = False,
     progress: Optional[ProgressCB] = None,
     cancel: Optional[threading.Event] = None,
+    moss: bool = False,
 ) -> Transcript:
     """Transcribe an audio/video file.
 
@@ -363,7 +444,7 @@ def transcribe_file(
     duration = len(x) / SR
     _check()
 
-    if speakers:
+    if speakers or moss:
         from thundertalk.core import diarize
         _p(10, "load_moss")
         diarize.load_model()
@@ -374,7 +455,7 @@ def transcribe_file(
         _check()
         if not segs:
             raise RuntimeError("no_speech")
-        out = [Segment(s.start, s.end, s.text, s.speaker) for s in segs]
+        out = [Segment(s.start, s.end, s.text, s.speaker if speakers else "") for s in segs]
         _p(100, "done")
         return Transcript(out, duration, "MOSS-Transcribe-Diarize", time.monotonic() - t0,
                           has_speakers=any(s.speaker for s in out))
@@ -409,6 +490,7 @@ def transcribe_link(
     progress: Optional[ProgressCB] = None,
     cancel: Optional[threading.Event] = None,
     on_title: Optional[Callable[[str], None]] = None,
+    model_id: str = "",
 ) -> Transcript:
     """Download the audio of a web link, transcribe it, delete the download.
 
@@ -428,7 +510,7 @@ def transcribe_link(
     except links.LinkCancelled:
         raise TranscribeCancelled() from None
     try:
-        tr = transcribe_file(got.path, engine, speakers=speakers, progress=progress, cancel=cancel)
+        tr = transcribe_file(got.path, engine, speakers=speakers, progress=progress, cancel=cancel, model_id=model_id)
     finally:
         shutil.rmtree(got.workdir, ignore_errors=True)
     tr.title, tr.source_url, tr.expected_duration = got.title, url, got.duration
