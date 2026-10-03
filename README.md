@@ -38,6 +38,8 @@ Studio replaces the old Lab page and is the headline of the 1.5 release. It has 
 
 **Transcribe.** Drop an audio or video recording (m4a, mp3, wav, mp4, mov and more) and get a timestamped transcript. For a conversation, choose **Multiple speakers** and MOSS-Transcribe-Diarize labels every turn; click a speaker to rename it. Export as TXT, Markdown, SRT, VTT or JSON. Decoding uses the tools built into macOS, so ffmpeg is not needed.
 
+**AI meeting notes.** After transcription, generate a short summary, key points, decisions, action items and open questions in the transcript's English or Chinese. Notes reuse the provider and model selected in **Settings ▸ AI cleanup**, even with dictation cleanup switched off; no model is downloaded. Copy or save notes as Markdown, or include them in the transcript's Markdown export. A queue checkbox generates notes after each transcription and also saves Markdown. Long transcripts use up to 16 chunks of about 6,000 characters plus one merge, with a 60-second timeout per call and Cancel. Cloud CLIs send transcript text to their provider; Ollama and LM Studio use your local server. Missing owners or deadlines are marked “not mentioned”. Review the generated notes against the transcript.
+
 **Speak.** Turn text into speech with your choice of three local engines:
 
 - **VoxCPM2** (OpenBMB): studio-quality 48 kHz speech and voice cloning; about real time on Apple silicon.
@@ -48,7 +50,7 @@ Studio replaces the old Lab page and is the headline of the 1.5 release. It has 
 - Speed control (0.75x to 1.5x) and a seekable player. Save the result as WAV (lossless) or M4A (small).
 - **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2 or IndexTTS. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
 
-The speech engines are one-time downloads. After that, everything in Studio works offline.
+The speech engines are one-time downloads. After that, file transcription and speech generation work offline. Optional AI notes use your chosen provider; web links and cloud providers require a connection.
 
 ## Features
 
@@ -312,7 +314,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Is ThunderTalk free?** Yes. It is MIT licensed, with no account, no subscription and no usage limits.
 
-**Does it work offline?** Yes. Once a model is downloaded, recognition, translation, Studio and text to speech all run on your Mac without a connection.
+**Does it work offline?** Yes. Once a model is downloaded, recognition, translation, file transcription and text to speech run on your Mac. Optional AI cleanup and meeting notes depend on your chosen provider; cloud providers require a connection.
 
 **How is it different from Typeless, Wispr Flow or superwhisper?** Those are paid, closed-source apps that typically process audio in the cloud. ThunderTalk is free, open source and fully local, so you can read the code and your voice stays on your machine.
 

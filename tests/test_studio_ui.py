@@ -573,7 +573,7 @@ def test_transcribe_a_link_end_to_end(studio, fake_link, monkeypatch, tmp_path):
                         staticmethod(lambda _p, _c, path, _f: asked.setdefault("path", path) and ("", "")))
     tab._export("md", ".md")
     assert asked["path"].endswith("My Talk part 1 2.md")
-    assert not tab._summary_btn.isVisibleTo(tab)                               # placeholder only
+    assert tab._summary_btn.isVisibleTo(tab)
 
 
 def test_link_errors_are_friendly(studio, fake_link):

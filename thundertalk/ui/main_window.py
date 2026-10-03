@@ -15,6 +15,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
+    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -309,6 +310,7 @@ class MainWindow(QMainWindow):
         self._models_page = ModelsPage(settings)
         self._hotwords_page = HotwordsPage(settings, self._state)
         self._settings_page = SettingsPage(settings)
+        self._studio_page.transcribe_tab.set_cleanup_settings(self._settings_page.cleanup_settings)
         self._about_page = AboutPage()
 
         for page in (self._home_page, self._studio_page, self._models_page, self._hotwords_page,
@@ -391,6 +393,13 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentIndex(idx)
 
     def navigate(self, name: str) -> None:
+        if name == "settings.cleanup":
+            self._select_nav(_PAGES.index("settings"))
+            scroll = self._settings_page.findChild(QScrollArea)
+            if scroll is not None:
+                pos = self._settings_page.cleanup_settings.mapTo(scroll.widget(), QPoint(0, 0))
+                scroll.verticalScrollBar().setValue(pos.y() - 20)
+            return
         if name in _PAGES:
             self._select_nav(_PAGES.index(name))
 

@@ -7,18 +7,21 @@ from __future__ import annotations
 
 import os
 import time
+from copy import deepcopy
 from pathlib import Path
 from typing import Optional
 
 from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
+    QCheckBox,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
     QLabel,
     QLineEdit,
     QMenu,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -33,6 +36,7 @@ from thundertalk.ui.studio.workers import (
     BatchItem,
     BatchWorker,
     BurnWorker,
+    NotesWorker,
     TranscribeWorker,
     friendly_error,
 )
@@ -58,6 +62,13 @@ def partial_text(tr: Transcript) -> str:
 
 def phase_text(msg: str) -> str:
     """A progress message from the workers as a sentence ("" if it has none)."""
+    if msg.startswith("notes:"):
+        if msg == "notes:merge":
+            return t("studio.notes.merge")
+        if msg == "notes:done":
+            return t("studio.notes.done")
+        _, i, n = msg.split(":")
+        return t("studio.notes.part").format(i=i, n=n)
     if msg == "fetch":
         return t("studio.progress.fetch")
     if msg.startswith("download:"):
@@ -84,6 +95,8 @@ class TranscribeTab(QWidget):
         self._dl_worker = None
         self._batch: Optional[BatchWorker] = None
         self._burn_worker: Optional[BurnWorker] = None
+        self._notes_worker: Optional[NotesWorker] = None
+        self._cleanup_settings = None
         self._transcript: Optional[Transcript] = None
         self._path = ""
         self._url = ""                    # single input that is a web link
@@ -159,6 +172,9 @@ class TranscribeTab(QWidget):
         self._formats_btn.clicked.connect(self._formats_menu)
         opts.addWidget(self._formats_btn)
         qly.addLayout(opts)
+        self._queue_notes = QCheckBox(t("studio.notes.queue"))
+        self._queue_notes.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 12px; background: transparent;")
+        qly.addWidget(self._queue_notes)
         self._queue.setVisible(False)
         cly.addWidget(self._queue)
 
@@ -213,11 +229,8 @@ class TranscribeTab(QWidget):
         self._time_toggle.changed.connect(lambda k: self._view.set_timestamps(k == "time"))
         head.addWidget(self._time_toggle)
         head.addStretch()
-        # Placeholder for the future "AI meeting notes / summary" action (to be built on
-        # thundertalk/core/llm_providers.py): implement _summarize() and show this button.
         self._summary_btn = theme.make_button(t("studio.summary"), "secondary", 34, font_px=12)
         self._summary_btn.clicked.connect(self._summarize)
-        self._summary_btn.setVisible(False)
         head.addWidget(self._summary_btn)
         self._burn_btn = theme.make_button(t("studio.burn"), "secondary", 34, font_px=12)
         self._burn_btn.clicked.connect(self._burn_menu)
@@ -235,6 +248,36 @@ class TranscribeTab(QWidget):
         self._view.speaker_clicked.connect(self._rename_speaker)
         rly.addWidget(self._view)
         self._result.setVisible(False)
+        self._notes_hint = _muted()
+        root.addWidget(self._notes_hint)
+        self._notes_settings = theme.make_button(t("studio.notes.settings"), "ghost", 32, font_px=12)
+        self._notes_settings.clicked.connect(lambda: self.navigate.emit("settings.cleanup"))
+        root.addWidget(self._notes_settings)
+        self._notes_card = theme.make_card()
+        nly = QVBoxLayout(self._notes_card)
+        nly.setContentsMargins(24, 20, 24, 20)
+        nhead = QHBoxLayout()
+        self._notes_title = QLabel(t("studio.summary"))
+        self._notes_title.setFont(theme.font(14, bold=True))
+        self._notes_title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
+        nhead.addWidget(self._notes_title)
+        nhead.addStretch()
+        self._notes_copy = theme.make_button(t("studio.notes.copy"), "secondary", 34, font_px=12)
+        self._notes_copy.clicked.connect(self._copy_notes)
+        nhead.addWidget(self._notes_copy)
+        self._notes_save = theme.make_button(t("studio.notes.save"), "secondary", 34, font_px=12)
+        self._notes_save.clicked.connect(self._save_notes)
+        nhead.addWidget(self._notes_save)
+        nly.addLayout(nhead)
+        self._notes_view = QTextBrowser()
+        self._notes_view.setOpenLinks(False)
+        self._notes_view.setOpenExternalLinks(False)
+        self._notes_view.setStyleSheet(
+            f"QTextBrowser {{ color: {theme.TEXT_PRIMARY}; background: transparent; border: none; font-size: 14px; }}")
+        self._notes_view.setMinimumHeight(300)
+        nly.addWidget(self._notes_view)
+        self._notes_card.hide()
+        root.addWidget(self._notes_card)
         root.addWidget(self._result)
         root.addStretch()
 
@@ -248,18 +291,31 @@ class TranscribeTab(QWidget):
         self._engine = engine
         self._refresh()
 
+    def set_cleanup_settings(self, settings) -> None:
+        self._cleanup_settings = settings
+        settings.providers_changed.connect(lambda _p: self._refresh())
+        settings.provider_combo.currentIndexChanged.connect(lambda _i: self._refresh())
+        settings.model_combo.currentTextChanged.connect(lambda _s: self._refresh())
+        self._refresh()
+
+    def _notes_provider(self):
+        settings = self._cleanup_settings
+        provider = settings.chosen_provider() if settings else None
+        return provider, settings.chosen_model(provider) if provider else ""
+
     def refresh(self) -> None:
         self._refresh()
 
     def busy(self) -> bool:
-        return any(w is not None for w in (self._worker, self._dl_worker, self._batch, self._burn_worker))
+        return any(w is not None for w in (self._worker, self._dl_worker, self._batch,
+                                          self._burn_worker, self._notes_worker))
 
     def shutdown(self) -> None:
         """App is quitting: cancel and wait for any running job."""
-        for w in (self._worker, self._dl_worker, self._batch, self._burn_worker):
+        for w in (self._worker, self._dl_worker, self._batch, self._burn_worker, self._notes_worker):
             if w is not None:
                 w.cancel() if hasattr(w, "cancel") else None
-                w.wait(8000)
+                w.wait()                 # HTTP completion may need its bounded timeout to return
 
     def retranslate(self) -> None:
         self._mode.set_options(self._mode_options())
@@ -274,6 +330,11 @@ class TranscribeTab(QWidget):
             row.retranslate()
         self._cancel.setText(t("studio.batch.cancel_all") if self._batch is not None else t("common.cancel"))
         self._summary_btn.setText(t("studio.summary"))
+        self._queue_notes.setText(t("studio.notes.queue"))
+        self._notes_settings.setText(t("studio.notes.settings"))
+        self._notes_title.setText(t("studio.summary"))
+        self._notes_copy.setText(t("studio.notes.copy"))
+        self._notes_save.setText(t("studio.notes.save"))
         self._burn_btn.setText(t("studio.burn"))
         self._copy_btn.setText(t("studio.copy"))
         self._export_btn.setText(t("studio.export"))
@@ -340,6 +401,19 @@ class TranscribeTab(QWidget):
             self._go.setText(t("studio.transcribe.go"))
             ready = bool(self._path or self._url) and model_ok
         self._go.setEnabled(ready and not busy)
+        self._summary_btn.setEnabled(not busy and self._transcript is not None)
+        self._burn_btn.setEnabled(not busy)
+        self._queue_notes.setEnabled(not busy)
+        provider, model = self._notes_provider()
+        self._queue_notes.setToolTip(t("studio.notes.queue_hint"))
+        relevant = self._transcript is not None or queue
+        self._notes_hint.setVisible(relevant)
+        self._notes_settings.setVisible(relevant)
+        self._notes_hint.setText(
+            t("studio.notes.no_provider") if provider is None else
+            t("studio.notes.local" if provider.local else "studio.notes.cloud").format(
+                provider=provider.display_name, model=model))
+        self._summary_btn.setToolTip(self._notes_hint.text())
         self._mode.setEnabled(not busy)
         can_add = not busy or self._batch is not None
         self._drop.setEnabled(can_add)
@@ -430,6 +504,7 @@ class TranscribeTab(QWidget):
         for item in items:
             row = QueueRow(item.source)
             row.item, row.transcript = item, None
+            row.notes_error = ""
             row.action.connect(lambda a, r=row: self._on_row_action(r, a))
             if self._rows:
                 row.layout().insertWidget(0, Rule())
@@ -463,7 +538,7 @@ class TranscribeTab(QWidget):
         self._refresh()
 
     def _on_row_action(self, row: QueueRow, action: str) -> None:
-        if action == "view" and row.transcript is not None:
+        if action == "view" and row.transcript is not None and self._notes_worker is None:
             self._show_result(row.transcript, "" if row.item.is_url else row.item.source)
         elif self._batch is not None and row in self._run_rows:
             self._batch.cancel_item(self._run_rows.index(row))
@@ -540,6 +615,7 @@ class TranscribeTab(QWidget):
         self._eta_base, self._eta_done, self._eta_total = None, 0, 0
         self._phase = t("studio.progress.fetch") if self._url else t("studio.progress.decode")
         self._result.setVisible(False)
+        self._notes_card.setVisible(False)
         self._begin(t("common.cancel"))
         self._worker.start()
 
@@ -548,6 +624,11 @@ class TranscribeTab(QWidget):
             self._drop.set_link(self._url, title)
 
     def _on_progress(self, pct: int, msg: str) -> None:
+        if msg.startswith("notes:"):
+            self._phase = phase_text(msg)
+            self._bar.set_value(pct)
+            self._on_tick()
+            return
         if msg == "fetch" or msg.startswith("download:"):
             self._phase = phase_text(msg)
             if pct >= 0:
@@ -593,7 +674,8 @@ class TranscribeTab(QWidget):
         self._status.setText(text)
 
     def _on_cancel(self) -> None:
-        w = next((x for x in (self._worker, self._batch, self._burn_worker, self._dl_worker) if x is not None), None)
+        w = next((x for x in (self._worker, self._batch, self._burn_worker, self._dl_worker,
+                             self._notes_worker) if x is not None), None)
         if w is not None:
             w.cancel()
             self._cancel.setEnabled(False)
@@ -621,6 +703,8 @@ class TranscribeTab(QWidget):
         self._stats.setText("  ·  ".join(bits))
         self._burn_btn.setVisible(bool(src) and burn.is_video(src) and os.path.isfile(src))
         self._result.setVisible(True)
+        self._show_notes()
+        self._refresh()
 
     def _on_error(self, code: str) -> None:
         self._status.setText("")
@@ -635,19 +719,30 @@ class TranscribeTab(QWidget):
 
     # ── running a queue ───────────────────────────────────────────────
     def _start_batch(self) -> None:
+        provider, model = self._notes_provider()
+        if self._queue_notes.isChecked() and provider is None:
+            self.toast.emit(t("studio.notes.no_provider"), "warn")
+            self._refresh()
+            return
         self._run_rows = self._runnable_rows()
         if not self._run_rows:
             return
         for r in self._run_rows:
+            r.notes_error = ""
             r.set_state("waiting", t("studio.batch.waiting"))
         out_dir = self._out_dir if self._dest.current() == "folder" else ""
+        formats = list(self._formats)
+        if self._queue_notes.isChecked() and "md" not in formats:
+            formats.append("md")
         w = BatchWorker([r.item for r in self._run_rows], self._engine, self._speakers_mode(),
-                        self._formats, out_dir)
+                        formats, out_dir, notes_provider=provider if self._queue_notes.isChecked() else None,
+                        notes_model=model)
         self._batch, self._batch_ok = w, 0
         w.item_started.connect(self._on_item_started)
         w.item_progress.connect(self._on_item_progress)
         w.item_titled.connect(lambda i, s: self._run_rows[i].set_name(s))
         w.item_done.connect(self._on_item_done)
+        w.item_notes_failed.connect(lambda i, c: setattr(self._run_rows[i], "notes_error", friendly_error(c)))
         w.item_failed.connect(lambda i, c: self._run_rows[i].set_state(
             "failed", t("studio.batch.failed").format(msg=friendly_error(c))))
         w.item_cancelled.connect(lambda i: self._run_rows[i].set_state("cancelled", t("studio.cancelled")))
@@ -674,6 +769,8 @@ class TranscribeTab(QWidget):
         row.transcript = tr
         self._batch_ok += 1
         text = t("studio.batch.saved").format(files=", ".join(Path(p).name for p in paths))
+        if row.notes_error:
+            text += "  ·  " + row.notes_error
         if tr.is_partial:
             text = partial_text(tr) + "  ·  " + text
         row.set_state("done", text)
@@ -758,7 +855,7 @@ class TranscribeTab(QWidget):
             self.toast.emit(t("studio.err.other").format(msg=str(exc)), "error")
 
     def _rename_speaker(self, speaker: str) -> None:
-        if self._transcript is None:
+        if self.busy() or self._transcript is None:
             return
         cur = self._transcript.label(speaker)
         name, ok = QInputDialog.getText(self, t("studio.rename_speaker"),
@@ -766,9 +863,64 @@ class TranscribeTab(QWidget):
         if ok:
             self._transcript.rename_speaker(speaker, name)
             self._view.refresh_speaker_names()
+            self._transcript.notes = ""     # regenerate with the current speaker names
+            self._show_notes()
 
     def _summarize(self) -> None:
-        """Future "AI meeting notes" action: summarise ``self._transcript``. Not implemented."""
+        if self.busy() or self._transcript is None:
+            return
+        provider, model = self._notes_provider()
+        self._refresh()
+        if provider is None:
+            self.toast.emit(t("studio.notes.no_provider"), "warn")
+            return
+        w = NotesWorker(deepcopy(self._transcript), provider, model)
+        self._notes_worker = w
+        w.progress.connect(self._on_progress)
+        w.done.connect(self._on_notes_done)
+        w.error.connect(self._on_error)
+        w.cancelled.connect(self._on_cancelled)
+        w.finished.connect(self._on_notes_finished)
+        self._phase = t("studio.notes.part").format(i=1, n=1)
+        self._begin(t("common.cancel"))
+        w.start()
+
+    def _on_notes_done(self, notes: str) -> None:
+        if not self._notes_worker.cancel_event.is_set():
+            self._transcript.notes = notes
+            self._show_notes()
+            self._status.setText(t("studio.notes.done"))
+
+    def _on_notes_finished(self) -> None:
+        self._notes_worker.deleteLater()
+        self._notes_worker = None
+        self._end()
+
+    def _show_notes(self) -> None:
+        notes = self._transcript.notes if self._transcript else ""
+        self._notes_view.setMarkdown(notes)
+        self._notes_card.setVisible(bool(notes))
+
+    def _copy_notes(self) -> None:
+        if self._transcript and self._transcript.notes:
+            QApplication.clipboard().setText(self._transcript.notes)
+            self.toast.emit(t("studio.copied"), "copy")
+
+    def _save_notes(self) -> None:
+        if not self._transcript or not self._transcript.notes:
+            return
+        folder = Path(self._result_src).parent if self._result_src else Path.home()
+        path, _ = QFileDialog.getSaveFileName(self, t("studio.notes.save"),
+                                              str(folder / f"{self._export_stem()}-notes.md"), "*.md")
+        if not path:
+            return
+        if not path.lower().endswith(".md"):
+            path += ".md"
+        try:
+            Path(path).write_text(self._transcript.notes + "\n", encoding="utf-8")
+            self.toast.emit(t("studio.saved").format(name=Path(path).name), "success")
+        except OSError as exc:
+            self.toast.emit(t("studio.err.other").format(msg=str(exc)), "error")
 
     # ── burn subtitles into the video ─────────────────────────────────
     def _burn_menu(self) -> None:

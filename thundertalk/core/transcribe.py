@@ -52,6 +52,7 @@ class Transcript:
     title: str = ""                       # e.g. the video title for a link
     source_url: str = ""
     expected_duration: float = 0.0        # length the site advertised for a link
+    notes: str = ""                       # optional AI meeting notes (Markdown)
 
     # -- derived -------------------------------------------------------
     @property
@@ -120,7 +121,8 @@ class Transcript:
             body = "\n\n".join(f"**{self.label(t.speaker)}** ({fmt_time(t.start)})  \n{t.text}" for t in self.turns())
         else:
             body = "\n\n".join(f"`{fmt_time(s.start)}` {s.text}" for s in self.segments)
-        return f"# {title}\n\n{meta}\n\n{body}\n"
+        notes = f"\n\n---\n\n{self.notes.strip()}" if self.notes else ""
+        return f"# {title}\n\n{meta}\n\n{body}{notes}\n"
 
     def to_srt(self) -> str:
         blocks = []
