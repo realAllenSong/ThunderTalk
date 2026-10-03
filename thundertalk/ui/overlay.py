@@ -2,9 +2,11 @@
 the app.
 
 A flat ink bar at the top of the screen. Recording: an orange dot, "Listening",
-a live level meter, a seconds counter and the hotkey. Transcribing: plain text
-with cycling dots. Then a one-line result or error. It appears and disappears
-without animation; the only movement is the meter, which is real input level.
+a live level meter, a seconds counter and the hotkey; with live preview on,
+the words recognized so far appear under that row (last few lines, newest at
+the bottom). Transcribing: plain text with cycling dots. Then a one-line
+result or error. It appears and disappears without animation; the only
+movement is the meter, which is real input level.
 """
 
 from __future__ import annotations
@@ -13,7 +15,7 @@ import time
 from collections import deque
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QTextLayout, QTextOption
 from PySide6.QtWidgets import QWidget
 
 from thundertalk.core.i18n import t
@@ -27,9 +29,47 @@ _PW, _PH = 420, 52
 _W, _H = _PW + 2 * _MX, _PH + 2 * _MY + 4
 _BARS = 34
 
+# Live preview text under the recording row.
+_PV_LINES = 3                 # at most this many lines; older text scrolls off the top
+_PV_PAD_X, _PV_PAD_B = 24, 14
+_PV_LINE_H = 20
+_PV_FONT_PT = 13
+
 _INK = QColor(theme.INK)
 _PAPER = QColor("#FBFBFA")
 _DIM = QColor(251, 251, 250, 150)
+_PV_INK = QColor(251, 251, 250, 225)
+_RULE = QColor(251, 251, 250, 34)
+
+
+def wrap_tail(text: str, font, width: int, max_lines: int = _PV_LINES) -> list[str]:
+    """Word-wrap *text* to *width* px and keep the last *max_lines* lines,
+    starting the first kept line with "…" when earlier text was dropped.
+    Wraps anywhere when there are no spaces (Chinese)."""
+    text = " ".join(text.split())
+    if not text:
+        return []
+    layout = QTextLayout(text, font)
+    opt = QTextOption()
+    opt.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+    layout.setTextOption(opt)
+    lines: list[str] = []
+    layout.beginLayout()
+    while True:
+        line = layout.createLine()
+        if not line.isValid():
+            break
+        line.setLineWidth(width)
+        lines.append(text[line.textStart(): line.textStart() + line.textLength()].strip())
+    layout.endLayout()
+    if len(lines) > max_lines:
+        lines = lines[-max_lines:]
+        fm = QFontMetrics(font)
+        first = "…" + lines[0]
+        if fm.horizontalAdvance(first) > width:
+            first = fm.elidedText(first, Qt.TextElideMode.ElideLeft, width)
+        lines[0] = first
+    return lines
 
 
 class VoiceOverlay(QWidget):
@@ -56,6 +96,8 @@ class VoiceOverlay(QWidget):
         self._rec_t0 = 0.0
         self._tick_n = 0
         self._hotkey = ""
+        self._preview = ""
+        self._pv_lines: list[str] = []
 
         # Slow tick: advances the seconds counter and the "…" dots. (The level
         # meter repaints itself whenever a new sample arrives.)
@@ -82,6 +124,7 @@ class VoiceOverlay(QWidget):
         self._audio_rms = 0.0
         self._levels = deque([0.0] * _BARS, maxlen=_BARS)
         self._rec_t0 = time.monotonic()
+        self._set_preview_lines([])
         self._present()
         self._anim.start(250)
 
@@ -93,6 +136,20 @@ class VoiceOverlay(QWidget):
             self._smooth += (target - self._smooth) * k
             self._levels.append(self._smooth)
             self.update()
+
+    def set_preview_text(self, text: str) -> None:
+        """Live transcript so far. Only shown while recording or
+        transcribing; empty text collapses the bar back to one row."""
+        if self._state not in (self._RECORDING, self._TRANSCRIBING):
+            return
+        self._preview = text
+        self._set_preview_lines(
+            wrap_tail(text, theme.font(_PV_FONT_PT), _PW - 2 * _PV_PAD_X))
+        self.update()
+
+    @property
+    def preview_lines(self) -> list[str]:
+        return list(self._pv_lines)
 
     def show_transcribing(self) -> None:
         self._hide_timer.stop()
@@ -110,6 +167,7 @@ class VoiceOverlay(QWidget):
             self.hide_overlay()
 
     def show_result(self, text: str) -> None:
+        self._set_preview_lines([])
         self._state = self._RESULT
         self._text = text[:80] + ("…" if len(text) > 80 else "")
         self._anim.stop()
@@ -117,6 +175,7 @@ class VoiceOverlay(QWidget):
         self._hide_timer.start(1500)
 
     def show_error(self, msg: str) -> None:
+        self._set_preview_lines([])
         self._state = self._ERROR
         self._text = msg[:70]
         self._anim.stop()
@@ -127,9 +186,20 @@ class VoiceOverlay(QWidget):
         self._hide_timer.stop()
         self._anim.stop()
         self._state = self._IDLE
+        self._set_preview_lines([])
         self.hide()
 
     # ── internals ───────────────────────────────────────────────────────
+
+    def _set_preview_lines(self, lines: list[str]) -> None:
+        if not lines:
+            self._preview = ""
+        if lines == self._pv_lines:
+            return
+        self._pv_lines = lines
+        extra = len(lines) * _PV_LINE_H + _PV_PAD_B if lines else 0
+        # Grows downward; the top edge (set in _present) stays put.
+        self.setFixedSize(_W, _H + extra)
 
     def _present(self) -> None:
         if not self.isVisible():
@@ -153,7 +223,8 @@ class VoiceOverlay(QWidget):
             return
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        bar = QRectF(_MX, _MY, _PW, _PH)
+        pv_h = len(self._pv_lines) * _PV_LINE_H + _PV_PAD_B if self._pv_lines else 0
+        bar = QRectF(_MX, _MY, _PW, _PH + pv_h)
 
         # Two very faint layers stand in for a shadow (no blur, no glow).
         for i, a in enumerate((16, 8)):
@@ -172,6 +243,8 @@ class VoiceOverlay(QWidget):
             self._paint_transcribing(p)
         else:
             self._paint_message(p)
+        if self._pv_lines:
+            self._paint_preview(p)
         p.restore()
         p.end()
 
@@ -240,3 +313,14 @@ class VoiceOverlay(QWidget):
         fm = QFontMetrics(f)
         p.drawText(QRectF(50, 0, w - 50 - 20, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
                    fm.elidedText(self._text, Qt.TextElideMode.ElideRight, int(w - 72)))
+
+    def _paint_preview(self, p: QPainter) -> None:
+        p.setPen(QPen(_RULE, 1))
+        p.drawLine(QPointF(_PV_PAD_X, _PH - 0.5), QPointF(_PW - _PV_PAD_X, _PH - 0.5))
+        p.setFont(theme.font(_PV_FONT_PT))
+        p.setPen(_PV_INK)
+        y = _PH + 2
+        for line in self._pv_lines:
+            p.drawText(QRectF(_PV_PAD_X, y, _PW - 2 * _PV_PAD_X, _PV_LINE_H),
+                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, line)
+            y += _PV_LINE_H
