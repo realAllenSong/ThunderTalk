@@ -1,4 +1,10 @@
 # -*- mode: python ; coding: utf-8 -*-
+# ruff: noqa: E402, F821  # PyInstaller injects build classes into spec globals.
+import platform
+import sys
+if sys.version_info[:2] != (3, 12) or sys.platform != "darwin" or platform.machine() != "arm64":
+    raise RuntimeError("The optional runtime release build requires Python 3.12 on Apple Silicon macOS")
+
 from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
 
 hidden_imports = []
@@ -16,14 +22,8 @@ hidden_imports += collect_submodules("mlx_audio")
 hidden_imports += collect_submodules("mlx_lm")
 # huggingface_hub: needed by mlx_qwen3_asr for model downloads
 hidden_imports += ["huggingface_hub"]
-# torch + transformers: needed by the SeamlessM4T translation engine
-# (Direct / Review modes). User report: bundling without these gives
-# "No module named 'torch'" when activating the Facebook model.
-# These are heavy (~700 MB on macOS arm64) but the only realistic path
-# for the in-app translator since pip-installing into a frozen runtime
-# is impractical. Excluding tensorflow / keras / scipy / matplotlib /
-# pandas keeps the size from getting truly absurd.
-hidden_imports += collect_submodules("torch")
+# Transformers tokenizers and SciPy are also required by MLX speech. Only
+# PyTorch/torchaudio and their exclusive deps move to the optional runtime.
 hidden_imports += collect_submodules("transformers")
 hidden_imports += collect_submodules("safetensors")
 hidden_imports += collect_submodules("tokenizers")
@@ -33,7 +33,6 @@ hidden_imports += collect_submodules("sentencepiece")
 import sys as _sys
 _sys.path.insert(0, 'third_party')
 hidden_imports += collect_submodules("mlx_indextts")
-hidden_imports += collect_submodules("torchaudio")
 hidden_imports += collect_submodules("omegaconf")
 hidden_imports += collect_submodules("wetext")
 hidden_imports += collect_submodules("einops")
@@ -46,29 +45,39 @@ hidden_imports += collect_submodules("scipy")
 # move of array_api_compat from scipy._lib to scipy._external).
 hidden_imports += ["scipy._external.array_api_compat.numpy.fft", "scipy._external.array_api_compat.numpy.linalg"]
 
-custom_datas = [('assets', 'assets')]
+# Optional wheels import stdlib modules PyInstaller can no longer discover
+# through torch. Bundle available stdlib modules and source for introspection.
+import importlib.util
+import sysconfig
+from pathlib import Path
+_stdlib = Path(sysconfig.get_path("stdlib"))
+_skip_stdlib = {"tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "test", "ensurepip", "venv", "site-packages", "__pycache__"}
+for _name in sorted(_sys.stdlib_module_names - _skip_stdlib):
+    if importlib.util.find_spec(_name) is not None:
+        hidden_imports += collect_submodules(_name)
+custom_datas = [('assets', 'assets'), ('thundertalk/core/runtime_manifest.json', 'thundertalk/core')]
+for _file in _stdlib.rglob("*.py"):
+    _rel = _file.relative_to(_stdlib)
+    if not any(p in _skip_stdlib for p in _rel.parts):
+        custom_datas.append((str(_file), str(Path("runtime_stdlib") / _rel.parent)))
 # (assets/voices — built-in reference voices shared by IndexTTS and VoxCPM2 — ship with assets/)
 custom_datas += collect_data_files("mlx_indextts")
 custom_datas += collect_data_files("wetext")
 custom_datas += collect_data_files("contractions")      # wetext → contractions_dict.json
 custom_datas += collect_data_files("anyascii")
 custom_datas += collect_data_files("textsearch")
-custom_datas += collect_data_files("torchaudio")
 custom_datas += collect_data_files("mlx")
 custom_datas += collect_data_files("mlx_qwen3_asr")
 custom_datas += collect_data_files("mlx_audio")
 custom_datas += collect_data_files("mlx_lm")
 custom_datas += collect_data_files("huggingface_hub")
 custom_datas += collect_data_files("sherpa_onnx")
-custom_datas += collect_data_files("torch")
 custom_datas += collect_data_files("transformers")
 
 custom_binaries = []
 custom_binaries += collect_dynamic_libs("mlx")
 custom_binaries += collect_dynamic_libs("sherpa_onnx")
 custom_binaries += collect_dynamic_libs("sounddevice")
-custom_binaries += collect_dynamic_libs("torch")
-custom_binaries += collect_dynamic_libs("torchaudio")
 custom_binaries += collect_dynamic_libs("kaldifst")
 
 a = Analysis(
@@ -79,9 +88,11 @@ a = Analysis(
     hiddenimports=hidden_imports,
     hookspath=[],
     hooksconfig={},
-    runtime_hooks=[],
+    runtime_hooks=['tools/runtime_hook.py'],
     # scipy is needed by VoxCPM2 (reference resampling in mlx-audio) and IndexTTS.
-    excludes=['tensorflow', 'keras', 'matplotlib', 'pandas'],
+    excludes=['tensorflow', 'keras', 'matplotlib', 'pandas',
+              'torch', 'torchaudio', 'sympy', 'mpmath', 'networkx',
+              'tkinter', '_tkinter', 'test', 'idlelib'],
     noarchive=False,
     optimize=0,
 )

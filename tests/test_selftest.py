@@ -36,3 +36,21 @@ def test_app_main_routes_the_flag(monkeypatch):
     with pytest.raises(SystemExit) as ei:
         app.main()
     assert seen["argv"] == ["audio"] and ei.value.code == 0
+
+
+def test_translation_selftest_uses_apps_downloaded_weights(monkeypatch, tmp_path):
+    from unittest.mock import MagicMock
+    from thundertalk.core import audio_io, models, translate
+    eng = MagicMock()
+    eng.translate_text.return_value.text = "translated text"
+    eng.translate_text.return_value.inference_ms = 1
+    eng.translate.return_value.text = "translated speech"
+    eng.translate.return_value.inference_ms = 2
+    monkeypatch.setattr(translate, "TranslationEngine", lambda: eng)
+    monkeypatch.setattr(models, "get_model_path", lambda _: str(tmp_path))
+    monkeypatch.setattr(audio_io, "decode_audio", lambda *args: [0.1, 0.2])
+    assert selftest.run(["translate"]) == 0
+    eng.load_model.assert_called_once_with(str(tmp_path))
+    eng.translate_text.assert_called_once()
+    eng.translate.assert_called_once()
+    eng.unload.assert_called_once()

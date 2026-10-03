@@ -133,6 +133,8 @@ class TranslationEngine:
         Imports torch/transformers lazily so the base app doesn't pay the
         startup cost when translation is off.
         """
+        from thundertalk.core.runtime import require
+        require()
         import torch
         from transformers import AutoProcessor, SeamlessM4Tv2Model
 

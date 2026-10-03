@@ -104,7 +104,9 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
                      cancel: Optional[threading.Event] = None) -> None:
     """Fetch everything ``info`` needs, with byte progress and cancel."""
     from thundertalk.core import models
-    total = max(1, sum(d.size_mb for d in info.downloads))
+    from thundertalk.core.runtime import SIZE_MB, install, needed
+    component_mb = SIZE_MB if info.id == "indextts" and needed() else 0
+    total = max(1, sum(d.size_mb for d in info.downloads) + component_mb)
     done = 0
 
     def sub(d: Download):
@@ -118,6 +120,9 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
                     progress(int((base + d.size_mb * pct / 100) * 100 / total), msg)
         return cb
 
+    if info.id == "indextts":
+        install(sub(Download(kind="component", source="", size_mb=component_mb)), cancel)
+        done += component_mb
     for d in info.downloads:
         if cancel is not None and cancel.is_set():
             raise models.DownloadCancelled()

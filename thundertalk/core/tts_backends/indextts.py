@@ -70,7 +70,8 @@ class IndexTTSBackend(TtsBackend):
     def is_ready(self) -> bool:
         from thundertalk.core.models import hf_snapshot_dir
         snap, w2v = self._snapshot(), hf_snapshot_dir(W2V_REPO)
-        return bool(snap and all((snap / f).exists() for f in _NEEDED)
+        from thundertalk.core.runtime import needed
+        return bool(not needed() and snap and all((snap / f).exists() for f in _NEEDED)
                     and w2v and all((w2v / f).exists() for f in _W2V_NEEDED))
 
     def voices(self) -> list[BackendVoice]:
@@ -83,6 +84,8 @@ class IndexTTSBackend(TtsBackend):
         from thundertalk.core.tts import TtsModelMissing
         if not self.is_ready():
             raise TtsModelMissing(self.repo)
+        from thundertalk.core.runtime import require
+        require()
         tp = str(_third_party())
         if tp not in sys.path:
             sys.path.insert(0, tp)

@@ -337,14 +337,17 @@ def _content_length(url: str) -> int:
         return 0
 
 
-def _curl_download(url: str, dest: Path, progress_cb, cancel, lo: int, hi: int) -> None:
+def _curl_download(url: str, dest: Path, progress_cb, cancel, lo: int, hi: int,
+                   *, resume: bool = False, total_bytes: int = 0) -> None:
     """curl into ``dest`` while reporting real byte progress.
 
     ``curl`` (not urllib) on purpose: it uses the macOS trust store, so it
     works in the frozen app where Python has no CA bundle."""
-    total = _content_length(url)
+    total = total_bytes or _content_length(url)
     proc = subprocess.Popen(
-        ["curl", "-L", "-f", "-sS", "-o", str(dest), url],
+        ["curl", "-L", "-f", "-sS", "--connect-timeout", "15",
+         "--speed-limit", "1", "--speed-time", "30",
+         *(["-C", "-"] if resume else []), "-o", str(dest), url],
         stdout=subprocess.DEVNULL, stderr=subprocess.PIPE, text=True,
     )
     try:
@@ -366,8 +369,15 @@ def _curl_download(url: str, dest: Path, progress_cb, cancel, lo: int, hi: int) 
             err = (proc.stderr.read() if proc.stderr else "").strip()
             raise RuntimeError(err or f"download failed (curl exit {proc.returncode})")
     except BaseException:
-        dest.unlink(missing_ok=True)
+        if not resume:
+            dest.unlink(missing_ok=True)
         raise
+    finally:
+        if proc.poll() is None:
+            proc.terminate()
+            proc.wait()
+        if proc.stderr:
+            proc.stderr.close()
 
 
 def hf_snapshot_dir(repo_id: str) -> Optional[Path]:
@@ -487,6 +497,15 @@ def download_model(
     size is unknown (show an indeterminate bar). ``cancel`` is a
     ``threading.Event``; setting it aborts with ``DownloadCancelled``.
     """
+    if info.backend == "seamless-torch":
+        from thundertalk.core.runtime import SIZE_MB, install, needed
+        cb = progress_cb
+        fraction = SIZE_MB / (SIZE_MB + (0 if is_downloaded(info.id) else info.size_mb)) if needed() else 0
+        component_cb = (lambda p, msg: cb(-1 if p < 0 else int(p * fraction), msg)) if cb else None
+        install(component_cb, cancel)
+        if cb and fraction < 1:
+            def progress_cb(p, msg):
+                cb(-1 if p < 0 else int(100 * fraction + p * (1 - fraction)), msg)
     url = info.download_url
     if not url:
         raise ValueError("No download URL")
@@ -512,6 +531,8 @@ def download_model(
     # download — only skip when the weights are really there. (HF snapshots
     # resume into the same directory; tar extractions are cleaned below.)
     if is_downloaded(info.id):
+        if progress_cb:
+            progress_cb(100, "Done")
         return
 
     is_tar = ".tar.bz2" in url or ".tar.gz" in url

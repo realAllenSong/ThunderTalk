@@ -124,12 +124,41 @@ def check_clone(path: str, text: str, engine: str = "") -> bool:
                 seconds_audio=round(r.duration, 1), read_back_error=None if err is None else round(err, 3))
 
 
+def check_translate() -> bool:
+    from thundertalk.core import audio_io
+    from thundertalk.core.models import get_model_path
+    from thundertalk.core.translate import TranslationEngine
+    from thundertalk.core.tts_backends.presets import load_presets
+    eng = TranslationEngine()
+    try:
+        eng.load_model(get_model_path("seamless-m4t-v2-large") or "hf://facebook/seamless-m4t-v2-large")
+        result = eng.translate_text("Hello world. How are you today?", "eng", "cmn")
+        clip = next(p for p in load_presets() if p.language == "english")
+        speech = eng.translate(audio_io.decode_audio(str(clip.wav), 16000), "cmn")
+        return _say(bool(result.text.strip()) and bool(speech.text.strip()), "translate",
+                    text=result.text, speech_text=speech.text,
+                    inference_ms=result.inference_ms, speech_inference_ms=speech.inference_ms)
+    finally:
+        eng.unload()
+
+
+def check_runtime() -> bool:
+    from thundertalk.core import runtime
+    runtime.install(lambda pct, msg: _say(True, "runtime-progress", percent=pct, message=msg))
+    runtime.require()
+    import torch
+    import torchaudio
+    value = torchaudio.functional.melscale_fbanks(201, 0, 8000, 80, 16000)
+    return _say(value.shape == (201, 80), "runtime", torch=torch.__version__,
+                path=torch.__file__)
+
+
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "translate", "runtime", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
-    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 (default: all downloaded / the clone default)")
+    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
     ok = True
     try:
@@ -141,6 +170,10 @@ def run(argv: list[str]) -> int:
             ok &= check_asr(a.file)
         if a.what == "moss":
             ok &= check_moss(a.file)
+        if a.what == "runtime":
+            ok &= check_runtime()
+        if a.what == "translate":
+            ok &= check_translate()
         if a.what == "clone":
             ok &= check_clone(a.file, a.text, a.engine)
     except Exception as exc:                                    # noqa: BLE001
