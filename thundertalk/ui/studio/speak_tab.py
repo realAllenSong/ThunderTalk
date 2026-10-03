@@ -145,9 +145,21 @@ class SpeakTab(QWidget):
         self._cap_mine = _caption(t("studio.voices.mine"))
         head.addWidget(self._cap_mine)
         head.addStretch()
-        self._manage_btn = theme.make_button(t("studio.voices.manage"), "secondary", 28, font_px=12)
-        self._manage_btn.clicked.connect(self._manage_menu)
-        head.addWidget(self._manage_btn)
+        # Batch actions: "Select" turns the chips into checkboxes.
+        self._select_btn = theme.make_button(t("studio.voices.select"), "secondary", 28, font_px=12)
+        self._select_btn.clicked.connect(lambda: self._set_pick_mode(True))
+        head.addWidget(self._select_btn)
+        self._all_btn = theme.make_button(t("studio.voices.select_all"), "secondary", 28, font_px=12)
+        self._all_btn.clicked.connect(self._pick_all)
+        head.addWidget(self._all_btn)
+        self._del_sel_btn = theme.make_button("", "danger", 28, font_px=12)
+        self._del_sel_btn.clicked.connect(self._delete_picked)
+        head.addWidget(self._del_sel_btn)
+        self._done_btn = theme.make_button(t("studio.voices.done"), "secondary", 28, font_px=12)
+        self._done_btn.clicked.connect(lambda: self._set_pick_mode(False))
+        head.addWidget(self._done_btn)
+        self._picking = False
+        self._add_chip: Optional[VoiceChip] = None
         vly.addLayout(head)
         self._mine_host = QWidget()
         self._mine_flow = FlowLayout(self._mine_host, 10, 10)
@@ -277,7 +289,10 @@ class SpeakTab(QWidget):
     def retranslate(self) -> None:
         self._cap_builtin.setText(t("studio.voices.builtin"))
         self._cap_mine.setText(t("studio.voices.mine"))
-        self._manage_btn.setText(t("studio.voices.manage"))
+        self._select_btn.setText(t("studio.voices.select"))
+        self._all_btn.setText(t("studio.voices.select_all"))
+        self._done_btn.setText(t("studio.voices.done"))
+        self._update_pick_count()
         self._mine_hint.setText(t("studio.voices.mine_hint"))
         self._cap_engine.setText(t("studio.engine.pick"))
         self._no_clone.setText(t("studio.voices.no_clone"))
@@ -315,6 +330,7 @@ class SpeakTab(QWidget):
 
     def _rebuild_voices(self) -> None:
         self._stop_preview()
+        self._add_chip = None
         self._clear_flow(self._builtin_host, self._builtin_flow)
         self._clear_flow(self._mine_host, self._mine_flow)
         self._chips.clear()
@@ -330,19 +346,25 @@ class SpeakTab(QWidget):
         clone = b.info.supports_clone
         mine = self._lib.list() if clone else []
         for v in mine:
-            chip = VoiceChip(v.name, t("studio.voices.mine_sub").format(sec=f"{v.duration:.0f}"), previewable=True)
+            chip = VoiceChip(v.name, t("studio.voices.mine_sub").format(sec=f"{v.duration:.0f}"), previewable=True,
+                             has_menu=True)
             chip.clicked.connect(lambda _=False, vid=MY_PREFIX + v.id: self._select(vid))
             chip.preview.connect(lambda vid=MY_PREFIX + v.id: self._toggle_preview(vid))
+            chip.menu_requested.connect(lambda c=chip, sid=v.id: self._voice_menu(sid, c))
+            chip.pick_toggled.connect(lambda _on: self._update_pick_count())
             self._mine_flow.addWidget(chip)
             self._chips[MY_PREFIX + v.id] = chip
         if clone:
             add = VoiceChip(t("studio.voices.clone"), dashed=True, icon="plus")
             add.clicked.connect(self._clone_new)
             self._mine_flow.addWidget(add)
+            self._add_chip = add
         for w in (self._cap_mine, self._mine_host, self._mine_rule):
             w.setVisible(clone)
         self._mine_hint.setVisible(clone and not mine)
-        self._manage_btn.setVisible(bool(mine))
+        if not mine:
+            self._picking = False
+        self._apply_pick_mode()
         self._no_clone.setVisible(not clone)
         if self._voice_id not in self._chips:
             self._voice_id = self._default_for(b)
@@ -438,19 +460,21 @@ class SpeakTab(QWidget):
             self._refresh()
             self.toast.emit(t("studio.voices.saved").format(name=dlg.saved.name), "success")
 
-    def _manage_menu(self) -> None:
-        v = self._saved_voice()
-        if v is None:
-            self.toast.emit(t("studio.voices.pick_mine"), "info")
-            return
-        menu = QMenu(self)
-        menu.addAction(t("studio.voices.rename"), self._rename_voice)
-        menu.addAction(t("studio.voices.edit_text"), self._edit_text)
-        menu.addAction(t("studio.voices.delete"), self._delete_voice)
-        menu.exec(self._manage_btn.mapToGlobal(self._manage_btn.rect().bottomLeft()))
+    # ── managing my voices ───────────────────────────────────────────
+    def _my_chips(self) -> dict[str, VoiceChip]:
+        return {vid[len(MY_PREFIX):]: c for vid, c in self._chips.items() if vid.startswith(MY_PREFIX)}
 
-    def _rename_voice(self) -> None:
-        v = self._saved_voice()
+    def _voice_menu(self, voice_id: str, chip: VoiceChip) -> None:
+        """The ⋯ on a voice: actions for that voice, no selection needed."""
+        menu = QMenu(self)
+        menu.addAction(t("studio.voices.rename"), lambda: self._rename_voice(voice_id))
+        menu.addAction(t("studio.voices.edit_text"), lambda: self._edit_text(voice_id))
+        menu.addSeparator()
+        menu.addAction(t("studio.voices.delete"), lambda: self._delete_voices([voice_id]))
+        menu.exec(chip.menu_anchor())
+
+    def _rename_voice(self, voice_id: str) -> None:
+        v = self._lib.get(voice_id)
         if v is None:
             return
         name, ok = QInputDialog.getText(self, t("studio.voices.rename"), t("studio.voices.name"), text=v.name)
@@ -458,8 +482,8 @@ class SpeakTab(QWidget):
             self._lib.rename(v.id, name)
             self._rebuild_voices()
 
-    def _edit_text(self) -> None:
-        v = self._saved_voice()
+    def _edit_text(self, voice_id: str) -> None:
+        v = self._lib.get(voice_id)
         if v is None:
             return
         text, ok = QInputDialog.getMultiLineText(self, t("studio.voices.edit_text"), t("studio.clone.said"),
@@ -467,19 +491,62 @@ class SpeakTab(QWidget):
         if ok and text.strip():
             self._lib.update_text(v.id, text)
 
-    def _delete_voice(self) -> None:
-        v = self._saved_voice()
-        if v is None:
+    def _delete_voices(self, voice_ids: list[str]) -> None:
+        voices = [v for v in (self._lib.get(i) for i in voice_ids) if v is not None]
+        if not voices:
             return
         from thundertalk.ui.styled_dialog import StyledDialog
-        if StyledDialog.confirm(self.window(), title=t("studio.voices.delete_title").format(name=v.name),
-                                body=t("studio.voices.delete_body"), accept_label=t("studio.voices.delete"),
-                                cancel_label=t("common.cancel"), destructive=True):
+        title = (t("studio.voices.delete_title").format(name=voices[0].name) if len(voices) == 1
+                 else t("studio.voices.delete_many_title").format(n=len(voices)))
+        if not StyledDialog.confirm(self.window(), title=title, body=t("studio.voices.delete_body"),
+                                    accept_label=t("studio.voices.delete"), cancel_label=t("common.cancel"),
+                                    destructive=True):
+            return
+        self._stop_preview()
+        for v in voices:
             self._lib.delete(v.id)
+        if self._voice_id in {MY_PREFIX + v.id for v in voices}:
             self._voice_id = default_voice()
             self._save_pref("studio_voice", "")
-            self._rebuild_voices()
-            self._refresh()
+        self._picking = self._picking and len(self._lib.list()) > 0
+        self._rebuild_voices()
+        self._refresh()
+
+    def _set_pick_mode(self, on: bool) -> None:
+        self._picking = on
+        self._stop_preview()
+        self._apply_pick_mode()
+
+    def _apply_pick_mode(self) -> None:
+        mine = self._my_chips()
+        on = self._picking and bool(mine)
+        for c in mine.values():
+            c.set_pick_mode(on)
+        add = getattr(self, "_add_chip", None)
+        if add is not None:
+            add.setVisible(not on)
+        self._select_btn.setVisible(bool(mine) and not on)
+        for w in (self._all_btn, self._del_sel_btn, self._done_btn):
+            w.setVisible(on)
+        self._mine_host.updateGeometry()
+        self._update_pick_count()
+
+    def _picked_ids(self) -> list[str]:
+        return [sid for sid, c in self._my_chips().items() if c.is_picked()]
+
+    def _update_pick_count(self) -> None:
+        n = len(self._picked_ids())
+        self._del_sel_btn.setText(t("studio.voices.delete_picked").format(n=n))
+        self._del_sel_btn.setEnabled(n > 0)
+
+    def _pick_all(self) -> None:
+        chips = list(self._my_chips().values())
+        everything = all(c.is_picked() for c in chips)
+        for c in chips:
+            c.set_picked(not everything)
+
+    def _delete_picked(self) -> None:
+        self._delete_voices(self._picked_ids())
 
     # ── engine readiness ──────────────────────────────────────────────
     def _needed_backend(self):

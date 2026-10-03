@@ -127,8 +127,11 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.engine.pick": {"en": "Engine", "zh": "引擎"},
     "studio.voices.no_clone": {"en": "Kokoro has built-in voices only. Switch to VoxCPM2 or IndexTTS to use your own voice.",
                                "zh": "Kokoro 只有内置音色。想用你自己的声音，请切换到 VoxCPM2 或 IndexTTS。"},
-    "studio.voices.manage": {"en": "Manage", "zh": "管理"},
-    "studio.voices.pick_mine": {"en": "Select one of your voices first.", "zh": "请先选中你的一个声音。"},
+    "studio.voices.select": {"en": "Select", "zh": "选择"},
+    "studio.voices.select_all": {"en": "Select all", "zh": "全选"},
+    "studio.voices.done": {"en": "Done", "zh": "完成"},
+    "studio.voices.delete_picked": {"en": "Delete selected ({n})", "zh": "删除所选（{n}）"},
+    "studio.voices.delete_many_title": {"en": "Delete {n} voices?", "zh": "删除 {n} 个声音？"},
     "studio.voices.rename": {"en": "Rename", "zh": "重命名"},
     "studio.voices.name": {"en": "Voice name", "zh": "声音名称"},
     "studio.voices.edit_text": {"en": "Edit what was said", "zh": "修改朗读内容"},
@@ -140,8 +143,8 @@ STUDIO: dict[str, dict[str, str]] = {
     },
     "studio.voices.saved": {"en": "Saved voice “{name}”", "zh": "已保存声音“{name}”"},
     "studio.voices.need_text": {
-        "en": "This voice has no transcript. Use Manage ▸ Edit what was said.",
-        "zh": "这个声音缺少对应文字，请在「管理」里补充朗读内容。",
+        "en": "This voice has no transcript. Click ⋯ on the voice ▸ Edit what was said.",
+        "zh": "这个声音缺少对应文字，请点声音右侧的 ⋯ ▸ 修改朗读内容。",
     },
 
     # ── speak: text & generation ─────────────────────────────────────

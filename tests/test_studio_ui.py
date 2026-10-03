@@ -468,3 +468,85 @@ def test_preview_stops_when_generating_or_switching_engine(speak):
     speak._go.click()
     assert not speak._preview.is_playing
     assert wait_for(lambda: speak._result_card.isVisible())
+
+
+# ── managing my voices: per-voice ⋯ menu and batch delete ───────────────
+
+class FakeMenu:
+    """Stands in for QMenu: records actions; exec() runs the one named in `choose`."""
+    choose = ""
+
+    def __init__(self, *_a):
+        self.actions = []
+
+    def addAction(self, text, fn=None):
+        self.actions.append((text, fn))
+
+    def addSeparator(self):
+        pass
+
+    def exec(self, *_a):
+        for text, fn in self.actions:
+            if text == FakeMenu.choose:
+                fn()
+
+
+def _add_voices(*names):
+    lib = voices.VoiceLibrary()
+    return [lib.add(n, voices.prepare_reference(_talk(6.0, 1), SR).audio, "some words") for n in names]
+
+
+def test_voice_menu_acts_on_that_voice_without_selecting_it(speak, monkeypatch):
+    from thundertalk.ui.studio import speak_tab
+    from thundertalk.ui import styled_dialog
+    a, b = _add_voices("Alpha", "Beta")
+    pick_engine(speak, "voxcpm2")
+    speak._chips["voxcpm2:male-en"].click()                      # a built-in voice is selected
+    monkeypatch.setattr(speak_tab, "QMenu", FakeMenu)
+    monkeypatch.setattr(speak_tab.QInputDialog, "getText", staticmethod(lambda *a, **k: ("Gamma", True)))
+    FakeMenu.choose = speak_tab.t("studio.voices.rename")
+    speak._chips["my:" + b.id].menu_requested.emit()
+    assert voices.VoiceLibrary().get(b.id).name == "Gamma"
+    assert speak._voice_id == "voxcpm2:male-en"                  # selection untouched
+    monkeypatch.setattr(styled_dialog.StyledDialog, "confirm", staticmethod(lambda *a, **k: True))
+    FakeMenu.choose = speak_tab.t("studio.voices.delete")
+    speak._chips["my:" + a.id].menu_requested.emit()
+    assert [v.id for v in voices.VoiceLibrary().list()] == [b.id]
+    assert "my:" + a.id not in speak._chips and speak._voice_id == "voxcpm2:male-en"
+
+
+def test_batch_select_and_delete(speak, monkeypatch):
+    from PySide6.QtCore import QPoint, Qt
+    from PySide6.QtTest import QTest
+    from thundertalk.ui import styled_dialog
+    vs = _add_voices("One", "Two", "Three")
+    pick_engine(speak, "indextts")
+    assert speak._select_btn.isVisibleTo(speak) and not speak._del_sel_btn.isVisibleTo(speak)
+    speak._select_btn.click()
+    assert speak._del_sel_btn.isVisibleTo(speak) and not speak._del_sel_btn.isEnabled()
+    assert speak._add_chip is not None and not speak._add_chip.isVisibleTo(speak)
+    before = speak._voice_id
+    for v in vs[:2]:                                             # a click ticks, it doesn't select
+        c = speak._chips["my:" + v.id]
+        QTest.mouseClick(c, Qt.MouseButton.LeftButton, pos=QPoint(20, c.height() // 2))
+    assert speak._voice_id == before and speak._del_sel_btn.isEnabled() and "2" in speak._del_sel_btn.text()
+    asked = {}
+    monkeypatch.setattr(styled_dialog.StyledDialog, "confirm",
+                        staticmethod(lambda *a, **k: asked.setdefault("title", k["title"]) or True))
+    speak._del_sel_btn.click()
+    assert "2" in asked["title"]
+    assert [v.id for v in voices.VoiceLibrary().list()] == [vs[2].id]
+    speak._all_btn.click()
+    speak._del_sel_btn.click()
+    assert voices.VoiceLibrary().list() == []
+    assert not speak._select_btn.isVisibleTo(speak) and not speak._done_btn.isVisibleTo(speak)
+
+
+def test_done_leaves_pick_mode_and_keeps_voices(speak):
+    vs = _add_voices("Keep")
+    pick_engine(speak, "voxcpm2")
+    speak._select_btn.click()
+    speak._chips["my:" + vs[0].id].set_picked(True)
+    speak._done_btn.click()
+    assert speak._select_btn.isVisibleTo(speak) and not speak._done_btn.isVisibleTo(speak)
+    assert len(voices.VoiceLibrary().list()) == 1 and not speak._chips["my:" + vs[0].id].is_picked()

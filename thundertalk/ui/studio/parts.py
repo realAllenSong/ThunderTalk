@@ -8,7 +8,7 @@ from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from PySide6.QtCore import QRectF, QSize, Qt, QTimer, Signal
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -549,18 +549,30 @@ class TranscriptView(QWidget):
 # ── voice chips ──────────────────────────────────────────────────────────
 
 class VoiceChip(QAbstractButton):
-    """A selectable voice: name on top, one-line description under it."""
+    """A selectable voice: name on top, one-line description under it.
 
-    preview = Signal()          # the round play button on the right was clicked
+    Optional zones on the right: a round ▶ that previews the voice
+    (``previewable``) and a ⋯ that opens per-voice actions (``has_menu``).
+    In pick mode (``set_pick_mode``) a click ticks the chip instead of
+    selecting the voice, for batch actions."""
+
+    preview = Signal()          # the round play button was clicked
+    menu_requested = Signal()   # the ⋯ button was clicked
+    pick_toggled = Signal(bool)  # pick mode: the chip was ticked / unticked
 
     _PREVIEW_W = 30             # width of the play-button zone
+    _MENU_W = 26                # width of the ⋯ zone
+    _PICK_W = 26                # width of the checkbox zone on the left
 
     def __init__(self, name: str, sub: str = "", *, dashed: bool = False, icon: str = "",
-                 previewable: bool = False) -> None:
+                 previewable: bool = False, has_menu: bool = False) -> None:
         super().__init__()
         self._name, self._sub, self._dashed, self._icon = name, sub, dashed, icon
         self._hover = False
-        self._previewable, self._playing, self._press_preview = previewable, False, False
+        self._previewable, self._playing = previewable, False
+        self._has_menu = has_menu
+        self._pick_mode, self._picked = False, False
+        self._press_zone = ""
         if previewable:
             self.setToolTip(t("studio.voices.preview"))
         self.setCheckable(not dashed)
@@ -578,8 +590,9 @@ class VoiceChip(QAbstractButton):
         f1, f2 = theme.font(13, bold=True), theme.font(11)
         w = max(QFontMetrics(f1).horizontalAdvance(self._name),
                 QFontMetrics(f2).horizontalAdvance(self._sub) if self._sub else 0)
-        return QSize(int(w) + 36 + (22 if self._icon else 0) + (self._PREVIEW_W if self._previewable else 0),
-                     54 if self._sub else 42)
+        extra = ((22 if self._icon else 0) + (self._PREVIEW_W if self._previewable else 0)
+                 + (self._MENU_W if self._has_menu else 0) + (self._PICK_W if self._pick_mode else 0))
+        return QSize(int(w) + 36 + extra, 54 if self._sub else 42)
 
     # -- preview button ---------------------------------------------------
     def set_playing(self, playing: bool) -> None:
@@ -590,29 +603,66 @@ class VoiceChip(QAbstractButton):
     def is_playing(self) -> bool:
         return self._playing
 
+    # -- pick mode ----------------------------------------------------------
+    def set_pick_mode(self, on: bool) -> None:
+        if on != self._pick_mode:
+            self._pick_mode, self._picked = on, False
+            self.updateGeometry()
+            self.update()
+
+    def is_picked(self) -> bool:
+        return self._picked
+
+    def set_picked(self, picked: bool) -> None:
+        if self._pick_mode and picked != self._picked:
+            self._picked = picked
+            self.update()
+            self.pick_toggled.emit(picked)
+
+    # -- zones --------------------------------------------------------------
     def _preview_rect(self) -> QRectF:
         s = 24.0
         return QRectF(self.width() - self._PREVIEW_W - 4 + (self._PREVIEW_W - s) / 2,
                       (self.height() - s) / 2, s, s)
 
-    def _in_preview(self, pos) -> bool:
-        return self._previewable and pos.x() >= self.width() - self._PREVIEW_W - 6
+    def _menu_rect(self) -> QRectF:
+        right = self.width() - 4 - (self._PREVIEW_W if self._previewable else 0)
+        return QRectF(right - self._MENU_W, (self.height() - 24) / 2, self._MENU_W, 24)
+
+    def _zone(self, pos) -> str:
+        x = pos.x()
+        if self._previewable and x >= self.width() - self._PREVIEW_W - 6:
+            return "preview"
+        if self._has_menu and not self._pick_mode and self._menu_rect().adjusted(-2, -8, 2, 8).contains(pos):
+            return "menu"
+        return ""
 
     def mousePressEvent(self, ev) -> None:
-        self._press_preview = ev.button() == Qt.MouseButton.LeftButton and self._in_preview(ev.position())
-        if self._press_preview:
+        zone = self._zone(ev.position()) if ev.button() == Qt.MouseButton.LeftButton else ""
+        if zone or self._pick_mode:
+            self._press_zone = zone or "pick"
             ev.accept()
             return
         super().mousePressEvent(ev)
 
     def mouseReleaseEvent(self, ev) -> None:
-        if self._press_preview:
-            self._press_preview = False
-            if self._in_preview(ev.position()) and self.rect().contains(ev.position().toPoint()):
+        if self._press_zone:
+            zone, self._press_zone = self._press_zone, ""
+            inside = self.rect().contains(ev.position().toPoint())
+            if inside and zone == "preview" and self._zone(ev.position()) == "preview":
                 self.preview.emit()
+            elif inside and zone == "menu" and self._zone(ev.position()) == "menu":
+                self.menu_requested.emit()
+            elif inside and zone == "pick":
+                self.set_picked(not self._picked)
             ev.accept()
             return
         super().mouseReleaseEvent(ev)
+
+    def menu_anchor(self):
+        """Global point under the ⋯ button, for placing its menu."""
+        r = self._menu_rect()
+        return self.mapToGlobal(QPoint(int(r.left()), int(r.bottom()) + 2))
 
     def enterEvent(self, ev) -> None:
         self._hover = True
@@ -625,7 +675,7 @@ class VoiceChip(QAbstractButton):
     def paintEvent(self, ev) -> None:
         p = QPainter(self)
         p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        sel = self.isChecked()
+        sel = self._picked if self._pick_mode else self.isChecked()
         r = QRectF(self.rect()).adjusted(0.5, 0.5, -0.5, -0.5)
         p.setBrush(theme.qcolor(theme.BG_CARD if not self._hover else theme.HOVER_FILL))
         if sel:
@@ -635,10 +685,18 @@ class VoiceChip(QAbstractButton):
                           Qt.PenStyle.DashLine if self._dashed else Qt.PenStyle.SolidLine))
         p.drawRoundedRect(r, theme.RADIUS_CONTROL + 2, theme.RADIUS_CONTROL + 2)
         x = 16.0
+        if self._pick_mode:
+            box = QRectF(14, (self.height() - 16) / 2, 16, 16)
+            p.setPen(QPen(theme.qcolor(theme.INK if self._picked else theme.BORDER_STRONG), 1.2))
+            p.setBrush(theme.qcolor(theme.INK if self._picked else theme.BG_CARD))
+            p.drawRoundedRect(box, 4, 4)
+            if self._picked:
+                paint_icon(p, "check", box.adjusted(2, 2, -2, -2), theme.BG_CARD, 2.2)
+            x += self._PICK_W
         if self._icon:
-            paint_icon(p, self._icon, QRectF(14, (self.height() - 14) / 2, 14, 14), theme.TEXT_SECONDARY, 2.0)
-            x = 36.0
-        right = 8 + (self._PREVIEW_W if self._previewable else 0)
+            paint_icon(p, self._icon, QRectF(x - 2, (self.height() - 14) / 2, 14, 14), theme.TEXT_SECONDARY, 2.0)
+            x += 20.0
+        right = 8 + (self._PREVIEW_W if self._previewable else 0) + (self._MENU_W if self._has_menu else 0)
         p.setPen(theme.qcolor(theme.TEXT_PRIMARY))
         p.setFont(theme.font(13, bold=True))
         if self._sub:
@@ -649,6 +707,12 @@ class VoiceChip(QAbstractButton):
         else:
             p.drawText(QRectF(x, 0, self.width() - x - right, self.height()), Qt.AlignmentFlag.AlignVCenter,
                        self._name)
+        if self._has_menu and not self._pick_mode:
+            mr = self._menu_rect()
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(theme.qcolor(theme.TEXT_SECONDARY))
+            for k in (-5.0, 0.0, 5.0):
+                p.drawEllipse(QPointF(mr.center().x() + k, mr.center().y()), 1.6, 1.6)
         if self._previewable:
             pr = self._preview_rect()
             p.setPen(QPen(theme.qcolor(theme.INK if self._playing else theme.BORDER_STRONG), 1))
