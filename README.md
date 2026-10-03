@@ -133,7 +133,7 @@ Each is a one-time download offered from the Speak tab when you pick one of its 
 |-------|------|---------|-----------|----------|
 | SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | Speech and text translation in **Direct** and **Review** modes |
 
-The translation engine (PyTorch and Transformers) is bundled in `ThunderTalk.app`, so nothing needs installing; only the SeamlessM4T model file is downloaded on demand. Models are downloaded from the app's **Models** page and stored in `~/.thundertalk/models/`.
+Translation and IndexTTS share an optional **90 MB PyTorch component**. Downloading either engine from the app also installs this component into `~/.thundertalk/runtime/`; restart once if prompted. Dictation, Studio transcription, VoxCPM2 and Kokoro need no component. Transformers and SciPy remain bundled because MLX speech uses them too. Model weights are downloaded separately from the **Models** page or the Studio engine card and stored in `~/.thundertalk/models/` or the Hugging Face cache.
 
 ## System requirements
 
@@ -161,7 +161,7 @@ Smaller chips will be slower. If you have another Mac, the numbers from `Thunder
 
 ### Disk space
 
-- **App bundle:** about 820 MB on disk. The translation engine (PyTorch and Transformers) is included, which is why it is this size, and why translation works as soon as its model is downloaded.
+- **App bundle:** about 592 MiB on disk; the zip download is about 224 MB (214 MiB). Measured against the installed v1.6.4 bundle: 961 MiB on disk and a 330 MB zip. PyTorch, torchaudio, SymPy, mpmath and NetworkX are now an optional 90 MB download shared by translation and IndexTTS. Model weights are additional.
 - **Minimum to run:** about 1.1 GB (the app plus SenseVoice-Small).
 - **Recommended with translation:** about 13 GB free (the app, Qwen3-ASR-0.6B, SeamlessM4T and working files).
 
@@ -263,7 +263,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # Clone and install (Apple Silicon: MLX backend + translation engine)
 git clone https://github.com/realAllenSong/ThunderTalk.git
 cd ThunderTalk
-uv sync --extra mlx --extra translation
+uv sync --extra mlx --extra translation --extra indextts
 
 # Run from source
 uv run python run.py
@@ -272,7 +272,29 @@ uv run python run.py
 .venv/bin/python build_macos.py
 ```
 
-Always pass **both** extras. `uv sync --extra mlx` on its own removes the `translation` extra (PyTorch) from the environment, and a build made without it ships with broken translation ("PyTorch was not found" in the build log is the tell). On an Intel Mac, drop `--extra mlx`.
+Use all three extras for source runs and release builds so PyInstaller can analyze the complete dependencies. The release bundle excludes PyTorch and its exclusive dependencies and installs pinned wheels on demand. The optional release runtime requires Python 3.12 / Apple Silicon macOS; Intel source runs are untested.
+
+The optional component downloads immutable Python 3.12 arm64 wheels directly from PyPI. `thundertalk/core/runtime_manifest.json` records exact versions, URLs, sizes and SHA-256 hashes from `uv.lock`: torch/torchaudio 2.11.0, SymPy 1.14.0, mpmath 1.3.0 and NetworkX 3.6.1. No pip or separately installed Python is required on the user's Mac. Downloads resume after cancellation; failed integrity checks cannot publish a runtime. An installation lock and atomic directory rename protect concurrent app instances. The app activates the wheel directory before Transformers imports; if installed in an already-running session, restart when prompted. Native dylibs remain in the original wheel-relative layout; release signing must retain the existing `disable-library-validation` entitlement.
+
+No extra GitHub release asset is required. Attach the normal app zip; do not attach the developer environment. When updating the runtime, choose a new runtime ID, update its wheel records from `uv.lock`, rebuild, and rerun the packaged checks. Do not change a runtime ID's pins in place.
+
+```bash
+PYTHONPATH=$PWD .venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check thundertalk tests tools/runtime_hook.py
+# Run packaged checks sequentially (use the machine GPU lock on shared machines).
+APP=dist/ThunderTalk.app/Contents/MacOS/ThunderTalk
+"$APP" --selftest audio
+"$APP" --selftest tts --engine kokoro
+"$APP" --selftest tts --engine voxcpm2
+"$APP" --selftest moss --file sample.m4a
+"$APP" --selftest asr --file sample.m4a
+# Install and verify the optional component through the same installer as the UI.
+"$APP" --selftest runtime
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest tts --engine indextts
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
+```
+
+Run the first checks with no optional runtime installed and models already downloaded. The runtime check downloads about 90 MB; the final two checks need their separately downloaded model weights. `translate` checks both text and speech generation using a shipped reference clip. These are runtime smoke checks, not translation-quality assertions: with the locked dependencies, the English clip stayed English for target `cmn` in both the unchanged v1.6.4 source engine and the reduced app. Text translation returned Chinese. This existing speech target-language issue needs a separate fix.
 
 Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

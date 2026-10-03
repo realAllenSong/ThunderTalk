@@ -133,7 +133,7 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 |------|------|------|------|------|
 | SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | 在“直译”“审阅”模式下进行语音与文本翻译 |
 
-翻译**引擎**（PyTorch + Transformers）已直接打包在 `ThunderTalk.app` 内，无需另装任何依赖，只有 SeamlessM4T 的模型文件本身按需下载。模型都从“模型”页面下载，统一存放在 `~/.thundertalk/models/`。
+翻译和 IndexTTS 共用一个按需下载的 **90 MB PyTorch 组件**。在应用内下载这两个引擎时，组件会安装到 `~/.thundertalk/runtime/`；出现提示后请重启一次。听写、工作室转写、VoxCPM2 和 Kokoro 无需该组件。MLX 语音也使用 Transformers 和 SciPy，因此这两个库仍内置。模型权重从“模型”页面或工作室引擎卡片另行下载，存放在 `~/.thundertalk/models/` 或 Hugging Face 缓存中。
 
 ## 系统要求
 
@@ -161,7 +161,7 @@ ThunderTalk 使用 ad-hoc 签名而没有做公证（Apple Developer ID 每年 9
 
 ### 磁盘空间
 
-- **App 本体：** 约 820 MB。翻译引擎（PyTorch + Transformers）已打包在内，这也是体积偏大的原因，好处是模型下载完之后翻译开箱即用。
+- **App 本体：** 磁盘占用约 592 MiB，zip 下载约 224 MB（214 MiB）。实测已安装的 v1.6.4 为 961 MiB，zip 为 330 MB。PyTorch、torchaudio、SymPy、mpmath 和 NetworkX 改为翻译与 IndexTTS 共用的可选组件，下载约 90 MB。模型权重另计。
 - **最低运行需求：** 约 1.1 GB（App + SenseVoice-Small）。
 - **含翻译的推荐配置：** 约 13 GB 空闲空间（App + Qwen3-ASR-0.6B + SeamlessM4T + 工作文件）。
 
@@ -263,7 +263,7 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 # 克隆并安装（Apple Silicon：MLX 后端 + 翻译引擎）
 git clone https://github.com/realAllenSong/ThunderTalk.git
 cd ThunderTalk
-uv sync --extra mlx --extra translation
+uv sync --extra mlx --extra translation --extra indextts
 
 # 从源码运行
 uv run python run.py
@@ -272,7 +272,29 @@ uv run python run.py
 .venv/bin/python build_macos.py
 ```
 
-请**始终同时**带上这两个 extra。单独运行 `uv sync --extra mlx` 会把 `translation` 这个 extra（PyTorch）从环境里移除，缺了它打出来的包翻译功能会悄悄失效（构建日志里出现“PyTorch was not found”就是征兆）。Intel Mac 上去掉 `--extra mlx` 即可。
+源码运行和发布构建请使用 `uv sync --extra mlx --extra translation --extra indextts`，保留完整开发依赖供 PyInstaller 分析。发布包会排除 PyTorch 及其专用依赖，并通过锁定的 wheel 按需安装。发布版的可选组件仅支持 Python 3.12 / Apple Silicon macOS。Intel Mac 源码运行路径未经测试。
+
+可选组件直接从 PyPI 下载固定的 Python 3.12 arm64 wheel。`thundertalk/core/runtime_manifest.json` 保存从 `uv.lock` 提取的准确版本、URL、大小和 SHA-256：torch/torchaudio 2.11.0、SymPy 1.14.0、mpmath 1.3.0、NetworkX 3.6.1。用户无需安装 pip 或 Python。取消后可续传，校验失败不会发布组件。安装锁与原子目录重命名保护多个应用实例。应用启动时先激活组件，再导入 Transformers；在当前会话安装后，按提示重启。原生 dylib 保持 wheel 中的相对布局；发布签名须保留已有的 `disable-library-validation` entitlement。
+
+无需新增 GitHub Release 附件，只需发布正常的 app zip。更新组件时，使用新的 runtime ID，从 `uv.lock` 更新 wheel 清单，重新构建并运行打包自检；不要原地修改同一个 ID 的版本。
+
+```bash
+PYTHONPATH=$PWD .venv/bin/python -m pytest -q
+.venv/bin/python -m ruff check thundertalk tests tools/runtime_hook.py
+# 顺序运行打包自检；共享机器上使用机器级 GPU 锁。
+APP=dist/ThunderTalk.app/Contents/MacOS/ThunderTalk
+"$APP" --selftest audio
+"$APP" --selftest tts --engine kokoro
+"$APP" --selftest tts --engine voxcpm2
+"$APP" --selftest moss --file sample.m4a
+"$APP" --selftest asr --file sample.m4a
+# 使用与 UI 相同的代码下载并验证可选组件。
+"$APP" --selftest runtime
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest tts --engine indextts
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
+```
+
+前几项检查应在未安装可选组件、已下载模型权重时运行。runtime 检查下载约 90 MB；最后两项另需模型权重。translate 使用内置参考音频检查文本与语音生成。这是运行时冒烟检查，不断言翻译质量：在锁定的依赖版本下，目标设为 cmn 时，未修改的 v1.6.4 源码引擎和缩小后的应用都将英文片段输出为英文；文本翻译正确输出中文。这个已有的语音目标语言问题需要单独修复。
 
 欢迎贡献代码，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 

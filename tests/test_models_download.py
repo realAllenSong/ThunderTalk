@@ -165,3 +165,46 @@ def test_seamless_download_is_filtered_to_safetensors() -> None:
 def test_sensevoice_uses_the_small_int8_archive() -> None:
     info = next(x for x in m.BUILTIN_MODELS if x.id == "sensevoice-small-int8")
     assert "-int8-" in info.download_url and info.size_mb < 300
+
+
+class _RangeHandler(_SlowHandler):
+    starts = []
+
+    def do_GET(self):
+        start = int(self.headers.get("Range", "bytes=0-").split("=")[1].rstrip("-"))
+        self.starts.append(start)
+        self.send_response(206 if start else 200)
+        self.send_header("Content-Length", str(self.TOTAL - start))
+        if start:
+            self.send_header("Content-Range", f"bytes {start}-{self.TOTAL - 1}/{self.TOTAL}")
+        self.end_headers()
+        try:
+            for pos in range(start, self.TOTAL, self.CHUNK):
+                self.wfile.write(b"x" * min(self.CHUNK, self.TOTAL - pos))
+                time.sleep(0.02)
+        except (BrokenPipeError, ConnectionResetError):
+            pass
+
+
+def test_component_download_retains_partial_and_resumes(tmp_path):
+    srv = http.server.ThreadingHTTPServer(("127.0.0.1", 0), _RangeHandler)
+    threading.Thread(target=srv.serve_forever, daemon=True).start()
+    url = f"http://127.0.0.1:{srv.server_address[1]}/wheel"
+    dest = tmp_path / "wheel"
+    stop = threading.Event()
+    timer = threading.Timer(0.5, stop.set)
+    timer.start()
+    try:
+        with pytest.raises(m.DownloadCancelled):
+            m._curl_download(url, dest, None, stop, 0, 90, resume=True, total_bytes=_RangeHandler.TOTAL)
+        partial = dest.stat().st_size
+        assert 0 < partial < _RangeHandler.TOTAL
+        events = []
+        m._curl_download(url, dest, lambda p, msg: events.append(p), None, 0, 90,
+                         resume=True, total_bytes=_RangeHandler.TOTAL)
+        assert _RangeHandler.starts[-1] == partial
+        assert dest.stat().st_size == _RangeHandler.TOTAL
+        assert events == sorted(events)
+    finally:
+        timer.cancel()
+        srv.shutdown()

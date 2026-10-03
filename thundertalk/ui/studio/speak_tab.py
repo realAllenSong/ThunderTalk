@@ -591,21 +591,27 @@ class SpeakTab(QWidget):
         self._refresh()
 
     def _engine_ready(self) -> bool:
-        return self._needed_backend().is_ready()
+        from thundertalk.core.runtime import restart_needed
+        b = self._needed_backend()
+        return b.is_ready() and not (b.info.id == "indextts" and restart_needed())
 
     def _refresh(self) -> None:
         b = self._needed_backend()
-        ready = b.is_ready()
+        ready = self._engine_ready()
         downloading = self._dl is not None
         zh = i18n.LANG == "zh"
         size = b.info.size_mb
         size_txt = f"{size / 1000:.1f} GB" if size >= 1000 else f"{size} MB"
-        self._engine_card.setVisible(not ready or downloading)
+        from thundertalk.core.runtime import SIZE_MB, needed, restart_needed, status
+        component = status() if b.info.id == "indextts" else ""
+        if b.info.id == "indextts" and needed():
+            size_txt += f" + {SIZE_MB} MB"
+        self._engine_card.setVisible(not ready or downloading or bool(component))
         self._engine_title.setText(t("studio.engine.title_named").format(name=b.info.name))
         self._engine_body.setText((b.info.blurb_zh if zh else b.info.blurb_en) + "  "
-                                  + t("studio.engine.size").format(size=size_txt))
+                                  + t("studio.engine.size").format(size=size_txt) + "  " + component)
         self._dl_btn.setText(t("studio.engine.download_named").format(name=b.info.name, size=size_txt))
-        self._dl_btn.setVisible(not downloading)
+        self._dl_btn.setVisible(not downloading and not (b.info.id == "indextts" and restart_needed()))
         self._dl_cancel.setVisible(downloading)
         self._dl_bar.setVisible(downloading)
         busy = self.busy()
@@ -620,13 +626,18 @@ class SpeakTab(QWidget):
         w = BackendDownloadWorker(self._needed_backend().info)
         self._dl = w
         w.progress.connect(self._on_dl_progress)
-        w.done.connect(lambda _r: self.toast.emit(t("studio.engine.ready"), "success"))
+        w.done.connect(self._on_backend_downloaded)
         w.error.connect(lambda c: self.toast.emit(friendly_error(c), "error"))
         w.finished.connect(self._on_dl_finished)
         self._dl_bar.set_indeterminate(True)
         self._dl_status.setText(t("studio.engine.connecting"))
         self._refresh()
         w.start()
+
+    def _on_backend_downloaded(self, _result) -> None:
+        from thundertalk.core.runtime import restart_needed
+        key = "runtime.restart" if self._engine_id == "indextts" and restart_needed() else "studio.engine.ready"
+        self.toast.emit(t(key), "success")
 
     def _on_dl_progress(self, pct: int, msg: str) -> None:
         self._dl_status.setText(msg)

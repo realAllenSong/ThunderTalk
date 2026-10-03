@@ -7,6 +7,13 @@ Keep {placeholders} identical across languages.
 from __future__ import annotations
 
 EXTRA: dict[str, dict[str, str]] = {
+    "runtime.required": {"en": "PyTorch component download needed ({size} MB), shared by translation and IndexTTS. Restart after installation.", "zh": "需要下载 PyTorch 组件（{size} MB），翻译与 IndexTTS 共用。安装后请重启。"},
+    "runtime.restart": {"en": "Component installed. Restart ThunderTalk to enable translation and IndexTTS.", "zh": "组件已安装。请重启 ThunderTalk 以启用翻译和 IndexTTS。"},
+    "runtime.restart_short": {"en": "Restart needed", "zh": "需要重启"},
+    "runtime.ready": {"en": "Component ready", "zh": "组件已就绪"},
+    "runtime.unsupported": {"en": "This component requires Python 3.12 on Apple Silicon macOS.", "zh": "此组件需要 Apple Silicon macOS 和 Python 3.12。"},
+    "runtime.verifying": {"en": "Verifying and installing {name}…", "zh": "正在验证并安装 {name}…"},
+    "runtime.integrity": {"en": "Component checksum failed. Please download again.", "zh": "组件校验失败，请重新下载。"},
     # ── Sidebar status card ─────────────────────────────────────────
     "status.ready": {"en": "Ready", "zh": "已就绪"},
     "status.setup": {"en": "Setup needed", "zh": "需要设置"},

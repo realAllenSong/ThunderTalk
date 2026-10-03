@@ -61,7 +61,11 @@ def _fmt_size(mb: int) -> str:
 def _blurb(info: ModelInfo) -> str:
     key = f"model.blurb.{info.id}"
     text = t(key)
-    return info.notes if text == key else text
+    text = info.notes if text == key else text
+    if info.backend == "seamless-torch":
+        from thundertalk.core.runtime import status
+        text += "  " + status()
+    return text
 
 
 # ── workers ──────────────────────────────────────────────────────────────
@@ -163,7 +167,9 @@ class TranslationModeCard(theme.Card):
         head.addStretch()
         ly.addLayout(head)
 
-        self._subtitle_lbl = QLabel(t("models.translation_subtitle"))
+        from thundertalk.core.runtime import status
+        self._subtitle_lbl = QLabel(t("models.translation_subtitle") + "  " + status())
+        self._subtitle_lbl.setWordWrap(True)
         self._subtitle_lbl.setStyleSheet(
             f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
         ly.addWidget(self._subtitle_lbl)
@@ -227,6 +233,8 @@ class TranslationModeCard(theme.Card):
 
     def set_translator_status(self, state: str, message: str = "") -> None:
         """state ∈ {"hidden", "missing", "loading", "ready", "error"}"""
+        from thundertalk.core.runtime import status
+        self._subtitle_lbl.setText(t("models.translation_subtitle") + "  " + status())
         if state == "hidden":
             self._status_row.hide()
             return
@@ -249,7 +257,8 @@ class TranslationModeCard(theme.Card):
 
     def retranslate(self) -> None:
         self._title_lbl.setText(t("models.translation"))
-        self._subtitle_lbl.setText(t("models.translation_subtitle"))
+        from thundertalk.core.runtime import status
+        self._subtitle_lbl.setText(t("models.translation_subtitle") + "  " + status())
         self._segment.set_options(self._modes())
         self._warning.setText(t("models.review_needs_asr"))
 
@@ -440,7 +449,13 @@ class VariantRow(QWidget):
                        mode: str = "off") -> None:
         if self._loading or self._downloading:
             return
-        downloaded = is_downloaded(self.info.id)
+        from thundertalk.core.runtime import needed, restart_needed
+        if self.info.backend == "seamless-torch":
+            self._blurb.setText(_blurb(self.info))
+            if restart_needed():
+                self._style("secondary", t("runtime.restart_short"), False)
+                return
+        downloaded = is_downloaded(self.info.id) and not (self.info.backend == "seamless-torch" and needed())
         is_seamless = self.info.backend == "seamless-torch"
         is_asr_active = (active_id == self.info.id) and not is_seamless
         is_translator_active = (
@@ -485,7 +500,8 @@ class VariantRow(QWidget):
         if self._downloading:
             self.cancel_clicked.emit(self.info.id)
             return
-        if is_downloaded(self.info.id):
+        from thundertalk.core.runtime import needed
+        if is_downloaded(self.info.id) and not (self.info.backend == "seamless-torch" and needed()):
             path = get_model_path(self.info.id)
             if path:
                 self.activate_clicked.emit(
@@ -799,7 +815,7 @@ class ModelsPage(QWidget):
         info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
         if info is None:
             return
-        if info.size_mb >= _BIG_DOWNLOAD_MB:
+        if info.size_mb >= _BIG_DOWNLOAD_MB and not is_downloaded(model_id):
             from thundertalk.ui.styled_dialog import StyledDialog
             ok = StyledDialog.confirm(
                 self.window(),
@@ -874,6 +890,12 @@ class ModelsPage(QWidget):
         row = self._find_row(model_id)
         if row:
             row.download_done(self._active_model, self._translator_active, self._current_mode)
+        from thundertalk.core.runtime import restart_needed
+        if model_id == "seamless-m4t-v2-large" and restart_needed():
+            self._banner.show_message(t("runtime.restart"))
+            if self._mode_card:
+                self._mode_card.retranslate()
+            return
         self.model_download_completed.emit(model_id)
 
     def _download_cancelled(self, model_id: str) -> None:
