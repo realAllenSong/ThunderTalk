@@ -2242,7 +2242,7 @@ wheels = [
 
 [[package]]
 name = "thundertalk"
-version = "1.6.4"
+version = "1.7.0"
 source = { editable = "." }
 dependencies = [
     { name = "numpy" },
@@ -2254,6 +2254,7 @@ dependencies = [
     { name = "sherpa-onnx" },
     { name = "sherpa-onnx-core" },
     { name = "sounddevice" },
+    { name = "yt-dlp" },
 ]
 
 [package.optional-dependencies]
@@ -2322,6 +2323,7 @@ requires-dist = [
     { name = "transformers", marker = "extra == 'translation'", specifier = ">=4.40,<6.0" },
     { name = "uvicorn", marker = "extra == 'api'", specifier = ">=0.29" },
     { name = "wetext", marker = "extra == 'indextts'", specifier = ">=0.1.2" },
+    { name = "yt-dlp", specifier = ">=2026.8.19" },
 ]
 provides-extras = ["mlx", "api", "mcp", "indextts", "translation"]
 
@@ -2593,4 +2595,13 @@ dependencies = [
 sdist = { url = "https://files.pythonhosted.org/packages/c2/55/34dc13dc05796b6fd283bfcf73f143d47fefa5b4f3144fa6060004c5c347/wetext-0.1.8.tar.gz", hash = "sha256:007d05beecd20b9ca77b1849e71edc16b5efffbefc24de899f94170aa712ef59", size = 4884592, upload-time = "2026-09-09T10:12:37.796Z" }
 wheels = [
     { url = "https://files.pythonhosted.org/packages/43/fe/ca7ccae2673b64ba7d63612e68b31963e3842dd77fb6aa632270d123d685/wetext-0.1.8-py3-none-any.whl", hash = "sha256:b2083e7f38ac38fcbecdf7aec6ac6f0e3d1a11b763facfa4daabc12138215454", size = 5071604, upload-time = "2026-09-09T10:12:36.322Z" },
+]
+
+[[package]]
+name = "yt-dlp"
+version = "2026.8.19"
+source = { registry = "https://pypi.org/simple" }
+sdist = { url = "https://files.pythonhosted.org/packages/1e/e0/832fa4ca334b766a06933a196066edc3dba37cdb6f14cd98d59bcc69a4b4/yt_dlp-2026.8.19.tar.gz", hash = "sha256:9e213e48cea35c66b378e4447903f118f6392a5fa380a2b6d7070ec86f4e0af1", size = 3052025, upload-time = "2026-08-19T23:48:59.291Z" }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/69/b2/8cd1613f56eed7ceb64fbd4df3f1c01246bfb098e6f398228bafda22b80b/yt_dlp-2026.8.19-py3-none-any.whl", hash = "sha256:1d57897e94c6665a0a6f9bc54b34e584284e32c034ffab3a7df25d8f7b24eedf", size = 3185533, upload-time = "2026-08-19T23:48:56.925Z" },
 ]
