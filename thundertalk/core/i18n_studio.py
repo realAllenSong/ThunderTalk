@@ -42,8 +42,8 @@ STUDIO: dict[str, dict[str, str]] = {
     # ── transcribe ───────────────────────────────────────────────────
     "studio.drop.hint": {"en": "Drop a recording here", "zh": "把录音拖到这里"},
     "studio.drop.sub": {
-        "en": "or click to choose — audio or video: MP3, M4A, WAV, MP4, MOV and more",
-        "zh": "或点击选择——音频或视频：MP3、M4A、WAV、MP4、MOV 等",
+        "en": "or click to choose — audio or video: MP3, M4A, WAV, MP4, MOV and more. Several at once make a queue.",
+        "zh": "或点击选择——音频或视频：MP3、M4A、WAV、MP4、MOV 等。一次选多个会排成队列。",
     },
     "studio.drop.change": {"en": "click to choose another", "zh": "点击更换文件"},
     "studio.drop.dialog": {"en": "Choose a recording", "zh": "选择录音文件"},
@@ -90,6 +90,113 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.export.json": {"en": "JSON (.json)", "zh": "JSON（.json）"},
     "studio.rename_speaker": {"en": "Rename speaker", "zh": "重命名说话人"},
     "studio.rename_speaker.prompt": {"en": "Name for “{name}”:", "zh": "“{name}”的名字："},
+    "studio.summary": {"en": "Meeting notes", "zh": "会议纪要"},
+
+    # ── transcribe: links ────────────────────────────────────────────
+    "studio.link.placeholder": {
+        "en": "Or paste a video link — YouTube, Bilibili and more",
+        "zh": "或粘贴视频链接——YouTube、B 站等",
+    },
+    "studio.link.add": {"en": "Add", "zh": "添加"},
+    "studio.link.not_link": {"en": "That doesn't look like a link.", "zh": "这看起来不是一个链接。"},
+    "studio.link.sub": {
+        "en": "Link · {site} — only the audio is downloaded, and deleted afterwards",
+        "zh": "链接 · {site}——只下载音频，用完即删",
+    },
+    "studio.progress.fetch": {"en": "Getting the video info…", "zh": "正在获取视频信息…"},
+    "studio.progress.download": {"en": "Downloading the audio… {done} of {total}", "zh": "正在下载音频… {done} / {total}"},
+    "studio.progress.download_nosize": {"en": "Downloading the audio… {done}", "zh": "正在下载音频… {done}"},
+    "studio.link.err.missing": {
+        "en": "Link downloads aren't available in this build.", "zh": "这个版本不支持链接下载。",
+    },
+    "studio.link.err.unsupported": {
+        "en": "This site isn't supported. Try the page link of a single video.",
+        "zh": "暂不支持这个网站。请试试单个视频的页面链接。",
+    },
+    "studio.link.err.playlist": {
+        "en": "That's a playlist or channel. Paste the link of a single video.",
+        "zh": "这是播放列表或频道，请粘贴单个视频的链接。",
+    },
+    "studio.link.err.live": {
+        "en": "Live streams can't be transcribed. Try again once it has ended.",
+        "zh": "直播无法转写，请等直播结束后再试。",
+    },
+    "studio.link.err.private": {"en": "This video is private.", "zh": "这是私密视频，无法访问。"},
+    "studio.link.err.login": {
+        "en": "This video needs a signed-in account (members-only, age-restricted, or the site asked to "
+              "confirm you're not a bot). ThunderTalk doesn't sign in for you.",
+        "zh": "这个视频需要登录账号才能观看（会员专享、年龄限制，或网站要求验证不是机器人）。ThunderTalk 不会代你登录。",
+    },
+    "studio.link.err.geo": {
+        "en": "This video isn't available in your region.", "zh": "这个视频在你所在的地区不可用。",
+    },
+    "studio.link.err.unavailable": {
+        "en": "This video is unavailable — it may have been deleted, or be blocked in your region.",
+        "zh": "这个视频无法访问——可能已被删除，或在你所在的地区不可用。",
+    },
+    "studio.link.err.no_audio": {
+        "en": "The site didn't offer a downloadable audio track for this video — it may need a "
+              "signed-in account. Try again later, or use another link.",
+        "zh": "网站没有为这个视频提供可下载的音频——可能需要登录账号。请稍后再试，或换一个链接。",
+    },
+    "studio.link.partial": {
+        "en": "Only {got} of {total} could be downloaded — the site serves a preview of this video "
+              "without signing in. The transcript covers that part only.",
+        "zh": "只下载到 {total} 中的 {got}——未登录时网站只提供这个视频的试看片段，文稿只包含这一部分。",
+    },
+    "studio.link.err.blocked": {
+        "en": "The site refused the download for now (rate limit). Wait a minute and try again.",
+        "zh": "网站暂时拒绝了下载（访问过于频繁），请稍等一分钟再试。",
+    },
+    "studio.link.err.network": {
+        "en": "Couldn't reach the site. Check your internet connection.",
+        "zh": "无法连接到网站，请检查网络连接。",
+    },
+    "studio.link.err.other": {"en": "Couldn't download this link: {msg}", "zh": "无法下载这个链接：{msg}"},
+
+    # ── transcribe: queue ────────────────────────────────────────────
+    "studio.batch.title": {"en": "Queue · {n}", "zh": "队列 · {n}"},
+    "studio.batch.go": {"en": "Transcribe all ({n})", "zh": "全部转写（{n}）"},
+    "studio.batch.cancel_all": {"en": "Cancel all", "zh": "全部取消"},
+    "studio.batch.clear": {"en": "Clear", "zh": "清空"},
+    "studio.batch.save_to": {"en": "Save to", "zh": "保存到"},
+    "studio.batch.next_to": {"en": "Next to each file", "zh": "原文件旁"},
+    "studio.batch.folder": {"en": "Folder…", "zh": "文件夹…"},
+    "studio.batch.next_to_hint": {"en": "Results from links go to Downloads.", "zh": "链接的结果保存到「下载」文件夹。"},
+    "studio.batch.formats": {"en": "Formats: {list}", "zh": "格式：{list}"},
+    "studio.batch.waiting": {"en": "Waiting", "zh": "等待中"},
+    "studio.batch.running": {"en": "Working…", "zh": "处理中…"},
+    "studio.batch.saved": {"en": "Saved · {files}", "zh": "已保存 · {files}"},
+    "studio.batch.failed": {"en": "Failed — {msg}", "zh": "失败——{msg}"},
+    "studio.batch.view": {"en": "View", "zh": "查看"},
+    "studio.batch.remove": {"en": "Remove from the queue", "zh": "从队列中移除"},
+    "studio.batch.cancel_item": {"en": "Cancel this one", "zh": "取消这一项"},
+    "studio.batch.finished": {"en": "Queue finished: {ok} of {n} saved", "zh": "队列完成：{n} 项中已保存 {ok} 项"},
+
+    # ── transcribe: burn subtitles into a video ──────────────────────
+    "studio.burn": {"en": "Burn into video…", "zh": "烧录进视频…"},
+    "studio.burn.hard": {"en": "Subtitles drawn into the picture", "zh": "字幕烧进画面"},
+    "studio.burn.hard_soft": {
+        "en": "Drawn in, plus a subtitle track players can switch",
+        "zh": "烧进画面，并附带一条可开关的字幕轨",
+    },
+    "studio.burn.dialog": {"en": "Save the subtitled video", "zh": "保存带字幕的视频"},
+    "studio.burn.need_ffmpeg": {"en": "Burning subtitles needs ffmpeg", "zh": "烧录字幕需要 ffmpeg"},
+    "studio.burn.need_ffmpeg_body": {
+        "en": "ffmpeg is a free video tool that ThunderTalk uses to write the new video. Install it with "
+              "Homebrew by running “brew install ffmpeg” in Terminal, then try again.",
+        "zh": "ffmpeg 是一个免费的视频工具，ThunderTalk 用它来写出新视频。请在「终端」里运行"
+              "“brew install ffmpeg”通过 Homebrew 安装，然后再试一次。",
+    },
+    "studio.burn.copy_cmd": {"en": "Copy the command", "zh": "复制命令"},
+    "studio.burn.close": {"en": "Close", "zh": "关闭"},
+    "studio.progress.probe": {"en": "Reading the video…", "zh": "正在读取视频…"},
+    "studio.progress.render": {"en": "Drawing the subtitles…", "zh": "正在绘制字幕…"},
+    "studio.progress.encode": {"en": "Writing the video… {pct}%", "zh": "正在写入视频… {pct}%"},
+    "studio.burn.saved": {"en": "Saved {name} ({size})", "zh": "已保存 {name}（{size}）"},
+    "studio.burn.err.no_ffmpeg": {"en": "ffmpeg wasn't found.", "zh": "没有找到 ffmpeg。"},
+    "studio.burn.err.no_video": {"en": "This file has no video picture.", "zh": "这个文件没有视频画面。"},
+    "studio.burn.err.failed": {"en": "Couldn't write the video: {msg}", "zh": "无法写出视频：{msg}"},
 
     # ── speak: engine ────────────────────────────────────────────────
     "studio.engine.title": {"en": "Voice engine", "zh": "语音引擎"},
