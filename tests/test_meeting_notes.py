@@ -11,7 +11,7 @@ from PySide6.QtWidgets import QApplication, QFileDialog, QInputDialog
 from thundertalk.core import llm_providers as lp, meeting_notes as notes, transcribe as tr
 from thundertalk.core.i18n import set_language
 from thundertalk.core.settings import Settings
-from thundertalk.ui.cleanup_settings import CleanupSettings
+from thundertalk.ui.pages.proofread_page import ProofreadPage
 from thundertalk.ui.studio.transcribe_tab import TranscribeTab
 from thundertalk.ui.studio.workers import BatchItem, BatchWorker, NotesWorker
 
@@ -143,9 +143,9 @@ def test_export_notes_only_in_markdown():
 
 @pytest.fixture
 def tab(qapp, isolated_home):
-    settings = CleanupSettings(Settings())
+    settings = ProofreadPage(Settings(), detect_clis=lambda verified: [], detect_servers=lambda **k: [])
     widget = TranscribeTab()
-    widget.set_cleanup_settings(settings)
+    widget.set_provider_source(settings)
     widget.resize(950, 900)
     widget.show()
     toasts, navigation = [], []
@@ -161,20 +161,21 @@ def test_no_provider_ui_and_settings_link(tab):
     w, s, toasts, navigation = tab
     w._show_result(transcript())
     w._summary_btn.click()
-    assert not w.busy() and "Settings" in toasts[-1][0]
+    assert not w.busy() and "AI Proofread" in toasts[-1][0]
     assert "sign in" in w._notes_hint.text() and w._notes_settings.isVisible()
     w._notes_settings.click()
-    assert navigation == ["settings.cleanup"]
+    assert navigation == ["proofread"]
     s.settings.set("cleanup_provider", "missing")
-    s._detected([Fake()])
+    s._clis_detected([Fake()])
     assert w._notes_provider() == (None, "")
 
 
 def test_notes_ui_copy_save_export_and_rename(tab, monkeypatch, tmp_path):
     w, s, toasts, _ = tab
     p = Fake(executable="fake-cli")
-    s._detected([p])
-    s.model_combo.setCurrentText("chosen-model")
+    p.models.append("chosen-model")
+    s._clis_detected([p])
+    s.model_combo.setCurrentIndex(s.model_combo.findData("chosen-model"))
     assert not s.settings.get("llm_rewrite_enabled")
     t = transcript()
     w._show_result(t)
@@ -203,7 +204,7 @@ def test_notes_ui_copy_save_export_and_rename(tab, monkeypatch, tmp_path):
 
 def test_local_privacy_and_ui_retranslate(tab):
     w, s, _, _ = tab
-    s._detected([Fake(local=True)])
+    s._clis_detected([Fake(local=True)])
     w._show_result(transcript())
     assert "stays on this Mac" in w._notes_hint.text()
     set_language("zh")
@@ -217,7 +218,7 @@ def test_ui_cancel_preserves_existing_notes(tab):
     def block(cancel):
         entered.set()
         release.wait(2)
-    s._detected([Fake(action=block)])
+    s._clis_detected([Fake(action=block)])
     t = transcript()
     t.notes = "Old notes"
     w._show_result(t)
@@ -267,8 +268,8 @@ def test_queue_checkbox_requires_provider_then_saves_markdown(tab, tmp_path, mon
     w._queue_notes.setChecked(True)
     w.add_files([str(tmp_path / "a.wav"), str(tmp_path / "b.wav")])
     w._start_batch()
-    assert not w.busy() and "Settings" in toasts[-1][0]
-    s._detected([Fake()])
+    assert not w.busy() and "AI Proofread" in toasts[-1][0]
+    s._clis_detected([Fake()])
     w._start_batch()
     assert wait_for(lambda: not w.busy())
     assert all(r.transcript.notes == EN for r in w._rows)
@@ -296,7 +297,7 @@ def test_add_to_running_notes_queue(tab, tmp_path, monkeypatch):
     def block(cancel):
         entered.set()
         release.wait(2)
-    s._detected([Fake(action=block)])
+    s._clis_detected([Fake(action=block)])
     w._queue_notes.setChecked(True)
     w.add_files([str(tmp_path / "a.wav"), str(tmp_path / "b.wav")])
     w._start_batch()
@@ -308,25 +309,22 @@ def test_add_to_running_notes_queue(tab, tmp_path, monkeypatch):
     assert all(r.state == "done" and r.transcript.notes == EN and not r.notes_error for r in w._rows)
 
 
-def test_settings_link_navigates_to_cleanup_section(qapp, isolated_home, no_audio_hw, monkeypatch):
-    from PySide6.QtCore import QPoint
-    from PySide6.QtWidgets import QScrollArea
+def test_notes_link_opens_proofread_page(qapp, isolated_home, no_audio_hw, monkeypatch):
     from thundertalk.core.history import HistoryStore
     from thundertalk.core.state import AppState
     from thundertalk.ui.main_window import MainWindow
     monkeypatch.setattr(MainWindow, "_setup_macos_titlebar", lambda self: None)
+    monkeypatch.setattr(ProofreadPage, "refresh", lambda self: None)
     settings = Settings()
     w = MainWindow(settings, HistoryStore(), AppState(settings.hotkey))
-    w.resize(1100, 850)
     w.show()
     QApplication.processEvents()
-    assert w.studio_page.transcribe_tab._cleanup_settings is w.settings_page.cleanup_settings
-    w.navigate("settings.cleanup")
-    QApplication.processEvents()
-    scroll = w.settings_page.findChild(QScrollArea)
-    y = w.settings_page.cleanup_settings.mapTo(scroll.viewport(), QPoint(0, 0)).y()
-    assert w._stack.currentWidget() is w.settings_page and scroll.verticalScrollBar().value() > 0
-    assert 0 <= y < 60
+    assert w.studio_page.transcribe_tab._provider_source is w.proofread_page
+    for target in ("proofread", "settings.cleanup"):
+        w.navigate("home")
+        w.navigate(target)
+        assert w._stack.currentWidget() is w.proofread_page
     w.models_page.wait_background()
     w.studio_page.shutdown()
+    w.proofread_page.shutdown()
     w.close()

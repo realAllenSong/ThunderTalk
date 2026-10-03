@@ -15,7 +15,6 @@ from PySide6.QtWidgets import (
     QLabel,
     QMainWindow,
     QPushButton,
-    QScrollArea,
     QStackedWidget,
     QVBoxLayout,
     QWidget,
@@ -30,6 +29,7 @@ from thundertalk.ui import theme
 from thundertalk.ui.pages.about_page import AboutPage
 from thundertalk.ui.pages.home_page import HomePage
 from thundertalk.ui.pages.hotwords_page import HotwordsPage
+from thundertalk.ui.pages.proofread_page import ProofreadPage
 from thundertalk.ui.pages.studio_page import StudioPage
 from thundertalk.ui.pages.models_page import ModelsPage
 from thundertalk.ui.pages.settings_page import SettingsPage
@@ -37,12 +37,13 @@ from thundertalk.ui.widgets import BrandMark, KeyCaps, StatusDot, Toast, paint_c
 
 _SIDEBAR_W = 224
 
-_PAGES = ["home", "studio", "models", "hotwords", "settings", "about"]
+_PAGES = ["home", "studio", "models", "hotwords", "proofread", "settings", "about"]
+_ALIASES = {"settings.cleanup": "proofread"}  # v1.7.0 link target
 
 
 def _nav_items() -> list[str]:
     return [t("nav.home"), t("nav.studio"), t("nav.models"), t("nav.hotwords"),
-            t("nav.settings"), t("nav.about")]
+            t("nav.proofread"), t("nav.settings"), t("nav.about")]
 
 
 class _Canvas(QWidget):
@@ -309,12 +310,12 @@ class MainWindow(QMainWindow):
         self._studio_page = StudioPage(settings)
         self._models_page = ModelsPage(settings)
         self._hotwords_page = HotwordsPage(settings, self._state)
+        self._proofread_page = ProofreadPage(settings)
         self._settings_page = SettingsPage(settings)
-        self._studio_page.transcribe_tab.set_cleanup_settings(self._settings_page.cleanup_settings)
+        self._studio_page.transcribe_tab.set_provider_source(self._proofread_page)
         self._about_page = AboutPage()
 
-        for page in (self._home_page, self._studio_page, self._models_page, self._hotwords_page,
-                     self._settings_page, self._about_page):
+        for page in self._pages():
             self._stack.addWidget(page)
 
         self._studio_page.navigate_requested.connect(self.navigate)
@@ -372,12 +373,15 @@ class MainWindow(QMainWindow):
         else:
             self.navigate("settings")
 
+    def _pages(self) -> tuple[QWidget, ...]:
+        return (self._home_page, self._studio_page, self._models_page, self._hotwords_page,
+                self._proofread_page, self._settings_page, self._about_page)
+
     def _retranslate(self) -> None:
         for btn, label in zip(self._nav_buttons, _nav_items()):
             btn.set_label(label)
-        for page in (self._home_page, self._studio_page, self._models_page, self._hotwords_page,
-                     self._settings_page, self._about_page):
-            if hasattr(page, "retranslate"):
+        for page in self._pages():
+            if page is not self._proofread_page and hasattr(page, "retranslate"):
                 page.retranslate()
         self._refresh_status()
 
@@ -393,13 +397,7 @@ class MainWindow(QMainWindow):
         self._stack.setCurrentIndex(idx)
 
     def navigate(self, name: str) -> None:
-        if name == "settings.cleanup":
-            self._select_nav(_PAGES.index("settings"))
-            scroll = self._settings_page.findChild(QScrollArea)
-            if scroll is not None:
-                pos = self._settings_page.cleanup_settings.mapTo(scroll.widget(), QPoint(0, 0))
-                scroll.verticalScrollBar().setValue(pos.y() - 20)
-            return
+        name = _ALIASES.get(name, name)
         if name in _PAGES:
             self._select_nav(_PAGES.index(name))
 
@@ -420,6 +418,10 @@ class MainWindow(QMainWindow):
     @property
     def hotwords_page(self) -> HotwordsPage:
         return self._hotwords_page
+
+    @property
+    def proofread_page(self) -> ProofreadPage:
+        return self._proofread_page
 
     @property
     def settings_page(self) -> SettingsPage:
