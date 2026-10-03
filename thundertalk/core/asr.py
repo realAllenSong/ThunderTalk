@@ -386,7 +386,12 @@ class AsrEngine:
 
     # -- Inference --------------------------------------------------------
 
-    def recognize(self, samples: np.ndarray, sample_rate: int = 16000) -> AsrResult:
+    def recognize(self, samples: np.ndarray, sample_rate: int = 16000,
+                  *, preview: bool = False) -> AsrResult:
+        """*preview*: a live-preview decode of a partial clip. Generation is
+        capped by clip length (with the 4096-token limit, Qwen3 MLX once ran
+        57 s on a 5 s partial clip); the result is never pasted, so a
+        truncated preview is harmless."""
         if not self.is_loaded:
             raise RuntimeError("No model loaded")
         if len(samples) == 0:
@@ -406,7 +411,7 @@ class AsrEngine:
 
         if self._mlx_model is not None:
             with GPU_LOCK:
-                return self._recognize_mlx(samples, sample_rate)
+                return self._recognize_mlx(samples, sample_rate, preview=preview)
 
         from thundertalk.core.vad import segment_audio
         segments = segment_audio(samples, sr=sample_rate)
@@ -482,13 +487,16 @@ class AsrEngine:
             rtf=rtf,
         )
 
-    def _recognize_mlx(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
+    def _recognize_mlx(self, samples: np.ndarray, sample_rate: int,
+                       preview: bool = False) -> AsrResult:
         import mlx.core as mx
         import mlx_qwen3_asr
         from thundertalk.core.itn import normalize_numbers
 
         duration_secs = len(samples) / sample_rate
         context = self._hotwords.replace("/", " ") if self._hotwords else ""
+        # Dictated speech stays well under 12 tokens/s; 32 covers the language tag.
+        max_new_tokens = int(32 + 12 * duration_secs) if preview else 4096
 
         lang_info = f", lang={self._language}" if self._language else ""
         print(f"[ASR-MLX] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s{lang_info})...")
@@ -498,7 +506,7 @@ class AsrEngine:
             model=self._mlx_model,
             context=context,
             language=self._language,
-            max_new_tokens=4096,
+            max_new_tokens=max_new_tokens,
         )
         mx.eval(result.text) if hasattr(result.text, '__mlx_array__') else None
         inference_ms = int((time.perf_counter() - t0) * 1000)

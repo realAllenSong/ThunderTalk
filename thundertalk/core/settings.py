@@ -50,6 +50,8 @@ DEFAULTS: dict[str, Any] = {
     # MOSS dictation: prefix each speaker turn with S01:/S02: labels when
     # two or more speakers are detected in the utterance.
     "moss_speaker_labels": False,
+    # Show the words recognized so far under the indicator while dictating.
+    "live_preview": True,
     # First-run setup flow (welcome → permissions → model → try it).
     "onboarding_done": False,
     # Studio ▸ Speak: last voice ("" = default), language and speed.

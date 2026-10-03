@@ -225,6 +225,17 @@ class AudioRecorder:
 
             return samples
 
+    def snapshot(self) -> Optional[np.ndarray]:
+        """Copy of the audio captured so far, without stopping (live preview).
+
+        Lock-free on purpose: stop() holds the lock while it waits on the
+        audio thread, and a preview must never stall behind that. Copying the
+        list is atomic under the GIL and the callback only appends to it."""
+        chunks = list(self._chunks)
+        if not chunks:
+            return None
+        return np.concatenate(chunks)
+
     @property
     def is_recording(self) -> bool:
         return self._recording

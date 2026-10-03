@@ -15,6 +15,7 @@ from thundertalk.core.audio import AudioRecorder
 from thundertalk.core.device_watcher import get_watcher
 from thundertalk.core.history import HistoryStore
 from thundertalk.core.hotkey import HotkeyListener
+from thundertalk.core.live_preview import LivePreview, preview_wanted
 from thundertalk.core.settings import Settings
 from thundertalk.core.i18n import t
 from thundertalk.core import state as st
@@ -58,13 +59,16 @@ class AsrWorker(QThread):
     done = Signal(str, int, float, str, float)  # text, inference_ms, duration_secs, backend, rtf
     error = Signal(str)
 
-    def __init__(self, engine: AsrEngine, samples: np.ndarray) -> None:
+    def __init__(self, engine: AsrEngine, samples: np.ndarray, wait_before=None) -> None:
         super().__init__()
         self._engine = engine
         self._samples = samples
+        self._wait_before = wait_before
 
     def run(self) -> None:
         try:
+            if self._wait_before is not None:
+                self._wait_before()     # let a live-preview decode finish first
             result = self._engine.recognize(self._samples)
             self.done.emit(result.text, result.inference_ms, result.duration_secs,
                            result.backend, result.rtf)
@@ -338,6 +342,12 @@ def main() -> None:
     # cloning references / generated speech back to catch mistakes ---
     window.studio_page.set_engine(pipe.asr)
     app.aboutToQuit.connect(window.studio_page.shutdown)
+
+    # --- Live preview: words so far, shown under the indicator while recording.
+    # The pasted text still comes from the full-clip recognition after stop.
+    live = LivePreview(pipe.recorder.snapshot,
+                       lambda s: pipe.asr.recognize(s, preview=True).text)
+    live.text_changed.connect(lambda text: overlay.set_preview_text(text))
 
     # --- Model loading helpers -----------------------------------------
     def _clear_load_worker() -> None:
@@ -660,6 +670,7 @@ def main() -> None:
         if pipe._recording:
             # ---- STOP recording ----
             t_stop = time.perf_counter()
+            live.stop()             # no new preview decodes; final takes priority
             print(f"[Toggle] Stop requested, capturing {TAIL_GRACE_MS}ms tail...")
             overlay.show_transcribing()
             state.set_recording(st.REC_TRANSCRIBING)
@@ -710,7 +721,8 @@ def main() -> None:
                     print(f"[Toggle] Starting Review (ASR → T2TT → popup) on {len(samples)} samples")
                 else:
                     print(f"[Toggle] Starting ASR on {len(samples)} samples")
-                worker = AsrWorker(pipe.asr, samples)
+                worker = AsrWorker(pipe.asr, samples,
+                                   wait_before=lambda: live.wait_idle(15.0))
                 worker.done.connect(_on_asr_done)
                 worker.error.connect(_on_asr_error)
                 _track_worker(worker)
@@ -765,6 +777,8 @@ def main() -> None:
                 mute_system_audio()
             pipe._recording = True
             state.set_recording(st.REC_RECORDING)
+            if preview_wanted(settings):
+                live.start()
             print("[Toggle] Recording started")
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)

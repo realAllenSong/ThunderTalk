@@ -436,6 +436,10 @@ class SettingsPage(QWidget):
         ct = theme.ToggleSwitch(self._settings.get("save_to_clipboard"))
         ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
         card2.add_row("settings.clipboard.label", "settings.clipboard.desc", ct)
+        self._live_toggle = theme.ToggleSwitch(self._settings.get("live_preview"))
+        self._live_toggle.toggled_signal.connect(lambda v: self._settings.set("live_preview", v))
+        card2.add_row("settings.live_preview.label", "settings.live_preview.desc",
+                      self._live_toggle, sep=True)
 
         from thundertalk.ui.cleanup_settings import CleanupSettings
         self.cleanup_settings = CleanupSettings(self._settings)

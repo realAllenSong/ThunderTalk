@@ -363,6 +363,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Copy transcribed text to clipboard automatically.",
         "zh": "转录完成后自动将文本复制到剪贴板。",
     },
+    "settings.live_preview.label": {
+        "en": "Live Preview", "zh": "实时预览",
+    },
+    "settings.live_preview.desc": {
+        "en": "Show the words recognized so far under the indicator while you speak. "
+              "The pasted text is still recognized from the full recording.",
+        "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字仍按完整录音识别。",
+    },
     "settings.llm_rewrite.label": {
         "en": "Grammar Correction", "zh": "语法修正",
     },
