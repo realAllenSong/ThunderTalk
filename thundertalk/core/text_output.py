@@ -281,8 +281,7 @@ def _do_paste(text: str, keep_clipboard: bool = False) -> None:
 
 
 # Guard delayed AI output with actual user activity, not an elapsed-time guess.
-# Synthetic events posted by this process are excluded; hotkey keys are also
-# excluded so "delete that" can undo the preceding dictation after recording.
+# Synthetic events posted by this process and the dictation hotkey are excluded.
 
 
 class InputActivity:
@@ -380,7 +379,6 @@ class PasteTicket:
     generation: int
     ready: threading.Event = field(default_factory=threading.Event)
     valid: bool = True
-    selection: str = ""
     successor: PasteTicket | None = None
 
     def invalidate(self):
@@ -392,13 +390,6 @@ class PasteTicket:
         return (self.valid and self.ready.is_set() and activity.available and
                 self.generation == activity.generation and self.pid is not None and
                 self.pid == _frontmost_pid() and self.app == _get_frontmost_app())
-
-
-def selection_ticket(selection: str) -> PasteTicket:
-    ticket = PasteTicket(_get_frontmost_app(), _frontmost_pid(), activity.generation,
-                         selection=selection)
-    ticket.ready.set()
-    return ticket
 
 
 def paste_dictation(text: str, keep_clipboard=False) -> PasteTicket:
@@ -427,11 +418,10 @@ def _send_cmd_key(keycode: int):
     CGEventPost(kCGHIDEventTap, up)
 
 
-def apply_if_unchanged(ticket: PasteTicket, text: str | None, keep_clipboard=False, cancel=None) -> bool:
-    """Synchronous worker-side guarded replacement/undo; never restores stale focus.
+def apply_if_unchanged(ticket: PasteTicket, text: str, keep_clipboard=False, cancel=None) -> bool:
+    """Synchronous worker-side guarded replacement; never restores stale focus.
 
-    None means undo only. A selection ticket pastes directly over the still
-    selected text; a paste ticket uses standard macOS Cmd+Z then Cmd+V.
+    Undoes the untouched paste with standard macOS Cmd+Z, then pastes *text*.
     """
     while ticket.successor is not None:
         ticket = ticket.successor
@@ -439,24 +429,22 @@ def apply_if_unchanged(ticket: PasteTicket, text: str | None, keep_clipboard=Fal
     with _paste_lock:
         if (cancel is not None and cancel.is_set()) or not ticket.unchanged() or _SYSTEM != "Darwin":
             return False
-        if text is not None and not text:
+        if not text:
             return False
         original = _save_clipboard() if keep_clipboard else None
         try:
             # Prepare clipboard before final guard to minimize the key-event race.
-            if text is not None and not _clipboard_write_verified(text):
+            if not _clipboard_write_verified(text):
                 return False
             if (cancel is not None and cancel.is_set()) or not ticket.unchanged():
                 return False
             ticket.valid = False  # exactly once; reject any competing result
-            if not ticket.selection:
-                _send_cmd_key(6)  # Z
-                time.sleep(0.05)
-            if text is not None:
-                _send_cmd_v_darwin()
-                successor = PasteTicket(ticket.app, ticket.pid, ticket.generation)
-                successor.ready.set()
-                ticket.successor = successor
+            _send_cmd_key(6)  # Z
+            time.sleep(0.05)
+            _send_cmd_v_darwin()
+            successor = PasteTicket(ticket.app, ticket.pid, ticket.generation)
+            successor.ready.set()
+            ticket.successor = successor
             return True
         finally:
             if original is not None:
@@ -490,38 +478,3 @@ def _restore_clipboard(saved):
             board.writeObjects_(items)
     else:
         pyperclip.copy(saved)
-
-
-def _has_selection() -> bool:
-    """Fail closed: some editors' Cmd+C copies a whole line without selection."""
-    try:
-        from ApplicationServices import (AXUIElementCreateSystemWide, AXUIElementCopyAttributeValue)
-        error, element = AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
-                                                      "AXFocusedUIElement", None)
-        if error or element is None:
-            return False
-        error, value = AXUIElementCopyAttributeValue(element, "AXSelectedText", None)
-        return not error and isinstance(value, str) and bool(value)
-    except Exception:
-        return False
-
-
-def read_selection() -> str:
-    """Cmd+C with full clipboard save/restore; no selection/AX support => empty."""
-    if _SYSTEM != "Darwin" or not _has_selection():
-        return ""
-    with _paste_lock:
-        saved = _save_clipboard()
-        try:
-            sentinel = "thundertalk-selection-" + str(time.monotonic_ns())
-            pyperclip.copy(sentinel)
-            _send_cmd_key(8)  # C
-            deadline = time.monotonic() + 0.25
-            while time.monotonic() < deadline:
-                time.sleep(0.01)
-                text = pyperclip.paste()
-                if text != sentinel:
-                    return text if isinstance(text, str) else ""
-            return ""
-        finally:
-            _restore_clipboard(saved)
