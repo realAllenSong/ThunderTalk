@@ -2,7 +2,6 @@
 
 from __future__ import annotations
 
-import inspect
 import sys
 import time
 import traceback
@@ -177,35 +176,26 @@ class LlmRewriteWorker(QThread):
 
     done = Signal()
 
-    def __init__(self, provider, text, model, ticket, style, timeout, keep_clipboard,
-                 selection="", reference_text=None):
+    def __init__(self, provider, text, model, ticket, timeout, keep_clipboard,
+                 hotwords=(), reference_text=None):
         super().__init__()
         import threading
         self.cancel = threading.Event()
         self.provider, self.text, self.model = provider, text, model
-        self.ticket, self.style, self.timeout = ticket, style, timeout
-        self.keep_clipboard, self.selection = keep_clipboard, selection
-        self.reference_text = reference_text
+        self.ticket, self.timeout, self.keep_clipboard = ticket, timeout, keep_clipboard
+        self.hotwords, self.reference_text = list(hotwords or []), reference_text
 
     def run(self):
-        from thundertalk.core.ai_cleanup import cleanup, edit_selection
+        from thundertalk.core.ai_cleanup import cleanup
         from thundertalk.core.text_output import apply_if_unchanged
         try:
-            if self.selection:
-                result = edit_selection(self.provider, self.selection, self.text,
-                                        self.model, self.timeout, self.cancel)
-            else:
-                # ai_cleanup is being updated independently. Support both APIs;
-                # inspect first so an internal TypeError never retries a provider call.
-                kwargs = {}
-                if "reference_text" in inspect.signature(cleanup).parameters:
-                    kwargs["reference_text"] = self.reference_text
-                result = cleanup(self.provider, self.text, self.model, self.style,
-                                 self.timeout, self.cancel, **kwargs)
-            if not self.cancel.is_set() and result != (self.selection or self.text):
+            result = cleanup(self.provider, self.text, self.model, timeout=self.timeout,
+                             cancel=self.cancel, reference_text=self.reference_text,
+                             hotwords=self.hotwords)
+            if not self.cancel.is_set() and result != self.text:
                 apply_if_unchanged(self.ticket, result, self.keep_clipboard, self.cancel)
         except Exception:
-            pass  # raw text/selection stays untouched; no prompt logging
+            pass  # raw text stays untouched; no prompt logging
         finally:
             self.done.emit()
 
@@ -488,13 +478,11 @@ def main() -> None:
     QTimer.singleShot(500, _restore_model)
 
     from thundertalk.core import text_output
-    from thundertalk.core.ai_cleanup import is_edit_instruction, parse_command, style_for_app
-    cleanup_settings = window.settings_page.cleanup_settings
-    QTimer.singleShot(1000, cleanup_settings.refresh)
+    proofread = window.proofread_page
+    QTimer.singleShot(1000, proofread.refresh)
     text_output.activity.set_hotkey(settings.hotkey)
     text_output.activity.start()
     pipe._last_paste = None
-    pipe._selection_ticket = None
     pipe._cleanup_worker = None
 
     def _cancel_cleanup():
@@ -508,11 +496,11 @@ def main() -> None:
             if isinstance(worker, LlmRewriteWorker):
                 worker.cancel.set()
                 worker.wait()
-        cleanup_settings.shutdown()
+        proofread.shutdown()
         text_output.activity.stop()
 
     app.aboutToQuit.connect(_shutdown_cleanup)
-    cleanup_settings.toggle.toggled_signal.connect(lambda _value: _cancel_cleanup())
+    proofread.toggle.toggled_signal.connect(lambda _value: _cancel_cleanup())
 
     # --- Model loading from UI -----------------------------------------
     def on_load_model(model_id: str, path: str, family: str, backend: str) -> None:
@@ -560,41 +548,20 @@ def main() -> None:
 
         if text:
             overlay.hide_overlay()
-            style = style_for_app(text_output.frontmost_app(), settings.get("cleanup_app_overrides"))
-            selection = pipe._selection_ticket
-            pipe._selection_ticket = None
-            if (settings.get("voice_commands_enabled") and selection is not None
-                    and is_edit_instruction(text)):
-                if (settings.get("llm_rewrite_enabled") and style != "off"
-                        and cleanup_settings.chosen_provider() is not None):
-                    _launch_rewrite(text, selection, style, selection.selection)
-                _remember("")
-                return  # preserve selected text if editing is unavailable
-            command = parse_command(text) if settings.get("voice_commands_enabled") else None
-            if command == "undo":
-                _remember("")
-                if pipe._last_paste is not None:
-                    import threading
-                    threading.Thread(target=text_output.apply_if_unchanged,
-                                     args=(pipe._last_paste, None), daemon=True).start()
-                return
-            if command:
-                text = {"newline": "\n", "paragraph": "\n\n", "tab": "\t"}[command]
             # Paste FIRST — lowest latency path to the user's target app.
             ticket = text_output.paste_dictation(text, not settings.get("save_to_clipboard"))
             if pipe._last_paste is not None:
                 pipe._last_paste.invalidate()
             pipe._last_paste = ticket
             _remember(text)
-            if not command:
-                notify_auto_learn(text)
+            notify_auto_learn(text)
             paste_dispatch_ms = int((time.perf_counter() - t_start) * 1000)
             print(f"[Toggle] Post-ASR dispatch took {paste_dispatch_ms}ms")
-            # Async grammar correction: run LLM in background, replace when ready
-            if (not command and not backend.startswith("seamless-torch")
-                    and settings.get("llm_rewrite_enabled") and style != "off"
+            # AI proofreading in the background; replaces the paste only if untouched.
+            if (not backend.startswith("seamless-torch")
+                    and settings.get("llm_rewrite_enabled")
                     and not (settings.translation_target != "off" and settings.translation_mode == "review")):
-                _launch_rewrite(text, ticket, style, reference_text=reference or None)
+                _launch_rewrite(text, ticket, reference_text=reference or None)
             # Defer non-critical UI updates so they don't block paste
             history.add(
                 text=text,
@@ -682,8 +649,8 @@ def main() -> None:
         # Original text is already pasted; silently drop the translation.
         # No overlay needed — user has the original; the popup just doesn't appear.
 
-    def _launch_rewrite(text, ticket, style, selection="", reference_text=None):
-        provider = cleanup_settings.chosen_provider()
+    def _launch_rewrite(text, ticket, reference_text=None):
+        provider = proofread.chosen_provider()
         if provider is None:
             return
         _cancel_cleanup()
@@ -691,11 +658,11 @@ def main() -> None:
             timeout = min(120.0, max(1.0, float(settings.get("cleanup_timeout"))))
         except (ValueError, TypeError):
             timeout = 30.0
-        worker = LlmRewriteWorker(provider, text, cleanup_settings.chosen_model(provider),
-                                  ticket, style, timeout, not settings.get("save_to_clipboard"),
-                                  selection=selection, reference_text=reference_text)
+        worker = LlmRewriteWorker(provider, text, proofread.chosen_model(provider),
+                                  ticket, timeout, not settings.get("save_to_clipboard"),
+                                  hotwords=settings.hotwords, reference_text=reference_text)
         pipe._cleanup_worker = worker
-        overlay.show_cleanup(editing=bool(selection))
+        overlay.show_cleanup()
 
         def _done():
             if pipe._cleanup_worker is worker:
@@ -813,14 +780,6 @@ def main() -> None:
             if not text_output.activity.available:
                 text_output.activity.stop()
                 text_output.activity.start()
-            pipe._selection_ticket = None
-            if settings.get("llm_rewrite_enabled") and settings.get("voice_commands_enabled"):
-                try:
-                    selected = text_output.read_selection()
-                except Exception:
-                    selected = ""
-                if selected:
-                    pipe._selection_ticket = text_output.selection_ticket(selected)
             # Show overlay immediately so user gets instant visual feedback
             overlay.show_recording()
             app.processEvents()

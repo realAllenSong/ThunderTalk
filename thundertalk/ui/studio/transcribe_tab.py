@@ -96,7 +96,7 @@ class TranscribeTab(QWidget):
         self._batch: Optional[BatchWorker] = None
         self._burn_worker: Optional[BurnWorker] = None
         self._notes_worker: Optional[NotesWorker] = None
-        self._cleanup_settings = None
+        self._provider_source = None
         self._transcript: Optional[Transcript] = None
         self._path = ""
         self._url = ""                    # single input that is a web link
@@ -251,7 +251,7 @@ class TranscribeTab(QWidget):
         self._notes_hint = _muted()
         root.addWidget(self._notes_hint)
         self._notes_settings = theme.make_button(t("studio.notes.settings"), "ghost", 32, font_px=12)
-        self._notes_settings.clicked.connect(lambda: self.navigate.emit("settings.cleanup"))
+        self._notes_settings.clicked.connect(lambda: self.navigate.emit("proofread"))
         root.addWidget(self._notes_settings)
         self._notes_card = theme.make_card()
         nly = QVBoxLayout(self._notes_card)
@@ -291,17 +291,17 @@ class TranscribeTab(QWidget):
         self._engine = engine
         self._refresh()
 
-    def set_cleanup_settings(self, settings) -> None:
-        self._cleanup_settings = settings
-        settings.providers_changed.connect(lambda _p: self._refresh())
-        settings.provider_combo.currentIndexChanged.connect(lambda _i: self._refresh())
-        settings.model_combo.currentTextChanged.connect(lambda _s: self._refresh())
+    def set_provider_source(self, source) -> None:
+        """``source``: the AI proofreading page (chosen provider and model)."""
+        self._provider_source = source
+        source.providers_changed.connect(lambda _p: self._refresh())
+        source.selection_changed.connect(self._refresh)
         self._refresh()
 
     def _notes_provider(self):
-        settings = self._cleanup_settings
-        provider = settings.chosen_provider() if settings else None
-        return provider, settings.chosen_model(provider) if provider else ""
+        source = self._provider_source
+        provider = source.chosen_provider() if source else None
+        return provider, source.chosen_model(provider) if provider else ""
 
     def refresh(self) -> None:
         self._refresh()

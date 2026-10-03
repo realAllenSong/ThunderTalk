@@ -37,16 +37,18 @@ DEFAULTS: dict[str, Any] = {
     # about macOS permissions resetting under ad-hoc code signing.
     "last_run_version": "",
     "tts_model": "",
+    # AI proofreading. Removed v1.7.0 keys (cleanup_app_overrides,
+    # cleanup_model_overrides, voice_commands_enabled) are ignored on load and
+    # dropped on the next save.
     "llm_rewrite_enabled": False,
     "cleanup_provider": "",
-    "cleanup_models": {},
-    "cleanup_model_overrides": {},
-    "cleanup_app_overrides": {},
+    "cleanup_models": {},           # provider id -> chosen model
+    "cleanup_checks": {},           # provider id -> {model: seconds} that passed a real call
+    "cleanup_extra_models": {},     # provider id -> validated "Other…" model IDs
     "cleanup_base_url": "",
     "cleanup_api_key": "",
     "cleanup_cherry_key": "",
     "cleanup_timeout": 30.0,
-    "voice_commands_enabled": True,
     # MOSS dictation: prefix each speaker turn with S01:/S02: labels when
     # two or more speakers are detected in the utterance.
     "moss_speaker_labels": False,

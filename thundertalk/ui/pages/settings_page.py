@@ -447,10 +447,6 @@ class SettingsPage(QWidget):
         card2.add_row("settings.keep_recent_recordings.label",
                       "settings.keep_recent_recordings.desc", self._recordings_toggle, sep=True)
 
-        from thundertalk.ui.cleanup_settings import CleanupSettings
-        self.cleanup_settings = CleanupSettings(self._settings)
-        self._col.addWidget(self.cleanup_settings)
-
     def _on_lang_changed(self, idx: int) -> None:
         code = self._lang_combo.itemData(idx)
         if code:

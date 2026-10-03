@@ -1,8 +1,10 @@
 """Existing CLI subscriptions and model servers; no model downloads.
 
-Detection is bounded, read-only and must run off the UI thread. Readiness is
-an observation, not a guarantee: expired credentials/server failures raise
-ProviderError during completion. IDs and model IDs are stable strings.
+Detection is bounded, read-only and must run off the UI thread. Every known
+provider is reported with a status (installed or not, running or not), so the
+UI can explain what to do. Readiness is an observation, not a guarantee:
+expired credentials/server failures raise ProviderError during completion.
+IDs and model IDs are stable strings.
 """
 from __future__ import annotations
 
@@ -84,33 +86,49 @@ def _http(url, *, timeout, data=None, api_key=""):
         return json.load(response)
 
 
+# Statuses (i18n keys use cleanup.status.<status>):
+#   ready, login, unverified, unsupported, unavailable, not_installed  (CLIs)
+#   ready, not_running, not_installed, needs_key, no_models            (servers)
+USABLE = ("ready", "unverified")
+
+
 @dataclass
 class Provider:
     id: str
     display_name: str
     models: list[str]
     ready: bool = False
-    status: str = "unavailable"  # i18n keys use cleanup.status.<status>
+    status: str = "unavailable"
     executable: str = ""
     base_url: str = ""
     api_key: str = field(default="", repr=False)
     help_text: str = field(default="", repr=False)
-    models_source: str = "curated"  # cli | server | curated | override
+    models_source: str = "curated"  # cli | server | curated
     local: bool = False  # True only for local inference, not Cherry's proxy
+    kind: str = "cli"  # cli | server
+    port: int = 0
+    app_name: str = ""  # macOS app that hosts the server
+    login_command: str = ""
+    install_command: str = ""
+    efforts: dict[str, list[str]] = field(default_factory=dict, repr=False)
 
     def is_ready(self) -> bool:
         return self.ready and bool(self.models)
+
+    def usable(self) -> bool:
+        """Ready, or found credentials that a real call is allowed to verify."""
+        return (self.ready or self.status in USABLE) and bool(self.models)
 
     def complete(self, system: str, user: str, model: str, timeout: float,
                  cancel=None) -> str:
         """Return plain text or raise ProviderError; cancel: Event or callable.
 
-        Caller chooses a model (editable IDs allowed), supplies a positive
-        timeout in seconds and runs this blocking method in a worker thread.
-        CLI cancellation kills the process group. HTTP cancellation is checked
-        before/after the bounded request (never apply a cancelled result).
+        Caller chooses a model, supplies a positive timeout in seconds and runs
+        this blocking method in a worker thread. CLI cancellation kills the
+        process group. HTTP cancellation is checked before/after the bounded
+        request (never apply a cancelled result).
         """
-        if not self.is_ready() or timeout <= 0 or not model.strip():
+        if not self.usable() or timeout <= 0 or not model.strip():
             raise ProviderError("Provider unavailable or invalid model/timeout")
         if _cancelled(cancel):
             raise CompletionCancelled("Completion cancelled")
@@ -154,7 +172,10 @@ class Provider:
                     if flag in self.help_text:
                         args.append(flag)
                 args += ["-c", 'approval_policy="never"', "-c", 'web_search="disabled"',
-                         "-c", "features.shell_tool=false", "-"]
+                         "-c", "features.shell_tool=false"]
+                if "low" in self.efforts.get(model, []):
+                    args += ["-c", 'model_reasoning_effort="low"']  # a proofread needs no deep reasoning
+                args.append("-")
                 _run(args, cwd=work, timeout=timeout, input_text=prompt, cancel=cancel)
                 return output.read_text(encoding="utf-8") if output.exists() else ""
             if self.id == "claude":
@@ -185,95 +206,216 @@ class Provider:
             return out
 
 
-_CLI = [
-    ("codex", "OpenAI Codex", "codex", ["gpt-6.1-sol", "gpt-5.4-mini"]),
-    ("claude", "Claude Code", "claude", ["haiku", "sonnet", "opus"]),
-    ("gemini", "Gemini CLI", "gemini", ["gemini-2.5-flash", "gemini-2.5-pro"]),
-    ("grok", "Grok CLI", "grok", ["grok-4.6"]),
-    ("cursor", "Cursor CLI", "cursor-agent", ["auto"]),
-]
+@dataclass(frozen=True)
+class _CliSpec:
+    id: str
+    name: str
+    binary: str
+    curated: tuple[str, ...]
+    login: str
+    install: str
+
+
+# Curated IDs are used only where the CLI has no listing; the selected one is
+# validated with a real call before it is trusted.
+CLIS = (
+    _CliSpec("codex", "OpenAI Codex", "codex", ("gpt-6-luna", "gpt-6.1-sol", "gpt-6-sol"),
+             "codex login", "npm install -g @openai/codex"),
+    _CliSpec("claude", "Claude Code", "claude", ("haiku", "sonnet", "opus"),
+             "claude auth login", "curl -fsSL https://claude.ai/install.sh | bash"),
+    _CliSpec("cursor", "Cursor CLI", "cursor-agent", ("auto",),
+             "cursor-agent login", "curl https://cursor.com/install -fsS | bash"),
+    _CliSpec("gemini", "Gemini CLI", "gemini",
+             ("gemini-2.5-flash", "gemini-2.5-flash-lite", "gemini-3-flash-preview",
+              "gemini-2.5-pro", "gemini-3-pro-preview"),
+             "gemini", "npm install -g @google/gemini-cli"),
+    _CliSpec("grok", "Grok CLI", "grok", ("grok-4.6",), "grok", ""),
+)
+CLI_IDS = tuple(spec.id for spec in CLIS)
+
+# id, name, base URL, port, local inference, macOS app names, executable
+SERVERS = (
+    ("ollama", "Ollama", "http://127.0.0.1:11434", 11434, True, ("Ollama",), "ollama"),
+    ("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", 1234, True, ("LM Studio",), "lms"),
+    ("cherry", "Cherry Studio", "http://127.0.0.1:23333/v1", 23333, False, ("Cherry Studio",), ""),
+)
+
+# Fast, inexpensive defaults: the first pattern that matches a model wins.
+_PREFERRED = {
+    "codex": (r"luna", r"mini"),
+    "claude": (r"^haiku$",),
+    "cursor": (r"^gemini-[\d.]+-flash-low$", r"flash", r"-none-fast$", r"^auto$"),
+    "gemini": (r"^gemini-2\.5-flash$", r"flash"),
+    "grok": (r"fast", r"mini"),
+}
+
+_HELP_CACHE: dict[tuple[str, float], str] = {}
+_MODEL_CACHE: dict[str, tuple[float, list[str]]] = {}
+_MODEL_TTL = 600.0
+_PROBE_TIMEOUT = 4
+_SERVER_TIMEOUT = 0.5
+
+
+def preferred_model(provider: Provider) -> str:
+    for pattern in _PREFERRED.get(provider.id, ()):
+        match = next((m for m in provider.models if re.search(pattern, m)), None)
+        if match:
+            return match
+    return provider.models[0] if provider.models else ""
+
+
+def _help(exe: str, ident: str, work: str) -> str:
+    try:
+        key = (exe, os.path.getmtime(exe))
+    except OSError:
+        key = (exe, 0.0)
+    if key not in _HELP_CACHE:
+        args = [exe, "exec", "--help"] if ident == "codex" else [exe, "--help"]
+        # Cold Node start-up (Gemini) can take ~6s; cached per binary version.
+        _HELP_CACHE[key] = _run(args, cwd=work, timeout=_PROBE_TIMEOUT * 3)[0]
+    return _HELP_CACHE[key]
+
+
+def _codex_models(p: Provider) -> None:
+    """Codex keeps the account's model list in its own cache file."""
+    try:
+        data = json.loads((Path.home() / ".codex/models_cache.json").read_text())
+        listed = [m for m in data["models"] if m.get("visibility") == "list" and m.get("slug")]
+    except Exception:
+        return
+    if listed:
+        p.models = [m["slug"] for m in listed]
+        p.efforts = {m["slug"]: [e.get("effort") for e in m.get("supported_reasoning_levels") or []]
+                     for m in listed}
+        p.models_source = "cli"
+
+
+def _cli_models(p: Provider, work: str) -> None:
+    cached = _MODEL_CACHE.get(p.executable)
+    if cached and time.monotonic() - cached[0] < _MODEL_TTL:
+        p.models, p.models_source = list(cached[1]), "cli"
+        return
+    try:
+        out, _ = _run([p.executable, "models"], cwd=work, timeout=_PROBE_TIMEOUT * 2)
+    except Exception:
+        return  # login is valid; curated model IDs remain
+    ids = re.findall(r"^([\w.\-]+)\s+-\s+", out, re.MULTILINE)
+    if ids:
+        _MODEL_CACHE[p.executable] = (time.monotonic(), ids)
+        p.models, p.models_source = ids, "cli"
+
+
+def _probe_cli(spec: _CliSpec, verified, work: str) -> Provider:
+    p = Provider(spec.id, spec.name, list(spec.curated), status="not_installed",
+                 login_command=spec.login, install_command=spec.install)
+    exe = shutil.which(spec.binary, path=search_path())
+    if not exe:
+        return p
+    p.executable, p.status = exe, "login"
+    try:
+        p.help_text = _help(exe, spec.id, work)
+        if spec.id == "gemini":
+            # Gemini has no status command; inspect only credential presence.
+            creds = Path.home() / ".gemini/oauth_creds.json"
+            stored = json.loads(creds.read_text()) if creds.exists() else {}
+            found = bool(stored.get("access_token") or stored.get("refresh_token")
+                         or os.environ.get("GEMINI_API_KEY"))
+            p.status = ("ready" if spec.id in verified else "unverified") if found else "login"
+            if "--approval-mode" not in p.help_text:
+                p.status = "unsupported"
+        else:
+            status_args = {"codex": ["login", "status"], "claude": ["auth", "status"],
+                           "cursor": ["status"], "grok": ["models"]}[spec.id]
+            out, err = _run([exe, *status_args], cwd=work, timeout=_PROBE_TIMEOUT * 2)
+            if spec.id == "claude":
+                logged_in = bool(json.loads(out).get("loggedIn"))
+            else:
+                state = (out + err).lower()
+                logged_in = "logged in" in state and "not logged in" not in state
+            p.status = "ready" if logged_in else "login"
+        if p.status == "ready":
+            if spec.id == "codex":
+                _codex_models(p)
+            elif spec.id in ("cursor", "grok"):
+                _cli_models(p, work)
+        required = {"claude": ["--tools", "--strict-mcp-config"],
+                    "cursor": ["--mode", "--sandbox", "--trust"], "grok": ["--tools", "--deny"]}
+        if any(flag not in p.help_text for flag in required.get(spec.id, [])):
+            p.status = "unsupported"
+    except Exception:
+        p.status = "unavailable"
+    p.ready = p.status == "ready"
+    return p
+
+
+def detect_clis(verified=()) -> list[Provider]:
+    """Every known CLI, installed or not, probed in parallel. ``verified``:
+    provider IDs whose credentials a real call already confirmed (Gemini)."""
+    from concurrent.futures import ThreadPoolExecutor
+    with tempfile.TemporaryDirectory(prefix="thundertalk-detect-") as work:
+        with ThreadPoolExecutor(max_workers=len(CLIS)) as pool:
+            return list(pool.map(lambda spec: _probe_cli(spec, set(verified), work), CLIS))
+
+
+def _app_installed(names, binary: str) -> bool:
+    if binary and shutil.which(binary, path=search_path()):
+        return True
+    roots = (Path("/Applications"), Path.home() / "Applications")
+    return any((root / f"{name}.app").exists() for root in roots for name in names)
+
+
+def _chat_models(ids: list[str]) -> list[str]:
+    return [m for m in ids if "embed" not in m.casefold()]
+
+
+def detect_servers(*, custom_base_url: str = "", api_key: str = "",
+                   cherry_api_key: str = "") -> list[Provider]:
+    """Ollama, LM Studio and Cherry Studio always; the custom API if configured.
+
+    0.5s per server. A custom URL must include /v1.
+    """
+    specs = [(*s[:5], s[5], s[6], cherry_api_key if s[0] == "cherry" else "") for s in SERVERS]
+    if custom_base_url.strip():
+        specs.append(("custom", "OpenAI-compatible API", custom_base_url.strip().rstrip("/"),
+                      0, False, (), "", api_key))
+    providers = []
+    for ident, name, url, port, local, apps, binary, key in specs:
+        p = Provider(ident, name, [], base_url=url, local=local, api_key=key, kind="server",
+                     port=port, app_name=apps[0] if apps else "", models_source="server")
+        providers.append(p)
+        try:
+            data = _http(url + ("/api/tags" if ident == "ollama" else "/models"),
+                         timeout=_SERVER_TIMEOUT, api_key=key)
+            if ident == "ollama":
+                tags = sorted(data["models"], key=lambda m: m.get("size") or 0)  # smallest first
+                p.models = _chat_models([m["name"] for m in tags])
+            else:
+                p.models = _chat_models([m["id"] for m in data["data"]])
+            p.status = "ready" if p.models else "no_models"
+        except HTTPError as exc:
+            p.status = "needs_key" if exc.code in (401, 403) else "not_running"
+        except Exception:
+            p.status = ("not_running" if ident == "custom" or _app_installed(apps, binary)
+                        else "not_installed")
+        p.ready = p.status == "ready"
+    return providers
 
 
 def detect(*, custom_base_url: str = "", api_key: str = "", cherry_api_key: str = "",
-           model_overrides: dict[str, list[str]] | None = None) -> list[Provider]:
-    """Observe installed/logged-in CLIs, then reachable model servers in priority order.
+           verified=()) -> list[Provider]:
+    """All CLIs, then model servers, in priority order. No login or download."""
+    return detect_clis(verified) + detect_servers(
+        custom_base_url=custom_base_url, api_key=api_key, cherry_api_key=cherry_api_key)
 
-    No login, completion, model load or download. Missing CLIs are omitted;
-    installed but unavailable CLIs remain visible with status. Probe timeouts
-    are 4s per CLI command and 0.5s per server. Custom URLs must include /v1.
-    Model overrides replace discovered/curated IDs for the given provider ID.
+
+CHECK_SYSTEM = "Reply with exactly the word OK and nothing else."
+
+
+def check_model(provider: Provider, model: str, timeout: float = 60, cancel=None) -> float:
+    """One tiny real completion; returns seconds taken or raises ProviderError.
+
+    Verifies unverified credentials and curated/typed model IDs alike.
     """
-    providers = []
-    with tempfile.TemporaryDirectory(prefix="thundertalk-detect-") as work:
-        for ident, name, binary, fallback in _CLI:
-            exe = shutil.which(binary, path=search_path())
-            if not exe:
-                continue
-            p = Provider(ident, name, list(fallback), executable=exe, status="login")
-            providers.append(p)
-            try:
-                help_args = [exe, "exec", "--help"] if ident == "codex" else [exe, "--help"]
-                p.help_text = _run(help_args, cwd=work, timeout=4)[0]
-                if ident == "gemini":
-                    # Gemini has no status command; inspect only credential presence.
-                    creds = Path.home() / ".gemini/oauth_creds.json"
-                    stored = json.loads(creds.read_text()) if creds.exists() else {}
-                    p.ready = bool(stored.get("access_token") or stored.get("refresh_token")
-                                   or os.environ.get("GEMINI_API_KEY"))
-                    p.status = "unverified" if p.ready else "login"
-                    if "--approval-mode" not in p.help_text:
-                        p.ready, p.status = False, "unsupported"
-                else:
-                    status_args = {"codex": ["login", "status"], "claude": ["auth", "status"],
-                                   "cursor": ["status"], "grok": ["models"]}[ident]
-                    out, err = _run([exe, *status_args], cwd=work, timeout=4)
-                    if ident == "claude":
-                        p.ready = bool(json.loads(out).get("loggedIn"))
-                    else:
-                        state = (out + err).lower()
-                        p.ready = "logged in" in state and "not logged in" not in state
-                    p.status = "ready" if p.ready else "login"
-                if ident in ("cursor", "grok") and p.ready:
-                    try:
-                        out, _ = _run([exe, "models"], cwd=work, timeout=4)
-                        ids = re.findall(r"^([\w.\-]+)\s+-\s+", out, re.MULTILINE)
-                        if ids:
-                            p.models, p.models_source = ids, "cli"
-                    except Exception:
-                        pass  # login is valid; curated/editable model IDs remain
-                required = {"claude": ["--tools", "--strict-mcp-config"],
-                            "cursor": ["--mode", "--sandbox", "--trust"], "grok": ["--tools", "--deny"]}
-                if any(flag not in p.help_text for flag in required.get(ident, [])):
-                    p.ready, p.status = False, "unsupported"
-            except Exception:
-                p.ready, p.status = False, "unavailable"
-    servers = [("ollama", "Ollama", "http://127.0.0.1:11434", True, ""),
-               ("lmstudio", "LM Studio", "http://127.0.0.1:1234/v1", True, ""),
-               ("cherry", "Cherry Studio", "http://127.0.0.1:23333/v1", False, cherry_api_key)]
-    if custom_base_url.strip():
-        servers.append(("custom", "OpenAI-compatible API", custom_base_url.rstrip("/"), False, api_key))
-    for ident, name, url, local, key in servers:
-        p = Provider(ident, name, [], base_url=url, local=local, api_key=key)
-        try:
-            data = _http(url + ("/api/tags" if ident == "ollama" else "/models"),
-                         timeout=0.5, api_key=key)
-            p.models = [m["name"] for m in data["models"]] if ident == "ollama" else [
-                m["id"] for m in data["data"]]
-            p.ready, p.status, p.models_source = bool(p.models), "ready", "server"
-            if not p.models:
-                p.status = "no_models"
-            providers.append(p)
-        except HTTPError as exc:
-            if exc.code in (401, 403):
-                p.status = "login"
-                providers.append(p)
-            elif ident == "custom" or (ident == "cherry" and key):
-                providers.append(p)
-        except Exception:
-            if ident == "custom" or (ident == "cherry" and key):
-                providers.append(p)
-    for p in providers:
-        if model_overrides and model_overrides.get(p.id):
-            p.models = list(model_overrides[p.id])
-            p.models_source = "override"
-    return providers
+    started = time.monotonic()
+    provider.complete(CHECK_SYSTEM, "OK", model, timeout, cancel=cancel)
+    return time.monotonic() - started

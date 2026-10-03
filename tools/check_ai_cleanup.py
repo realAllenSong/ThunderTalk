@@ -1,46 +1,52 @@
-"""Explicit live provider check using synthetic text, never called by tests.
+"""Explicit live proofreading check using synthetic text, never called by tests.
 
 Run through the machine-wide GPU lock, even for cloud providers:
   python3 ~/Library/Caches/ThunderTalk-bench/lock.py gpu -- env PYTHONPATH=$PWD \
-    /Users/songallen/Desktop/ThunderTalk/.venv/bin/python tools/check_ai_cleanup.py
+    $PY tools/check_ai_cleanup.py [provider[:model] ...]
+  (default: codex:gpt-6.1-sol and cursor with its default model)
+Results are written to .ai-cleanup-checks.json; do not commit it.
 """
 import json
-import time
 import sys
+import time
 from pathlib import Path
 
 from thundertalk.core.ai_cleanup import cleanup
-from thundertalk.core.llm_providers import detect
+from thundertalk.core.llm_providers import detect, preferred_model
 
+# (transcript, reference_text or None, expected)
 SAMPLES = [
-    "呃那个我们明天下午三点开会然后呢讨论一下新的方案不要改时间",
-    "um so i i think we should send the draft tomorrow uh but do not publish it yet",
-    "那个这个 API 的 latency 有点高 we need to reduce overhead 然后不要改 public interface",
-    "we need three things first buy milk second send the invoice third call the team",
-    "嗯第一检查日志第二修复错误第三运行测试然后下一段请问这个方案有什么风险",
+    ("GPT的阿修罗、露娜、whatever、terra", "GPT的Astra、Luna、whatever、Terra", "GPT的Astra、Luna、whatever、Terra"),
+    ("我们用 lama index 加上 rag 做检索", None, "我们用 LlamaIndex 加上 RAG 做检索"),
+    ("the model uses group relative policy optimisation, also called g r p o", None,
+     "the model uses group relative policy optimisation, also called GRPO"),
+    ("这个 promp 要改一下", None, "这个 prompt 要改一下"),
+    ("明天下午三点我们在三楼会议室开会，记得带上电脑。", None, "明天下午三点我们在三楼会议室开会，记得带上电脑。"),
 ]
+OUT = Path(".ai-cleanup-checks.json")
+
 start = time.monotonic()
 providers = detect()
 report = {"detection_seconds": round(time.monotonic() - start, 3), "providers": [
-    {"id": p.id, "ready": p.is_ready(), "status": p.status, "models": p.models,
-     "models_source": p.models_source} for p in providers], "checks": []}
+    {"id": p.id, "status": p.status, "models_source": p.models_source, "models": len(p.models),
+     "default_model": preferred_model(p)} for p in providers], "checks": []}
 print(json.dumps(report, ensure_ascii=False), flush=True)
-if len(sys.argv) > 1 and Path(".ai-cleanup-checks.json").exists():
-    report = json.loads(Path(".ai-cleanup-checks.json").read_text())
-for ident, model in (("codex", "gpt-6.1-sol"), ("cursor", "gpt-5.4-mini-none")):
-    if len(sys.argv) > 1 and sys.argv[1] != ident:
-        continue
+targets = sys.argv[1:] or ["codex:gpt-6.1-sol", "cursor"]
+for target in targets:
+    ident, _, model = target.partition(":")
     provider = next((p for p in providers if p.id == ident and p.is_ready()), None)
-    for sentence in SAMPLES:
+    model = model or (preferred_model(provider) if provider else "")
+    for text, reference, expected in SAMPLES:
+        item = {"provider": ident, "model": model, "input": text, "reference_text": reference}
         started = time.monotonic()
-        item = {"provider": ident, "model": model, "input": sentence}
         try:
             if provider is None:
                 raise RuntimeError("Provider not ready")
-            item["output"] = cleanup(provider, sentence, model, timeout=60)
+            item["output"] = cleanup(provider, text, model, timeout=90, reference_text=reference)
+            item["as_expected"] = item["output"] == expected
         except Exception as exc:
             item["error"] = str(exc)
-        item["seconds"] = round(time.monotonic() - started, 3)
+        item["seconds"] = round(time.monotonic() - started, 2)
         report["checks"].append(item)
-        Path(".ai-cleanup-checks.json").write_text(json.dumps(report, ensure_ascii=False, indent=2))
+        OUT.write_text(json.dumps(report, ensure_ascii=False, indent=2))
         print(json.dumps(item, ensure_ascii=False), flush=True)
