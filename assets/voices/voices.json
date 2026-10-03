@@ -91,6 +91,58 @@
   "duration_s": 8.5
  },
  {
+  "slug": "explainer-zh",
+  "name": "科普讲述",
+  "language": "chinese",
+  "gender": "m",
+  "description": "三十岁左右的男性，音色温暖、音高中等不低沉，科普视频旁白，像跟朋友讲故事一样娓娓道来，语速偏慢，自然停顿，轻松口语化，录音棚干净录音",
+  "blurb_en": "Warm mid-pitched male, relaxed second-person storytelling for explainer videos.",
+  "blurb_zh": "温暖的中音男声，像讲故事一样娓娓道来的科普旁白。",
+  "file": "explainer-zh.wav",
+  "text": "你可能没想过，每天多喝一杯奶茶，身体会发生什么变化。第一周，你几乎感觉不到任何不同。可到了第二个月，问题就开始慢慢冒出来了。",
+  "seed": 201,
+  "duration_s": 12.96
+ },
+ {
+  "slug": "lively-explainer-zh",
+  "name": "生动讲述",
+  "language": "chinese",
+  "gender": "m",
+  "description": "三十岁左右的男性，音色温暖、音高中等不低沉，科普视频旁白，像跟朋友讲故事一样娓娓道来，语速偏慢，自然停顿，轻松口语化，录音棚干净录音",
+  "blurb_en": "Mid-pitched male explainer with livelier intonation.",
+  "blurb_zh": "中音男声，语调更有起伏的科普讲述。",
+  "file": "lively-explainer-zh.wav",
+  "text": "你可能没想过，每天多喝一杯奶茶，身体会发生什么变化。第一周，你几乎感觉不到任何不同。可到了第二个月，问题就开始慢慢冒出来了。",
+  "seed": 202,
+  "duration_s": 12.22
+ },
+ {
+  "slug": "business-explainer-zh",
+  "name": "商业解读",
+  "language": "chinese",
+  "gender": "f",
+  "description": "二十多岁的年轻女性，声音清亮干脆，财经商业科普视频解说，语速偏快、节奏利落，自信有条理，像在跟观众分析一个故事，不是播新闻，干净录音",
+  "blurb_en": "Clear, brisk female voice for business and finance explainers.",
+  "blurb_zh": "清亮干脆的女声，节奏利落的商业财经解读。",
+  "file": "business-explainer-zh.wav",
+  "text": "这家公司十年前还只是一家小酒店，如今却成了行业里最赚钱的玩家之一。它到底做对了什么？答案，可能就藏在一个不起眼的细节里。",
+  "seed": 204,
+  "duration_s": 10.12
+ },
+ {
+  "slug": "knowledge-zh",
+  "name": "知识口播",
+  "language": "chinese",
+  "gender": "f",
+  "description": "二十多岁的年轻女性，声音清亮干脆，财经商业科普视频解说，语速偏快、节奏利落，自信有条理，像在跟观众分析一个故事，不是播新闻，干净录音",
+  "blurb_en": "Bright, steady female voice for knowledge videos.",
+  "blurb_zh": "明亮平稳的女声，知识类视频口播。",
+  "file": "knowledge-zh.wav",
+  "text": "这家公司十年前还只是一家小酒店，如今却成了行业里最赚钱的玩家之一。它到底做对了什么？答案，可能就藏在一个不起眼的细节里。",
+  "seed": 201,
+  "duration_s": 10.78
+ },
+ {
   "slug": "evening-news-zh",
   "name": "晚间新闻",
   "language": "chinese",

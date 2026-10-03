@@ -13,7 +13,7 @@
 - Translation: optional speech and text translation across 100+ languages with SeamlessM4T v2 (Direct and Review modes)
 - Studio (new in 1.5, replaces the old Lab page):
   - Transcribe: drop an audio or video recording (m4a, mp3, wav, mp4, mov and more) and get a timestamped transcript. "Multiple speakers" uses MOSS-Transcribe-Diarize to label each turn; speakers can be renamed. Export as TXT, Markdown, SRT, VTT or JSON. Decoding uses macOS built-in tools, no ffmpeg needed.
-  - Speak: text to speech with three local engines: VoxCPM2 (studio-quality, cloning), IndexTTS-2.5 (faithful cloning, 5 languages) and Kokoro (small and fast, 23 curated voices). 14 built-in designed voices for VoxCPM2 and IndexTTS (film recap, documentary, news, lifestyle, Taiwanese accent, English YouTuber and podcast styles; not real people), a ▶ preview on every voice, speed control, a seekable player, and saving as WAV or M4A.
+  - Speak: text to speech with three local engines: VoxCPM2 (studio-quality, cloning), IndexTTS-2.5 (faithful cloning, 5 languages) and Kokoro (small and fast, 23 curated voices). 18 built-in designed voices for VoxCPM2 and IndexTTS (film recap, documentary, explainer, business explainer, news, lifestyle, Taiwanese accent, English YouTuber and podcast styles; not real people), a ▶ preview on every voice, speed control, a seekable player, and saving as WAV or M4A.
   - My voices: voice cloning from a 5 to 15 second recording of your own voice (recorded or imported). The reference stays on the Mac.
 - Everyday details: guided first-run setup, resumable model downloads with real progress and instant cancel, in-app updater
 - Experimental: optional local LLM clean-up of dictated text (misheard names, filler words) with a review popup

@@ -105,3 +105,16 @@ STYLES: tuple[Style, ...] = (
           "A playful cartoon character voice, squeaky, bouncy and very funny, fast excited speech",
           "Oh boy, oh boy! Did somebody say pizza? Because I am absolutely, positively starving!"),
 )
+
+
+# Explainer styles (added for 1.6.3): designed to match the measured pitch,
+# pace and pitch range of popular Chinese explainer videos, without cloning
+# anyone. Kept here so the shipped clips' descriptions stay documented.
+EXPLAINER_STYLES: tuple[Style, ...] = (
+    Style("explainer", "科普讲述", "Explainer", "chinese", "m", "narration",
+          "三十岁左右的男性，音色温暖、音高中等不低沉，科普视频旁白，像跟朋友讲故事一样娓娓道来，语速偏慢，自然停顿，轻松口语化，录音棚干净录音",
+          "你可能没想过，每天多喝一杯奶茶，身体会发生什么变化。第一周，你几乎感觉不到任何不同。可到了第二个月，问题就开始慢慢冒出来了。"),
+    Style("business-explainer", "商业解读", "Business explainer", "chinese", "f", "narration",
+          "二十多岁的年轻女性，声音清亮干脆，财经商业科普视频解说，语速偏快、节奏利落，自信有条理，像在跟观众分析一个故事，不是播新闻，干净录音",
+          "这家公司十年前还只是一家小酒店，如今却成了行业里最赚钱的玩家之一。它到底做对了什么？答案，可能就藏在一个不起眼的细节里。"),
+)

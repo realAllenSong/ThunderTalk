@@ -61,3 +61,6 @@ thundertalk_resources/
 ThunderTalk-v*-macOS.zip
 /dist/
 /build/
+
+# Vendored source that happens to live in "models/" folders (not model weights).
+!third_party/**/models/

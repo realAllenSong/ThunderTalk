@@ -43,7 +43,7 @@ Studio replaces the old Lab page and is the headline of the 1.5 release. It has 
 - **VoxCPM2** (OpenBMB): studio-quality 48 kHz speech and voice cloning; about real time on Apple silicon.
 - **IndexTTS-2.5** (bilibili): very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic; about real time.
 - **Kokoro** (82M): small and fast (about 4 times faster than real time, on the CPU), with 23 curated voices (20 Chinese, 3 English).
-- 14 built-in voices for VoxCPM2 and IndexTTS in the styles people know from short videos, vlogs and podcasts: film recap, documentary, news, a cool CEO, two chatty lifestyle voices, a Taiwanese accent, and English YouTuber, podcast and narrator voices. All are designed voices (created by VoxCPM2 from a text description, not recordings of real people or imitations of any platform's voices) that ship with the app.
+- 18 built-in voices for VoxCPM2 and IndexTTS in the styles people know from short videos, vlogs and podcasts: film recap, documentary, explainer and business-explainer narration, news, a cool CEO, two chatty lifestyle voices, a Taiwanese accent, and English YouTuber, podcast and narrator voices. All are designed voices (created by VoxCPM2 from a text description, not recordings of real people or imitations of any platform's voices) that ship with the app.
 - Every voice has a short preview: click ▶ on a voice to hear it before you generate anything.
 - Speed control (0.75x to 1.5x) and a seekable player. Save the result as WAV (lossless) or M4A (small).
 - **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2 or IndexTTS. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
