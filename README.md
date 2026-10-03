@@ -71,13 +71,14 @@ The speech engines are one-time downloads. After that, file transcription and sp
 **Dictation**
 
 - One global hotkey that works in any app. The default is Right ⌘; choose Toggle (press to start, press to stop) or Hold in Settings, and change the key or combination there too.
-- **Live Preview:** read provisional text in the floating recording bar while you speak. **Settings ▸ Live Preview** is on by default. Words can change as you continue; stopping triggers full-clip recognition for the final pasted text. Preview is hidden in Direct translation mode, and may pause or stop for a recording if the model cannot keep up.
+- **Live Preview:** read provisional text in the floating recording bar while you speak. **Settings ▸ Live Preview** is on by default. Words can change as you continue; stopping triggers full-clip recognition for the final pasted text. Repeating preview windows are discarded; a conservative merge can recover Latin terms where a clean preview aligns with a Chinese span in the final text. Preview is hidden in Direct translation mode, and may pause or stop for a recording if the model cannot keep up.
 - Several speech models: Qwen3-ASR 0.6B and 1.7B, SenseVoice-Small, NVIDIA Parakeet-TDT, and MOSS-Transcribe-Diarize. The app reads your hardware and recommends one.
 - Chinese, English and Chinese-English mixed in one sentence. The interface itself is available in English and 中文.
 - Hotwords: teach it product names, acronyms and people it keeps getting wrong (Qwen3-ASR models).
 - Inverse text normalisation: spoken numbers become digits, in English and Chinese ("twenty five" becomes 25, "三百五十二" becomes 352).
 - Optional translation into 100+ languages with SeamlessM4T v2, in **Direct** mode (paste the translation after you stop) or **Review** mode (transcribe first, then choose Replace or Keep original).
 - A searchable history, stored as a plain file in `~/.thundertalk`.
+- **Recent recordings:** on by default; keeps the last 20 dictations as 16 kHz mono WAV plus recognition metadata in `~/.thundertalk/recordings/`, stored only on this Mac. Switch off **Settings ▸ Keep recent recordings** to stop saving new audio (existing recordings remain). These files are never uploaded.
 - **AI cleanup and voice editing:** use your existing logged-in Codex, Claude Code, Gemini, Grok or Cursor CLI, an already installed Ollama / LM Studio model, Cherry Studio's API server, or a custom OpenAI-compatible API. No AI model is bundled or downloaded. Enable it in Settings, choose a provider/model, and set app-specific styles or turn it off per app. Cleanup removes fillers and repetitions and fixes punctuation while preserving meaning and language, including mixed Chinese-English. It applies to plain dictation, not Direct or Review translation. Raw text is pasted immediately; cleanup replaces it only if you haven't typed, clicked, scrolled or switched apps. Timeouts leave raw text untouched. Terminal results are skipped because terminal input has no standard paste undo.
 - Whole-utterance voice commands in English and Chinese (on by default, independently of AI cleanup; switch them off in Settings): “new line / 换行”, “new paragraph / 新段落”, “delete that / 删掉上一句” (undo the last untouched dictation), and “tab key / 制表符”. With AI cleanup enabled for the app, select text before recording and say “make this shorter / 简短一点”, “make this more formal / 改得正式一点” or “translate to English / 翻译成英文” (also “translate to Chinese / 翻译成中文”) to edit the selection. Selection reading requires macOS Accessibility support; the full clipboard is saved and restored.
 
@@ -207,6 +208,17 @@ ThunderTalk checks GitHub Releases shortly after it launches and shows a small p
 After an update you may need to grant **Accessibility** and **Microphone** access again; see [After an update, the hotkey or microphone stops working](#after-an-update-the-hotkey-or-microphone-stops-working).
 
 ## Troubleshooting
+
+### Reproduce a dictation issue
+
+`tools/replay_dictation.py RECORDING.wav` reuses the JSON sidecar's model,
+language and hotwords, then prints full-clip, chunked preview and merged text.
+Run it from your checkout with `PYTHONPATH=$PWD`; use the shared machine's
+`~/Library/Caches/ThunderTalk-bench/lock.py gpu -- <python> tools/replay_dictation.py …`
+when available. `--model`, `--language`, `--hotword`, `--step` and
+`--limit-seconds` allow controlled comparisons. The replay advances simulated
+audio synchronously through the same preview window/commit/guard code; it does
+not reproduce timer skips or the app's slow-model shutdown. Its outputs stay local.
 
 ### A model download was interrupted
 

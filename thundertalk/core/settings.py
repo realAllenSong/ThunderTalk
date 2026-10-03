@@ -52,6 +52,7 @@ DEFAULTS: dict[str, Any] = {
     "moss_speaker_labels": False,
     # Show the words recognized so far under the indicator while dictating.
     "live_preview": True,
+    "keep_recent_recordings": True,
     # First-run setup flow (welcome → permissions → model → try it).
     "onboarding_done": False,
     # Studio ▸ Speak: last voice ("" = default), language and speed.

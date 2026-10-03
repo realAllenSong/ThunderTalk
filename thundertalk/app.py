@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import inspect
 import sys
 import time
 import traceback
@@ -17,6 +18,8 @@ from thundertalk.core.history import HistoryStore
 from thundertalk.core.hotkey import HotkeyListener
 from thundertalk.core.live_preview import LivePreview, preview_wanted
 from thundertalk.core.settings import Settings
+from thundertalk.core.text_merge import merge_preview_terms
+from thundertalk.core.recordings import save_recording
 from thundertalk.core.i18n import t
 from thundertalk.core import state as st
 from thundertalk.core.state import AppState
@@ -51,6 +54,29 @@ def _qt_message_filter(mode, context, message) -> None:
         return
     if sys.stderr is not None:          # None in the windowed (console=False) bundle
         sys.stderr.write(message + "\n")
+
+
+def _save_recent_recording(recording, final_text: str, pasted_text: str, enabled: bool):
+    """Save a per-take snapshot off the UI thread, including failed recognition."""
+    if not recording or not recording["keep"] or not enabled:
+        return None
+    import threading
+
+    metadata = dict(model=recording["model"], language=recording["language"],
+                    final_text=final_text, preview_text=recording["preview"],
+                    pasted_text=pasted_text,
+                    loop_detected=bool(recording["preview_stats"].get("loops", 0)),
+                    hotwords=list(recording["hotwords"]))
+    samples = recording["samples"]
+
+    def _save():
+        try:
+            save_recording(samples, **metadata)
+        except Exception as exc:
+            print(f"[Recordings] could not save dictation: {exc}")
+    worker = threading.Thread(target=_save, daemon=True, name="dictation-save")
+    worker.start()
+    return worker
 
 
 class AsrWorker(QThread):
@@ -152,13 +178,14 @@ class LlmRewriteWorker(QThread):
     done = Signal()
 
     def __init__(self, provider, text, model, ticket, style, timeout, keep_clipboard,
-                 selection=""):
+                 selection="", reference_text=None):
         super().__init__()
         import threading
         self.cancel = threading.Event()
         self.provider, self.text, self.model = provider, text, model
         self.ticket, self.style, self.timeout = ticket, style, timeout
         self.keep_clipboard, self.selection = keep_clipboard, selection
+        self.reference_text = reference_text
 
     def run(self):
         from thundertalk.core.ai_cleanup import cleanup, edit_selection
@@ -168,8 +195,13 @@ class LlmRewriteWorker(QThread):
                 result = edit_selection(self.provider, self.selection, self.text,
                                         self.model, self.timeout, self.cancel)
             else:
+                # ai_cleanup is being updated independently. Support both APIs;
+                # inspect first so an internal TypeError never retries a provider call.
+                kwargs = {}
+                if "reference_text" in inspect.signature(cleanup).parameters:
+                    kwargs["reference_text"] = self.reference_text
                 result = cleanup(self.provider, self.text, self.model, self.style,
-                                 self.timeout, self.cancel)
+                                 self.timeout, self.cancel, **kwargs)
             if not self.cancel.is_set() and result != (self.selection or self.text):
                 apply_if_unchanged(self.ticket, result, self.keep_clipboard, self.cancel)
         except Exception:
@@ -503,7 +535,8 @@ def main() -> None:
         notify_auto_learn(text)
 
     # --- Voice pipeline ------------------------------------------------
-    def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float) -> None:
+    def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float,
+                     recording=None) -> None:
         # Audio is restored when recording stops (before ASR), not here.
         t_start = time.perf_counter()
         state.set_recording(st.REC_IDLE)
@@ -514,6 +547,17 @@ def main() -> None:
         # Qt aborts on with SIGABRT. _clear_asr_worker() handles it from the
         # built-in finished signal, after run() has returned.
         print(f'[ASR] Result: "{text}" ({ms}ms, backend={backend}, RTF={rtf:.3f})')
+        raw_text = text
+        reference = recording["preview"] if recording else ""
+        if not backend.startswith("seamless-torch"):
+            text = merge_preview_terms(text, reference)
+            if text != raw_text:
+                print(f"[DictationMerge] {raw_text!r} → {text!r} (preview={reference!r})")
+
+        def _remember(pasted):
+            _save_recent_recording(recording, raw_text, pasted,
+                                   settings.get("keep_recent_recordings"))
+
         if text:
             overlay.hide_overlay()
             style = style_for_app(text_output.frontmost_app(), settings.get("cleanup_app_overrides"))
@@ -524,9 +568,11 @@ def main() -> None:
                 if (settings.get("llm_rewrite_enabled") and style != "off"
                         and cleanup_settings.chosen_provider() is not None):
                     _launch_rewrite(text, selection, style, selection.selection)
+                _remember("")
                 return  # preserve selected text if editing is unavailable
             command = parse_command(text) if settings.get("voice_commands_enabled") else None
             if command == "undo":
+                _remember("")
                 if pipe._last_paste is not None:
                     import threading
                     threading.Thread(target=text_output.apply_if_unchanged,
@@ -539,6 +585,7 @@ def main() -> None:
             if pipe._last_paste is not None:
                 pipe._last_paste.invalidate()
             pipe._last_paste = ticket
+            _remember(text)
             if not command:
                 notify_auto_learn(text)
             paste_dispatch_ms = int((time.perf_counter() - t_start) * 1000)
@@ -547,7 +594,7 @@ def main() -> None:
             if (not command and not backend.startswith("seamless-torch")
                     and settings.get("llm_rewrite_enabled") and style != "off"
                     and not (settings.translation_target != "off" and settings.translation_mode == "review")):
-                _launch_rewrite(text, ticket, style)
+                _launch_rewrite(text, ticket, style, reference_text=reference or None)
             # Defer non-critical UI updates so they don't block paste
             history.add(
                 text=text,
@@ -594,12 +641,14 @@ def main() -> None:
                 _track_worker(t2t_worker)
                 t2t_worker.start()
         else:
+            _remember("")
             overlay.show_error(t("overlay.no_speech"))
 
-    def _on_asr_error(msg: str) -> None:
+    def _on_asr_error(msg: str, recording=None) -> None:
         print("[Toggle] _on_asr_error called")
         state.set_recording(st.REC_IDLE)
         print(f"[ASR] Error: {msg}")
+        _save_recent_recording(recording, "", "", settings.get("keep_recent_recordings"))
         overlay.show_error(msg[:40])
 
     def _track_worker(w) -> None:
@@ -633,7 +682,7 @@ def main() -> None:
         # Original text is already pasted; silently drop the translation.
         # No overlay needed — user has the original; the popup just doesn't appear.
 
-    def _launch_rewrite(text, ticket, style, selection=""):
+    def _launch_rewrite(text, ticket, style, selection="", reference_text=None):
         provider = cleanup_settings.chosen_provider()
         if provider is None:
             return
@@ -644,7 +693,7 @@ def main() -> None:
             timeout = 30.0
         worker = LlmRewriteWorker(provider, text, cleanup_settings.chosen_model(provider),
                                   ticket, style, timeout, not settings.get("save_to_clipboard"),
-                                  selection=selection)
+                                  selection=selection, reference_text=reference_text)
         pipe._cleanup_worker = worker
         overlay.show_cleanup(editing=bool(selection))
 
@@ -689,6 +738,19 @@ def main() -> None:
                     overlay.show_error(t("overlay.too_short"))
                     return
 
+                recording = {"samples": samples, "preview": live.last_clean_text(),
+                             "preview_stats": live.stats,
+                             "model": settings.active_model_id or pipe.asr.current_model or "unknown",
+                             "language": settings.transcription_language,
+                             "hotwords": list(settings.hotwords),
+                             "keep": settings.get("keep_recent_recordings")}
+
+                def _done(text, ms, dur, backend, rtf):
+                    _on_asr_done(text, ms, dur, backend, rtf, recording=recording)
+
+                def _error(msg):
+                    _on_asr_error(msg, recording=recording)
+
                 tgt = settings.get("translation_target")
                 mode = settings.get("translation_mode") or "direct"
 
@@ -702,8 +764,8 @@ def main() -> None:
                         return
                     print(f"[Toggle] Starting Direct translation → {tgt} on {len(samples)} samples")
                     worker = TranslationWorker(translator, samples, tgt)
-                    worker.done.connect(_on_asr_done)
-                    worker.error.connect(_on_asr_error)
+                    worker.done.connect(_done)
+                    worker.error.connect(_error)
                     _track_worker(worker)
                     worker.start()
                     return
@@ -722,9 +784,9 @@ def main() -> None:
                 else:
                     print(f"[Toggle] Starting ASR on {len(samples)} samples")
                 worker = AsrWorker(pipe.asr, samples,
-                                   wait_before=lambda: live.wait_idle(15.0))
-                worker.done.connect(_on_asr_done)
-                worker.error.connect(_on_asr_error)
+                                   wait_before=live.wait_idle)
+                worker.done.connect(_done)
+                worker.error.connect(_error)
                 _track_worker(worker)
                 worker.start()
 
@@ -777,6 +839,7 @@ def main() -> None:
                 mute_system_audio()
             pipe._recording = True
             state.set_recording(st.REC_RECORDING)
+            live.reset()  # disabled preview must not reuse the previous dictation
             if preview_wanted(settings):
                 live.start()
             print("[Toggle] Recording started")
