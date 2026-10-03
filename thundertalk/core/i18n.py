@@ -546,6 +546,9 @@ _STRINGS: dict[str, dict[str, str]] = {
 from thundertalk.core.i18n_extra import EXTRA as _EXTRA  # noqa: E402
 from thundertalk.core.i18n_studio import STUDIO as _STUDIO  # noqa: E402
 
+from thundertalk.core.i18n_cleanup import CLEANUP as _CLEANUP  # noqa: E402
+
+_STRINGS.update(_CLEANUP)
 _STRINGS.update(_EXTRA)
 _STRINGS.update(_STUDIO)
 

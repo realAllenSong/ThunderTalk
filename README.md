@@ -61,7 +61,8 @@ The speech engines are one-time downloads. After that, everything in Studio work
 - Inverse text normalisation: spoken numbers become digits, in English and Chinese ("twenty five" becomes 25, "三百五十二" becomes 352).
 - Optional translation into 100+ languages with SeamlessM4T v2, in **Direct** mode (translate as you speak) or **Review** mode (transcribe first, then choose Replace or Keep original).
 - A searchable history, stored as a plain file in `~/.thundertalk`.
-- An optional local LLM clean-up pass (experimental, off by default) that fixes misheard names and filler words, shown in a review popup rather than applied silently.
+- **AI cleanup and voice editing:** use your existing logged-in Codex, Claude Code, Gemini, Grok or Cursor CLI, an already installed Ollama / LM Studio model, Cherry Studio's API server, or a custom OpenAI-compatible API. No AI model is bundled or downloaded. Enable it in Settings, choose a provider/model, and set app-specific styles or turn it off per app. Raw text is pasted immediately; cleanup replaces it only if you haven't typed, clicked, scrolled or switched apps. Timeouts leave raw text untouched. Terminal results are skipped because terminal input has no standard paste undo.
+- Whole-utterance voice commands in English and Chinese: “new line / 换行”, “new paragraph / 新段落”, “delete that / 删掉上一句” (undo the last untouched dictation), and “tab key / 制表符”. With AI cleanup enabled, select text before recording and say “make this shorter”, “make this more formal / 改得正式一点” or “translate to English / 翻译成英文” to edit the selection. Selection reading requires macOS Accessibility support; the full clipboard is saved and restored.
 
 **Everyday details**
 
@@ -75,7 +76,7 @@ The speech engines are one-time downloads. After that, everything in Studio work
 
 - No account, no subscription, no usage limits.
 - Audio is recognised on your Mac and never uploaded.
-- The only network traffic is downloading models and checking GitHub Releases for updates.
+- With AI cleanup off (the default), network traffic is downloading models and checking GitHub Releases for updates. When enabled, cloud CLIs send dictated/selected text to that provider using your account. Ollama and LM Studio inference stays local; Cherry Studio and custom APIs may forward text to cloud models.
 - The code is open. Read it, build it, fork it.
 
 ## Download

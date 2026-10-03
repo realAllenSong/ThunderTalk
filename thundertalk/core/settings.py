@@ -38,7 +38,15 @@ DEFAULTS: dict[str, Any] = {
     "last_run_version": "",
     "tts_model": "",
     "llm_rewrite_enabled": False,
-    "llm_rewrite_model": "mlx-community/Qwen3-8B-4bit",
+    "cleanup_provider": "",
+    "cleanup_models": {},
+    "cleanup_model_overrides": {},
+    "cleanup_app_overrides": {},
+    "cleanup_base_url": "",
+    "cleanup_api_key": "",
+    "cleanup_cherry_key": "",
+    "cleanup_timeout": 30.0,
+    "voice_commands_enabled": True,
     # MOSS dictation: prefix each speaker turn with S01:/S02: labels when
     # two or more speakers are detected in the utterance.
     "moss_speaker_labels": False,
@@ -67,6 +75,9 @@ class Settings:
                 for k, v in stored.items():
                     if k in DEFAULTS:
                         self._data[k] = v
+                # An old local-MLX opt-in is not consent to send text to a CLI.
+                if "llm_rewrite_enabled" in stored and "cleanup_provider" not in stored:
+                    self._data["llm_rewrite_enabled"] = False
             except (json.JSONDecodeError, OSError):
                 pass
 
@@ -75,6 +86,7 @@ class Settings:
         _PATH.parent.mkdir(parents=True, exist_ok=True)
         tmp = _PATH.with_suffix(_PATH.suffix + ".tmp")
         with open(tmp, "w", encoding="utf-8") as f:
+            os.fchmod(f.fileno(), 0o600)  # optional API keys are private to this user
             json.dump(self._data, f, indent=2, ensure_ascii=False)
             f.flush()
             os.fsync(f.fileno())

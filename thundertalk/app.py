@@ -10,23 +10,6 @@ from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, qInstallM
 from PySide6.QtWidgets import QApplication
 
 
-_BENIGN_QT_NOISE = (
-    "propagateSizeHints",                 # Cocoa plugin, harmless
-    "Populating font family aliases",     # one-off font DB warm-up
-)
-
-
-def _qt_message_filter(mode, context, message) -> None:
-    """Drop known-benign Qt chatter but let real warnings through.
-
-    This used to hide every "Could not parse stylesheet" message, which is
-    how twelve broken stylesheets shipped unnoticed. tests/test_qss_valid.py
-    now guards against regressions, so those warnings stay visible."""
-    if any(n in message for n in _BENIGN_QT_NOISE):
-        return
-    if sys.stderr is not None:          # None in the windowed (console=False) bundle
-        sys.stderr.write(message + "\n")
-
 from thundertalk.core.asr import AsrEngine
 from thundertalk.core.audio import AudioRecorder
 from thundertalk.core.device_watcher import get_watcher
@@ -49,6 +32,24 @@ from thundertalk.ui.overlay import VoiceOverlay
 from thundertalk.ui.tray import TrayIcon
 
 import numpy as np
+
+
+_BENIGN_QT_NOISE = (
+    "propagateSizeHints",                 # Cocoa plugin, harmless
+    "Populating font family aliases",     # one-off font DB warm-up
+)
+
+
+def _qt_message_filter(mode, context, message) -> None:
+    """Drop known-benign Qt chatter but let real warnings through.
+
+    This used to hide every "Could not parse stylesheet" message, which is
+    how twelve broken stylesheets shipped unnoticed. tests/test_qss_valid.py
+    now guards against regressions, so those warnings stay visible."""
+    if any(n in message for n in _BENIGN_QT_NOISE):
+        return
+    if sys.stderr is not None:          # None in the windowed (console=False) bundle
+        sys.stderr.write(message + "\n")
 
 
 class AsrWorker(QThread):
@@ -142,29 +143,35 @@ class TextTranslateWorker(QThread):
 
 
 class LlmRewriteWorker(QThread):
-    """Runs LLM grammar correction off the main thread.
+    """Bounded provider work, followed by a guarded paste off the Qt thread."""
 
-    Model loading (first call) can take 10-30s — that's fine; we guard
-    against late replacements in _on_rewrite_done via paste_time.
-    Emits done(original, corrected | None, paste_monotonic_time).
-    """
+    done = Signal()
 
-    done = Signal(str, object, float)  # original, corrected|None, paste_time
-    error = Signal(str)
-
-    def __init__(self, text: str, model_id: str, paste_time: float) -> None:
+    def __init__(self, provider, text, model, ticket, style, timeout, keep_clipboard,
+                 selection=""):
         super().__init__()
-        self._text = text
-        self._model_id = model_id
-        self._paste_time = paste_time
+        import threading
+        self.cancel = threading.Event()
+        self.provider, self.text, self.model = provider, text, model
+        self.ticket, self.style, self.timeout = ticket, style, timeout
+        self.keep_clipboard, self.selection = keep_clipboard, selection
 
-    def run(self) -> None:
+    def run(self):
+        from thundertalk.core.ai_cleanup import cleanup, edit_selection
+        from thundertalk.core.text_output import apply_if_unchanged
         try:
-            from thundertalk.core.llm_rewrite import rewrite
-            corrected = rewrite(self._text, self._model_id)
-            self.done.emit(self._text, corrected, self._paste_time)
-        except Exception as e:
-            self.error.emit(str(e))
+            if self.selection:
+                result = edit_selection(self.provider, self.selection, self.text,
+                                        self.model, self.timeout, self.cancel)
+            else:
+                result = cleanup(self.provider, self.text, self.model, self.style,
+                                 self.timeout, self.cancel)
+            if not self.cancel.is_set() and result != (self.selection or self.text):
+                apply_if_unchanged(self.ticket, result, self.keep_clipboard, self.cancel)
+        except Exception:
+            pass  # raw text/selection stays untouched; no prompt logging
+        finally:
+            self.done.emit()
 
 
 class ModelLoadWorker(QThread):
@@ -302,7 +309,6 @@ def main() -> None:
     overlay.set_hotkey(settings.hotkey)
     from thundertalk.ui.review_overlay import ReviewOverlay
     review_overlay = ReviewOverlay()
-    rewrite_overlay = ReviewOverlay()  # separate instance for grammar-fix popup
     state = AppState(settings.hotkey)
     window = MainWindow(settings, history, state)
     tray = TrayIcon(state)
@@ -439,36 +445,32 @@ def main() -> None:
 
     QTimer.singleShot(500, _restore_model)
 
-    def _prewarm_llm_rewrite() -> None:
-        """Load + warm up the rewrite model in a background thread so the first
-        correction isn't slow due to Metal GPU cold-start."""
-        if not settings.get("llm_rewrite_enabled"):
-            return
-        model_id = settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit"
+    from thundertalk.core import text_output
+    from thundertalk.core.ai_cleanup import is_edit_instruction, parse_command, style_for_app
+    cleanup_settings = window.settings_page.cleanup_settings
+    QTimer.singleShot(1000, cleanup_settings.refresh)
+    text_output.activity.set_hotkey(settings.hotkey)
+    text_output.activity.start()
+    pipe._last_paste = None
+    pipe._selection_ticket = None
+    pipe._cleanup_worker = None
 
-        def _run() -> None:
-            try:
-                from thundertalk.core.llm_rewrite import load_engine, _SYSTEM_PROMPT
-                import mlx_lm, time
-                print(f"[LlmRewrite] Pre-warming model {model_id}…")
-                engine = load_engine(model_id)
-                # One tiny inference to prime Metal shader compilation
-                prompt = engine._tokenizer.apply_chat_template(
-                    [{"role": "system", "content": "/no_think\n" + _SYSTEM_PROMPT},
-                     {"role": "user", "content": "Correct: hello"}],
-                    add_generation_prompt=True, tokenize=False,
-                )
-                t0 = time.monotonic()
-                mlx_lm.generate(engine._model, engine._tokenizer, prompt=prompt,
-                                 max_tokens=10, verbose=False)
-                print(f"[LlmRewrite] Pre-warm done in {time.monotonic()-t0:.2f}s")
-            except Exception as e:
-                print(f"[LlmRewrite] Pre-warm error: {e}")
+    def _cancel_cleanup():
+        if pipe._cleanup_worker is not None:
+            pipe._cleanup_worker.cancel.set()
+        pipe._cleanup_worker = None
 
-        import threading
-        threading.Thread(target=_run, daemon=True, name="llm-prewarm").start()
+    def _shutdown_cleanup():
+        _cancel_cleanup()
+        for worker in list(pipe._workers):
+            if isinstance(worker, LlmRewriteWorker):
+                worker.cancel.set()
+                worker.wait()
+        cleanup_settings.shutdown()
+        text_output.activity.stop()
 
-    QTimer.singleShot(3000, _prewarm_llm_rewrite)  # 3s after launch, after ASR loads
+    app.aboutToQuit.connect(_shutdown_cleanup)
+    cleanup_settings.toggle.toggled_signal.connect(lambda _value: _cancel_cleanup())
 
     # --- Model loading from UI -----------------------------------------
     def on_load_model(model_id: str, path: str, family: str, backend: str) -> None:
@@ -504,13 +506,38 @@ def main() -> None:
         print(f'[ASR] Result: "{text}" ({ms}ms, backend={backend}, RTF={rtf:.3f})')
         if text:
             overlay.hide_overlay()
-            # Paste FIRST — lowest latency path to the user's target app
-            _paste_and_learn(text)
+            style = style_for_app(text_output.frontmost_app(), settings.get("cleanup_app_overrides"))
+            selection = pipe._selection_ticket
+            pipe._selection_ticket = None
+            if (settings.get("voice_commands_enabled") and selection is not None
+                    and is_edit_instruction(text)):
+                if (settings.get("llm_rewrite_enabled") and style != "off"
+                        and cleanup_settings.chosen_provider() is not None):
+                    _launch_rewrite(text, selection, style, selection.selection)
+                return  # preserve selected text if editing is unavailable
+            command = parse_command(text) if settings.get("voice_commands_enabled") else None
+            if command == "undo":
+                if pipe._last_paste is not None:
+                    import threading
+                    threading.Thread(target=text_output.apply_if_unchanged,
+                                     args=(pipe._last_paste, None), daemon=True).start()
+                return
+            if command:
+                text = {"newline": "\n", "paragraph": "\n\n", "tab": "\t"}[command]
+            # Paste FIRST — lowest latency path to the user's target app.
+            ticket = text_output.paste_dictation(text, not settings.get("save_to_clipboard"))
+            if pipe._last_paste is not None:
+                pipe._last_paste.invalidate()
+            pipe._last_paste = ticket
+            if not command:
+                notify_auto_learn(text)
             paste_dispatch_ms = int((time.perf_counter() - t_start) * 1000)
             print(f"[Toggle] Post-ASR dispatch took {paste_dispatch_ms}ms")
             # Async grammar correction: run LLM in background, replace when ready
-            if settings.get("llm_rewrite_enabled"):
-                _launch_rewrite(text, time.perf_counter())
+            if (not command and not backend.startswith("seamless-torch")
+                    and settings.get("llm_rewrite_enabled") and style != "off"
+                    and not (settings.translation_target != "off" and settings.translation_mode == "review")):
+                _launch_rewrite(text, ticket, style)
             # Defer non-critical UI updates so they don't block paste
             history.add(
                 text=text,
@@ -596,32 +623,29 @@ def main() -> None:
         # Original text is already pasted; silently drop the translation.
         # No overlay needed — user has the original; the popup just doesn't appear.
 
-    def _launch_rewrite(text: str, paste_time: float) -> None:
-        model_id = settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit"
-        worker = LlmRewriteWorker(text, model_id, paste_time)
-        worker.done.connect(_on_rewrite_done)
-        worker.error.connect(lambda msg: print(f"[LlmRewrite] Worker error: {msg}"))
+    def _launch_rewrite(text, ticket, style, selection=""):
+        provider = cleanup_settings.chosen_provider()
+        if provider is None:
+            return
+        _cancel_cleanup()
+        try:
+            timeout = min(120.0, max(1.0, float(settings.get("cleanup_timeout"))))
+        except (ValueError, TypeError):
+            timeout = 30.0
+        worker = LlmRewriteWorker(provider, text, cleanup_settings.chosen_model(provider),
+                                  ticket, style, timeout, not settings.get("save_to_clipboard"),
+                                  selection=selection)
+        pipe._cleanup_worker = worker
+        overlay.show_cleanup(editing=bool(selection))
+
+        def _done():
+            if pipe._cleanup_worker is worker:
+                pipe._cleanup_worker = None
+                if not pipe._recording and state.recording == st.REC_IDLE:
+                    overlay.hide_overlay()
+        worker.done.connect(_done)
         _track_worker(worker)
         worker.start()
-
-    def _on_rewrite_done(original: str, corrected, paste_time: float) -> None:
-        if not corrected:
-            print("[LlmRewrite] No correction needed")
-            return
-        elapsed = time.perf_counter() - paste_time
-        if elapsed > 15.0:
-            print(f"[LlmRewrite] Took {elapsed:.1f}s — skipping stale result")
-            return
-        # Show popup only when there IS a correction — no loading flash
-        rewrite_overlay.show_rewrite_loading(original)
-        rewrite_overlay.update_rewrite(corrected)
-
-    def _on_rewrite_replace(corrected: str) -> None:
-        from thundertalk.core.text_output import replace_pasted_text
-        keep_clipboard = not settings.get("save_to_clipboard")
-        replace_pasted_text(corrected, keep_clipboard=keep_clipboard)
-
-    rewrite_overlay.replace_clicked.connect(_on_rewrite_replace)
 
     # Grace period (ms) between stop-requested and stream-closed so the
     # audio callback can capture trailing speech that is still being spoken
@@ -661,7 +685,7 @@ def main() -> None:
                 if tgt and tgt != "off" and mode == "direct":
                     translator = pipe.get_translator()
                     if not translator.is_loaded:
-                        print(f"[Toggle] Direct translation but model not loaded")
+                        print("[Toggle] Direct translation but model not loaded")
                         state.set_recording(st.REC_IDLE)
                         overlay.show_error(t("overlay.no_translator"))
                         return
@@ -709,7 +733,20 @@ def main() -> None:
                 return
             # Dismiss any leftover Review popup from a previous round
             review_overlay.hide_review()
+            _cancel_cleanup()
             save_frontmost_app()
+            text_output.activity.set_hotkey(settings.hotkey)
+            if not text_output.activity.available:
+                text_output.activity.stop()
+                text_output.activity.start()
+            pipe._selection_ticket = None
+            if settings.get("llm_rewrite_enabled") and settings.get("voice_commands_enabled"):
+                try:
+                    selected = text_output.read_selection()
+                except Exception:
+                    selected = ""
+                if selected:
+                    pipe._selection_ticket = text_output.selection_ticket(selected)
             # Show overlay immediately so user gets instant visual feedback
             overlay.show_recording()
             app.processEvents()
@@ -756,7 +793,7 @@ def main() -> None:
         settings.set("translation_target", new_lang)
         translator = pipe.translator
         if translator is None or not translator.is_loaded:
-            print(f"[Review] Lang change requested but translator not loaded")
+            print("[Review] Lang change requested but translator not loaded")
             return
         from thundertalk.core.translate import detect_src_lang
         src_lang = detect_src_lang(original)
