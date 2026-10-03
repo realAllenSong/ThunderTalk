@@ -229,17 +229,24 @@ class TranslationEngine:
                 moved[k] = v
         inputs = moved
 
+        # The v2 Large checkpoint can copy English speech for cmn even with
+        # the correct Chinese decoder prefix (also on CPU / float32). Use an
+        # English text pivot for Mandarin; T2TT honors cmn. Do not substitute
+        # cmn_Hant: that requests a different script.
+        speech_tgt_lang = "eng" if tgt_lang == "cmn" else tgt_lang
         with torch.no_grad():
             output_tokens = self._model.generate(
                 **inputs,
-                tgt_lang=tgt_lang,
+                tgt_lang=speech_tgt_lang,
                 generate_speech=False,
             )
 
-        # Spike-confirmed: output_tokens is a tensor of shape [1, 1, seq_len].
-        # output_tokens[0].tolist()[0] yields the list of token ids.
+        # generate_speech=False returns a ModelOutput; its first field is
+        # sequences of shape [batch, seq_len]. Decode the first sequence.
         token_ids = output_tokens[0].tolist()[0]
         text = self._processor.decode(token_ids, skip_special_tokens=True)
+        if tgt_lang == "cmn" and text.strip():
+            text = self.translate_text(text, src_lang="eng", tgt_lang=tgt_lang).text
 
         inference_ms = int((time.perf_counter() - t0) * 1000)
         rtf = (inference_ms / 1000) / duration if duration > 0 else 0.0

@@ -296,7 +296,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest tts --engine indextts
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 ```
 
-前几项检查应在未安装可选组件、已下载模型权重时运行。runtime 检查下载约 90 MB；最后两项另需模型权重。translate 使用内置参考音频检查文本与语音生成。这是运行时冒烟检查，不断言翻译质量：在锁定的依赖版本下，目标设为 cmn 时，未修改的 v1.6.4 源码引擎和缩小后的应用都将英文片段输出为英文；文本翻译正确输出中文。这个已有的语音目标语言问题需要单独修复。
+前几项检查应在未安装可选组件、已下载模型权重时运行。runtime 检查下载约 90 MB；最后两项另需模型权重。translate 使用内置英文参考音频检查文本与语音翻译，并要求两项输出都包含汉字。普通话（cmn）语音翻译先通过同一个 SeamlessM4T 模型生成英文中间文本，再将文本翻译为中文：模型权重在使用正确中文解码前缀时仍可能照抄英文语音。这会增加一次文本翻译推理；其他目标语言仍直接进行语音翻译。
 
 欢迎贡献代码，详见 [CONTRIBUTING.md](CONTRIBUTING.md)。
 

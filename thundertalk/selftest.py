@@ -177,7 +177,10 @@ def check_translate() -> bool:
         result = eng.translate_text("Hello world. How are you today?", "eng", "cmn")
         clip = next(p for p in load_presets() if p.language == "english")
         speech = eng.translate(audio_io.decode_audio(str(clip.wav), 16000), "cmn")
-        return _say(bool(result.text.strip()) and bool(speech.text.strip()), "translate",
+        def has_cjk(text):
+            return any("\u3400" <= c <= "\u4dbf" or "\u4e00" <= c <= "\u9fff" for c in text)
+
+        return _say(has_cjk(result.text) and has_cjk(speech.text), "translate",
                     text=result.text, speech_text=speech.text,
                     inference_ms=result.inference_ms, speech_inference_ms=speech.inference_ms)
     finally:
