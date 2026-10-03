@@ -46,6 +46,11 @@ hidden_imports += collect_submodules("scipy")
 # move of array_api_compat from scipy._lib to scipy._external).
 hidden_imports += ["scipy._external.array_api_compat.numpy.fft", "scipy._external.array_api_compat.numpy.linalg"]
 
+# yt-dlp (Studio ▸ transcribe from a link). Its own PyInstaller hook adds the
+# networking extras; extractors are listed here too so none can go missing.
+hidden_imports += collect_submodules("yt_dlp")
+hidden_imports += ["certifi"]
+
 custom_datas = [('assets', 'assets')]
 # (assets/voices — built-in reference voices shared by IndexTTS and VoxCPM2 — ship with assets/)
 custom_datas += collect_data_files("mlx_indextts")

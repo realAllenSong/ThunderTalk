@@ -14,6 +14,8 @@ dependencies = [
     "sherpa-onnx-core>=1.12.38",
     "pyinstaller>=6.19.0",
     "pyqtdarktheme>=0.1.7",
+    # Studio ▸ Transcribe from a link. Sites change often: keep this recent.
+    "yt-dlp>=2026.8.19",
 ]
 
 [project.optional-dependencies]
