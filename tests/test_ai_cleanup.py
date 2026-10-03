@@ -1,9 +1,12 @@
-"""No network/model loads: provider contracts, policy and paste safety."""
+"""No network/model loads: provider contracts, proofreading policy and paste safety."""
 from __future__ import annotations
 
+import io
+import json
 import subprocess
 import threading
 from pathlib import Path
+from urllib.error import HTTPError
 
 import pytest
 
@@ -12,80 +15,161 @@ from thundertalk.core import llm_providers as lp
 from thundertalk.core import text_output as output
 
 
+@pytest.fixture(autouse=True)
+def fresh_caches():
+    lp._HELP_CACHE.clear()
+    lp._MODEL_CACHE.clear()
+
+
 @pytest.fixture
 def offline(monkeypatch, isolated_home):
     monkeypatch.setattr(lp.shutil, "which", lambda name, path: None)
     monkeypatch.setattr(lp, "_http", lambda *a, **k: (_ for _ in ()).throw(OSError("offline")))
+    monkeypatch.setattr(lp, "_app_installed", lambda names, binary: False)
 
 
-def test_empty_detection(offline):
-    assert lp.detect() == []
+def by_id(providers):
+    return {p.id: p for p in providers}
 
 
-def test_cli_detection_priority_models_login(offline, monkeypatch):
+# ── detection ───────────────────────────────────────────────────────────
+
+def test_offline_detection_lists_every_provider(offline):
+    providers = lp.detect()
+    assert [p.id for p in providers] == ["codex", "claude", "cursor", "gemini", "grok",
+                                         "ollama", "lmstudio", "cherry"]
+    assert all(p.status == "not_installed" and not p.is_ready() for p in providers)
+    found = by_id(providers)
+    assert found["codex"].install_command and found["claude"].login_command == "claude auth login"
+    assert found["ollama"].port == 11434 and found["lmstudio"].app_name == "LM Studio"
+
+
+def test_installed_app_without_server_is_not_running(offline, monkeypatch):
+    monkeypatch.setattr(lp, "_app_installed", lambda names, binary: names == ("Ollama",))
+    found = by_id(lp.detect_servers())
+    assert found["ollama"].status == "not_running"
+    assert found["lmstudio"].status == "not_installed"
+
+
+def _fake_cli(monkeypatch, claude_logged_in=False, calls=None):
     monkeypatch.setattr(lp.shutil, "which", lambda name, path: "/bin/" + name)
+
     def run(args, **kwargs):
         assert Path(kwargs["cwd"]).is_dir()
-        assert kwargs["timeout"] == 4
+        if calls is not None:
+            calls.append(args)
         name = Path(args[0]).name
         if "--help" in args:
             return "--tools --strict-mcp-config --mode --sandbox --trust --deny --approval-mode", ""
         if args[-1] == "models":
-            return "Available models\ncheap-model - Cheap\nother-model - Other", ""
+            return "Available models\n\nauto - Auto\ngemini-3.8-flash-low - Flash\nbig-model - Big", ""
         if name == "claude":
-            return '{"loggedIn":false}', ""
+            return json.dumps({"loggedIn": claude_logged_in}), ""
         return "Logged in using subscription", ""
     monkeypatch.setattr(lp, "_run", run)
-    providers = lp.detect(model_overrides={"codex": ["my-model"]})
-    assert [p.id for p in providers] == ["codex", "claude", "gemini", "grok", "cursor"]
-    assert providers[0].models == ["my-model"]
-    assert not providers[1].is_ready()
-    assert providers[-1].models == ["cheap-model", "other-model"]
-    assert providers[-1].models_source == "cli"
-    assert not providers[2].is_ready()
 
 
-def test_gui_path(offline, monkeypatch, isolated_home):
-    folder = isolated_home / ".nvm/versions/node/v22/bin"
-    folder.mkdir(parents=True)
-    monkeypatch.setenv("PATH", "/usr/bin")
-    path = lp.search_path()
-    assert str(folder) in path and "/opt/homebrew/bin" in path
-    assert str(isolated_home / ".local/bin") in path and "/usr/local/bin" in path
+def test_cli_status_and_models(offline, monkeypatch, isolated_home):
+    _fake_cli(monkeypatch)
+    cache = isolated_home / ".codex/models_cache.json"
+    cache.parent.mkdir()
+    cache.write_text(json.dumps({"models": [
+        {"slug": "gpt-6.1-sol", "visibility": "list", "supported_reasoning_levels": [{"effort": "low"}]},
+        {"slug": "hidden", "visibility": "hide"},
+        {"slug": "gpt-6-luna", "visibility": "list", "supported_reasoning_levels": [{"effort": "medium"}]},
+    ]}))
+    found = by_id(lp.detect_clis())
+    codex, claude, cursor, gemini = found["codex"], found["claude"], found["cursor"], found["gemini"]
+    assert codex.is_ready() and codex.models == ["gpt-6.1-sol", "gpt-6-luna"]
+    assert codex.models_source == "cli" and codex.efforts["gpt-6.1-sol"] == ["low"]
+    assert lp.preferred_model(codex) == "gpt-6-luna"
+    assert claude.status == "login" and not claude.is_ready()
+    assert cursor.models == ["auto", "gemini-3.8-flash-low", "big-model"]
+    assert lp.preferred_model(cursor) == "gemini-3.8-flash-low"
+    assert gemini.status == "login"  # no cached credentials
 
 
-def test_timeout_detection_is_not_ready(offline, monkeypatch):
+def test_codex_without_model_cache_uses_curated(offline, monkeypatch):
+    _fake_cli(monkeypatch)
+    codex = by_id(lp.detect_clis())["codex"]
+    assert codex.models_source == "curated" and "gpt-6.1-sol" in codex.models
+
+
+def test_gemini_credentials_unverified_until_verified(offline, monkeypatch, isolated_home):
+    _fake_cli(monkeypatch)
+    creds = isolated_home / ".gemini/oauth_creds.json"
+    creds.parent.mkdir()
+    creds.write_text('{"refresh_token": "synthetic"}')
+    gemini = by_id(lp.detect_clis())["gemini"]
+    assert gemini.status == "unverified" and gemini.usable() and not gemini.is_ready()
+    assert lp.preferred_model(gemini) == "gemini-2.5-flash"
+    assert by_id(lp.detect_clis(verified={"gemini"}))["gemini"].is_ready()
+
+
+def test_help_and_model_listing_are_cached(offline, monkeypatch):
+    calls = []
+    _fake_cli(monkeypatch, claude_logged_in=True, calls=calls)
+    lp.detect_clis()
+    first = len(calls)
+    lp.detect_clis()
+    assert not [c for c in calls[first:] if "--help" in c or c[-1] == "models"
+                and Path(c[0]).name == "cursor-agent"]
+
+
+def test_timeout_detection_is_unavailable(offline, monkeypatch):
     monkeypatch.setattr(lp.shutil, "which", lambda name, path: name if name == "codex" else None)
     monkeypatch.setattr(lp, "_run", lambda *a, **k: (_ for _ in ()).throw(lp.ProviderError("timeout")))
-    p, = lp.detect()
-    assert p.status == "unavailable" and not p.is_ready()
+    codex = by_id(lp.detect_clis())["codex"]
+    assert codex.status == "unavailable" and not codex.is_ready()
 
 
-def test_server_detection_and_auth(offline, monkeypatch):
+def test_cursor_model_query_failure_keeps_curated(offline, monkeypatch):
+    monkeypatch.setattr(lp.shutil, "which", lambda name, path: name if name == "cursor-agent" else None)
+
+    def run(args, **kwargs):
+        if args[-1] == "models":
+            raise lp.ProviderError("timed out")
+        if args[-1] == "--help":
+            return "--mode --sandbox --trust", ""
+        return "Logged in", ""
+    monkeypatch.setattr(lp, "_run", run)
+    cursor = by_id(lp.detect_clis())["cursor"]
+    assert cursor.is_ready() and cursor.models == ["auto"] and cursor.models_source == "curated"
+
+
+def test_server_detection_models_and_auth(offline, monkeypatch):
     requests = []
+
     def http(url, **kwargs):
         requests.append((url, kwargs))
         if "11434" in url:
-            return {"models": [{"name": "already-installed"}]}
+            return {"models": [{"name": "big:70b", "size": 9}, {"name": "nomic-embed-text", "size": 1},
+                               {"name": "small:3b", "size": 2}]}
+        if "23333" in url:
+            raise HTTPError(url, 401, "unauthorized", {}, io.BytesIO())
         return {"data": [{"id": "server-model"}]}
     monkeypatch.setattr(lp, "_http", http)
-    providers = lp.detect(custom_base_url="https://example.invalid/v1/", api_key="test-key",
-                          cherry_api_key="cherry-key")
-    assert [p.id for p in providers] == ["ollama", "lmstudio", "cherry", "custom"]
-    assert providers[0].local and providers[1].local and not providers[2].local
-    assert requests[-1][1]["api_key"] == "test-key"
-    assert requests[-1][0] == "https://example.invalid/v1/models"
-    assert all(p.is_ready() for p in providers)
+    found = by_id(lp.detect_servers(custom_base_url="https://example.invalid/v1/", api_key="test-key"))
+    assert list(found) == ["ollama", "lmstudio", "cherry", "custom"]
+    assert found["ollama"].models == ["small:3b", "big:70b"]  # smallest first, no embeddings
+    assert lp.preferred_model(found["ollama"]) == "small:3b"
+    assert found["lmstudio"].is_ready() and found["lmstudio"].local and not found["cherry"].local
+    assert found["cherry"].status == "needs_key"
+    assert requests[-1] == ("https://example.invalid/v1/models", {"timeout": 0.5, "api_key": "test-key"})
+    assert found["custom"].is_ready() and found["custom"].models == ["server-model"]
 
 
 def test_no_server_models(offline, monkeypatch):
     monkeypatch.setattr(lp, "_http", lambda *a, **k: {"models": [], "data": []})
-    assert all(not p.is_ready() and p.status == "no_models" for p in lp.detect())
+    assert all(p.status == "no_models" and not p.is_ready() for p in lp.detect_servers())
 
+
+# ── completion ──────────────────────────────────────────────────────────
 
 @pytest.mark.parametrize("ident", ["ollama", "lmstudio", "custom"])
 def test_http_completion_payload(monkeypatch, ident):
     calls = []
+
     def http(url, **kwargs):
         calls.append((url, kwargs))
         return {"message": {"content": " clean "}, "choices": [{"message": {"content": " clean "}}]}
@@ -102,6 +186,7 @@ def test_http_completion_payload(monkeypatch, ident):
 @pytest.mark.parametrize("ident", ["codex", "claude", "cursor", "gemini", "grok"])
 def test_cli_arguments_and_empty_workdir(monkeypatch, ident):
     calls = []
+
     def run(args, **kwargs):
         work = Path(kwargs["cwd"])
         assert not (work / "AGENTS.md").exists()
@@ -112,13 +197,14 @@ def test_cli_arguments_and_empty_workdir(monkeypatch, ident):
         return "Clean text", ""
     monkeypatch.setattr(lp, "_run", run)
     p = lp.Provider(ident, "Fake", ["m"], ready=True, executable="/fake/cli",
-                    help_text="--ephemeral --ignore-user-config --ignore-rules")
+                    help_text="--ephemeral --ignore-user-config --ignore-rules",
+                    efforts={"m": ["low", "medium"]})
     assert p.complete("system", "text", "m", 7) == "Clean text"
     args, opts = calls[0]
     assert opts["timeout"] == 7
     if ident == "codex":
         assert args[-1] == "-" and args[args.index("-s") + 1] == "read-only"
-        assert "--ignore-user-config" in args
+        assert "--ignore-user-config" in args and 'model_reasoning_effort="low"' in args
     elif ident == "claude":
         assert args[args.index("--tools") + 1] == ""
         assert "--strict-mcp-config" in args
@@ -132,15 +218,26 @@ def test_cli_arguments_and_empty_workdir(monkeypatch, ident):
         assert "MCPTool" in args
 
 
+def test_unverified_provider_may_run_a_check(monkeypatch):
+    monkeypatch.setattr(lp, "_run", lambda args, **k: ("OK", ""))
+    p = lp.Provider("gemini", "Gemini", ["gemini-2.5-flash"], status="unverified", executable="/x")
+    assert not p.is_ready() and lp.check_model(p, "gemini-2.5-flash", 5) >= 0
+    p.status = "login"
+    with pytest.raises(lp.ProviderError):
+        lp.check_model(p, "gemini-2.5-flash", 5)
+
+
 def test_process_timeout_kills_group(monkeypatch, tmp_path):
     class Proc:
         pid = 5678
         returncode = None
+
         def communicate(self, input=None, timeout=None):
             if timeout is not None:
                 raise subprocess.TimeoutExpired("fake", timeout)
             self.returncode = -9
             return "", ""
+
         def poll(self):
             return self.returncode
     monkeypatch.setattr(lp.subprocess, "Popen", lambda *a, **k: Proc())
@@ -159,51 +256,143 @@ def test_cancellation_and_bad_result(monkeypatch):
     event.set()
     with pytest.raises(lp.CompletionCancelled):
         p.complete("s", "u", "m", 1, event)
-    event.clear()
     monkeypatch.setattr(lp, "_http", lambda *a, **k: {"choices": [{"message": {"content": ""}}]})
     with pytest.raises(lp.ProviderError, match="empty"):
         p.complete("s", "u", "m", 1)
 
 
-@pytest.mark.parametrize("app,style", [("ChatGPT", "prompt"), ("Terminal", "prompt"),
-    ("Mail", "polished"), ("Cursor", "punctuation"), ("Visual Studio Code", "punctuation"),
-    ("微信", "casual"), ("Slack", "casual"), ("Pages", "light")])
-def test_style_routing(app, style):
-    assert ai.style_for_app(app) == style
-    assert ai.style_for_app(app, {app.upper(): "off"}) == "off"
-    assert ai.style_for_app(app, {app: "auto"}) == style
+def test_cli_disappearing_after_detection_raises_provider_error(monkeypatch):
+    monkeypatch.setattr(lp, "_run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("gone")))
+    provider = lp.Provider("cursor", "Fake", ["m"], ready=True, executable="fake")
+    with pytest.raises(lp.ProviderError, match="CLI request failed"):
+        provider.complete("s", "u", "m", 1)
 
 
-@pytest.mark.parametrize("text,command", [("换行。", "newline"), ("New line!", "newline"),
-    ("新段落", "paragraph"), ("new paragraph", "paragraph"), ("删掉上一句", "undo"),
-    ("delete that.", "undo"), ("tab key", "tab")])
-def test_commands(text, command):
-    assert ai.parse_command(text) == command
+# ── proofreading policy ─────────────────────────────────────────────────
+
+class Recorder:
+    def __init__(self, reply):
+        self.reply = reply
+        self.calls = []
+
+    def complete(self, system, user, model, timeout, cancel=None):
+        self.calls.append((system, user, model, timeout, cancel))
+        return self.reply(user) if callable(self.reply) else self.reply
 
 
-@pytest.mark.parametrize("text", ["please add a new line here", "不要删掉上一句", "换行以后继续",
-    "we should delete that file", "I said new paragraph yesterday", "换行，新段落", "new line\nnew paragraph"])
-def test_command_false_positives(text):
-    assert ai.parse_command(text) is None
-    assert not ai.is_edit_instruction(text)
+def test_prompt_is_proofreading_only():
+    for rule in ("Minimal edits", "Never translate", "Never reformat", "Never answer",
+                 "return the transcript unchanged", "reference", "hotwords"):
+        assert rule in ai.SYSTEM
+    for removed in ("filler", "paragraph", "list"):
+        assert f"Remove {removed}" not in ai.SYSTEM
 
 
-def test_cleanup_and_edit_contract():
-    class Fake:
-        def complete(self, system, user, model, timeout, cancel=None):
-            assert "ONLY" in system and model == "fake" and timeout == 4
-            self.prompt = system
-            self.user = user
-            return "clean"
-    p = Fake()
-    assert ai.cleanup(p, "what is two plus two", "fake", "prompt", 4) == "clean"
-    assert "never answer" in p.prompt and p.user == "what is two plus two"
-    assert ai.cleanup(p, "raw", "fake", "off", 4) == "raw"
-    assert ai.edit_selection(p, "selection", "make this shorter", "fake", 4) == "clean"
-    assert '"selection": "selection"' in p.user
-    assert ai.is_edit_instruction("改得正式一点。")
-    assert not ai.is_edit_instruction("他说改得正式一点就好了")
+def test_request_carries_reference_and_hotwords():
+    p = Recorder("GPT的Astra、Luna、whatever、Terra")
+    result = ai.cleanup(p, "GPT的阿修罗、露娜、whatever、terra", "m", timeout=4,
+                        reference_text="GPT的Astra、Luna、whatever、Terra", hotwords=["GRPO", " ", 3])
+    assert result == "GPT的Astra、Luna、whatever、Terra"
+    system, user, model, timeout, _ = p.calls[0]
+    assert system == ai.SYSTEM and (model, timeout) == ("m", 4)
+    assert json.loads(user) == {"transcript": "GPT的阿修罗、露娜、whatever、terra",
+                                "reference": "GPT的Astra、Luna、whatever、Terra", "hotwords": ["GRPO"]}
 
+
+def test_reference_omitted_when_empty_or_identical():
+    assert json.loads(ai.build_request("same", "same")) == {"transcript": "same"}
+    assert json.loads(ai.build_request("same", None, [])) == {"transcript": "same"}
+
+
+def test_positional_signature_is_backward_compatible():
+    p = Recorder("clean text")
+    event = threading.Event()
+    assert ai.cleanup(p, "clean txt", "fake", "light", 4, event) == "clean text"
+    assert p.calls[0][3:] == (4, event)
+    assert ai.proofread is ai.cleanup
+
+
+def test_empty_text_is_not_sent():
+    p = Recorder("x")
+    assert ai.cleanup(p, "  ", "m") == "  " and not p.calls
+
+
+@pytest.mark.parametrize("original,fixed", [
+    ("GPT的阿修罗、露娜、whatever、terra", "GPT的Astra、Luna、whatever、Terra"),
+    ("我们用 lama index 加上 rag 做检索", "我们用 LlamaIndex 加上 RAG 做检索"),
+    ("the model uses group relative policy optimisation, also called g r p o",
+     "the model uses group relative policy optimisation, also called GRPO"),
+    ("这个 promp 要改一下", "这个 prompt 要改一下"),
+    ("明天下午三点开会。", "明天下午三点开会。"),
+    ("我们用拉玛做检索", "我们用 Llama 做检索"),
+])
+def test_term_fixes_are_accepted(original, fixed):
+    assert ai.acceptable(original, fixed)
+    assert ai.cleanup(Recorder(fixed), original, "m") == fixed
+
+
+@pytest.mark.parametrize("original,result", [
+    ("send the draft tomorrow but do not publish it", "明天发送草稿，但不要发布。"),
+    ("这个 API 的 latency 有点高 we should reduce overhead", "这个接口的延迟有点高，我们应该降低开销。"),
+    ("我们明天下午三点开会讨论新的方案不要改时间", "We will meet at 3 pm tomorrow to discuss the plan."),
+    ("first buy milk second send the invoice", "1. Buy milk\n2. Send the invoice"),
+    ("what is two plus two", "Two plus two is four. Let me know if you need anything else at all!"),
+    ("这个 promp 要改一下", ""),
+])
+def test_translation_answers_and_reformatting_are_rejected(original, result):
+    assert not ai.acceptable(original, result)
+    assert ai.cleanup(Recorder(result or " "), original, "m") == original
+
+
+@pytest.mark.parametrize("reply", ["```\nfixed GRPO\n```", '"fixed GRPO"', '{"transcript": "fixed GRPO"}'])
+def test_wrappers_are_removed(reply):
+    assert ai.cleanup(Recorder(reply), "fixed g r p o", "m") == "fixed GRPO"
+
+
+def test_removed_features_are_gone():
+    for name in ("parse_command", "is_edit_instruction", "edit_selection", "style_for_app", "STYLES"):
+        assert not hasattr(ai, name)
+    for name in ("read_selection", "selection_ticket", "_has_selection"):
+        assert not hasattr(output, name)
+
+
+# ── settings migration ──────────────────────────────────────────────────
+
+def test_old_cleanup_keys_migrate_harmlessly(isolated_home):
+    from thundertalk.core.settings import Settings
+    path = isolated_home / ".thundertalk/settings.json"
+    path.write_text(json.dumps({
+        "llm_rewrite_enabled": True, "cleanup_provider": "codex",
+        "cleanup_models": {"codex": "gpt-6.1-sol"}, "cleanup_app_overrides": {"Mail": "polished"},
+        "cleanup_model_overrides": {"codex": ["x"]}, "voice_commands_enabled": True}))
+    settings = Settings()
+    assert settings.get("llm_rewrite_enabled") is True
+    assert settings.get("cleanup_models") == {"codex": "gpt-6.1-sol"}
+    assert settings.get("voice_commands_enabled") is None
+    settings.set("hotwords", ["GRPO"])
+    stored = json.loads(path.read_text())
+    assert not {"cleanup_app_overrides", "cleanup_model_overrides", "voice_commands_enabled"} & set(stored)
+    assert stored["cleanup_checks"] == {} and stored["cleanup_extra_models"] == {}
+
+
+@pytest.mark.parametrize("has_provider,enabled", [(False, False), (True, True)])
+def test_legacy_local_enable_does_not_opt_in_to_cloud(isolated_home, has_provider, enabled):
+    from thundertalk.core.settings import Settings
+    stored = {"llm_rewrite_enabled": True, "llm_rewrite_model": "old-local-model"}
+    if has_provider:
+        stored["cleanup_provider"] = ""
+    (isolated_home / ".thundertalk/settings.json").write_text(json.dumps(stored))
+    assert Settings().get("llm_rewrite_enabled") is enabled
+
+
+def test_api_settings_file_is_private(isolated_home):
+    import stat
+    from thundertalk.core.settings import Settings
+    Settings().set("cleanup_api_key", "synthetic-key")
+    assert stat.S_IMODE((isolated_home / ".thundertalk/settings.json").stat().st_mode) == 0o600
+
+
+# ── guarded replacement ─────────────────────────────────────────────────
 
 @pytest.fixture
 def guarded(monkeypatch):
@@ -222,12 +411,13 @@ def guarded(monkeypatch):
     return ticket, calls
 
 
-def test_replace_and_undo_cleaned_dictation(guarded):
+def test_replace_exactly_once(guarded):
     ticket, calls = guarded
     assert output.apply_if_unchanged(ticket, "clean")
     assert calls == [6, "paste"]
-    assert output.apply_if_unchanged(ticket, None)
-    assert calls == [6, "paste", 6]
+    assert not output.apply_if_unchanged(ticket, "")
+    assert output.apply_if_unchanged(ticket, "again")  # successor of the cleaned paste
+    ticket.invalidate()
     assert not output.apply_if_unchanged(ticket, "late")
 
 
@@ -251,15 +441,9 @@ def test_replace_only_if_unchanged(guarded, monkeypatch, change):
     assert not calls
 
 
-def test_selection_replacement_no_undo(guarded):
-    ticket, calls = guarded
-    ticket.selection = "original selection"
-    assert output.apply_if_unchanged(ticket, "shorter")
-    assert calls == ["paste"]
-
-
 def test_final_guard_after_clipboard(guarded, monkeypatch):
     ticket, calls = guarded
+
     def write(text):
         output.activity.generation += 1
         return True
@@ -268,70 +452,30 @@ def test_final_guard_after_clipboard(guarded, monkeypatch):
     assert not calls
 
 
-@pytest.mark.parametrize("raises", [False, True])
-def test_selection_clipboard_restore(monkeypatch, raises):
-    monkeypatch.setattr(output, "_SYSTEM", "Darwin")
-    monkeypatch.setattr(output, "_has_selection", lambda: True)
-    monkeypatch.setattr(output, "_save_clipboard", lambda: [[("rich/text", b"old")]])
-    restored = []
-    monkeypatch.setattr(output, "_restore_clipboard", lambda saved: restored.append(saved))
-    monkeypatch.setattr(output.pyperclip, "copy", lambda text: None)
-    monkeypatch.setattr(output.time, "sleep", lambda n: None)
-    monkeypatch.setattr(output, "_send_cmd_key", lambda key: None)
-    def paste():
-        if raises:
-            raise RuntimeError("clipboard failure")
-        return "selected"
-    monkeypatch.setattr(output.pyperclip, "paste", paste)
-    if raises:
-        with pytest.raises(RuntimeError):
-            output.read_selection()
-    else:
-        assert output.read_selection() == "selected"
-    assert restored == [[[('rich/text', b'old')]]]
+def test_cancel_before_paste(guarded):
+    ticket, calls = guarded
+    event = threading.Event()
+    event.set()
+    assert not output.apply_if_unchanged(ticket, "clean", cancel=event)
+    assert not calls
 
 
-def test_copy_without_selection_never_runs(monkeypatch):
-    monkeypatch.setattr(output, "_has_selection", lambda: False)
-    monkeypatch.setattr(output, "_save_clipboard", lambda: pytest.fail("clipboard touched"))
-    assert output.read_selection() == ""
-
-
-def test_cleanup_settings_fake_providers(qapp, isolated_home):
-    from thundertalk.core.i18n import set_language
-    from thundertalk.core.settings import Settings
-    from thundertalk.ui.cleanup_settings import CleanupSettings
-    widget = CleanupSettings(Settings())
-    assert not widget.chosen_provider()
-    p = lp.Provider("fake", "Fake", ["cheap", "large"], ready=True, status="ready")
-    widget._detected([p])
-    assert widget.chosen_provider() is p and widget.toggle.isEnabled()
-    widget.model_combo.setCurrentText("my-model")
-    assert widget.chosen_model(p) == "my-model"
-    widget.app_combo.setEditText("Mail")
-    widget.style_combo.setCurrentIndex(widget.style_combo.findData("off"))
-    widget._save_override()
-    assert widget.settings.get("cleanup_app_overrides") == {"Mail": "off"}
-    set_language("zh")
-    assert widget.refresh_button.text() == "刷新"
-    assert widget.chosen_model(p) == "my-model"
-    widget._detected([])
-    assert not widget.toggle.isEnabled()
-    set_language("en")
-    widget.close()
-
-
-def test_activity_hotkey_does_not_hide_normal_typing(monkeypatch):
+def test_activity_hotkey_does_not_hide_normal_typing():
     tracker = output.InputActivity()
     tracker.set_hotkey("cmd_l+space")
+
     class Event:
         flags = 0
+
         def CGEvent(self):
             return None
+
         def type(self):
             return 10
+
         def keyCode(self):
             return 49
+
         def modifierFlags(self):
             return self.flags
     event = Event()
@@ -342,21 +486,6 @@ def test_activity_hotkey_does_not_hide_normal_typing(monkeypatch):
     assert tracker.generation == 1  # Cmd+Space hotkey is ignored
     tracker._focus_changed(None)
     assert tracker.generation == 2
-
-
-def test_ticket_invalidation_includes_cleaned_successor(guarded):
-    ticket, _ = guarded
-    assert output.apply_if_unchanged(ticket, "clean")
-    ticket.invalidate()
-    assert not output.apply_if_unchanged(ticket, None)
-
-
-def test_cancel_before_paste(guarded):
-    ticket, calls = guarded
-    event = threading.Event()
-    event.set()
-    assert not output.apply_if_unchanged(ticket, "clean", cancel=event)
-    assert not calls
 
 
 def test_paste_failure_restores_clipboard(monkeypatch):
@@ -373,115 +502,33 @@ def test_paste_failure_restores_clipboard(monkeypatch):
     assert restored == ["old clipboard"]
 
 
-def test_model_query_failure_keeps_curated_fallback(offline, monkeypatch):
-    monkeypatch.setattr(lp.shutil, "which", lambda name, path: name if name == "cursor-agent" else None)
-    def run(args, **kwargs):
-        if args[-1] == "models":
-            raise lp.ProviderError("timed out")
-        if args[-1] == "--help":
-            return "--mode --sandbox --trust", ""
-        return "Logged in", ""
-    monkeypatch.setattr(lp, "_run", run)
-    p, = lp.detect()
-    assert p.is_ready() and p.models == ["auto"] and p.models_source == "curated"
+# ── dictation worker ────────────────────────────────────────────────────
 
-
-@pytest.mark.parametrize("selection", ["", "long selected text"])
-def test_worker_uses_provider_and_guards_result(qapp, monkeypatch, guarded, selection):
+def test_worker_proofreads_with_context_and_guards_result(qapp, guarded):
     from thundertalk.app import LlmRewriteWorker
     ticket, calls = guarded
-    ticket.selection = selection
-    class Fake:
-        def complete(self, system, user, model, timeout, cancel=None):
-            assert model == "fake" and timeout == 1
-            return "clean"
-    worker = LlmRewriteWorker(Fake(), "make this shorter" if selection else "raw", "fake",
-                              ticket, "light", 1, False, selection)
+    p = Recorder("the method is called GRPO")
+    worker = LlmRewriteWorker(p, "the method is called g r p o", "fake", ticket, 1, False,
+                              hotwords=["GRPO"], reference_text="the method is called GRPO")
     worker.run()
-    assert calls == (["paste"] if selection else [6, "paste"])
+    assert calls == [6, "paste"]
+    request = json.loads(p.calls[0][1])
+    assert request["hotwords"] == ["GRPO"] and request["reference"] == "the method is called GRPO"
+
+
+def test_worker_unchanged_result_does_not_touch_paste(qapp, guarded):
+    from thundertalk.app import LlmRewriteWorker
+    ticket, calls = guarded
+    LlmRewriteWorker(Recorder("明天开会。"), "明天开会。", "fake", ticket, 1, False).run()
+    assert not calls and ticket.valid
 
 
 def test_worker_failure_preserves_raw(qapp, guarded):
     from thundertalk.app import LlmRewriteWorker
     ticket, calls = guarded
+
     class Fake:
         def complete(self, *args, **kwargs):
             raise lp.ProviderError("timeout")
-    worker = LlmRewriteWorker(Fake(), "raw", "fake", ticket, "light", 1, False)
-    worker.run()
+    LlmRewriteWorker(Fake(), "raw", "fake", ticket, 1, False).run()
     assert not calls and ticket.valid
-
-
-@pytest.mark.parametrize("original,result", [
-    ("um send the draft tomorrow", "明天发送草稿。"),
-    ("这个 API 有点慢 we should wait", "这个接口有点慢，我们应该等待。"),
-    ("明天开会", "Meet tomorrow."),
-])
-def test_cleanup_rejects_unrequested_translation(original, result):
-    class Fake:
-        def complete(self, *args, **kwargs):
-            return result
-    assert ai.cleanup(Fake(), original, "fake") == original
-
-
-def test_selection_translation_is_allowed():
-    class Fake:
-        def complete(self, *args, **kwargs):
-            return "Meet tomorrow."
-    assert ai.edit_selection(Fake(), "明天开会", "翻译成英文", "fake") == "Meet tomorrow."
-
-
-def test_mixed_input_with_surviving_acronym_is_not_translation():
-    assert not ai.preserves_languages(
-        "这个 API 的 latency 有点高 we need to reduce overhead 不要改 public interface",
-        "这个 API 的延迟有点高，我们需要降低开销，不要改 public interface。")
-    assert ai.preserves_languages(
-        "呃这个 API 的 latency 有点高 we need to reduce overhead",
-        "这个 API 的 latency 有点高，we need to reduce overhead。")
-
-
-@pytest.mark.parametrize("original,result", [("嗯 send the mail", "Send the mail."), ("um 明天开会", "明天开会。")])
-def test_language_guard_allows_bilingual_fillers(original, result):
-    assert ai.preserves_languages(original, result)
-
-
-def test_unavailable_selected_provider_stays_explicit(qapp, isolated_home):
-    from thundertalk.core.settings import Settings
-    from thundertalk.ui.cleanup_settings import CleanupSettings
-    settings = Settings()
-    settings.set("cleanup_provider", "missing-cli")
-    settings.set("cleanup_app_overrides", {"Mail": "off"})
-    widget = CleanupSettings(settings)
-    widget._detected([lp.Provider("fake", "Fake", ["m"], ready=True)])
-    assert widget.chosen_provider() is None
-    assert widget.provider_combo.currentData() == "missing-cli"
-    widget.app_combo.setEditText("mail")
-    widget.style_combo.setCurrentIndex(widget.style_combo.findData("polished"))
-    widget._save_override()
-    assert settings.get("cleanup_app_overrides") == {"mail": "polished"}
-    widget.close()
-
-
-def test_cli_disappearing_after_detection_raises_provider_error(monkeypatch):
-    monkeypatch.setattr(lp, "_run", lambda *args, **kwargs: (_ for _ in ()).throw(OSError("gone")))
-    provider = lp.Provider("cursor", "Fake", ["m"], ready=True, executable="fake")
-    with pytest.raises(lp.ProviderError, match="CLI request failed"):
-        provider.complete("s", "u", "m", 1)
-
-
-@pytest.mark.parametrize("has_provider,enabled", [(False, False), (True, True)])
-def test_legacy_local_enable_does_not_opt_in_to_cloud(isolated_home, has_provider, enabled):
-    import json
-    from thundertalk.core.settings import Settings
-    stored = {"llm_rewrite_enabled": True, "llm_rewrite_model": "old-local-model"}
-    if has_provider:
-        stored["cleanup_provider"] = ""
-    (isolated_home / ".thundertalk/settings.json").write_text(json.dumps(stored))
-    assert Settings().get("llm_rewrite_enabled") is enabled
-
-
-def test_api_settings_file_is_private(isolated_home):
-    import stat
-    from thundertalk.core.settings import Settings
-    Settings().set("cleanup_api_key", "synthetic-key")
-    assert stat.S_IMODE((isolated_home / ".thundertalk/settings.json").stat().st_mode) == 0o600

@@ -4,7 +4,7 @@ Uses only an existing ready provider; never imports MLX or downloads a model.
 New callers should use ai_cleanup.cleanup and llm_providers.detect directly.
 """
 from thundertalk.core.ai_cleanup import cleanup
-from thundertalk.core.llm_providers import detect
+from thundertalk.core.llm_providers import detect, preferred_model
 
 
 def rewrite(text: str, model_id: str = "") -> str | None:
@@ -12,7 +12,7 @@ def rewrite(text: str, model_id: str = "") -> str | None:
         provider = next((p for p in detect() if p.is_ready()), None)
         if provider is None or not text.strip():
             return None
-        result = cleanup(provider, text, model_id or provider.models[0])
+        result = cleanup(provider, text, model_id or preferred_model(provider))
         return result if result != text else None
     except Exception:
         return None
