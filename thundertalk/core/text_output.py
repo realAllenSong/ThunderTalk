@@ -12,6 +12,8 @@ Reliability improvements:
 
 from __future__ import annotations
 
+from dataclasses import dataclass, field
+import os
 import platform
 import subprocess
 import threading
@@ -78,7 +80,7 @@ def paste_text(text: str, keep_clipboard: bool = False) -> None:
     threading.Thread(target=_do_paste, args=(text, keep_clipboard), daemon=True).start()
 
 
-def replace_pasted_text(new_text: str, keep_clipboard: bool = False) -> None:
+def replace_pasted_text(new_text: str, keep_clipboard: bool = False, ticket=None) -> None:
     """Undo the most recently pasted text, then paste *new_text*.
 
     Used by Translation Review's "Replace" button to swap original →
@@ -88,8 +90,14 @@ def replace_pasted_text(new_text: str, keep_clipboard: bool = False) -> None:
     the wrong action — the popup auto-dismisses after a few seconds
     to keep this window narrow.
 
+    AI callers MUST supply a PasteTicket (fails closed on user activity).
+    The no-ticket path retains the existing explicit Translation Review action.
     Runs in a background thread; non-blocking.
     """
+    if ticket is not None:
+        threading.Thread(target=apply_if_unchanged,
+                         args=(ticket, new_text, keep_clipboard), daemon=True).start()
+        return
     if not new_text:
         return
 
@@ -215,56 +223,305 @@ def _do_paste(text: str, keep_clipboard: bool = False) -> None:
     started_at = time.perf_counter()
     with _paste_lock:
         # Save original clipboard if we need to restore it later
-        original_clipboard: str | None = None
+        original_clipboard = None
         if keep_clipboard:
             try:
-                original_clipboard = pyperclip.paste()
+                original_clipboard = _save_clipboard()
             except Exception:
                 original_clipboard = None
 
-        with _lock:
-            prev = _previous_app
+        try:
+            with _lock:
+                prev = _previous_app
 
-        if _SYSTEM == "Darwin" and prev:
-            current = _get_frontmost_app()
-            try:
-                if current.lower() != prev.lower():
-                    _activate_previous_app()
-                    if not _wait_for_frontmost_app(prev):
+            if _SYSTEM == "Darwin" and prev:
+                current = _get_frontmost_app()
+                try:
+                    if current.lower() != prev.lower():
                         _activate_previous_app()
-                        _wait_for_frontmost_app(prev)
-            except Exception:
-                pass
+                        if not _wait_for_frontmost_app(prev):
+                            _activate_previous_app()
+                            _wait_for_frontmost_app(prev)
+                except Exception:
+                    pass
 
-        if not _clipboard_write_verified(text):
-            pyperclip.copy(text)
-            print("[Paste] Clipboard verification failed — wrote anyway")
+            if not _clipboard_write_verified(text):
+                pyperclip.copy(text)
+                print("[Paste] Clipboard verification failed — wrote anyway")
 
-        time.sleep(_POST_CLIPBOARD_SETTLE)
+            time.sleep(_POST_CLIPBOARD_SETTLE)
 
+            if _SYSTEM == "Darwin":
+                _send_cmd_v_darwin()
+            elif _SYSTEM == "Linux":
+                subprocess.run(["xdotool", "key", "ctrl+v"], check=False, timeout=3)
+            elif _SYSTEM == "Windows":
+                try:
+                    from pynput.keyboard import Controller, Key
+                    kb = Controller()
+                    kb.press(Key.ctrl_l)
+                    kb.press("v")
+                    kb.release("v")
+                    kb.release(Key.ctrl_l)
+                except Exception:
+                    pass
+
+            elapsed_ms = int((time.perf_counter() - started_at) * 1000)
+            print(f"[Paste] Submitted to target app in {elapsed_ms}ms (target={prev or 'current'})")
+
+        finally:
+            # Restore original clipboard after paste completes
+            if keep_clipboard and original_clipboard is not None:
+                time.sleep(0.15)
+                try:
+                    _restore_clipboard(original_clipboard)
+                    print("[Paste] Restored original clipboard")
+                except Exception:
+                    pass
+
+
+# Guard delayed AI output with actual user activity, not an elapsed-time guess.
+# Synthetic events posted by this process are excluded; hotkey keys are also
+# excluded so "delete that" can undo the preceding dictation after recording.
+
+
+class InputActivity:
+    def __init__(self):
+        self.generation = 0
+        self.available = False
+        self._monitors = []
+        self._observer = None
+        self._hotkey_codes = set()
+        self._hotkey_flags = 0
+
+    def set_hotkey(self, combo: str):
+        from thundertalk.core.hotkey import _MAC_VK_MAP, _MAC_MODIFIER_FLAGS
+        parts = combo.split("+")
+        self._hotkey_codes = {_MAC_VK_MAP[p] for p in parts if p in _MAC_VK_MAP}
+        self._hotkey_flags = 0
+        for part in parts:
+            self._hotkey_flags |= _MAC_MODIFIER_FLAGS.get(part, 0)
+
+    def start(self):
+        if _SYSTEM != "Darwin":
+            return
+        try:
+            from AppKit import (NSEvent, NSKeyDownMask, NSLeftMouseDownMask,
+                                NSRightMouseDownMask, NSOtherMouseDownMask, NSScrollWheelMask,
+                                NSWorkspaceDidActivateApplicationNotification)
+            mask = (NSKeyDownMask | NSLeftMouseDownMask | NSRightMouseDownMask |
+                    NSOtherMouseDownMask | NSScrollWheelMask)
+            gm = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(mask, self._event)
+            lm = NSEvent.addLocalMonitorForEventsMatchingMask_handler_(mask, self._local_event)
+            self._monitors = [m for m in (gm, lm) if m is not None]
+            self._observer = NSWorkspace.sharedWorkspace().notificationCenter().addObserverForName_object_queue_usingBlock_(
+                NSWorkspaceDidActivateApplicationNotification, None, None, self._focus_changed)
+            from ApplicationServices import AXIsProcessTrusted
+            self.available = (bool(AXIsProcessTrusted()) and gm is not None
+                              and lm is not None and self._observer is not None)
+        except Exception:
+            self.available = False
+
+    def _event(self, event):
+        try:
+            from Quartz import CGEventGetIntegerValueField, kCGEventSourceUnixProcessID
+            cg = event.CGEvent()
+            if cg and CGEventGetIntegerValueField(cg, kCGEventSourceUnixProcessID) == os.getpid():
+                return
+            if (int(event.type()) == 10 and int(event.keyCode()) in self._hotkey_codes
+                    and int(event.modifierFlags()) & self._hotkey_flags == self._hotkey_flags):
+                return
+        except Exception:
+            pass  # unknown event => invalidate conservatively
+        self.generation += 1
+
+    def _local_event(self, event):
+        self._event(event)
+        return event
+
+    def _focus_changed(self, _notification):
+        self.generation += 1
+
+    def stop(self):
         if _SYSTEM == "Darwin":
-            _send_cmd_v_darwin()
-        elif _SYSTEM == "Linux":
-            subprocess.run(["xdotool", "key", "ctrl+v"], check=False, timeout=3)
-        elif _SYSTEM == "Windows":
-            try:
-                from pynput.keyboard import Controller, Key
-                kb = Controller()
-                kb.press(Key.ctrl_l)
-                kb.press("v")
-                kb.release("v")
-                kb.release(Key.ctrl_l)
-            except Exception:
-                pass
+            from AppKit import NSEvent
+            for monitor in self._monitors:
+                NSEvent.removeMonitor_(monitor)
+            if self._observer is not None:
+                NSWorkspace.sharedWorkspace().notificationCenter().removeObserver_(self._observer)
+        self._monitors = []
+        self._observer = None
+        self.available = False
 
-        elapsed_ms = int((time.perf_counter() - started_at) * 1000)
-        print(f"[Paste] Submitted to target app in {elapsed_ms}ms (target={prev or 'current'})")
 
-        # Restore original clipboard after paste completes
-        if keep_clipboard and original_clipboard is not None:
-            time.sleep(0.15)
-            try:
-                pyperclip.copy(original_clipboard)
-                print("[Paste] Restored original clipboard")
-            except Exception:
-                pass
+activity = InputActivity()
+
+
+def frontmost_app() -> str:
+    return _previous_app or ""
+
+
+def _frontmost_pid() -> int | None:
+    try:
+        return int(NSWorkspace.sharedWorkspace().frontmostApplication().processIdentifier())
+    except Exception:
+        return None
+
+
+def supports_undo(app: str) -> bool:
+    # Terminal command input has no standard paste undo transaction.
+    return not any(s in app.casefold() for s in ("terminal", "iterm", "warp", "ghostty", "alacritty"))
+
+
+@dataclass
+class PasteTicket:
+    app: str
+    pid: int | None
+    generation: int
+    ready: threading.Event = field(default_factory=threading.Event)
+    valid: bool = True
+    selection: str = ""
+    successor: PasteTicket | None = None
+
+    def invalidate(self):
+        self.valid = False
+        if self.successor is not None:
+            self.successor.invalidate()
+
+    def unchanged(self) -> bool:
+        return (self.valid and self.ready.is_set() and activity.available and
+                self.generation == activity.generation and self.pid is not None and
+                self.pid == _frontmost_pid() and self.app == _get_frontmost_app())
+
+
+def selection_ticket(selection: str) -> PasteTicket:
+    ticket = PasteTicket(_get_frontmost_app(), _frontmost_pid(), activity.generation,
+                         selection=selection)
+    ticket.ready.set()
+    return ticket
+
+
+def paste_dictation(text: str, keep_clipboard=False) -> PasteTicket:
+    """Paste raw text immediately and return a ticket for conditional replacement."""
+    ticket = PasteTicket(frontmost_app(), _previous_app_pid, activity.generation)
+
+    def run():
+        try:
+            _do_paste(text, keep_clipboard)
+            # Never absorb user activity that happened during paste into baseline.
+            ticket.valid = ticket.valid and ticket.generation == activity.generation and supports_undo(ticket.app)
+        except Exception:
+            ticket.valid = False
+        finally:
+            ticket.ready.set()
+    threading.Thread(target=run, daemon=True).start()
+    return ticket
+
+
+def _send_cmd_key(keycode: int):
+    down = CGEventCreateKeyboardEvent(None, keycode, True)
+    up = CGEventCreateKeyboardEvent(None, keycode, False)
+    CGEventSetFlags(down, kCGEventFlagMaskCommand)
+    CGEventSetFlags(up, kCGEventFlagMaskCommand)
+    CGEventPost(kCGHIDEventTap, down)
+    CGEventPost(kCGHIDEventTap, up)
+
+
+def apply_if_unchanged(ticket: PasteTicket, text: str | None, keep_clipboard=False, cancel=None) -> bool:
+    """Synchronous worker-side guarded replacement/undo; never restores stale focus.
+
+    None means undo only. A selection ticket pastes directly over the still
+    selected text; a paste ticket uses standard macOS Cmd+Z then Cmd+V.
+    """
+    while ticket.successor is not None:
+        ticket = ticket.successor
+    ticket.ready.wait(2)
+    with _paste_lock:
+        if (cancel is not None and cancel.is_set()) or not ticket.unchanged() or _SYSTEM != "Darwin":
+            return False
+        if text is not None and not text:
+            return False
+        original = _save_clipboard() if keep_clipboard else None
+        try:
+            # Prepare clipboard before final guard to minimize the key-event race.
+            if text is not None and not _clipboard_write_verified(text):
+                return False
+            if (cancel is not None and cancel.is_set()) or not ticket.unchanged():
+                return False
+            ticket.valid = False  # exactly once; reject any competing result
+            if not ticket.selection:
+                _send_cmd_key(6)  # Z
+                time.sleep(0.05)
+            if text is not None:
+                _send_cmd_v_darwin()
+                successor = PasteTicket(ticket.app, ticket.pid, ticket.generation)
+                successor.ready.set()
+                ticket.successor = successor
+            return True
+        finally:
+            if original is not None:
+                time.sleep(0.15)
+                _restore_clipboard(original)
+
+
+def _save_clipboard():
+    """Save all macOS pasteboard formats, including rich text/images."""
+    if _SYSTEM == "Darwin":
+        from AppKit import NSPasteboard
+        board = NSPasteboard.generalPasteboard()
+        return [[(str(kind), bytes(item.dataForType_(kind))) for kind in item.types()
+                 if item.dataForType_(kind) is not None] for item in board.pasteboardItems() or []]
+    return pyperclip.paste()
+
+
+def _restore_clipboard(saved):
+    if _SYSTEM == "Darwin":
+        from AppKit import NSPasteboard, NSPasteboardItem
+        from Foundation import NSData
+        board = NSPasteboard.generalPasteboard()
+        items = []
+        for entry in saved:
+            item = NSPasteboardItem.alloc().init()
+            for kind, data in entry:
+                item.setData_forType_(NSData.dataWithBytes_length_(data, len(data)), kind)
+            items.append(item)
+        board.clearContents()
+        if items:
+            board.writeObjects_(items)
+    else:
+        pyperclip.copy(saved)
+
+
+def _has_selection() -> bool:
+    """Fail closed: some editors' Cmd+C copies a whole line without selection."""
+    try:
+        from ApplicationServices import (AXUIElementCreateSystemWide, AXUIElementCopyAttributeValue)
+        error, element = AXUIElementCopyAttributeValue(AXUIElementCreateSystemWide(),
+                                                      "AXFocusedUIElement", None)
+        if error or element is None:
+            return False
+        error, value = AXUIElementCopyAttributeValue(element, "AXSelectedText", None)
+        return not error and isinstance(value, str) and bool(value)
+    except Exception:
+        return False
+
+
+def read_selection() -> str:
+    """Cmd+C with full clipboard save/restore; no selection/AX support => empty."""
+    if _SYSTEM != "Darwin" or not _has_selection():
+        return ""
+    with _paste_lock:
+        saved = _save_clipboard()
+        try:
+            sentinel = "thundertalk-selection-" + str(time.monotonic_ns())
+            pyperclip.copy(sentinel)
+            _send_cmd_key(8)  # C
+            deadline = time.monotonic() + 0.25
+            while time.monotonic() < deadline:
+                time.sleep(0.01)
+                text = pyperclip.paste()
+                if text != sentinel:
+                    return text if isinstance(text, str) else ""
+            return ""
+        finally:
+            _restore_clipboard(saved)

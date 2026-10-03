@@ -17,7 +17,6 @@ from PySide6.QtWidgets import (
     QComboBox,
     QHBoxLayout,
     QLabel,
-    QLineEdit,
     QVBoxLayout,
     QWidget,
 )
@@ -438,22 +437,9 @@ class SettingsPage(QWidget):
         ct.toggled_signal.connect(lambda v: self._settings.set("save_to_clipboard", v))
         card2.add_row("settings.clipboard.label", "settings.clipboard.desc", ct)
 
-        card3 = self._card("settings.llm_rewrite.label", theme.badge(t("common.experimental"), "orange"))
-        rw_toggle = theme.ToggleSwitch(self._settings.get("llm_rewrite_enabled"))
-        rw_toggle.toggled_signal.connect(lambda v: self._settings.set("llm_rewrite_enabled", v))
-        card3.add_row("settings.llm_rewrite.label", "settings.llm_rewrite.desc", rw_toggle)
-
-        self._rewrite_model_edit = QLineEdit()
-        self._rewrite_model_edit.setFixedWidth(300)
-        self._rewrite_model_edit.setFixedHeight(38)
-        self._rewrite_model_edit.setPlaceholderText("mlx-community/Qwen3-8B-4bit")
-        self._rewrite_model_edit.setText(
-            self._settings.get("llm_rewrite_model") or "mlx-community/Qwen3-8B-4bit")
-        self._rewrite_model_edit.setStyleSheet(theme.INPUT_QSS)
-        self._rewrite_model_edit.editingFinished.connect(
-            lambda: self._settings.set("llm_rewrite_model", self._rewrite_model_edit.text().strip()))
-        card3.add_row("settings.llm_rewrite.model_label", "settings.llm_rewrite.model_hint",
-                      self._rewrite_model_edit, sep=True)
+        from thundertalk.ui.cleanup_settings import CleanupSettings
+        self.cleanup_settings = CleanupSettings(self._settings)
+        self._col.addWidget(self.cleanup_settings)
 
     def _on_lang_changed(self, idx: int) -> None:
         code = self._lang_combo.itemData(idx)

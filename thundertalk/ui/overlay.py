@@ -103,6 +103,11 @@ class VoiceOverlay(QWidget):
         self._anim.start(320)
         self.update()
 
+    def show_cleanup(self, editing: bool = False) -> None:
+        self.show_transcribing()
+        self._text = t("cleanup.editing" if editing else "cleanup.progress").rstrip("…")
+        self.update()
+
     def complete_transcribing(self) -> None:
         if self._state == self._TRANSCRIBING:
             self._hide_timer.start(200)

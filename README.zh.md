@@ -61,7 +61,8 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 - 逆文本规整：口述的数字会变成阿拉伯数字，中英文都支持（“twenty five”变成 25，“三百五十二”变成 352）。
 - 可选的翻译，通过 SeamlessM4T v2 支持 100+ 种语言：“直译”模式边说边译，“审阅”模式先转写，再由你选择替换或保留原文。
 - 可搜索的历史记录，保存为 `~/.thundertalk` 里的普通文件。
-- 可选的本地 LLM 润色（实验性，默认关闭）：修正听错的人名、去掉口头语，通过审阅弹窗确认，绝不静默改写。
+- **AI 整理与语音编辑：**使用已有且登录的 Codex、Claude Code、Gemini、Grok 或 Cursor CLI，已安装模型的 Ollama / LM Studio，Cherry Studio API 服务，或自定义 OpenAI 兼容 API。不内置或下载 AI 模型。在设置中启用、选择服务与模型，并为各应用选择风格或关闭。先立即粘贴原文；没有输入、点击、滚动或切换应用时才替换为整理结果。超时保留原文。终端没有标准的粘贴撤销，因此跳过替换。
+- 中英双语整句语音命令：「换行 / new line」「新段落 / new paragraph」「删掉上一句 / delete that」（撤销最后一段未被操作的听写）及「制表符 / tab key」。开启 AI 整理后，录音前选中文字，再说「改得正式一点 / make this more formal」「简短一点 / make this shorter」或「翻译成英文 / translate to English」即可编辑选中内容。读取选区需要 macOS 辅助功能支持，完整剪贴板会保存并恢复。
 
 **日常细节**
 
@@ -75,7 +76,7 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 - 无账号、无订阅、无使用次数限制。
 - 音频在你的 Mac 上识别，绝不上传。
-- 网络只用于两件事：下载模型，以及向 GitHub Releases 检查更新。
+- AI 整理默认关闭，此时网络用于下载模型及检查 GitHub Releases 更新。启用后，云端 CLI 使用你的账号，将听写/选中文字发送给对应服务。Ollama 和 LM Studio 在本机推理；Cherry Studio 与自定义 API 可能将文字转发给云端模型。
 - 代码开源，可以阅读、自行构建、随意 fork。
 
 ## 下载
