@@ -25,6 +25,7 @@ def _keys() -> set[str]:
     out |= {f"studio.lang.{c}" for c in tts.LANGUAGES}
     out |= {f"studio.err.{c}" for c in ("no_speech", "no_model", "tts_missing", "memory")}
     out |= {f"studio.progress.{c}" for c in ("decode", "load_moss", "diarize")}
+    out |= {f"studio.notes.err.{c}" for c in ("no_provider", "too_long", "empty", "failed", "invalid")}
     out |= {f"studio.clone.warn.{c}" for c in ("clipping", "trimmed_long", "too_quiet", "short")}
     return {k for k in out if k.startswith(("studio.", "nav.studio", "common.cancel"))}
 

@@ -12,7 +12,8 @@ from typing import Optional
 import numpy as np
 from PySide6.QtCore import QThread, Signal
 
-from thundertalk.core import audio_io, burn, links, transcribe, tts, tts_verify
+from thundertalk.core import audio_io, burn, links, meeting_notes, transcribe, tts, tts_verify
+from thundertalk.core.llm_providers import CompletionCancelled
 from thundertalk.core.models import DownloadCancelled, download_repo
 
 
@@ -22,6 +23,8 @@ def error_code(exc: BaseException) -> str:
         return f"link:{exc.code}:{exc.detail}"
     if isinstance(exc, burn.BurnError):
         return f"burn:{exc.code}:{exc.detail}"
+    if isinstance(exc, meeting_notes.NotesError):
+        return f"notes:{exc}"
     if isinstance(exc, audio_io.AudioDecodeError):
         return f"decode:{exc}"
     if isinstance(exc, tts.TtsModelMissing):
@@ -36,6 +39,8 @@ def error_code(exc: BaseException) -> str:
 def friendly_error(code: str) -> str:
     """A sentence in the user's language for an ``error_code``."""
     from thundertalk.core.i18n import t
+    if code.startswith("notes:"):
+        return t(f"studio.notes.err.{code[6:]}")
     if code in ("no_speech", "no_model", "tts_missing", "memory"):
         return t(f"studio.err.{code}")
     for kind in ("link", "burn"):
@@ -73,7 +78,7 @@ class _Worker(QThread):
         try:
             result = self.work()
         except (transcribe.TranscribeCancelled, tts.TtsCancelled, DownloadCancelled,
-                links.LinkCancelled, burn.BurnCancelled):
+                links.LinkCancelled, burn.BurnCancelled, CompletionCancelled):
             self.cancelled.emit()
             return
         except BaseException as exc:      # noqa: BLE001 - surfaced to the UI
@@ -102,6 +107,16 @@ class TranscribeWorker(_Worker):
                                           progress=prog, cancel=self._cancel)
 
 
+class NotesWorker(_Worker):
+    def __init__(self, transcript, provider, model):
+        super().__init__()
+        self._transcript, self._provider, self._model = transcript, provider, model
+
+    def work(self):
+        return meeting_notes.generate(self._transcript, self._provider, self._model,
+                                      cancel=self._cancel, progress=self.progress.emit)
+
+
 @dataclass
 class BatchItem:
     source: str                           # file path or URL
@@ -121,15 +136,17 @@ class BatchWorker(_Worker):
     item_done = Signal(int, object, object)        # index, Transcript, saved paths
     item_failed = Signal(int, str)                 # index, error code
     item_cancelled = Signal(int)
+    item_notes_failed = Signal(int, str)
 
     def __init__(self, items: list[BatchItem], engine, speakers: bool, formats: list[str],
-                 out_dir: str = "", link_dir: str = "") -> None:
+                 out_dir: str = "", link_dir: str = "", notes_provider=None, notes_model: str = "") -> None:
         super().__init__()
         self._items = list(items)
         self._lock = threading.Lock()
         self._engine, self._speakers, self._formats = engine, speakers, list(formats)
         self._out_dir = out_dir
         self._link_dir = link_dir or str(Path.home() / "Downloads")
+        self._notes_provider, self._notes_model = notes_provider, notes_model
         self._skip: set[int] = set()
         self._current = -1
         self._item_cancel = threading.Event()
@@ -166,10 +183,19 @@ class BatchWorker(_Worker):
             self.item_started.emit(i)
             try:
                 tr = self._one(i, item)
+                if self._notes_provider is not None:
+                    try:
+                        tr.notes = meeting_notes.generate(
+                            tr, self._notes_provider, self._notes_model, cancel=self._item_cancel,
+                            progress=lambda p, m: self.item_progress.emit(i, p, m))
+                    except meeting_notes.NotesError as exc:
+                        self.item_notes_failed.emit(i, error_code(exc))
+                if self._item_cancel.is_set():
+                    raise transcribe.TranscribeCancelled()
                 stem = (links.safe_name(tr.title) if item.is_url else Path(item.source).stem)
                 folder = self._out_dir or (self._link_dir if item.is_url else str(Path(item.source).parent))
                 paths = transcribe.save_outputs(tr, folder, stem, self._formats)
-            except (transcribe.TranscribeCancelled, links.LinkCancelled):
+            except (transcribe.TranscribeCancelled, links.LinkCancelled, CompletionCancelled):
                 self.item_cancelled.emit(i)
             except Exception as exc:      # noqa: BLE001 - one bad item must not stop the queue
                 self.item_failed.emit(i, error_code(exc))
