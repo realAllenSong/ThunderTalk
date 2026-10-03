@@ -294,7 +294,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest tts --engine indextts
 HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 ```
 
-Run the first checks with no optional runtime installed and models already downloaded. The runtime check downloads about 90 MB; the final two checks need their separately downloaded model weights. `translate` checks both text and speech generation using a shipped reference clip. These are runtime smoke checks, not translation-quality assertions: with the locked dependencies, the English clip stayed English for target `cmn` in both the unchanged v1.6.4 source engine and the reduced app. Text translation returned Chinese. This existing speech target-language issue needs a separate fix.
+Run the first checks with no optional runtime installed and models already downloaded. The runtime check downloads about 90 MB; the final two checks need their separately downloaded model weights. `translate` checks text and speech translation using a shipped English reference clip and requires Chinese characters in both outputs. Mandarin (`cmn`) speech translation uses an English text intermediate with the same SeamlessM4T model, then translates that text to Chinese: the checkpoint can otherwise copy English speech despite the correct Chinese decoder prefix. This adds one text translation pass; other target languages use direct speech translation.
 
 Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 

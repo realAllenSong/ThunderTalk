@@ -8,7 +8,9 @@ test in Task 9.
 
 from __future__ import annotations
 
-from unittest.mock import MagicMock
+import sys
+from contextlib import nullcontext
+from unittest.mock import MagicMock, call
 
 import numpy as np
 import pytest
@@ -98,6 +100,81 @@ def test_translate_text_empty_raises() -> None:
         engine.translate_text("", src_lang="eng", tgt_lang="cmn")
     with pytest.raises(RuntimeError, match="Empty text"):
         engine.translate_text("   \n\t  ", src_lang="eng", tgt_lang="cmn")
+
+
+@pytest.fixture
+def mock_engine(monkeypatch):
+    # PyTorch is optional; exercise generation without importing it or weights.
+    torch = MagicMock()
+    torch.no_grad.side_effect = nullcontext
+    monkeypatch.setitem(sys.modules, "torch", torch)
+    engine = TranslationEngine()
+    engine._model = MagicMock()
+    engine._model.generate.return_value = [np.array([[3, 123, 3]])]
+    engine._processor = MagicMock()
+    engine._processor.return_value = {"input_features": "speech features"}
+    engine._model_id = "seamless-m4t-v2-large"
+    return engine
+
+
+def test_mandarin_speech_uses_english_pivot(mock_engine):
+    engine = mock_engine
+    engine._processor.side_effect = [
+        {"input_features": "speech features"},
+        {"input_ids": "text tokens"},
+    ]
+    engine._processor.decode.side_effect = ["Hello world.", "你好世界。"]
+    samples = np.full(16000, 0.1, dtype=np.float32)
+    result = engine.translate(samples, tgt_lang="cmn")
+    assert engine._model.generate.call_args_list == [
+        call(input_features="speech features", tgt_lang="eng", generate_speech=False),
+        call(input_ids="text tokens", tgt_lang="cmn", generate_speech=False),
+    ]
+    assert engine._processor.call_args_list == [
+        call(audio=samples, sampling_rate=16000, return_tensors="pt"),
+        call(text="Hello world.", src_lang="eng", return_tensors="pt"),
+    ]
+    assert result.text == "你好世界。"
+    assert result.tgt_lang == "cmn"
+    assert result.duration_secs == 1.0
+    assert result.model == "seamless-m4t-v2-large"
+
+
+@pytest.mark.parametrize("tgt_lang", ["spa", "eng"])
+def test_other_speech_targets_generate_directly(mock_engine, tgt_lang):
+    engine = mock_engine
+    engine._processor.decode.return_value = "translated speech"
+    result = engine.translate(np.full(16000, 0.1, dtype=np.float32), tgt_lang=tgt_lang)
+    engine._model.generate.assert_called_once_with(
+        input_features="speech features", tgt_lang=tgt_lang, generate_speech=False,
+    )
+    engine._processor.assert_called_once()
+    assert result.text == "translated speech"
+    assert result.tgt_lang == tgt_lang
+
+
+def test_empty_mandarin_pivot_skips_text_translation(mock_engine):
+    mock_engine._processor.decode.return_value = "   "
+    result = mock_engine.translate(np.full(16000, 0.1, dtype=np.float32), tgt_lang="cmn")
+    mock_engine._model.generate.assert_called_once()
+    mock_engine._processor.assert_called_once()
+    assert not result.text.strip()
+
+
+def test_text_translation_keeps_requested_target(mock_engine):
+    engine = mock_engine
+    engine._processor.return_value = {"input_ids": "text tokens"}
+    engine._processor.decode.return_value = "你好世界。"
+    result = engine.translate_text(" Hello world. ", src_lang="eng", tgt_lang="cmn")
+    engine._processor.assert_called_once_with(
+        text="Hello world.", src_lang="eng", return_tensors="pt",
+    )
+    engine._model.generate.assert_called_once_with(
+        input_ids="text tokens", tgt_lang="cmn", generate_speech=False,
+    )
+    assert result.text == "你好世界。"
+    assert result.duration_secs == 0.0
+    assert result.tgt_lang == "cmn"
 
 
 def test_detect_src_lang_chinese() -> None:
