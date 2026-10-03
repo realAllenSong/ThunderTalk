@@ -118,6 +118,17 @@ def test_status_maps_to_the_right_action(make_page):
     assert not page._rows["claude"].selectable and not page._rows["gemini"].selectable
 
 
+def test_rows_keep_cli_first_order_when_servers_arrive_first(make_page):
+    fakes = everything()
+    page = make_page(fakes, show=False)
+    page._servers_detected(fakes.detect_servers())
+    page._clis_detected(fakes.detect_clis(()))
+    order = [p.id for p in page.providers]
+    assert order[:2] == ["codex", "claude"] and list(page._rows) == order
+    layout = page._rows_layout
+    assert [layout.itemAt(i).widget() for i in range(layout.count())] == list(page._rows.values())
+
+
 def test_no_refresh_button(make_page):
     page = make_page(everything())
     labels = {b.text().casefold() for b in page.findChildren(QPushButton)}

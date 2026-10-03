@@ -399,7 +399,7 @@ class ProofreadPage(QWidget):
         selected = self.settings.get("cleanup_provider")
         for row in self._rows.values():
             self._rows_layout.removeWidget(row)
-        seen = set()
+        seen = {}
         for p in providers:
             row = self._rows.get(p.id)
             if row is None:
@@ -412,9 +412,10 @@ class ProofreadPage(QWidget):
                            p.id in self._open_panels or p.id in self._verify_failed)
             self._rows_layout.addWidget(row)
             row.show()
-            seen.add(p.id)
+            seen[p.id] = row
         for pid in [pid for pid in self._rows if pid not in seen]:
             self._rows.pop(pid).deleteLater()
+        self._rows = seen
         if not self._detected_once:
             self.summary.setText(t("cleanup.detecting"))
         elif not any(p.is_ready() for p in providers):
