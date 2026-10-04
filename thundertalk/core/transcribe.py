@@ -441,8 +441,12 @@ def transcribe_file(path: str, engine, speakers: bool = False,
                     progress: Optional[ProgressCB] = None,
                     cancel: Optional[threading.Event] = None,
                     model_id: str = "") -> Transcript:
-    with STUDIO.running():
-        return _transcribe_selected(path, engine, speakers, progress, cancel, model_id)
+    try:
+        with STUDIO.running():
+            return _transcribe_selected(path, engine, speakers, progress, cancel, model_id)
+    finally:
+        from thundertalk.core.memory_policy import trim_caches
+        trim_caches()
 
 
 def _transcribe_selected(path, engine, speakers, progress, cancel, model_id):

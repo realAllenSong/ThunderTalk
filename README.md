@@ -90,6 +90,7 @@ The speech engines are one-time downloads. After that, file transcription and sp
 - An in-app updater: a small prompt appears when a release is published; one click downloads, swaps and relaunches.
 - Optional speaker mute while recording, so the microphone does not pick up your own audio.
 - A memory profile (Settings, Performance) that trades some KV-cache size and thread count for roughly 3 GB less RAM.
+- Studio voice models, MOSS speaker transcription and translation free their weights after three minutes idle. They reload on the next request; dictation and Live Preview keep sharing the resident dictation model. Temporary MLX buffers are cleared after jobs. Translation uses a disposable worker so PyTorch's retained heaps also exit when idle.
 
 **Privacy**
 

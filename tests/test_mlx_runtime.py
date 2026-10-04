@@ -14,7 +14,7 @@ from thundertalk.core.gpu_lock import GPU_LOCK
 @pytest.fixture
 def mx(monkeypatch):
     defaults = threading.local()
-    streams, events = [], []
+    streams, events, limits, cleared = [], [], [], []
 
     def current(device):
         if not hasattr(defaults, "values"):
@@ -37,6 +37,8 @@ def mx(monkeypatch):
 
     fake = SimpleNamespace(cpu="cpu", gpu="gpu", new_thread_unsafe_stream=new,
         default_stream=current, set_default_stream=set_default, synchronize=synchronize,
+        set_cache_limit=lambda n: limits.append(n), clear_cache=lambda: cleared.append(True),
+        limits=limits, cleared=cleared,
         events=events, streams=streams)
     monkeypatch.setitem(sys.modules, "mlx", SimpleNamespace(core=fake))
     monkeypatch.setitem(sys.modules, "mlx.core", fake)
@@ -89,6 +91,8 @@ def test_nested_calls_restore_defaults_and_drain_on_failure(mx):
         outer()
     assert (mx.default_stream(mx.cpu), mx.default_stream(mx.gpu)) == previous
     assert len(mx.events) == 2 and not GPU_LOCK._is_owned()
+    from thundertalk.core.memory_policy import MLX_CACHE_BYTES
+    assert mx.limits == [MLX_CACHE_BYTES, MLX_CACHE_BYTES] and mx.cleared == [True]
 
 
 def test_external_lock_count_allows_moss_token_handoff(mx):

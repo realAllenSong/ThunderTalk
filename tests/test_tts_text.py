@@ -230,6 +230,7 @@ def fake_engine(monkeypatch):
     import sys
     import types
     fake_mx = types.SimpleNamespace(random=types.SimpleNamespace(seed=lambda s: None), clear_cache=lambda: None,
+                                    set_cache_limit=lambda n: None,
                                     array=lambda a: a, cpu="cpu", gpu="gpu",
                                     default_stream=lambda device: device,
                                     set_default_stream=lambda stream: None,

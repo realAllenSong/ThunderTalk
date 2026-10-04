@@ -24,6 +24,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.memory_policy import managed
 from thundertalk.core.tts import (
     ClonePrompt,
     SegmentReport,
@@ -234,11 +235,19 @@ class SpeechEngine:
             for bid in list(self._loaded):
                 backend(bid).unload()
                 self._forget(bid)
-            try:
-                import mlx.core as mx
-                mx.clear_cache()
-            except ImportError:
-                pass
+            from thundertalk.core.memory_policy import trim_caches
+            trim_caches()
+
+    def release_idle(self) -> bool:
+        if not self._swap.acquire(blocking=False):
+            return False
+        try:
+            if self.is_busy():
+                return False
+            self.unload()
+            return True
+        finally:
+            self._swap.release()
 
     def release_gpu(self) -> bool:
         """Free the GPU voice model so another big model (MOSS, a dictation
@@ -254,11 +263,8 @@ class SpeechEngine:
         finally:
             self._swap.release()
         if gpu:
-            try:
-                import mlx.core as mx
-                mx.clear_cache()
-            except Exception:
-                pass
+            from thundertalk.core.memory_policy import trim_caches
+            trim_caches()
         return True
 
     @contextmanager
@@ -277,14 +283,20 @@ class SpeechEngine:
 
     @contextmanager
     def _running(self):
-        with self._mu:
-            self._active += 1
-        try:
-            yield
-        finally:
+        from thundertalk.core.memory_policy import using, trim_caches
+        with using(self, release="release_idle"):
             with self._mu:
-                self._active -= 1
+                self._active += 1
+            try:
+                yield
+            finally:
+                try:
+                    trim_caches()
+                finally:
+                    with self._mu:
+                        self._active -= 1
 
+    @managed(release="release_idle")
     def load_backend(self, bid: str, cancel: Optional[threading.Event] = None) -> TtsBackend:
         """Load ``bid`` (idempotent), attaching to a load already in flight.
         ``cancel`` only stops the *wait*; a load that has started finishes."""

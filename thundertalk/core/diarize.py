@@ -15,6 +15,7 @@ from __future__ import annotations
 import re
 import threading
 import time
+import weakref
 from dataclasses import dataclass
 from typing import Callable, Optional
 
@@ -25,6 +26,28 @@ MODEL_ID = "moss-transcribe-diarize-mlx"  # catalog id / local dir name
 
 _MODEL = None
 _MODEL_LOCK = threading.Lock()
+_PINNED = weakref.WeakSet()  # ASR engines using MOSS for resident dictation
+
+
+class _MemoryOwner:
+    def unload(self):
+        unload_model()
+
+    def is_pinned(self):
+        return bool(_PINNED)
+
+
+_MEMORY_OWNER = _MemoryOwner()
+
+
+def idle_job(fn):
+    from functools import wraps
+    @wraps(fn)
+    def call(*args, **kwargs):
+        from thundertalk.core.memory_policy import using
+        with using(_MEMORY_OWNER, busy="is_pinned"):
+            return fn(*args, **kwargs)
+    return call
 
 _SEGMENT_RE = re.compile(
     r"\[(\d+(?:\.\d+)?)\]\[(S\d+)\](.*?)\[(\d+(?:\.\d+)?)\]", re.DOTALL
@@ -55,7 +78,8 @@ def resolve_model_path() -> str:
 
 
 @serialized_mlx
-def load_model():
+@idle_job
+def load_model(owner=None):
     """Load (and cache) the MOSS model. Thread-safe; blocking on first call."""
     global _MODEL
     with _MODEL_LOCK:
@@ -71,6 +95,8 @@ def load_model():
             evaluate_model(model)
             _MODEL = model
             print(f"[Diarize] Model loaded in {time.monotonic() - t0:.1f}s")
+        if owner is not None:
+            _PINNED.add(owner)
         return _MODEL
 
 
@@ -78,6 +104,8 @@ def load_model():
 def unload_model() -> None:
     """Release the cached model before switching Studio engines."""
     global _MODEL
+    if _PINNED:
+        return False
     with _MODEL_LOCK:
         _MODEL = None
     import gc
@@ -86,6 +114,10 @@ def unload_model() -> None:
     mx = sys.modules.get("mlx.core")
     if mx is not None:
         mx.clear_cache()
+
+
+def unpin_model(owner) -> None:
+    _PINNED.discard(owner)
 
 
 def parse_transcript(raw: str) -> list[DiarizedSegment]:
@@ -131,6 +163,7 @@ def dictation_max_tokens(seconds: float) -> int:
 
 
 @serialized_mlx
+@idle_job
 def transcribe(audio, max_tokens: int | None = None,
                between_tokens: Optional[Callable[[], None]] = None) -> list[DiarizedSegment]:
     """Transcribe *audio* with speaker labels.

@@ -52,6 +52,13 @@ def test_contract_and_info():
     assert (d.kind, d.source, d.size_mb) == ("hf", "mlx-community/VoxCPM2-8bit", 3230)
 
 
+def test_unload_releases_reference_audio_as_well_as_weights(backend):
+    backend._refs["voice"] = (np.ones(48000, np.float32), "hello")
+    backend._clone_refs["clone"] = np.ones(48000, np.float32)
+    backend.unload()
+    assert backend._model is None and not backend._refs and not backend._clone_refs
+
+
 def test_voices_unique_and_described():
     vs = vx.VoxCPM2Backend().voices()
     assert len(vs) >= 8
