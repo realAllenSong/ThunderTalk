@@ -30,7 +30,9 @@ from thundertalk.core.platform_utils import (
     activate_app, request_accessibility,
     request_microphone,
 )
-from thundertalk.core.system_audio import mute_system_audio, unmute_system_audio, force_unmute, ensure_audio_restored
+from thundertalk.core.system_audio import (
+    mute_system_audio, recover_system_audio, shutdown_system_audio, stop_recording_and_restore,
+)
 from thundertalk.core.text_output import paste_text, save_frontmost_app
 from thundertalk.ui.main_window import MainWindow
 from thundertalk.ui.overlay import VoiceOverlay
@@ -291,6 +293,7 @@ class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
     toggle_signal = Signal()
+    audio_ready = Signal(object)
     review_ready = Signal(str, str, str)    # original, translated, tgt_lang
     review_started = Signal(str, str)       # original, tgt_lang (popup loads now)
 
@@ -301,6 +304,9 @@ class Pipeline(QObject):
         self.asr = AsrEngine()
         self.translator = None  # lazy-instantiated TranslationEngine
         self._recording = False
+        self._starting = False
+        self._stopping = False
+        self._ducking_session = None
         # All in-flight QThread workers are kept alive in this list. Each
         # worker's `.finished` signal removes it. Single-reference patterns
         # (e.g. `self._worker = worker`) are unsafe because reassigning to a
@@ -344,6 +350,10 @@ def main() -> None:
     _theme.force_light(app)          # the palette is light-only
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("ThunderTalk")
+    recover_system_audio()
+    app.aboutToQuit.connect(shutdown_system_audio)
+    import atexit
+    atexit.register(shutdown_system_audio)
 
     from thundertalk.ui.tray import app_icon
     app.setWindowIcon(app_icon())
@@ -600,10 +610,6 @@ def main() -> None:
                 model=pipe.asr.current_model or "unknown",
             )
             QTimer.singleShot(50, window.home_page.refresh)
-            # Post-paste watchdog: macOS may silently re-mute audio when
-            # _do_paste activates the previous app.  Check after 500ms.
-            if settings.get("mute_speakers"):
-                QTimer.singleShot(500, ensure_audio_restored)
             # Review mode: kick off T2TT translation in parallel; the popup
             # is shown when translated text comes back. Only triggers when
             # the result we just got was an ASR pass (not S2TT translator).
@@ -730,6 +736,17 @@ def main() -> None:
     @Slot()
     def on_toggle() -> None:
         print(f"[Toggle] on_toggle called, _recording={pipe._recording}")
+        if pipe._stopping:
+            return  # the previous microphone stream still owns its tail
+        if pipe._starting:
+            pipe._starting = False
+            session, pipe._ducking_session = pipe._ducking_session, None
+            if session is not None:
+                session.restore()
+            DICTATION.end()
+            state.set_recording(st.REC_IDLE)
+            overlay.hide_overlay()
+            return
         if pipe._recording:
             # ---- STOP recording ----
             t_stop = time.perf_counter()
@@ -737,14 +754,23 @@ def main() -> None:
             print(f"[Toggle] Stop requested, capturing {TAIL_GRACE_MS}ms tail...")
             overlay.show_transcribing()
             state.set_recording(st.REC_TRANSCRIBING)
-            pipe._recording = False  # prevent re-entry during grace window
+            pipe._recording = False
+            pipe._stopping = True
+            session, pipe._ducking_session = pipe._ducking_session, None
 
             def _finalize_stop() -> None:
-                samples = pipe.recorder.stop()
+                try:
+                    samples = stop_recording_and_restore(pipe.recorder, session)
+                except Exception as exc:
+                    DICTATION.end()
+                    state.set_recording(st.REC_IDLE)
+                    overlay.show_error(t("overlay.mic_unavailable"))
+                    print(f"[Toggle] recorder.stop failed: {exc}")
+                    return
+                finally:
+                    pipe._stopping = False
                 stop_ms = int((time.perf_counter() - t_stop) * 1000)
-                if settings.get("mute_speakers"):
-                    print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
-                    QTimer.singleShot(20, unmute_system_audio)
+                print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
 
                 if samples is None or len(samples) < 800:
                     print("[Toggle] Too short (audio already restored on stop)")
@@ -832,29 +858,60 @@ def main() -> None:
                 text_output.activity.stop()
                 text_output.activity.start()
             # Show overlay immediately so user gets instant visual feedback
+            pipe._starting = True
+            DICTATION.begin()
             overlay.show_recording()
             app.processEvents()
-            mute_on = settings.get("mute_speakers")
-            print(f"[Toggle] Starting recording, mute_speakers={mute_on}")
-            # Start mic BEFORE muting: muting Bluetooth speakers can trigger
-            # a profile switch (A2DP→HFP) that changes the default input device.
-            mic = settings.microphone
-            DICTATION.begin()           # Studio pauses from the first word on
-            try:
-                pipe.recorder.start(device=None if mic == "auto" else mic)
-            except Exception as exc:
-                DICTATION.end()
-                print(f"[Toggle] recorder.start failed: {exc}")
-                overlay.show_error(t("overlay.mic_unavailable"))
+            if not pipe._starting:
                 return
-            if mute_on:
-                mute_system_audio()
-            pipe._recording = True
-            state.set_recording(st.REC_RECORDING)
-            live.reset()  # disabled preview must not reuse the previous dictation
-            if preview_wanted(settings):
-                live.start()
-            print("[Toggle] Recording started")
+            if settings.get("mute_speakers"):
+                try:
+                    session = mute_system_audio()
+                except Exception as exc:
+                    pipe._starting = False
+                    DICTATION.end()
+                    overlay.show_error(t("overlay.audio_unavailable"))
+                    print(f"[Toggle] speaker mute startup failed: {exc}")
+                    return
+                pipe._ducking_session = session
+                session.ready.add_done_callback(lambda _future: pipe.audio_ready.emit(session))
+            else:
+                _start_capture(None)
+
+    def _start_capture(session) -> None:
+        if not pipe._starting or session is not pipe._ducking_session:
+            return  # cancelled startup or a completion from an older generation
+        error_text = t("overlay.audio_unavailable")
+        try:
+            if session is not None:
+                session.ready.result()  # already done; never blocks the Qt thread
+            error_text = t("overlay.mic_unavailable")
+            mic = settings.microphone
+            pipe.recorder.start(device=None if mic == "auto" else mic)
+            if not pipe.recorder.is_recording:
+                raise RuntimeError("microphone startup timed out")
+        except Exception as exc:
+            if session is not None:
+                session.restore()
+            pipe._ducking_session = None
+            pipe._starting = False
+            DICTATION.end()
+            print(f"[Toggle] recording startup failed: {exc}")
+            overlay.show_error(error_text)
+            return
+        pipe._starting = False
+        pipe._recording = True
+        # Bluetooth input activation can switch the output route after opening
+        # the microphone. Refresh immediately, then keep monitoring on the worker.
+        if session is not None:
+            session.refresh()
+        state.set_recording(st.REC_RECORDING)
+        live.reset()
+        if preview_wanted(settings):
+            live.start()
+        print("[Toggle] Recording started")
+
+    pipe.audio_ready.connect(_start_capture, Qt.QueuedConnection)
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 
@@ -1143,9 +1200,6 @@ def main() -> None:
     # popup, never blocks.
     QTimer.singleShot(4_000, window.about_page.trigger_background_check)
 
-    import atexit
-    atexit.register(force_unmute)
-
-    app.aboutToQuit.connect(lambda: (hotkey.stop(), force_unmute()))
+    app.aboutToQuit.connect(hotkey.stop)
 
     sys.exit(app.exec())

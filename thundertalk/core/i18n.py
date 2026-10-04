@@ -266,10 +266,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.press_mode_hold": {"en": "Hold", "zh": "长按"},
 
     "settings.microphone": {"en": "Microphone", "zh": "麦克风"},
+    "overlay.audio_unavailable": {"en": "Could not mute speakers", "zh": "无法静音扬声器"},
     "settings.mute_speakers": {"en": "Mute speakers while recording", "zh": "录音时静音扬声器"},
     "settings.mute_speakers_desc": {
-        "en": "Prevents the mic from picking up playback.",
-        "zh": "防止麦克风拾取扬声器声音。",
+        "en": "Prevents the mic from picking up playback. Volume changes during recording are kept.",
+        "zh": "防止麦克风拾取扬声器声音。录音期间的音量调整会被保留。",
     },
 
     "settings.transcription_language": {"en": "Transcription language", "zh": "转录语言"},

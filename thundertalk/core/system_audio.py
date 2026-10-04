@@ -1,640 +1,673 @@
-"""Silence / restore system speakers during voice recording.
+"""Serialized, recoverable speaker ducking for recording sessions.
 
-On macOS we combine:
-- CoreAudio per-device snapshots (VirtualMasterVolume + mute) for every duckable device
-- AppleScript `get/set volume settings` for the **system output volume** (menu-bar slider),
-  which many apps (Chrome, Bluetooth) still follow even when device-level APIs disagree
-
-macOS  — CoreAudio (ctypes) + NSAppleScript aggregate volume
-Linux  — pactl / amixer
-Windows — nircmd
+macOS snapshots native Float32 controls, never converts percentages to scalars.
+Only the default output (and aggregate members) is silenced. The worker polls
+routes every 100 ms while recording. Detectable user changes win: preserve the
+new volume/mute, releasing only an unchanged mute that we applied ourselves.
 """
-
 from __future__ import annotations
 
 import ctypes
 import ctypes.util
+import itertools
+import json
+import os
 import platform
 import queue
 import subprocess
 import threading
 import time
 import traceback
-from typing import Callable, Optional
+from concurrent.futures import Future
+from pathlib import Path
+from typing import Callable
 
-_we_muted: bool = False
-# macOS: device_id -> (volume_scalar_or_None, muted_or_None) captured before ducking
-_darwin_duck_snapshots: dict[int, tuple[float | None, bool | None]] = {}
-# macOS: (output volume 0..100, output muted) from AppleScript before ducking
-_darwin_osascript_snapshot: tuple[int, bool] | None = None
-# macOS: last AppleScript volume settings we restored to (for post-paste verification)
-_last_unmute_target: tuple[int, bool] | None = None
-_lock = threading.Lock()
 _SYSTEM = platform.system()
+_lock = threading.Lock()  # protects request generations, never held over OS calls
+_generation = itertools.count(1)
 _executor_lock = threading.Lock()
+_system_audio_executor = None
+
+
+def _fourcc(value: str) -> int:
+    return int.from_bytes(value.encode("ascii"), "big")
+
+
+class _Address(ctypes.Structure):
+    _fields_ = [("selector", ctypes.c_uint32), ("scope", ctypes.c_uint32),
+                ("element", ctypes.c_uint32)]
+
+
+class _AudioBuffer(ctypes.Structure):
+    _fields_ = [("channels", ctypes.c_uint32), ("size", ctypes.c_uint32),
+                ("data", ctypes.c_void_p)]
+
+
+class _AudioBufferList(ctypes.Structure):
+    _fields_ = [("count", ctypes.c_uint32), ("buffers", _AudioBuffer * 1)]
+
+
+class _DarwinAudio:
+    """Small CoreAudio/AppleScript boundary, replaceable with a fake in tests."""
+
+    def __init__(self):
+        self.ca = ctypes.CDLL(ctypes.util.find_library("CoreAudio"))
+        self.cf = ctypes.CDLL(ctypes.util.find_library("CoreFoundation"))
+        self.ca.AudioObjectGetPropertyData.argtypes = [ctypes.c_uint32, ctypes.POINTER(_Address),
+            ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32), ctypes.c_void_p]
+        self.ca.AudioObjectSetPropertyData.argtypes = [ctypes.c_uint32, ctypes.POINTER(_Address),
+            ctypes.c_uint32, ctypes.c_void_p, ctypes.c_uint32, ctypes.c_void_p]
+        self.ca.AudioObjectGetPropertyDataSize.argtypes = [ctypes.c_uint32, ctypes.POINTER(_Address),
+            ctypes.c_uint32, ctypes.c_void_p, ctypes.POINTER(ctypes.c_uint32)]
+        self.ca.AudioObjectHasProperty.argtypes = [ctypes.c_uint32, ctypes.POINTER(_Address)]
+        self.ca.AudioObjectHasProperty.restype = ctypes.c_bool
+        self.ca.AudioObjectIsPropertySettable.argtypes = [ctypes.c_uint32, ctypes.POINTER(_Address),
+                                                        ctypes.POINTER(ctypes.c_ubyte)]
+        self.cf.CFStringGetCString.argtypes = [ctypes.c_void_p, ctypes.c_void_p, ctypes.c_long,
+                                              ctypes.c_uint32]
+        self.cf.CFStringGetCString.restype = ctypes.c_bool
+        self.cf.CFRelease.argtypes = [ctypes.c_void_p]
+
+    def _address(self, selector, element=0, scope="outp"):
+        return _Address(_fourcc(selector), _fourcc(scope), element)
+
+    def _read(self, device, selector, element=0, kind=ctypes.c_uint32, scope="outp"):
+        address = self._address(selector, element, scope)
+        if not self.ca.AudioObjectHasProperty(device, ctypes.byref(address)):
+            return None
+        value = kind()
+        size = ctypes.c_uint32(ctypes.sizeof(value))
+        status = self.ca.AudioObjectGetPropertyData(device, ctypes.byref(address), 0, None,
+                                                    ctypes.byref(size), ctypes.byref(value))
+        return value.value if status == 0 else None
+
+    def _data(self, device, selector, scope="glob"):
+        address = self._address(selector, scope=scope)
+        size = ctypes.c_uint32()
+        if self.ca.AudioObjectGetPropertyDataSize(device, ctypes.byref(address), 0, None,
+                                                  ctypes.byref(size)) or not size.value:
+            return None
+        data = ctypes.create_string_buffer(size.value)
+        status = self.ca.AudioObjectGetPropertyData(device, ctypes.byref(address), 0, None,
+                                                    ctypes.byref(size), data)
+        return data if status == 0 else None
+
+    def _ids(self, device, selector):
+        data = self._data(device, selector)
+        return list((ctypes.c_uint32 * (len(data) // 4)).from_buffer(data)) if data else []
+
+    def uid(self, device):
+        value = self._read(device, "uid ", kind=ctypes.c_void_p, scope="glob")
+        if not value:
+            return None
+        try:
+            buf = ctypes.create_string_buffer(4096)
+            return buf.value.decode("utf-8") if self.cf.CFStringGetCString(
+                value, buf, len(buf), 0x08000100) else None
+        finally:
+            self.cf.CFRelease(value)
+
+    def devices(self):
+        return {uid: device for device in self._ids(1, "dev#")
+                if (uid := self.uid(device)) is not None}
+
+    def default(self):
+        device = self._read(1, "dOut", scope="glob")
+        return self.uid(device) if device else None
+
+    def route(self):
+        devices = self.devices()
+        uid = self.default()
+        if uid not in devices:
+            return []
+        result = [uid]
+        seen = {devices[uid]}
+        pending = [devices[uid]]
+        while pending:
+            for child in self._ids(pending.pop(), "agrp"):
+                if child not in seen:
+                    seen.add(child)
+                    pending.append(child)
+                    child_uid = self.uid(child)
+                    if child_uid:
+                        result.append(child_uid)
+        return result
+
+    def channels(self, uid):
+        device = self.devices().get(uid)
+        if device is None:
+            return 0
+        data = self._data(device, "slay", "outp")
+        if not data:
+            return 0
+        count = ctypes.c_uint32.from_buffer(data).value
+        offset = _AudioBufferList.buffers.offset
+        if offset + count * ctypes.sizeof(_AudioBuffer) > len(data):
+            return 0
+        return sum(_AudioBuffer.from_buffer(data, offset + i * ctypes.sizeof(_AudioBuffer)).channels
+                   for i in range(count))
+
+    def controls(self, uid):
+        device = self.devices().get(uid)
+        if device is None:
+            return None
+        result = {}
+        for selector in ("volm", "mute"):
+            for element in range(self.channels(uid) + 1):
+                value = self._read(device, selector, element,
+                                   ctypes.c_float if selector == "volm" else ctypes.c_uint32)
+                if value is not None:
+                    result[f"{selector}:{element}"] = bool(value) if selector == "mute" else value
+        # Virtual main is a last resort; writing it can disturb channel balance.
+        if not any(k.startswith("volm:") for k in result):
+            value = self._read(device, "vmvc", kind=ctypes.c_float)
+            if value is not None:
+                result["vmvc:0"] = value
+        return result
+
+    def writable(self, uid, key):
+        device = self.devices().get(uid)
+        if device is None:
+            return False
+        selector, element = key.split(":")
+        address = self._address(selector, int(element))
+        value = ctypes.c_ubyte()
+        return not self.ca.AudioObjectIsPropertySettable(device, ctypes.byref(address),
+                                                         ctypes.byref(value)) and bool(value.value)
+
+    def write(self, uid, key, value):
+        device = self.devices().get(uid)
+        if device is None or not self.writable(uid, key):
+            return False
+        selector, element = key.split(":")
+        address = self._address(selector, int(element))
+        data = ctypes.c_uint32(bool(value)) if selector == "mute" else ctypes.c_float(value)
+        status = self.ca.AudioObjectSetPropertyData(device, ctypes.byref(address), 0, None,
+                                                    ctypes.sizeof(data), ctypes.byref(data))
+        return status == 0
+
+    def _script(self, source):
+        try:
+            result = subprocess.run(["/usr/bin/osascript", "-e", source], capture_output=True,
+                                    text=True, timeout=2)
+            return result.stdout.strip() if result.returncode == 0 else None
+        except (OSError, subprocess.TimeoutExpired):
+            return None
+
+    def apple_read(self):
+        result = self._script("set s to get volume settings\n"
+                              "return {output volume of s, output muted of s}")
+        try:
+            volume, muted = result.split(", ")
+            return [int(volume), muted == "true"]
+        except (AttributeError, ValueError):
+            return None
+
+    def apple_mute(self, muted):
+        return self._script(f"set volume output muted {'true' if muted else 'false'}") is not None
+
+    def apple_volume(self, volume):
+        return self._script(f"set volume output volume {int(volume)}") is not None
+
+
+class _DuckingController:
+    def __init__(self, backend, path: Path):
+        self.backend = backend
+        self.path = path
+        self.lock = threading.RLock()
+        self.sessions = set()
+        self.saved = {}
+        self._journal_lock = None
+        self._loaded = False
+        self._next_retry = 0.0
+
+    def _load(self):
+        if self._loaded:
+            return
+        # Prevent another app instance from recovering our live recording.
+        import fcntl
+        self.path.parent.mkdir(parents=True, exist_ok=True)
+        handle = open(self.path.with_suffix(".lock"), "a+b")
+        try:
+            fcntl.flock(handle, fcntl.LOCK_EX | fcntl.LOCK_NB)
+            if self.path.exists():
+                data = json.loads(self.path.read_text())
+                if data["version"] != 1 or not isinstance(data["devices"], dict):
+                    raise ValueError("invalid audio recovery journal")
+                self.saved = data["devices"]
+        except BaseException:
+            handle.close()
+            raise
+        self._journal_lock = handle
+        self._loaded = True
+
+    def _persist(self):
+        if not self.saved:
+            self.path.unlink(missing_ok=True)
+            return
+        temp = self.path.with_suffix(".tmp")
+        fd = os.open(temp, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        with os.fdopen(fd, "w") as stream:
+            json.dump({"version": 1, "devices": self.saved}, stream)
+            stream.flush()
+            os.fsync(stream.fileno())
+        os.replace(temp, self.path)
+        fd = os.open(self.path.parent, os.O_RDONLY)
+        try:
+            os.fsync(fd)
+        finally:
+            os.close(fd)
+
+    def _changed(self, saved, current, apple):
+        if current is None:
+            return False  # disconnected, retain journal by UID
+        expected = saved["expected"]
+        restoring = saved.get("restoring", False) or saved.get("applying", False)
+        changed = any(k in current and current[k] != v and
+                      not (restoring and current[k] == saved["original"][k])
+                      for k, v in expected.items())
+        if saved["apple_owned"] and apple is not None:
+            changed |= apple != saved["apple_expected"] and not (
+                restoring and apple == saved["apple_original"])
+        return changed
+
+    def _try_persist(self):
+        # Restoration must still run if the disk filled up after we muted.
+        # The previous durable journal already contains the original state.
+        try:
+            self._persist()
+        except OSError as exc:
+            print(f"[Audio] Could not update recovery journal: {exc}")
+
+    def _observe(self, uid, saved, *, strict=True):
+        current = self.backend.controls(uid)
+        apple = self.backend.apple_read() if saved["apple_owned"] and self.backend.default() == uid else None
+        if not saved["user_changed"] and self._changed(saved, current, apple):
+            saved["user_changed"] = True
+            if strict:
+                self._persist()
+            else:
+                self._try_persist()
+            print("[Audio] User changed output controls; preserving their change")
+        return current, apple
+
+    def _silenced(self, uid, controls):
+        if controls is None:
+            return False
+        if controls.get("mute:0") is True:
+            return True
+        if any(controls.get(k) == 0 for k in ("volm:0", "vmvc:0")):
+            return True
+        channels = self.backend.channels(uid)
+        return channels > 0 and all(controls.get(f"mute:{i}") is True or
+                                   controls.get(f"volm:{i}") == 0
+                                   for i in range(1, channels + 1))
+
+    def _apply(self, uid, saved, targets):
+        # Write-ahead expected values make a crash between writes recoverable.
+        saved["expected"].update(targets)
+        # A writable master can also change read-only channel mirrors.
+        for prefix in ("mute", "volm"):
+            master = f"{prefix}:0"
+            if master in targets:
+                saved["expected"].update({k: targets[master] for k in saved["original"]
+                                          if k.startswith(f"{prefix}:")})
+        saved["applying"] = True
+        self._persist()
+        for key, value in targets.items():
+            self.backend.write(uid, key, value)
+        current = self.backend.controls(uid)
+        if current is not None:
+            # A volume change while we write only mute is external, not ours.
+            saved["user_changed"] |= self._changed(saved, current, None)
+            saved["expected"] = current.copy()
+            saved["applying"] = False
+            self._persist()
+        return self._silenced(uid, current)
+
+    def _duck(self, uid):
+        if uid in self.saved:
+            return  # never snapshot a ducked device again
+        original = self.backend.controls(uid)
+        if original is None:
+            return
+        apple = self.backend.apple_read() if self.backend.default() == uid else None
+        saved = {"original": original, "expected": original.copy(), "apple_original": apple,
+                 "apple_expected": apple, "apple_owned": False, "user_changed": False}
+        self.saved[uid] = saved
+        self._persist()  # fail closed: never mute without a durable snapshot
+        if self._silenced(uid, original):
+            return
+        writable = {k for k in original if self.backend.writable(uid, k)}
+        mutes = {k: True for k in writable if k.startswith("mute:")}
+        if mutes and self._apply(uid, saved, mutes):
+            return
+        volumes = {k: 0.0 for k in writable if k.startswith(("volm:", "vmvc:"))}
+        if volumes and self._apply(uid, saved, volumes):
+            return
+        # AppleScript is only a fallback for the same current output, never a
+        # second percentage-volume authority on top of native scalars.
+        if apple is not None and self.backend.default() == uid:
+            if self._apple_fallback(uid, saved, apple):
+                return
+        print("[Audio] Output cannot be silenced with its available controls; skipping")
+
+    def _apple_fallback(self, uid, saved, apple):
+        # AppleScript has no device argument. Snapshot other outputs read-only
+        # before its global write, in case the route switches inside that call.
+        candidates = {uid}
+        added = set()
+        originals = {}
+        for other in self.backend.devices():
+            if other == uid or not self.backend.channels(other):
+                continue
+            original = self.backend.controls(other)
+            if original is None or "mute:0" not in original:
+                # There is no way to read an AppleScript-only non-default
+                # output's prior mute flag without switching the user's route.
+                print("[Audio] AppleScript fallback skipped: alternate output mute state is unreadable")
+                return False
+            originals[other] = original
+        for other, original in originals.items():
+            candidates.add(other)
+            if other not in self.saved:
+                self.saved[other] = {"original": original, "expected": original.copy(),
+                                     "apple_original": None, "apple_expected": None,
+                                     "apple_owned": False, "user_changed": False}
+                added.add(other)
+        saved["apple_owned"] = True
+        saved["apple_expected"] = [apple[0], True]
+        for other in candidates:
+            if other not in self.saved:
+                continue
+            state = self.saved[other]
+            state["applying"] = True
+            state["apple_candidate"] = other != uid
+            state["expected"].update({k: True for k in state["original"] if k.startswith("mute:")})
+        self._persist()
+        self.backend.apple_mute(True)
+        actual = self.backend.apple_read()
+        default = self.backend.default()
+        if default == uid and actual is not None:
+            saved["apple_expected"] = actual
+        elif default in added and actual is not None:
+            # Native mute gives us the new route's pre-call mute flag. Keep an
+            # AppleScript mute-only restore as well, for read-only native flags.
+            redirected = self.saved[default]
+            redirected["apple_owned"] = True
+            redirected["apple_mute_only"] = True
+            redirected["apple_original"] = [actual[0], originals[default]["mute:0"]]
+            redirected["apple_expected"] = actual
+        for other in candidates:
+            if other not in self.saved:
+                continue
+            state = self.saved[other]
+            current = self.backend.controls(other)
+            if current is not None:
+                state["user_changed"] |= self._changed(state, current, None)
+                state["expected"] = current.copy()
+                state["applying"] = False
+                if other in added and current == state["original"] and not state["apple_owned"]:
+                    del self.saved[other]  # no mutation, no ownership of this output
+        self._persist()
+        return actual is not None and actual[1]
+
+    def begin(self, generation):
+        with self.lock:
+            self._load()
+            if generation in self.sessions:
+                return
+            if not self.sessions:
+                self._restore()  # recover a previous crash before a fresh snapshot
+            self.sessions.add(generation)
+            try:
+                self.poll()
+            except BaseException:
+                self.sessions.discard(generation)
+                if not self.sessions:
+                    self._restore()
+                raise
+
+    def poll(self):
+        with self.lock:
+            if not self.sessions:
+                if self.saved and time.monotonic() >= self._next_retry:
+                    self._next_retry = time.monotonic() + 1
+                    self._restore()  # recover a disconnected device when it returns
+                return
+            for uid, saved in list(self.saved.items()):
+                self._observe(uid, saved)
+            for uid in self.backend.route():
+                self._duck(uid)
+
+    def end(self, generation):
+        with self.lock:
+            if generation not in self.sessions:
+                return
+            self.sessions.remove(generation)
+            if not self.sessions:
+                self._restore()
+
+    def _restore(self):
+        for uid, saved in list(self.saved.items()):
+            try:
+                self._restore_device(uid, saved)
+            except Exception as exc:
+                # One broken/disconnected driver must not strand other outputs.
+                print(f"[Audio] Output restoration failed; will retry: {exc}")
+        self._try_persist()
+
+    def _restore_write(self, uid, key, value):
+        try:
+            current = self.backend.controls(uid)
+            if current is not None and current.get(key) == value:
+                return True  # master restore already restored a channel mirror
+            return self.backend.write(uid, key, value)
+        except Exception as exc:
+            print(f"[Audio] Could not restore output control {key}: {exc}")
+            return False
+
+    def _restore_device(self, uid, saved):
+        # A crash can occur inside AppleScript, before we learn which route
+        # received the mute. Native flags saved ahead of the call identify it.
+        if saved.get("apple_candidate") and not saved["apple_owned"]:
+            current = self.backend.controls(uid)
+            if (current is not None and self.backend.default() == uid and
+                    current.get("mute:0") != saved["original"].get("mute:0") and
+                    current.get("mute:0") == saved["expected"].get("mute:0")):
+                apple = self.backend.apple_read()
+                if apple is not None:
+                    saved["apple_owned"] = True
+                    saved["apple_mute_only"] = True
+                    saved["apple_original"] = [apple[0], saved["original"]["mute:0"]]
+                    saved["apple_expected"] = [apple[0], True]
+        current, apple = self._observe(uid, saved, strict=False)
+        if current is None:
+            return
+        saved["restoring"] = True
+        self._try_persist()
+        original, expected = saved["original"], saved["expected"]
+        ok = True
+        targets = {}
+        apple_mute_target = None
+        # Fallback must target the original device; changing routes is not
+        # permission to set the new output's percentage volume.
+        if saved["apple_owned"]:
+            if self.backend.default() != uid:
+                ok = False  # defer fallback until this UID is current again
+            elif apple is None:
+                ok = False
+            else:
+                before, applied = saved["apple_original"], saved["apple_expected"]
+                if not saved["user_changed"] and not saved.get("apple_mute_only") and apple[0] != before[0]:
+                    ok &= self.backend.apple_volume(before[0])
+                if apple[1] == applied[1] and applied[1] != before[1]:
+                    apple_mute_target = before[1]
+                    ok &= self.backend.apple_mute(before[1])
+                # Native controls (if present) have final authority below.
+        if not saved["user_changed"]:
+            for key, value in sorted(original.items()):
+                if key.startswith(("volm:", "vmvc:")) and expected.get(key) != value:
+                    targets[key] = value
+                    ok &= self._restore_write(uid, key, value)
+        for key, value in original.items():
+            if key.startswith("mute:") and expected.get(key) != value:
+                if current.get(key) == expected[key]:
+                    targets[key] = value
+                    ok &= self._restore_write(uid, key, value)
+        check = self.backend.controls(uid)
+        if check is None:
+            ok = False
+        else:
+            ok &= all(check.get(k) == v for k, v in targets.items())
+            if not saved["user_changed"]:
+                ok &= all(check.get(k) == v for k, v in original.items())
+        if saved["apple_owned"] and self.backend.default() == uid:
+            check_apple = self.backend.apple_read()
+            ok &= check_apple is not None and (
+                saved["user_changed"] or check_apple == saved["apple_original"])
+            if apple_mute_target is not None:
+                ok &= check_apple is not None and check_apple[1] == apple_mute_target
+        if ok:
+            del self.saved[uid]
+        else:
+            print("[Audio] Output restoration incomplete; retaining recovery journal")
+        self._try_persist()
+
+    def recover(self):
+        with self.lock:
+            self._load()
+            if not self.sessions:
+                self._restore()
+
+    def close(self):
+        with self.lock:
+            self.sessions.clear()
+            try:
+                self.recover()
+            finally:
+                if self._journal_lock:
+                    self._journal_lock.close()
+                    self._journal_lock = None
+                    self._loaded = False
 
 
 class _SystemAudioExecutor:
-    """Single worker that owns all system audio side effects.
-
-    CoreAudio and AppleScript can block indefinitely when macOS audio devices
-    wedge. Public entrypoints enqueue work here and return immediately so the
-    Qt event loop never waits on those calls or on this module's state lock.
-    """
-
-    def __init__(self) -> None:
-        self._q: "queue.Queue[Optional[Callable[[], None]]]" = queue.Queue()
-        self._thread = threading.Thread(
-            target=self._loop, name="system-audio-executor", daemon=True
-        )
+    """One FIFO worker for requests, route monitoring and shutdown restoration."""
+    def __init__(self, controller=None):
+        self.controller = controller
+        self._q = queue.Queue()
+        self._thread = threading.Thread(target=self._loop, name="system-audio-executor", daemon=True)
         self._thread.start()
 
-    def _loop(self) -> None:
+    def _loop(self):
         while True:
-            job = self._q.get()
+            try:
+                job = self._q.get(timeout=0.1)
+            except queue.Empty:
+                if self.controller:
+                    try:
+                        self.controller.poll()
+                    except Exception:
+                        traceback.print_exc()
+                continue
             if job is None:
                 return
+            fn, future = job
+            deliver_result = future.set_running_or_notify_cancel()
+            # Cancellation of a result must never discard a queued restore.
             try:
-                job()
-            except BaseException:
+                result = fn()
+            except BaseException as exc:
+                if deliver_result:
+                    future.set_exception(exc)
                 traceback.print_exc()
+            else:
+                if deliver_result:
+                    future.set_result(result)
 
-    def submit(self, fn: Callable[[], None]) -> None:
-        self._q.put(fn)
+    def submit(self, fn: Callable):
+        future = Future()
+        self._q.put((fn, future))
+        return future
 
-    def shutdown(self) -> None:
+    def shutdown(self):
         self._q.put(None)
+        self._thread.join(timeout=5)
 
 
-_system_audio_executor: Optional[_SystemAudioExecutor] = None
-
-
-def _get_system_audio_executor() -> _SystemAudioExecutor:
+def _get_system_audio_executor():
     global _system_audio_executor
     with _executor_lock:
         if _system_audio_executor is None:
-            _system_audio_executor = _SystemAudioExecutor()
-    return _system_audio_executor
+            controller = _DuckingController(_DarwinAudio(), Path.home() / ".thundertalk" /
+                                           "audio-ducking.json") if _SYSTEM == "Darwin" else None
+            _system_audio_executor = _SystemAudioExecutor(controller)
+        return _system_audio_executor
 
 
-# ---------------------------------------------------------------------------
-# macOS — CoreAudio helpers
-# ---------------------------------------------------------------------------
-
-if _SYSTEM == "Darwin":
-    from Foundation import NSAppleScript
-
-    def _osascript_run(source: str) -> str | None:
-        """Run AppleScript in-process; return string result or None on failure."""
-        script = NSAppleScript.alloc().initWithSource_(source)
-        result, error = script.executeAndReturnError_(None)
-        if error:
-            print(f"[Audio] AppleScript error: {error}")
-            return None
-        if result:
-            return result.stringValue()
-        return ""
-
-    def _osascript_read_volume_settings() -> tuple[int, bool] | None:
-        vol_s = _osascript_run("output volume of (get volume settings)")
-        mut_s = _osascript_run("output muted of (get volume settings)")
-        if vol_s is None or mut_s is None:
-            return None
+def _portable_mute(muted):
+    if _SYSTEM == "Linux":
         try:
-            vol = int(str(vol_s).strip())
-        except (TypeError, ValueError):
-            return None
-        muted = str(mut_s).strip().lower() == "true"
-        return (max(0, min(100, vol)), muted)
-
-    def _osascript_apply_volume_settings(volume: int, muted: bool) -> bool:
-        v = max(0, min(100, int(volume)))
-        flag = "true" if muted else "false"
-        src = f"set volume output volume {v}\nset volume output muted {flag}"
-        script = NSAppleScript.alloc().initWithSource_(src)
-        _result, error = script.executeAndReturnError_(None)
-        if error:
-            print(f"[Audio] AppleScript set volume failed: {error}")
-            return False
-        return True
-
-    class _AudioObjectPropertyAddress(ctypes.Structure):
-        _fields_ = [
-            ("mSelector", ctypes.c_uint32),
-            ("mScope", ctypes.c_uint32),
-            ("mElement", ctypes.c_uint32),
-        ]
-
-    _coreaudio = None
-    _coreaudio_path = ctypes.util.find_library("CoreAudio")
-    if _coreaudio_path:
-        _coreaudio = ctypes.cdll.LoadLibrary(_coreaudio_path)
-        _coreaudio.AudioObjectGetPropertyData.argtypes = [
-            ctypes.c_uint32,
-            ctypes.POINTER(_AudioObjectPropertyAddress),
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_uint32),
-            ctypes.c_void_p,
-        ]
-        _coreaudio.AudioObjectGetPropertyData.restype = ctypes.c_int32
-        _coreaudio.AudioObjectSetPropertyData.argtypes = [
-            ctypes.c_uint32,
-            ctypes.POINTER(_AudioObjectPropertyAddress),
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-        ]
-        _coreaudio.AudioObjectSetPropertyData.restype = ctypes.c_int32
-        _coreaudio.AudioObjectHasProperty.argtypes = [
-            ctypes.c_uint32,
-            ctypes.POINTER(_AudioObjectPropertyAddress),
-        ]
-        _coreaudio.AudioObjectHasProperty.restype = ctypes.c_bool
-        _coreaudio.AudioObjectGetPropertyDataSize.argtypes = [
-            ctypes.c_uint32,
-            ctypes.POINTER(_AudioObjectPropertyAddress),
-            ctypes.c_uint32,
-            ctypes.c_void_p,
-            ctypes.POINTER(ctypes.c_uint32),
-        ]
-        _coreaudio.AudioObjectGetPropertyDataSize.restype = ctypes.c_int32
-
-    def _fourcc(text: str) -> int:
-        value = 0
-        for ch in text.encode("latin-1"):
-            value = (value << 8) | ch
-        return value
-
-    _K_AUDIO_OBJECT_SYSTEM_OBJECT = 1
-    _K_AUDIO_OBJECT_PROPERTY_ELEMENT_MASTER = 0
-    _K_AUDIO_HARDWARE_PROPERTY_DEFAULT_OUTPUT_DEVICE = _fourcc("dOut")
-    _K_AUDIO_HARDWARE_PROPERTY_DEVICES = _fourcc("dev#")
-    _K_AUDIO_OBJECT_PROPERTY_SCOPE_GLOBAL = _fourcc("glob")
-    _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT = _fourcc("outp")
-    _K_AUDIO_HARDWARE_SERVICE_DEVICE_PROPERTY_VIRTUAL_MASTER_VOLUME = _fourcc("vmvc")
-    _K_AUDIO_DEVICE_PROPERTY_MUTE = _fourcc("mute")
-
-    def _addr(selector: int, scope: int, element: int = _K_AUDIO_OBJECT_PROPERTY_ELEMENT_MASTER) -> _AudioObjectPropertyAddress:
-        return _AudioObjectPropertyAddress(selector, scope, element)
-
-    def _get_default_output_device_darwin() -> int | None:
-        if _coreaudio is None:
-            return None
-        device_id = ctypes.c_uint32(0)
-        size = ctypes.c_uint32(ctypes.sizeof(device_id))
-        address = _addr(
-            _K_AUDIO_HARDWARE_PROPERTY_DEFAULT_OUTPUT_DEVICE,
-            _K_AUDIO_OBJECT_PROPERTY_SCOPE_GLOBAL,
-        )
-        status = _coreaudio.AudioObjectGetPropertyData(
-            _K_AUDIO_OBJECT_SYSTEM_OBJECT,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.byref(size),
-            ctypes.byref(device_id),
-        )
-        if status != 0:
-            print(f"[Audio] Failed to get default output device: status={status}")
-            return None
-        return int(device_id.value)
-
-    def _has_property_darwin(device_id: int, selector: int, scope: int) -> bool:
-        if _coreaudio is None:
-            return False
-        address = _addr(selector, scope)
-        return bool(_coreaudio.AudioObjectHasProperty(device_id, ctypes.byref(address)))
-
-    def _get_output_volume_darwin(device_id: int | None = None) -> float | None:
-        if _coreaudio is None:
-            return None
-        target_id = device_id if device_id is not None else _get_default_output_device_darwin()
-        if target_id is None:
-            return None
-        address = _addr(
-            _K_AUDIO_HARDWARE_SERVICE_DEVICE_PROPERTY_VIRTUAL_MASTER_VOLUME,
-            _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT,
-        )
-        volume = ctypes.c_float(0.0)
-        size = ctypes.c_uint32(ctypes.sizeof(volume))
-        status = _coreaudio.AudioObjectGetPropertyData(
-            target_id,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.byref(size),
-            ctypes.byref(volume),
-        )
-        if status != 0:
-            print(f"[Audio] Failed to get output volume: status={status} device={target_id}")
-            return None
-        return float(volume.value)
-
-    def _set_output_volume_darwin(volume: float, device_id: int | None = None) -> bool:
-        if _coreaudio is None:
-            return False
-        target_id = device_id if device_id is not None else _get_default_output_device_darwin()
-        if target_id is None:
-            return False
-        address = _addr(
-            _K_AUDIO_HARDWARE_SERVICE_DEVICE_PROPERTY_VIRTUAL_MASTER_VOLUME,
-            _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT,
-        )
-        value = ctypes.c_float(max(0.0, min(1.0, float(volume))))
-        status = _coreaudio.AudioObjectSetPropertyData(
-            target_id,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.c_uint32(ctypes.sizeof(value)),
-            ctypes.byref(value),
-        )
-        if status != 0:
-            print(f"[Audio] Failed to set output volume: status={status} device={target_id}")
-            return False
-        actual = _get_output_volume_darwin(target_id)
-        return actual is not None and abs(actual - value.value) < 0.01
-
-    def _get_output_muted_darwin(device_id: int | None = None) -> bool | None:
-        if _coreaudio is None:
-            return None
-        target_id = device_id if device_id is not None else _get_default_output_device_darwin()
-        if target_id is None:
-            return None
-        if not _has_property_darwin(
-            target_id,
-            _K_AUDIO_DEVICE_PROPERTY_MUTE,
-            _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT,
-        ):
-            return None
-        address = _addr(_K_AUDIO_DEVICE_PROPERTY_MUTE, _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT)
-        value = ctypes.c_uint32(0)
-        size = ctypes.c_uint32(ctypes.sizeof(value))
-        status = _coreaudio.AudioObjectGetPropertyData(
-            target_id,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.byref(size),
-            ctypes.byref(value),
-        )
-        if status != 0:
-            print(f"[Audio] Failed to get output mute: status={status} device={target_id}")
-            return None
-        return bool(value.value)
-
-    def _set_output_muted_darwin(muted: bool, device_id: int | None = None) -> bool:
-        if _coreaudio is None:
-            return False
-        target_id = device_id if device_id is not None else _get_default_output_device_darwin()
-        if target_id is None:
-            return False
-        if not _has_property_darwin(
-            target_id,
-            _K_AUDIO_DEVICE_PROPERTY_MUTE,
-            _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT,
-        ):
-            return True
-        address = _addr(_K_AUDIO_DEVICE_PROPERTY_MUTE, _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT)
-        value = ctypes.c_uint32(1 if muted else 0)
-        status = _coreaudio.AudioObjectSetPropertyData(
-            target_id,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.c_uint32(ctypes.sizeof(value)),
-            ctypes.byref(value),
-        )
-        if status != 0:
-            print(f"[Audio] Failed to set output mute: status={status} device={target_id}")
-            return False
-        actual = _get_output_muted_darwin(target_id)
-        return actual is None or actual is muted
-
-    def _list_audio_device_ids_darwin() -> list[int]:
-        """Return all CoreAudio device IDs (includes inputs and outputs)."""
-        if _coreaudio is None:
-            return []
-        address = _addr(
-            _K_AUDIO_HARDWARE_PROPERTY_DEVICES,
-            _K_AUDIO_OBJECT_PROPERTY_SCOPE_GLOBAL,
-            _K_AUDIO_OBJECT_PROPERTY_ELEMENT_MASTER,
-        )
-        data_size = ctypes.c_uint32(0)
-        status = _coreaudio.AudioObjectGetPropertyDataSize(
-            _K_AUDIO_OBJECT_SYSTEM_OBJECT,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.byref(data_size),
-        )
-        if status != 0:
-            print(f"[Audio] AudioObjectGetPropertyDataSize(devices) failed: {status}")
-            return []
-        if data_size.value == 0:
-            return []
-        elem = ctypes.sizeof(ctypes.c_uint32)
-        count = data_size.value // elem
-        if count <= 0:
-            return []
-        buf = (ctypes.c_uint32 * count)()
-        read_size = ctypes.c_uint32(data_size.value)
-        status2 = _coreaudio.AudioObjectGetPropertyData(
-            _K_AUDIO_OBJECT_SYSTEM_OBJECT,
-            ctypes.byref(address),
-            0,
-            None,
-            ctypes.byref(read_size),
-            buf,
-        )
-        if status2 != 0:
-            print(f"[Audio] AudioObjectGetPropertyData(devices) failed: {status2}")
-            return []
-        return [int(buf[i]) for i in range(count)]
-
-    def _is_duckable_output_device(device_id: int) -> bool:
-        """True if we can mute/duck this device via CoreAudio output controls."""
-        return (
-            _has_property_darwin(
-                device_id,
-                _K_AUDIO_HARDWARE_SERVICE_DEVICE_PROPERTY_VIRTUAL_MASTER_VOLUME,
-                _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT,
-            )
-            or _has_property_darwin(
-                device_id,
-                _K_AUDIO_DEVICE_PROPERTY_MUTE,
-                _K_AUDIO_DEVICE_PROPERTY_SCOPE_OUTPUT,
-            )
-        )
-
-
-def mute_system_audio() -> None:
-    """Request speaker muting without blocking the caller."""
-    _get_system_audio_executor().submit(_mute_system_audio_sync)
-
-
-def _mute_system_audio_sync() -> None:
-    """Mute system output. Runs only on the system audio worker."""
-    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted, _last_unmute_target
-    print("[Audio] mute_system_audio() called")
-    with _lock:
-        _last_unmute_target = None  # clear post-paste watchdog target
-        if _SYSTEM == "Darwin":
-            _darwin_osascript_snapshot = None
-            _darwin_duck_snapshots.clear()
-
-            # ── Phase 1: SNAPSHOT everything BEFORE any mutations ──
-            o_snap = _osascript_read_volume_settings()
-
-            device_ids = _list_audio_device_ids_darwin()
-            if not device_ids:
-                fallback = _get_default_output_device_darwin()
-                if fallback is not None:
-                    device_ids = [fallback]
-                    print(f"[Audio]   device enumeration empty, fallback default={fallback}")
-
-            duckable: list[tuple[int, float | None, bool | None]] = []
-            for dev_id in device_ids:
-                if not _is_duckable_output_device(dev_id):
-                    continue
-                vol = _get_output_volume_darwin(dev_id)
-                mut = _get_output_muted_darwin(dev_id)
-                duckable.append((dev_id, vol, mut))
-
-            # ── Phase 2: APPLY mutes (AppleScript first for immediate effect) ──
-            if o_snap is not None:
-                _darwin_osascript_snapshot = o_snap
-                _osascript_apply_volume_settings(0, True)
-                print(
-                    "[Audio]   + aggregate output via AppleScript "
-                    f"(saved vol={o_snap[0]} muted={o_snap[1]})"
-                )
-
-            for dev_id, vol, mut in duckable:
-                _darwin_duck_snapshots[dev_id] = (vol, mut)
-                _set_output_muted_darwin(True, dev_id)
-                if vol is not None:
-                    _set_output_volume_darwin(0.0, dev_id)
-
-            _we_muted = _darwin_osascript_snapshot is not None or len(_darwin_duck_snapshots) > 0
-
-            # ── Phase 3: Verify mute took effect — retry once if needed ──
-            if _we_muted:
-                time.sleep(0.05)  # 50ms for CoreAudio to propagate
-                check = _osascript_read_volume_settings()
-                if check is not None and (check[0] > 0 or not check[1]):
-                    print("[Audio]   AppleScript mute did not stick, retrying...")
-                    _osascript_apply_volume_settings(0, True)
-                    time.sleep(0.05)
-
-            print(
-                "[Audio]   silenced via CoreAudio "
-                f"(devices={len(_darwin_duck_snapshots)} "
-                f"ids={sorted(_darwin_duck_snapshots.keys())}) "
-                f"result={'OK' if _we_muted else 'FAILED'}"
-            )
-            return
-
-        elif _SYSTEM == "Linux":
-            try:
-                subprocess.run(
-                    ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "1"],
-                    check=False, timeout=3,
-                )
-                _we_muted = True
-            except FileNotFoundError:
-                try:
-                    subprocess.run(
-                        ["amixer", "set", "Master", "mute"],
-                        check=False, timeout=3,
-                    )
-                    _we_muted = True
-                except Exception:
-                    _we_muted = False
-
-        elif _SYSTEM == "Windows":
-            try:
-                subprocess.run(
-                    ["nircmd", "mutesysvolume", "1"],
-                    check=False, timeout=3,
-                )
-                _we_muted = True
-            except Exception:
-                _we_muted = False
-
-
-def unmute_system_audio() -> None:
-    """Request speaker restoration without blocking the caller."""
-    _get_system_audio_executor().submit(_unmute_system_audio_sync)
-
-
-def _unmute_system_audio_sync() -> None:
-    """Unmute system output. Runs only on the system audio worker."""
-    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted, _last_unmute_target
-    print(f"[Audio] unmute_system_audio() called  "
-          f"(_we_muted={_we_muted}, devices={len(_darwin_duck_snapshots)})")
-    with _lock:
-        if not _we_muted:
-            print("[Audio]   skipped (we didn't mute)")
-            return
-        snapshots = dict(_darwin_duck_snapshots)
-        _darwin_duck_snapshots.clear()
-        o_snap = _darwin_osascript_snapshot
-        _darwin_osascript_snapshot = None
-        _we_muted = False
-
-    if _SYSTEM == "Darwin":
-        # 1) Restore aggregate output via AppleScript FIRST.
-        #    This is the menu-bar slider that apps (Chrome, Safari) actually
-        #    follow.  Setting it first establishes the correct aggregate
-        #    state so device-level restores don't fight it.
-        if o_snap is not None:
-            _osascript_apply_volume_settings(o_snap[0], o_snap[1])
-            print(
-                "[Audio]   restored aggregate via AppleScript "
-                f"(vol={o_snap[0]} muted={o_snap[1]})"
-            )
-
-        # 2) Restore individual CoreAudio devices.
-        #    Unmute each device before setting volume so the volume sticks.
-        ok_all = True
-        for dev_id, (prev_vol, prev_mut) in sorted(snapshots.items()):
-            muted_target = bool(prev_mut) if prev_mut is not None else False
-            mut_ok = _set_output_muted_darwin(muted_target, dev_id)
-            vol_ok = True
-            if prev_vol is not None:
-                vol_ok = _set_output_volume_darwin(prev_vol, dev_id)
-            ok_all = ok_all and vol_ok and mut_ok
-        print(
-            "[Audio]   restored via CoreAudio "
-            f"(count={len(snapshots)} ids={sorted(snapshots.keys())}) ok={ok_all}"
-        )
-
-        # 3) Re-apply AppleScript to ensure device-level restores didn't
-        #    override the aggregate.  Then verify with retry.
-        if o_snap is not None:
-            _osascript_apply_volume_settings(o_snap[0], o_snap[1])
-            time.sleep(0.10)
-            for attempt in range(3):
-                check = _osascript_read_volume_settings()
-                if check is None:
-                    break
-                vol_bad = abs(check[0] - o_snap[0]) > 2
-                mute_bad = check[1] != o_snap[1]
-                if not vol_bad and not mute_bad:
-                    print(f"[Audio]   verify OK (vol={check[0]} muted={check[1]})")
-                    break
-                print(f"[Audio]   drift attempt {attempt+1}: "
-                      f"got vol={check[0]} muted={check[1]}, retrying...")
-                _osascript_apply_volume_settings(o_snap[0], o_snap[1])
-                time.sleep(0.10)
-
-        # Remember what we restored to, so ensure_audio_restored() can fix
-        # any re-muting caused by app activation after paste.
-        with _lock:
-            _last_unmute_target = o_snap
-    elif _SYSTEM == "Linux":
-        try:
-            subprocess.run(
-                ["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"],
-                check=False, timeout=3,
-            )
+            subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", str(int(muted))],
+                           check=False, timeout=3)
         except FileNotFoundError:
-            subprocess.run(
-                ["amixer", "set", "Master", "unmute"],
-                check=False, timeout=3,
-            )
-    elif _SYSTEM == "Windows":
-        try:
-            subprocess.run(
-                ["nircmd", "mutesysvolume", "0"],
-                check=False, timeout=3,
-            )
-        except Exception:
-            pass
-
-
-def ensure_audio_restored() -> None:
-    """Request a post-paste audio restoration check without blocking."""
-    _get_system_audio_executor().submit(_ensure_audio_restored_sync)
-
-
-def _ensure_audio_restored_sync() -> None:
-    """Post-paste watchdog: if macOS silently re-muted after app activation,
-    re-apply the last unmute target.
-
-    Call this ~300ms after paste_text() to catch re-muting caused by
-    macOS audio graph reconfiguration during app activation.
-    """
-    global _last_unmute_target
-    if _SYSTEM != "Darwin":
-        return
-    with _lock:
-        target = _last_unmute_target
-        if target is None:
-            return
-        if _we_muted:
-            # A new recording started — don't interfere
-            return
-    check = _osascript_read_volume_settings()
-    if check is None:
-        return
-    vol_bad = abs(check[0] - target[0]) > 2
-    mute_bad = (not target[1]) and check[1]  # only fix if target was unmuted but now muted
-    if vol_bad or mute_bad:
-        print(f"[Audio] ensure_audio_restored: system was re-muted "
-              f"(got vol={check[0]} muted={check[1]}, "
-              f"target vol={target[0]} muted={target[1]}), fixing...")
-        _osascript_apply_volume_settings(target[0], target[1])
-        # Also unmute CoreAudio default device in case it was re-muted
-        dev = _get_default_output_device_darwin()
-        if dev is not None:
-            _set_output_muted_darwin(target[1], dev)
-            if target[0] > 0:
-                _set_output_volume_darwin(target[0] / 100.0, dev)
-    else:
-        print(f"[Audio] ensure_audio_restored: OK (vol={check[0]} muted={check[1]})")
-    with _lock:
-        _last_unmute_target = None
-
-
-def force_unmute() -> None:
-    """Request an emergency unmute without blocking the caller."""
-    _get_system_audio_executor().submit(_force_unmute_sync)
-
-
-def _force_unmute_sync() -> None:
-    """Emergency unmute — ignores flags, just unmutes."""
-    global _darwin_duck_snapshots, _darwin_osascript_snapshot, _we_muted
-    with _lock:
-        snapshots = dict(_darwin_duck_snapshots)
-        _darwin_duck_snapshots.clear()
-        o_snap = _darwin_osascript_snapshot
-        _darwin_osascript_snapshot = None
-        _we_muted = False
-    if _SYSTEM == "Darwin":
-        if snapshots:
-            for dev_id, (prev_vol, prev_mut) in sorted(snapshots.items()):
-                if prev_vol is not None:
-                    _set_output_volume_darwin(prev_vol, dev_id)
-                _set_output_muted_darwin(bool(prev_mut) if prev_mut is not None else False, dev_id)
-        else:
-            dev = _get_default_output_device_darwin()
-            if dev:
-                _set_output_muted_darwin(False, dev)
-        if o_snap is not None:
-            _osascript_apply_volume_settings(o_snap[0], o_snap[1])
-    elif _SYSTEM == "Linux":
-        try:
-            subprocess.run(["pactl", "set-sink-mute", "@DEFAULT_SINK@", "0"],
+            subprocess.run(["amixer", "set", "Master", "mute" if muted else "unmute"],
                            check=False, timeout=3)
-        except Exception:
-            pass
     elif _SYSTEM == "Windows":
-        try:
-            subprocess.run(["nircmd", "mutesysvolume", "0"],
-                           check=False, timeout=3)
-        except Exception:
-            pass
+        subprocess.run(["nircmd", "mutesysvolume", str(int(muted))], check=False, timeout=3)
+
+
+class AudioDuckingSession:
+    """A recording owns one token; stale/duplicate releases cannot unmute another."""
+    def __init__(self, executor, generation):
+        self._executor = executor
+        self.generation = generation
+        self.ready = executor.submit(lambda: executor.controller.begin(generation)
+                                     if executor.controller else _portable_mute(True))
+
+    def refresh(self):
+        return self._executor.submit(lambda: self._executor.controller.poll()
+                                     if self._executor.controller else None)
+
+    def restore(self):
+        return self._executor.submit(lambda: self._executor.controller.end(self.generation)
+                                     if self._executor.controller else _portable_mute(False))
+
+
+def mute_system_audio() -> AudioDuckingSession:
+    """Return immediately. `ready` completes after the mute attempt, before capture."""
+    with _lock:
+        generation = next(_generation)
+    return AudioDuckingSession(_get_system_audio_executor(), generation)
+
+
+def unmute_system_audio(session: AudioDuckingSession) -> Future:
+    return session.restore()
+
+
+def recover_system_audio() -> Future:
+    executor = _get_system_audio_executor()
+    return executor.submit(lambda: executor.controller.recover() if executor.controller else None)
+
+
+def shutdown_system_audio() -> None:
+    """Wait for restoration on quit; retain journal if a wedged driver times out."""
+    executor = _system_audio_executor
+    if executor is None or not executor._thread.is_alive():
+        return
+    try:
+        executor.submit(lambda: executor.controller.close() if executor.controller else
+                        _portable_mute(False)).result(timeout=5)
+    except Exception as exc:
+        print(f"[Audio] Shutdown restoration could not finish: {exc}")
+    executor.shutdown()
+
+
+def stop_recording_and_restore(recorder, session):
+    """Recording errors/cancellation must release the captured session token."""
+    try:
+        return recorder.stop() if recorder is not None else None
+    finally:
+        if session is not None:
+            session.restore()

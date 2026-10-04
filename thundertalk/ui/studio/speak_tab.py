@@ -480,7 +480,8 @@ class SpeakTab(QWidget):
 
     def _clone_new(self) -> None:
         mic = self._settings.microphone if self._settings is not None else "auto"
-        dlg = CloneDialog(self.window(), self._asr, self._lib, mic)
+        mute = self._settings.get("mute_speakers") if self._settings is not None else True
+        dlg = CloneDialog(self.window(), self._asr, self._lib, mic, mute_speakers=mute)
         dlg.exec()
         if dlg.saved is not None:
             self._voice_id = MY_PREFIX + dlg.saved.id
