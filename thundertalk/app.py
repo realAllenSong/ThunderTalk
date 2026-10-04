@@ -961,10 +961,11 @@ def main() -> None:
                 try:
                     session = mute_system_audio()
                 except Exception as exc:
-                    pipe._starting = False
-                    DICTATION.end()
-                    overlay.show_error(t("overlay.audio_unavailable"))
+                    # Muting is a courtesy; it must never block dictation.
                     print(f"[Toggle] speaker mute startup failed: {exc}")
+                    audio_diagnostic("mute_unavailable_continue", error=type(exc).__name__)
+                    pipe._ducking_session = None
+                    _start_capture(None)
                     return
                 pipe._ducking_session = session
                 session.ready.add_done_callback(lambda _future: pipe.audio_ready.emit(session))
@@ -978,8 +979,13 @@ def main() -> None:
         error_text = t("overlay.audio_unavailable")
         try:
             if session is not None:
-                session.ready.result()  # already done; never blocks the Qt thread
-                session.microphone_transition("open")
+                try:
+                    session.ready.result()  # already done; never blocks the Qt thread
+                    session.microphone_transition("open")
+                except Exception as exc:
+                    # Keep the session so whatever was muted is restored at
+                    # stop, but record anyway: muting must never block dictation.
+                    audio_diagnostic("mute_unconfirmed_continue", error=type(exc).__name__)
             error_text = t("overlay.mic_unavailable")
             mic = settings.microphone
             audio_diagnostic("microphone_open")
@@ -1009,22 +1015,14 @@ def main() -> None:
         if not pipe._starting or session is not pipe._ducking_session:
             audio_diagnostic("capture_skipped", reason="stale_or_cancelled_check")
             return
-        try:
-            if checked is not None:
-                checked.result()  # delivered by the worker after graph verification
-            pipe.recorder.discard_pending()
-        except Exception as exc:
-            pipe._starting = False
-            pipe._ducking_session = None
+        if checked is not None:
             try:
-                stop_recording_and_restore(pipe.recorder, session)
-            except Exception as stop_exc:
-                audio_diagnostic("startup_cleanup_failed", error=type(stop_exc).__name__)
-            DICTATION.end()
-            state.set_recording(st.REC_IDLE)
-            overlay.show_error(t("overlay.audio_unavailable"))
-            audio_diagnostic("capture_check_failed", error=type(exc).__name__)
-            return
+                checked.result()  # delivered by the worker after graph verification
+            except Exception as exc:
+                # Background audio may still be audible; record anyway and
+                # restore at stop. Never abort a dictation over muting.
+                audio_diagnostic("capture_check_failed_continue", error=type(exc).__name__)
+        pipe.recorder.discard_pending()
         if session is not None:
             session.diagnostic("capture_started")
         pipe._starting = False

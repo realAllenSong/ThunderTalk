@@ -430,13 +430,22 @@ class _DuckingController:
         for key in set(planned) - set(confirmed):
             self._rejected_intent(saved, key, previous_expected, previous_intent, previous_native)
         current = self._settled(uid, confirmed, saved["original"])
+        relaid = False
+        if current is None:
+            # Opening the microphone can re-lay out the output's controls
+            # (per-channel gains become one master gain). Judge the write by
+            # the controls that exist now rather than the snapshot's layout.
+            current = self._settled(uid, confirmed)
+            relaid = current is not None
+            if relaid:
+                self._diag("controls_relaid", uid, current=current, original=saved["original"])
         complete = current is not None and all(current.get(k) == v for k, v in confirmed.items())
         self._diag("mute_readback", uid, current=current, expected=saved["expected"],
                    confirmed=complete, silenced=self._silenced(uid, current))
         if current is not None:
             # Never replace the target with a getter that still reports the
             # pre-write value: late delivery is our write, not a user change.
-            if not saved.get("graph_reset"):
+            if not saved.get("graph_reset") and not relaid:
                 if not saved["user_changed"] and self._changed(saved, current, None):
                     self._diag("user_change", uid, current=current, expected=saved["expected"],
                                decision="preserve_during_write")

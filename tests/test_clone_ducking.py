@@ -120,24 +120,26 @@ def test_mute_setting_off_uses_no_session(qapp, isolated_home, monkeypatch):
         dlg.reject()
 
 
-def test_mute_request_error_does_not_leave_starting_state(dialog, monkeypatch):
+def test_mute_request_error_still_records_without_ducking(dialog, monkeypatch):
     dlg, session = dialog
     def fail():
         raise RuntimeError("CoreAudio unavailable")
     monkeypatch.setattr(clone, "mute_system_audio", fail)
     dlg._toggle_record()
     assert not dlg._starting
-    assert dlg._recorder is None
+    assert dlg._recorder is not None and dlg._recorder.is_recording
     assert session.restores == 0
 
 
-def test_mute_future_error_releases_session_and_never_captures(dialog, qapp):
+def test_mute_future_error_still_records_and_restores_at_stop(dialog, qapp):
     dlg, session = dialog
     dlg._toggle_record()
     session.ready.set_exception(OSError("journal write failed"))
     qapp.processEvents()
+    qapp.processEvents()  # the graph check result is delivered by a queued signal
     assert not dlg._starting
-    assert dlg._recorder is None
+    assert dlg._recorder is not None and dlg._recorder.is_recording
+    dlg.reject()
     assert session.restores == 1
 
 
@@ -192,7 +194,7 @@ def test_cancel_during_graph_check_closes_microphone_and_ignores_late_ready(dial
     assert not dlg._timer.isActive()
 
 
-def test_failed_graph_check_closes_microphone_and_restores(dialog, qapp):
+def test_failed_graph_check_keeps_recording_and_restores_at_stop(dialog, qapp):
     dlg, session = dialog
     session.checked = Future()
     dlg._toggle_record()
@@ -201,6 +203,7 @@ def test_failed_graph_check_closes_microphone_and_restores(dialog, qapp):
     recorder = dlg._recorder
     session.checked.set_exception(RuntimeError('mute reset'))
     qapp.processEvents()
-    assert not recorder.is_recording
+    assert recorder.is_recording
     assert not dlg._starting
+    dlg.reject()
     assert session.restores == 1

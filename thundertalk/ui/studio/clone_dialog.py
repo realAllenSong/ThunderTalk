@@ -206,9 +206,10 @@ class CloneDialog(QDialog):
             try:
                 session = mute_system_audio()
             except Exception as exc:
-                self._starting = False
-                self._show_error(t("overlay.audio_unavailable"))
+                # Muting is a courtesy; it must never block recording.
                 print(f"[Audio] Studio speaker mute startup failed: {exc}")
+                self._ducking_session = None
+                self._start_capture(None)
                 return
             self._ducking_session = session
             session.ready.add_done_callback(lambda _future: self.audio_ready.emit(session))
@@ -220,8 +221,11 @@ class CloneDialog(QDialog):
             return
         try:
             if session is not None:
-                session.ready.result()
-                session.microphone_transition("open")
+                try:
+                    session.ready.result()
+                    session.microphone_transition("open")
+                except Exception as exc:
+                    session.diagnostic("mute_unconfirmed_continue", error=type(exc).__name__)
             self._recorder = AudioRecorder(sample_rate=SR)
             self._recorder.start(self._mic)
         except Exception as exc:                      # no input device, permission, …
@@ -242,16 +246,13 @@ class CloneDialog(QDialog):
         session, checked = payload
         if not self._starting or session is not self._ducking_session:
             return
-        try:
-            if checked is not None:
+        if checked is not None:
+            try:
                 checked.result()
-            self._recorder.discard_pending()
-        except Exception as exc:
-            self._stop_recording(discard=True)
-            self._show_error(t("overlay.audio_unavailable"))
-            if session is not None:
-                session.diagnostic("capture_check_failed", error=type(exc).__name__)
-            return
+            except Exception as exc:
+                if session is not None:
+                    session.diagnostic("capture_check_failed_continue", error=type(exc).__name__)
+        self._recorder.discard_pending()
         self._starting = False
         if session is not None:
             session.diagnostic("capture_started", recorder="studio")
