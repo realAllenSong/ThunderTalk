@@ -58,6 +58,8 @@ def load_model():
         if _MODEL is None:
             from mlx_audio.stt.utils import load_model as _load
 
+            from thundertalk.core import speech
+            speech.release_gpu()          # an idle Studio voice model makes room
             path = resolve_model_path()
             print(f"[Diarize] Loading MOSS-Transcribe-Diarize from {path}…")
             t0 = time.monotonic()

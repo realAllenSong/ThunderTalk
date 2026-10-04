@@ -20,10 +20,12 @@ used the same way with its transcript.
 
 from __future__ import annotations
 
+import hashlib
 import json
 import logging
 import re
 import threading
+from contextlib import contextmanager
 from dataclasses import dataclass
 from pathlib import Path
 from typing import Optional
@@ -132,6 +134,7 @@ class VoxCPM2Backend(TtsBackend):
         self.cache_dir = Path(cache_dir) if cache_dir is not None else _default_cache_dir()
         self._model = None
         self._refs: dict[str, tuple[np.ndarray, str]] = {}   # slug → (audio48, text)
+        self._clone_refs: dict[str, np.ndarray] = {}          # sha1 of a clone prompt → audio48
         self._lock = threading.Lock()
 
     # ── contract ─────────────────────────────────────────────────────────
@@ -156,12 +159,18 @@ class VoxCPM2Backend(TtsBackend):
         from thundertalk.core.tts import TtsModelMissing
         if not self.is_ready():
             raise TtsModelMissing(self.repo)
+        # Python imports are CPU work: keep them outside GPU_LOCK so dictation
+        # isn't held up behind them.
+        from mlx_audio.tts.models.voxcpm2 import voxcpm2 as arch
+        from mlx_audio.tts.utils import load_model
+        from thundertalk.core.models import hf_snapshot_dir
         with self._lock, GPU_LOCK:
             if self._model is None:
-                from mlx_audio.tts.utils import load_model
-                from thundertalk.core.models import hf_snapshot_dir
                 snap = hf_snapshot_dir(self.repo)
-                self._model = load_model(str(snap) if snap else self.repo)
+                with _fast_tokenizer_hook(arch.Model):
+                    model = load_model(str(snap) if snap else self.repo)
+                _cache_encodes(model)
+                self._model = model
 
     def unload(self) -> None:
         with self._lock:
@@ -175,22 +184,40 @@ class VoxCPM2Backend(TtsBackend):
     def generate(self, text: str, voice, language: str, *, seed: int = 0,
                  speed: float = 1.0, context: Optional[dict] = None) -> np.ndarray:
         self.load()
-        ctx = context if context is not None else {}
-        if isinstance(voice, str):
-            ref, ref_text = self._preset_ref(voice, ctx)
-        else:                                    # ClonePrompt (24 kHz)
-            ref, ref_text = self._clone_ref(voice, ctx)
+        ref, ref_text = self._reference(voice, context if context is not None else {})
         return self._run(text, seed, ref_audio=ref, prompt_audio=ref, prompt_text=ref_text)
 
+    def warm_up(self, voice, language: str) -> None:
+        """Prepare and VAE-encode ``voice``'s reference (cached for later
+        requests) and run a few decoding steps so every kernel is built."""
+        self.load()
+        ref, ref_text = self._reference(voice, {})
+        self._run("你好。" if language == "chinese" else "Hello.", 0, max_tokens=6,
+                  ref_audio=ref, prompt_audio=ref, prompt_text=ref_text)
+
     # ── references ───────────────────────────────────────────────────────
+
+    def _reference(self, voice, ctx: dict) -> tuple[np.ndarray, str]:
+        if isinstance(voice, str):
+            return self._preset_ref(voice, ctx)
+        return self._clone_ref(voice, ctx)          # ClonePrompt (24 kHz)
 
     def _clone_ref(self, prompt, ctx: dict) -> tuple[np.ndarray, str]:
         held = ctx.get(_CTX_REF)
         if held and held[0] is prompt:
             return held[1], held[2]
-        from thundertalk.core import audio_io
-        from thundertalk.core.tts import SR as CLONE_SR
-        a = audio_io.resample(np.asarray(prompt.audio, np.float32).reshape(-1), CLONE_SR, SR)
+        # Keyed by content: the Speak tab builds a new ClonePrompt per request,
+        # and the same 48 kHz array lets the encoded reference be reused.
+        x = np.ascontiguousarray(np.asarray(prompt.audio, np.float32).reshape(-1))
+        key = hashlib.sha1(x.tobytes()).hexdigest()
+        a = self._clone_refs.get(key)
+        if a is None:
+            from thundertalk.core import audio_io
+            from thundertalk.core.tts import SR as CLONE_SR
+            a = audio_io.resample(x, CLONE_SR, SR)
+            self._clone_refs[key] = a
+            while len(self._clone_refs) > 4:
+                self._clone_refs.pop(next(iter(self._clone_refs)))
         ctx[_CTX_REF] = (prompt, a, prompt.text)
         return a, prompt.text
 
@@ -291,9 +318,9 @@ class VoxCPM2Backend(TtsBackend):
 
     # ── model call ───────────────────────────────────────────────────────
 
-    def _run(self, text: str, seed: int, **kw) -> np.ndarray:
+    def _run(self, text: str, seed: int, max_tokens: Optional[int] = None, **kw) -> np.ndarray:
         prompt_text = kw.get("prompt_text") or ""
-        cap = int(_PATCHES_PER_S * 3.0 * _expected_s(text)) + 25
+        cap = max_tokens or int(_PATCHES_PER_S * 3.0 * _expected_s(text)) + 25
         with GPU_LOCK:
             try:
                 import mlx.core as mx
@@ -305,6 +332,87 @@ class VoxCPM2Backend(TtsBackend):
             parts = [np.asarray(r.audio, dtype=np.float32).reshape(-1)
                      for r in self._model.generate(text=text, max_tokens=min(cap, 2000), **kw)]
         return np.concatenate(parts) if parts else np.zeros(0, np.float32)
+
+
+class _FastTokenizer:
+    """The two tokenizer calls VoxCPM2 makes, on the Rust ``tokenizers``
+    library directly. mlx-audio loads it through transformers'
+    ``AutoTokenizer``, whose imports alone cost 4–5 s on an idle M3 Max and
+    far more on a busy machine. Configured the way transformers 5 builds
+    ``LlamaTokenizer`` (no normalizer, Metaspace with prepend "always", the
+    added tokens of tokenizer_config.json): the same tokens on ordinary text."""
+
+    def __init__(self, path: Path) -> None:
+        from tokenizers import AddedToken, Tokenizer, normalizers, pre_tokenizers
+        cfg = json.loads((path / "tokenizer_config.json").read_text("utf-8"))
+        if cfg.get("tokenizer_class") not in ("LlamaTokenizer", "LlamaTokenizerFast"):
+            raise ValueError(f"unexpected tokenizer {cfg.get('tokenizer_class')}")
+        tk = Tokenizer.from_file(str(path / "tokenizer.json"))
+        tk.normalizer = normalizers.Sequence([])
+        tk.pre_tokenizer = pre_tokenizers.Metaspace(replacement="▁", prepend_scheme="always", split=False)
+        added = sorted(cfg.get("added_tokens_decoder", {}).items(), key=lambda kv: int(kv[0]))
+        tk.add_special_tokens([AddedToken(v["content"], single_word=bool(v.get("single_word")),
+                                          lstrip=bool(v.get("lstrip")), rstrip=bool(v.get("rstrip")),
+                                          normalized=False, special=True) for _k, v in added])
+        unk = cfg.get("unk_token") or "<unk>"
+        self.unk_token_id = tk.token_to_id(unk["content"] if isinstance(unk, dict) else unk) or 0
+        self._tk = tk
+
+    def tokenize(self, text: str) -> list[str]:
+        return self._tk.encode(text, add_special_tokens=False).tokens
+
+    def convert_tokens_to_ids(self, tokens: list[str]) -> list[int]:
+        ids = (self._tk.token_to_id(t) for t in tokens)
+        return [self.unk_token_id if i is None else i for i in ids]
+
+
+@contextmanager
+def _fast_tokenizer_hook(model_cls):
+    """Give the model a ``_FastTokenizer`` while mlx-audio loads it; mlx-audio's
+    own hook (transformers) still runs if that fails."""
+    orig = model_cls.__dict__.get("post_load_hook")
+    if orig is None:
+        yield
+        return
+
+    def hook(cls, model, model_path):
+        try:
+            model.tokenizer = _FastTokenizer(Path(model_path))
+            return model
+        except Exception:
+            log.warning("VoxCPM2: fast tokenizer unavailable, using transformers", exc_info=True)
+            return orig.__func__(cls, model, model_path)
+
+    model_cls.post_load_hook = classmethod(hook)
+    try:
+        yield
+    finally:
+        model_cls.post_load_hook = orig
+
+
+def _cache_encodes(model, keep: int = 8) -> None:
+    """Remember the VAE encoding of each reference clip. mlx-audio re-encodes
+    the reference twice on every call (as ``ref_audio`` and ``prompt_audio``),
+    ~0.2–1.5 s per piece; a voice's clip never changes while the model is loaded."""
+    orig = model._encode_wav
+    cache: dict[tuple, object] = {}
+
+    def encode(audio_input, padding_mode: str = "right", trim_silence_vad: bool = False):
+        if not isinstance(audio_input, np.ndarray):
+            return orig(audio_input, padding_mode=padding_mode, trim_silence_vad=trim_silence_vad)
+        a = np.ascontiguousarray(audio_input, dtype=np.float32)
+        key = (hashlib.sha1(a.tobytes()).hexdigest(), a.shape, padding_mode, trim_silence_vad)
+        feat = cache.pop(key, None)
+        if feat is None:
+            import mlx.core as mx
+            feat = orig(a, padding_mode=padding_mode, trim_silence_vad=trim_silence_vad)
+            mx.eval(feat)
+        cache[key] = feat                       # most recently used last
+        while len(cache) > keep:
+            cache.pop(next(iter(cache)))
+        return feat
+
+    model._encode_wav = encode
 
 
 def _rms(a: np.ndarray) -> float:

@@ -139,6 +139,8 @@ class TranslationEngine:
         from transformers import AutoProcessor, SeamlessM4Tv2Model
 
         self.unload()
+        from thundertalk.core import speech
+        speech.release_gpu()              # an idle Studio voice model makes room
 
         if model_dir_or_repo.startswith("hf://"):
             pretrained = model_dir_or_repo[len("hf://"):]

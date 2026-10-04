@@ -17,6 +17,7 @@ from __future__ import annotations
 import math
 import threading
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Callable, Optional, Union
 
@@ -173,42 +174,164 @@ def _download_archive(d: Download, cb, cancel) -> None:
 
 # ── engine ───────────────────────────────────────────────────────────────
 
+def voice_key(voice: VoiceSel) -> str:
+    """A stable key for a voice: its id, or a hash of a clone prompt's audio
+    (the Speak tab builds a fresh ``ClonePrompt`` object for every request)."""
+    if isinstance(voice, ClonePrompt):
+        import hashlib
+        a = np.ascontiguousarray(np.asarray(voice.audio, dtype=np.float32).reshape(-1))
+        return "clone:" + hashlib.sha1(a.tobytes()).hexdigest()[:16] + ":" + voice.text
+    return voice
+
+
 class SpeechEngine:
     """Runs the shared pipeline on a backend. Keeps at most one GPU backend
-    loaded at a time (each holds several GB)."""
+    loaded at a time (each holds several GB).
+
+    A GPU backend is loaded, warmed up and used under one re-entrant lock, so a
+    second caller (Generate clicked while the Speak tab is still preloading)
+    waits for the load already in flight instead of starting another, a
+    preload of another engine never swaps a model out mid-synthesis, and two
+    GPU models are never in memory together."""
 
     def __init__(self) -> None:
         self._loaded: set[str] = set()
+        self._swap = threading.RLock()         # held while a GPU backend is loaded or in use
+        self._mu = threading.Lock()            # guards the bookkeeping below
+        self._loading: set[str] = set()
+        self._warm: set[tuple[str, str]] = set()   # (backend id, voice key) already warmed up
+        self._active = 0                       # synthesize/preload calls running
 
     def is_available(self, voice: VoiceSel, clone_backend: Optional[str] = None) -> bool:
         return backend(backend_id_for(voice, clone_backend)).is_ready()
 
+    def is_loaded(self, bid: str) -> bool:
+        with self._mu:
+            return bid in self._loaded
+
+    def is_loading(self, bid: Optional[str] = None) -> bool:
+        with self._mu:
+            return bool(self._loading) if bid is None else bid in self._loading
+
+    def is_warm(self, bid: str, voice: VoiceSel) -> bool:
+        with self._mu:
+            return bid in self._loaded and (bid, voice_key(voice)) in self._warm
+
+    def is_busy(self) -> bool:
+        """A load, warm-up or synthesis is running."""
+        with self._mu:
+            return self._active > 0 or bool(self._loading)
+
+    def _forget(self, bid: str) -> None:
+        with self._mu:
+            self._loaded.discard(bid)
+            self._warm = {k for k in self._warm if k[0] != bid}
+
     def unload(self) -> None:
         for bid in list(self._loaded):
             backend(bid).unload()
-        self._loaded.clear()
+            self._forget(bid)
         try:
             import mlx.core as mx
             mx.clear_cache()
         except Exception:
             pass
 
-    def _ensure(self, bid: str) -> TtsBackend:
+    def release_gpu(self) -> bool:
+        """Free the GPU voice model so another big model (MOSS, a dictation
+        model, the translator) can load. Never waits: returns False and keeps
+        it when it is being loaded or used."""
+        if not self._swap.acquire(blocking=False):
+            return False
+        try:
+            gpu = [b for b in list(self._loaded) if backend(b).info.needs_gpu]
+            for bid in gpu:
+                backend(bid).unload()
+                self._forget(bid)
+        finally:
+            self._swap.release()
+        if gpu:
+            try:
+                import mlx.core as mx
+                mx.clear_cache()
+            except Exception:
+                pass
+        return True
+
+    @contextmanager
+    def _holding(self, b: TtsBackend, cancel: Optional[threading.Event]):
+        """Own the GPU slot for ``b``; ``cancel`` stops the wait for it."""
+        if not b.info.needs_gpu:
+            yield
+            return
+        while not self._swap.acquire(timeout=0.1):
+            if cancel is not None and cancel.is_set():
+                raise TtsCancelled()
+        try:
+            yield
+        finally:
+            self._swap.release()
+
+    @contextmanager
+    def _running(self):
+        with self._mu:
+            self._active += 1
+        try:
+            yield
+        finally:
+            with self._mu:
+                self._active -= 1
+
+    def load_backend(self, bid: str, cancel: Optional[threading.Event] = None) -> TtsBackend:
+        """Load ``bid`` (idempotent), attaching to a load already in flight.
+        ``cancel`` only stops the *wait*; a load that has started finishes."""
         b = backend(bid)
         if not b.is_ready():
             src = next((d.source for d in b.info.downloads), bid)
             raise TtsModelMissing(src)
-        if b.info.needs_gpu:
-            for other in list(self._loaded):
-                if other != bid and backend(other).info.needs_gpu:
-                    backend(other).unload()
-                    self._loaded.discard(other)
-            with GPU_LOCK:
-                b.load()
-        else:
-            b.load()
-        self._loaded.add(bid)
+        with self._mu:
+            self._loading.add(bid)
+        try:
+            with self._holding(b, cancel):
+                if b.info.needs_gpu:
+                    for other in list(self._loaded):
+                        if other != bid and backend(other).info.needs_gpu:
+                            backend(other).unload()
+                            self._forget(other)
+                    with GPU_LOCK:
+                        b.load()
+                else:
+                    b.load()
+                with self._mu:
+                    self._loaded.add(bid)
+        finally:
+            with self._mu:
+                self._loading.discard(bid)
         return b
+
+    _ensure = load_backend
+
+    def preload(self, bid: str, voice: Optional[VoiceSel] = None, language: str = "chinese",
+                warm: bool = True, cancel: Optional[threading.Event] = None) -> bool:
+        """Load ``bid`` ahead of a request and, with ``warm``, speak one short
+        word in ``voice`` so the first real request pays no first-call costs.
+        Returns False when cancelled; whatever finished loading stays loaded."""
+        cancelled = lambda: cancel is not None and cancel.is_set()      # noqa: E731
+        try:
+            with self._running(), self._holding(backend(bid), cancel):
+                b = self.load_backend(bid, cancel)
+                if not warm or voice is None or cancelled():
+                    return not cancelled()
+                key = (bid, voice_key(voice))
+                with self._mu:
+                    if key in self._warm:
+                        return True
+                b.warm_up(voice, language)          # backends take GPU_LOCK per call
+                with self._mu:
+                    self._warm.add(key)
+                return True
+        except TtsCancelled:
+            return False
 
     def _gen(self, b: TtsBackend, text: str, voice: VoiceSel, lang: str, seed: int, speed: float,
              ctx: dict) -> np.ndarray:
@@ -275,7 +398,17 @@ class SpeechEngine:
         if not text:
             raise ValueError("Nothing to say — the text is empty.")
         bid = backend_id_for(voice, clone_backend)
-        b = self._ensure(bid)
+        with self._running(), self._holding(backend(bid), cancel):
+            b = self.load_backend(bid, cancel)
+            res = self._synthesize(b, text, voice, language, speed, params, seed, progress, cancel, verifier)
+            with self._mu:
+                if bid in self._loaded:
+                    self._warm.add((bid, voice_key(voice)))
+            return res
+
+    def _synthesize(self, b: TtsBackend, text: str, voice: VoiceSel, language: Optional[str], speed: float,
+                    params: Optional[TtsParams], seed: Optional[int], progress: Optional[ProgressCB],
+                    cancel: Optional[threading.Event], verifier: Optional[Verifier]) -> SynthResult:
         if isinstance(voice, str) and voice not in {v.id for v in b.voices()}:
             raise ValueError(f"Unknown voice: {voice}")
         params = params or TtsParams()
@@ -321,6 +454,12 @@ def get_engine() -> SpeechEngine:
     if _ENGINE is None:
         _ENGINE = SpeechEngine()
     return _ENGINE
+
+
+def release_gpu() -> bool:
+    """Call before loading another big GPU model: frees the idle GPU voice
+    model, if any (see ``SpeechEngine.release_gpu``)."""
+    return _ENGINE.release_gpu() if _ENGINE is not None else True
 
 
 def cache_root() -> Path:

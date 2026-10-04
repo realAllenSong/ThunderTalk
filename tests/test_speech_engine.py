@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import threading
+import time
 
 import numpy as np
 import pytest
@@ -206,6 +207,169 @@ def test_fast_take_is_still_retried_without_a_verifier(fakes):
     b.spc = 0.24 * 0.6
     r = speech.SpeechEngine().synthesize("一句正常长度的测试句子，看看会不会重试。", "gpu1:a", language="chinese", seed=1)
     assert r.segments[0].attempts > 1
+
+
+# ── preload ──────────────────────────────────────────────────────────────
+
+class SlowBackend(FakeBackend):
+    """Loads for real once (counted), slowly; tracks how many GPU models are
+    in memory at the same time across every SlowBackend."""
+    resident: set = set()
+    peak = 0
+
+    def __init__(self, bid, load_s=0.3, gen_s=0.0, **kw):
+        super().__init__(bid, **kw)
+        self.load_s, self.gen_s = load_s, gen_s
+        self.real_loads = 0
+        self.warmups: list = []
+        self.model = False
+        self.started = threading.Event()
+
+    def load(self):
+        if self.model:
+            return
+        self.started.set()
+        time.sleep(self.load_s)
+        self.model = True
+        self.real_loads += 1
+        SlowBackend.resident.add(self.info.id)
+        SlowBackend.peak = max(SlowBackend.peak, len(SlowBackend.resident))
+
+    def unload(self):
+        self.model = False
+        SlowBackend.resident.discard(self.info.id)
+
+    def warm_up(self, voice, language):
+        self.warmups.append((voice, language))
+
+    def generate(self, text, voice, language, *, seed=0, speed=1.0, context=None):
+        assert self.model, "generate on an unloaded model"
+        time.sleep(self.gen_s)
+        return super().generate(text, voice, language, seed=seed, speed=speed, context=context)
+
+
+@pytest.fixture
+def slow(monkeypatch):
+    SlowBackend.resident, SlowBackend.peak = set(), 0
+    made = {"g1": SlowBackend("g1", gpu=True), "g2": SlowBackend("g2", gpu=True),
+            "c1": SlowBackend("c1", load_s=0.05, stochastic=False, clone=False)}
+    monkeypatch.setattr(speech, "BACKEND_ORDER", tuple(made))
+    monkeypatch.setattr(speech, "_BACKENDS", {})
+    monkeypatch.setattr(speech, "_make", lambda bid: made[bid])
+    return made
+
+
+def _bg(fn, *a, **kw):
+    out = {}
+
+    def run():
+        try:
+            out["result"] = fn(*a, **kw)
+        except BaseException as exc:       # noqa: BLE001 - asserted by the test
+            out["error"] = exc
+    th = threading.Thread(target=run)
+    th.start()
+    return th, out
+
+
+def test_preload_loads_and_warms_each_voice_once(slow):
+    e = speech.SpeechEngine()
+    assert e.preload("g1", "g1:a", "chinese") is True
+    assert e.is_loaded("g1") and e.is_warm("g1", "g1:a")
+    assert e.preload("g1", "g1:a", "chinese") is True
+    assert slow["g1"].real_loads == 1 and slow["g1"].warmups == [("g1:a", "chinese")]
+    e.unload()
+    assert not e.is_loaded("g1") and not e.is_warm("g1", "g1:a")
+
+
+def test_generate_while_preloading_attaches_to_the_load_in_flight(slow):
+    e = speech.SpeechEngine()
+    th, out = _bg(e.preload, "g1", "g1:a", "chinese")
+    assert slow["g1"].started.wait(2)
+    assert e.is_loading("g1") and e.is_busy()
+    r = e.synthesize("这是一句测试。", "g1:a", language="chinese", seed=1)
+    th.join(5)
+    assert r.duration > 0 and out.get("result") is True
+    assert slow["g1"].real_loads == 1                           # one load, shared
+
+
+def test_clone_prompts_are_warmed_by_content_not_object(slow):
+    e = speech.SpeechEngine()
+    a = _tone(3, 24000)
+    e.preload("g1", tts.ClonePrompt(a.copy(), "hi", "me"))
+    assert e.is_warm("g1", tts.ClonePrompt(a.copy(), "hi", "me"))
+    assert not e.is_warm("g1", tts.ClonePrompt(a.copy(), "other words", "me"))
+
+
+def test_cancel_while_waiting_for_another_load(slow):
+    e = speech.SpeechEngine()
+    slow["g1"].load_s = 0.6
+    th, _ = _bg(e.preload, "g1", "g1:a")
+    assert slow["g1"].started.wait(2)
+    cancel = threading.Event()
+    th2, out = _bg(e.preload, "g2", "g2:a", cancel=cancel)
+    time.sleep(0.1)
+    cancel.set()
+    th2.join(2)
+    assert out.get("result") is False and slow["g2"].real_loads == 0
+    th.join(5)
+    assert e.is_loaded("g1")
+
+
+def test_cancel_after_the_load_skips_the_warm_up_but_keeps_the_model(slow):
+    e = speech.SpeechEngine()
+    cancel = threading.Event()
+    th, out = _bg(e.preload, "g1", "g1:a", cancel=cancel)
+    assert slow["g1"].started.wait(2)
+    cancel.set()
+    th.join(5)
+    assert out.get("result") is False
+    assert e.is_loaded("g1") and not slow["g1"].warmups and not e.is_warm("g1", "g1:a")
+
+
+def test_preloading_another_engine_waits_for_a_running_synthesis(slow):
+    e = speech.SpeechEngine()
+    slow["g1"].gen_s = 0.15
+    th, out = _bg(e.synthesize, "这是第一句话，用来测试。这是第二句话，也用来测试。", "g1:a", language="chinese", seed=1)
+    assert slow["g1"].started.wait(2)
+    time.sleep(0.4)                                             # inside generation now
+    th2, out2 = _bg(e.preload, "g2", "g2:a")
+    th.join(10)
+    th2.join(10)
+    assert "error" not in out and "error" not in out2           # never generated on an unloaded model
+    assert e.is_loaded("g2") and not e.is_loaded("g1")
+    assert SlowBackend.peak == 1                                # never two GPU models at once
+
+
+def test_release_gpu_frees_the_idle_gpu_model_only(slow):
+    e = speech.SpeechEngine()
+    e.preload("g1", "g1:a")
+    e.preload("c1", "c1:a")
+    assert e.release_gpu() is True
+    assert not e.is_loaded("g1") and e.is_loaded("c1") and not slow["g1"].model
+
+
+def test_release_gpu_keeps_a_model_that_is_in_use(slow):
+    e = speech.SpeechEngine()
+    slow["g1"].gen_s = 0.3
+    th, _ = _bg(e.synthesize, "这是一句测试。", "g1:a", language="chinese", seed=1)
+    assert slow["g1"].started.wait(2)
+    time.sleep(0.4)
+    assert e.release_gpu() is False and slow["g1"].model
+    th.join(5)
+    assert e.release_gpu() is True and not slow["g1"].model
+
+
+def test_a_finished_synthesis_counts_as_warm(slow):
+    e = speech.SpeechEngine()
+    e.synthesize("这是一句测试。", "g1:a", language="chinese", seed=1)
+    assert e.is_warm("g1", "g1:a")
+    assert e.preload("g1", "g1:a") and not slow["g1"].warmups
+
+
+def test_module_release_gpu_without_an_engine(monkeypatch):
+    monkeypatch.setattr(speech, "_ENGINE", None)
+    assert speech.release_gpu() is True and speech._ENGINE is None
 
 
 def test_short_take_that_reads_back_wrong_is_retried(fakes):

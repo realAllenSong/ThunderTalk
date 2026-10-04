@@ -216,3 +216,95 @@ def test_shipped_reference_is_used_before_designing(tmp_path):
     ref = b._read_shipped(d)
     assert ref is not None and len(ref[0]) > vx.SR * 3 and ref[1].startswith("你好")
     assert not list(tmp_path.iterdir())                       # nothing designed or cached
+
+
+# ── faster loading ───────────────────────────────────────────────────────
+
+def test_warm_up_prepares_the_reference_with_a_few_steps(backend):
+    prompt = ClonePrompt(audio=np.zeros(CLONE_SR * 2, np.float32), text="这是我的声音。")
+    backend.warm_up(prompt, "chinese")
+    (c,) = backend._model.calls
+    assert c["max_tokens"] == 6 and c["prompt_text"] == "这是我的声音。" and c["ref_audio"] is c["prompt_audio"]
+
+
+def test_clone_reference_is_reused_across_requests_by_content(backend):
+    ref24 = (0.1 * np.sin(2 * np.pi * 180 * np.arange(CLONE_SR * 3) / CLONE_SR)).astype(np.float32)
+    backend.generate("第一句。", ClonePrompt(ref24.copy(), "这是我的声音。"), "chinese", context={})
+    backend.generate("第二句。", ClonePrompt(ref24.copy(), "这是我的声音。"), "chinese", context={})
+    c1, c2 = backend._model.calls
+    assert c1["ref_audio"] is c2["ref_audio"]                   # new prompt object, same clip
+
+
+class _EncModel:
+    def __init__(self):
+        self.encodes = 0
+
+    def _encode_wav(self, audio_input, padding_mode="right", trim_silence_vad=False):
+        self.encodes += 1
+        import mlx.core as mx
+        return mx.array(np.asarray(audio_input)[:8])
+
+
+def test_reference_encoding_is_cached_per_clip_and_padding():
+    pytest.importorskip("mlx.core")
+    m = _EncModel()
+    vx._cache_encodes(m, keep=2)
+    a = np.random.default_rng(0).standard_normal(4800).astype(np.float32)
+    for _ in range(3):
+        m._encode_wav(a, padding_mode="right")
+        m._encode_wav(a.copy(), padding_mode="left")
+    assert m.encodes == 2
+    m._encode_wav(a + 1, padding_mode="right")                  # a third clip evicts the oldest
+    m._encode_wav(a, padding_mode="right")
+    assert m.encodes == 4
+
+
+def test_tokenizer_hook_falls_back_to_mlx_audio_when_the_fast_one_fails(tmp_path):
+    seen = []
+
+    class M:
+        tokenizer = None
+
+        @classmethod
+        def post_load_hook(cls, model, model_path):
+            seen.append(model_path)
+            model.tokenizer = "slow"
+            return model
+
+    with vx._fast_tokenizer_hook(M):                           # tmp_path has no tokenizer files
+        out = M.post_load_hook(M(), tmp_path)
+    assert out.tokenizer == "slow" and seen == [tmp_path]
+    assert M.__dict__["post_load_hook"].__func__.__name__ == "post_load_hook"   # restored
+
+
+def _voxcpm2_snapshot():
+    from thundertalk.core.models import hf_snapshot_dir
+    snap = hf_snapshot_dir(vx.REPO)
+    return snap if snap and (snap / "tokenizer.json").exists() else None
+
+
+@pytest.mark.skipif(_voxcpm2_snapshot() is None, reason="VoxCPM2 tokenizer files not on this machine")
+def test_fast_tokenizer_matches_transformers():
+    transformers = pytest.importorskip("transformers")
+    if int(transformers.__version__.split(".")[0]) < 5:
+        pytest.skip("parity is defined against transformers 5 (the pinned version)")
+    import json
+    import random
+    snap = _voxcpm2_snapshot()
+    ref = transformers.AutoTokenizer.from_pretrained(str(snap))
+    fast = vx._FastTokenizer(snap)
+    from thundertalk.core.tts_backends.presets import load_presets
+    texts = ["你好，很高兴认识你。", "Hello, it's nice to meet you. ", " leading space", "  two  spaces", "",
+             "Mixed 中文 and English 123 456.78!", "(A young woman, warm voice)今天天气很好。", "time. Hello",
+             "e.g. Dr. Smith's 3rd—test… “quotes” ‘single’", "\n换行\t制表", "ÀÉÎõü ñ ß", "😀 emoji", "a\r\nb"]
+    texts += [p.text for p in load_presets()]
+    pool, rnd = "".join(texts), random.Random(0)
+    for _ in range(1500):
+        n = rnd.randint(1, 60)
+        s = rnd.randint(0, len(pool) - n)
+        texts.append(pool[s:s + n])
+    for s in texts:
+        toks = ref.tokenize(s)
+        assert fast.tokenize(s) == toks, s
+        assert fast.convert_tokens_to_ids(toks) == ref.convert_tokens_to_ids(toks), s
+    assert json.loads((snap / "tokenizer_config.json").read_text("utf-8"))["tokenizer_class"] == "LlamaTokenizer"
