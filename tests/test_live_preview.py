@@ -288,7 +288,7 @@ def test_preview_caps_qwen_mlx_generation(qapp, monkeypatch):
     audio = _speech(5)
     assert eng.recognize(audio).text == "hello"
     assert eng.recognize(audio, preview=True).text == "hello"
-    assert seen[0] == 4096 and 32 < seen[1] <= 100
+    assert seen[0] == 64 + 24 * 5 and 32 < seen[1] <= 100
 
 
 def test_decode_errors_never_raise(qapp):

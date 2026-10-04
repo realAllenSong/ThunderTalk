@@ -171,6 +171,11 @@ class AsrEngine:
         return self._active_backend
 
     @property
+    def uses_gpu(self) -> bool:
+        """MLX models decode on the shared Metal GPU (under GPU_LOCK)."""
+        return self._mlx_model is not None or self._moss_model is not None
+
+    @property
     def needs_reload_for_hotwords(self) -> bool:
         """True if the loaded model is sherpa-onnx (hotwords baked at load time)."""
         return self._recognizer is not None
@@ -391,7 +396,22 @@ class AsrEngine:
         """*preview*: a live-preview decode of a partial clip. Generation is
         capped by clip length (with the 4096-token limit, Qwen3 MLX once ran
         57 s on a 5 s partial clip); the result is never pasted, so a
-        truncated preview is harmless."""
+        truncated preview is harmless.
+
+        A final result that loops ("hands up，hands up，…" far beyond what the
+        clip can hold) is cut back at the loop; plausible text is never
+        touched (repetition.clean)."""
+        r = self._recognize_any(samples, sample_rate, preview=preview)
+        if not preview and r.text:
+            from thundertalk.core.repetition import clean
+            text, cut = clean(r.text, len(samples) / sample_rate)
+            if cut:
+                print(f"[ASR] Repetition loop cut back: {len(r.text)} → {len(text)} chars")
+                r.text = text
+        return r
+
+    def _recognize_any(self, samples: np.ndarray, sample_rate: int,
+                       *, preview: bool = False) -> AsrResult:
         if not self.is_loaded:
             raise RuntimeError("No model loaded")
         if len(samples) == 0:
@@ -495,8 +515,11 @@ class AsrEngine:
 
         duration_secs = len(samples) / sample_rate
         context = self._hotwords.replace("/", " ") if self._hotwords else ""
-        # Dictated speech stays well under 12 tokens/s; 32 covers the language tag.
-        max_new_tokens = int(32 + 12 * duration_secs) if preview else 4096
+        # Dictated speech stays well under 12 tokens/s; 32 covers the language
+        # tag. Final decodes get twice that, so a repetition loop ends within
+        # a second or two instead of running to the old 4096-token limit.
+        max_new_tokens = (int(32 + 12 * duration_secs) if preview
+                          else min(4096, int(64 + 24 * duration_secs)))
 
         lang_info = f", lang={self._language}" if self._language else ""
         print(f"[ASR-MLX] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s{lang_info})...")

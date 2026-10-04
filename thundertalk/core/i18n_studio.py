@@ -72,6 +72,10 @@ STUDIO: dict[str, dict[str, str]] = {
         "zh": "正在识别说话人——较长的录音需要一些时间…",
     },
     "studio.progress.eta": {"en": "about {t} left", "zh": "约剩 {t}"},
+    "studio.progress.yield": {
+        "en": "Paused while you dictate…",
+        "zh": "你正在听写，转写已暂停…",
+    },
     "studio.progress.part": {"en": "Transcribing part {i} of {n}…", "zh": "正在转写第 {i} / {n} 段…"},
     "studio.stats": {
         "en": "{dur} of audio in {took} — {x}× faster than real time",

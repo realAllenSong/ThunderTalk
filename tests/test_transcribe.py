@@ -244,7 +244,7 @@ def test_speaker_path_uses_moss(monkeypatch, wav_file):
     from thundertalk.core import diarize
     path, _ = wav_file
     monkeypatch.setattr(diarize, "load_model", lambda: object())
-    monkeypatch.setattr(diarize, "transcribe", lambda x: [
+    monkeypatch.setattr(diarize, "transcribe", lambda x, **kw: [
         SimpleNamespace(start=0.0, end=3.0, speaker="S01", text="hi"),
         SimpleNamespace(start=3.0, end=5.0, speaker="S02", text="hello")])
     t = transcribe.transcribe_file(path, None, speakers=True)

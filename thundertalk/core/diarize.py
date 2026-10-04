@@ -16,6 +16,7 @@ import re
 import threading
 import time
 from dataclasses import dataclass
+from typing import Callable, Optional
 
 MODEL_REPO = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
 MODEL_ID = "moss-transcribe-diarize-mlx"  # catalog id / local dir name
@@ -108,17 +109,48 @@ def dictation_max_tokens(seconds: float) -> int:
     return int(96 + 24 * max(seconds, 0.0))
 
 
-def transcribe(audio, max_tokens: int | None = None) -> list[DiarizedSegment]:
+def transcribe(audio, max_tokens: int | None = None,
+               between_tokens: Optional[Callable[[], None]] = None) -> list[DiarizedSegment]:
     """Transcribe *audio* with speaker labels.
 
     *audio* is either a path to a 16 kHz mono WAV file or a 1-D float32
     numpy array of 16 kHz samples (mlx-audio accepts both).
+
+    *between_tokens* runs after every generated token while generation is
+    suspended — long file jobs use it to pause for a dictation (one call
+    keeps speaker labels consistent across the whole file, which separate
+    windows would not). Greedy decoding, so the text is the same either way.
     """
     model = load_model()
+    budget = max_tokens or max_tokens_for(audio)
     with _MODEL_LOCK:
-        result = model.generate(audio, max_tokens=max_tokens or max_tokens_for(audio))
-    raw = result.text if hasattr(result, "text") else str(result)
+        if between_tokens is None or not hasattr(model, "stream_generate"):
+            result = model.generate(audio, max_tokens=budget)
+            raw = result.text if hasattr(result, "text") else str(result)
+        else:
+            tokens: list[int] = []
+            for token, _ in model.stream_generate(audio, max_tokens=budget):
+                tokens.append(int(token))
+                # A MOSS dictation may run while this one is paused (its
+                # generation has its own cache; GPU_LOCK keeps them apart).
+                _MODEL_LOCK.release()
+                try:
+                    between_tokens()
+                finally:
+                    _MODEL_LOCK.acquire()
+            raw = model._tokenizer.decode(tokens, skip_special_tokens=True).strip()
     return parse_transcript(raw)
+
+
+def synchronize() -> None:
+    """Finish the GPU work MOSS queued ahead (mlx-lm evaluates the next token
+    asynchronously) before another thread uses the GPU."""
+    try:
+        import mlx.core as mx
+        from mlx_lm.generate import generation_stream
+        mx.synchronize(generation_stream)
+    except Exception:
+        pass
 
 
 def _is_cjk(ch: str) -> bool:
