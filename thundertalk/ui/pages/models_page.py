@@ -38,6 +38,7 @@ from thundertalk.core.models import (
 )
 from thundertalk.ui import theme
 from thundertalk.ui.icons import paint_icon
+from thundertalk.ui.model_facts import facts_label, facts_text, language_tags
 from thundertalk.ui.widgets import PageHeader, SegmentedControl, Spinner, StatusDot, ThinProgress, column_scroll
 
 _FAMILY_COLORS = {
@@ -332,16 +333,29 @@ class VariantRow(QWidget):
         left.setContentsMargins(0, 0, 0, 0)
         name_row = QHBoxLayout()
         name_row.setSpacing(8)
-        vlabel = QLabel(info.variant)
+        vlabel = QLabel(f"{info.name} · {info.variant}")
         vlabel.setFont(theme.font(14, bold=True))
         vlabel.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY if compatible else theme.TEXT_MUTED}; background: transparent;")
         name_row.addWidget(vlabel)
-        if is_recommended and compatible:
-            name_row.addWidget(theme.badge(t("models.recommended"), "green", upper=True))
-        name_row.addWidget(theme.badge(_fmt_size(info.size_mb), "muted"))
+        self._status_badge = None
+        self._status_badge_key = "models.experimental" if info.experimental else "models.recommended"
+        if info.experimental or (is_recommended and compatible):
+            self._status_badge = theme.badge(t(self._status_badge_key),
+                                             "muted" if info.experimental else "green", upper=not info.experimental)
+            name_row.addWidget(self._status_badge)
         name_row.addStretch()
         left.addLayout(name_row)
+        self._facts = facts_label(facts_text(info.params, info.size_mb, info.runs_on_cpu, info.speed, cpu_gpu=info.backend == "seamless-torch"))
+        left.addWidget(self._facts)
+        tags = language_tags(info.languages, complete=info.languages_complete,
+                             hotwords=info.hotword_support, speakers=info.speaker_labels,
+                             clone=info.voice_cloning, timestamps=info.timestamps)
+        if info.family.startswith("Qwen3-ASR"):
+            tags.setToolTip(tags.toolTip() + "\n" + t("models.qwen_dialects"))
+        self._tags = tags
+        self._left = left
+        left.addWidget(tags)
 
         self._blurb = QLabel(_blurb(info))
         self._blurb.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
@@ -380,6 +394,22 @@ class VariantRow(QWidget):
 
         self._update_button(active_id)
         self._btn.clicked.connect(self._on_click)
+
+    def retranslate(self):
+        if self._status_badge is not None:
+            self._status_badge.setText(t(self._status_badge_key))
+        info = self.info
+        self._facts.setText(facts_text(info.params, info.size_mb, info.runs_on_cpu, info.speed, cpu_gpu=info.backend == "seamless-torch"))
+        tags = language_tags(info.languages, complete=info.languages_complete,
+                             hotwords=info.hotword_support, speakers=info.speaker_labels,
+                             clone=info.voice_cloning, timestamps=info.timestamps)
+        if info.family.startswith("Qwen3-ASR"):
+            tags.setToolTip(tags.toolTip() + "\n" + t("models.qwen_dialects"))
+        self._left.replaceWidget(self._tags, tags)
+        self._tags.hide()
+        self._tags.deleteLater()
+        self._tags = tags
+        self._blurb.setText(_blurb(info))
 
     # ── painting ──
     def enterEvent(self, ev) -> None:
@@ -544,32 +574,10 @@ class FamilyCard(theme.Card):
         name.setFont(theme.font_serif(20))
         name.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         top.addWidget(name)
-        top.addWidget(theme.Chip(family, theme.TEXT_SECONDARY, "transparent", theme.BORDER_DEFAULT))
         if family == _BEST_FAMILY and any(is_variant_compatible(v) for v in variants):
             top.addWidget(theme.badge(t("models.best_for_you"), "orange", upper=True))
         top.addStretch()
         layout.addLayout(top)
-
-        # Meta line: stars + chips
-        meta = QHBoxLayout()
-        meta.setSpacing(10)
-        stars = QLabel()
-        filled, empty = "★" * first.accuracy_stars, "★" * (5 - first.accuracy_stars)
-        stars.setText(
-            f"<span style='color:{theme.TEXT_PRIMARY}'>{filled}</span>"
-            f"<span style='color:#D5D2C9'>{empty}</span>")
-        stars.setStyleSheet("font-size: 13px; background: transparent;")
-        meta.addWidget(stars)
-        parts = [f"{first.language_count} {t('models.languages')}"]
-        if any(v.hotword_support for v in variants):
-            parts.append(t("models.hotwords_supported"))
-        n = len(variants)
-        parts.append(t("models.format_one") if n == 1 else t("models.formats").format(n=n))
-        meta_lbl = QLabel("  ·  ".join(parts))
-        meta_lbl.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
-        meta.addWidget(meta_lbl)
-        meta.addStretch()
-        layout.addLayout(meta)
 
         rec_id = get_recommended_id(family)
         for v in variants:
@@ -915,6 +923,10 @@ class ModelsPage(QWidget):
             w.cancel()
 
     def retranslate(self) -> None:
+        for card in self._family_cards.values():
+            for row in card._rows.values():
+                row.retranslate()
+        self._refresh_all_rows()
         self._header.set_title(t("models.title"))
         self._header.set_subtitle(t("models.subtitle"))
         if self._mode_card is not None:

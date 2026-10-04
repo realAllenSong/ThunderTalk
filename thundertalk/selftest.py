@@ -76,12 +76,31 @@ def _load_asr():
     return eng
 
 
-def check_asr(path: str) -> bool:
-    from thundertalk.core import transcribe
-    eng = _load_asr()
-    t = transcribe.transcribe_file(path, eng)
-    return _say(bool(t.segments), "asr", segments=len(t.segments), realtime=round(t.realtime_factor, 1),
-                text=t.to_text()[:200])
+def check_asr(path: str, model_id: str = "", model_dir: str = "") -> bool:
+    from thundertalk.core import audio_io, transcribe
+    from thundertalk.core.asr import AsrEngine
+    from thundertalk.core.models import BUILTIN_MODELS, get_model_path
+    if model_id:
+        info = next((m for m in BUILTIN_MODELS if m.id == model_id and m.backend != "seamless-torch"), None)
+        if info is None:
+            return _say(False, "asr", error=f"Unknown ASR model: {model_id}")
+        directory = model_dir or get_model_path(model_id)
+        if not directory:
+            return _say(False, "asr", error=f"Model not downloaded: {model_id}")
+        eng = AsrEngine()
+        eng.load_model(directory, info.family, info.backend)
+    else:
+        eng = _load_asr()
+    try:
+        direct = eng.recognize(audio_io.decode_audio(path, 16000), 16000)
+        transcript = transcribe.transcribe_file(path, eng)
+        return _say(bool(direct.text and transcript.segments), "asr", model=model_id,
+                    dictation=direct.text, inference_ms=direct.inference_ms,
+                    native_timestamps=len(getattr(direct, "token_timestamps", ())),
+                    segments=len(transcript.segments), realtime=round(transcript.realtime_factor, 2),
+                    text=transcript.to_text()[:400])
+    finally:
+        eng.unload()
 
 
 def check_moss(path: str) -> bool:
@@ -203,7 +222,9 @@ def run(argv: list[str]) -> int:
     ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
-    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts (default: all downloaded / the clone default)")
+    ap.add_argument("--model", default="", help="ASR model id from the Models page")
+    ap.add_argument("--model-dir", default="", help="Optional ASR model directory (read-only)")
+    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts | zipvoice (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
     ok = True
     try:
@@ -212,7 +233,7 @@ def run(argv: list[str]) -> int:
         if a.what in ("tts", "all"):
             ok &= check_tts(a.engine)
         if a.what == "asr":
-            ok &= check_asr(a.file)
+            ok &= check_asr(a.file, a.model, a.model_dir)
         if a.what == "moss":
             ok &= check_moss(a.file)
         if a.what == "runtime":

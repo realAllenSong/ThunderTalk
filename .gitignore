@@ -67,3 +67,6 @@ ThunderTalk-v*-macOS.zip
 
 # Vendored source that happens to live in "models/" folders (not model weights).
 !third_party/**/models/
+
+# Task V verification captures and isolated test data.
+/artifacts/models-v2/

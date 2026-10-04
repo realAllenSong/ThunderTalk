@@ -80,6 +80,7 @@ def _parse_sid(voice) -> int:
 class KokoroBackend(TtsBackend):
     stochastic = False              # same text + voice → same audio; retrying cannot help
     info = BackendInfo(
+        params="82M", language_codes=("zh", "en"), speed="kokoro",
         id="kokoro",
         name="Kokoro",
         blurb_en="Small and fast, runs on the CPU. Built-in Chinese and English voices; no cloning.",

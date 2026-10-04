@@ -26,6 +26,7 @@ from thundertalk.core.playback import Player
 from thundertalk.core.tts_backends.previews import load_preview, preview_path
 from thundertalk.core.voices import SavedVoice, VoiceLibrary
 from thundertalk.ui import theme
+from thundertalk.ui.model_facts import facts_text, language_tags
 from thundertalk.ui.studio.clone_dialog import CloneDialog
 from thundertalk.ui.studio.parts import PlayerBar, VoiceChip, fmt_seconds
 from thundertalk.ui.studio.workers import BackendDownloadWorker, PreloadWorker, SynthWorker, friendly_error
@@ -140,6 +141,10 @@ class SpeakTab(QWidget):
         vly.addLayout(erow2)
         self._engine_tag = _muted(size=12)
         vly.addWidget(self._engine_tag)
+        self._engine_tags_host = QWidget()
+        self._engine_tags_layout = QVBoxLayout(self._engine_tags_host)
+        self._engine_tags_layout.setContentsMargins(0, 0, 0, 0)
+        vly.addWidget(self._engine_tags_host)
         vly.addWidget(Rule())
         self._cap_builtin = _caption(t("studio.voices.builtin"))
         vly.addWidget(self._cap_builtin)
@@ -343,6 +348,8 @@ class SpeakTab(QWidget):
         self._lang.blockSignals(True)
         self._lang.clear()
         for code in tts.LANGUAGES:
+            if self._engine_id == "zipvoice" and code not in ("auto", "chinese", "english"):
+                continue
             self._lang.addItem(t(f"studio.lang.{code}"), code)
         self._lang.setCurrentIndex(max(0, self._lang.findData(cur)))
         self._lang.blockSignals(False)
@@ -365,7 +372,13 @@ class SpeakTab(QWidget):
         self._chips.clear()
         zh = i18n.LANG == "zh"
         b = speech.backend(self._engine_id)
-        self._engine_tag.setText(t(f"studio.engine.tag.{b.info.id}"))
+        info = b.info
+        self._engine_tag.setText(facts_text(info.params, info.size_mb, not info.needs_gpu,
+                                          info.speed, backbone=info.backbone_params))
+        while self._engine_tags_layout.count():
+            self._engine_tags_layout.takeAt(0).widget().deleteLater()
+        self._engine_tags_layout.addWidget(language_tags(info.language_codes, clone=info.supports_clone))
+        self._engine_tags_host.setToolTip(t(f"studio.engine.tag.{info.id}"))
         for v in b.voices():
             chip = VoiceChip(v.name, _voice_tag(v, zh), previewable=preview_path(v.id).is_file())
             chip.clicked.connect(lambda _=False, vid=v.id: self._select(vid))
@@ -619,6 +632,7 @@ class SpeakTab(QWidget):
         if not keep_mine:
             self._voice_id = self._default_for(speech.backend(bid))
             self._save_pref("studio_voice", self._voice_id)
+        self._rebuild_languages()
         self._rebuild_voices()
         self._refresh()
         self._schedule_preload()

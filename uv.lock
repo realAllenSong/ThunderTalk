@@ -2306,7 +2306,7 @@ requires-dist = [
     { name = "pyside6", specifier = ">=6.7" },
     { name = "python-multipart", marker = "extra == 'api'", specifier = ">=0.0.9" },
     { name = "sentencepiece", marker = "extra == 'translation'", specifier = ">=0.2" },
-    { name = "sherpa-onnx", specifier = ">=1.12" },
+    { name = "sherpa-onnx", specifier = ">=1.12.38" },
     { name = "sherpa-onnx-core", specifier = ">=1.12.38" },
     { name = "sounddevice", specifier = ">=0.5" },
     { name = "soundfile", marker = "extra == 'translation'", specifier = ">=0.12" },

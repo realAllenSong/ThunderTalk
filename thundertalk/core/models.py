@@ -17,9 +17,14 @@ import subprocess
 import threading
 import time
 from collections import OrderedDict
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Optional
+
+
+from thundertalk.core.model_metadata import (
+    MOSS_LANGUAGES, PARAKEET_LANGUAGES, QWEN_LANGUAGES, SEAMLESS_LANGUAGES,
+)
 
 
 @dataclass
@@ -33,12 +38,28 @@ class ModelInfo:
     language_count: int
     accuracy_stars: int
     download_url: str
+    params: str = ""  # empty when the publisher gives no count
+    languages: list[str] = field(default_factory=list)
+    speaker_labels: bool = False
+    timestamps: bool = False  # native timestamps; Studio span times are always available
+    voice_cloning: bool = False
+    languages_complete: bool = True
+    speed: str = "unmeasured"
+    experimental: bool = False
     notes: str = ""
     hotword_support: bool = False
     platform: str = "all"  # "apple-silicon" | "nvidia" | "all"
     # For hf:// snapshots stored under models/<id>: only fetch files matching
     # these globs (keeps us from pulling duplicate checkpoint formats).
     hf_allow: tuple = ()
+
+    @property
+    def runs_on_cpu(self) -> bool:
+        return not self.backend.startswith("mlx")
+
+    @property
+    def supports_chinese(self) -> bool:
+        return bool({"zh", "cmn", "cmn_Hant"}.intersection(self.languages))
 
 
 # ---------------------------------------------------------------------------
@@ -49,12 +70,15 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── Qwen3-ASR 0.6B ─────────────────────────────────────────────────
     ModelInfo(
         id="qwen3-asr-06b-mlx",
+        params="0.6B",
+        languages=list(QWEN_LANGUAGES),
+        speed="qwen_mlx",
         family="Qwen3-ASR",
         name="Qwen3-ASR-0.6B",
         variant="MLX fp16",
         backend="mlx",
         size_mb=1881,
-        language_count=52,
+        language_count=30,
         accuracy_stars=5,
         download_url="hf://Qwen/Qwen3-ASR-0.6B",
         hotword_support=True,
@@ -63,12 +87,15 @@ BUILTIN_MODELS: list[ModelInfo] = [
     ),
     ModelInfo(
         id="qwen3-asr-06b-int8",
+        params="0.6B",
+        languages=list(QWEN_LANGUAGES),
+        speed="qwen_cpu",
         family="Qwen3-ASR",
         name="Qwen3-ASR-0.6B",
         variant="ONNX int8",
         backend="onnx",
         size_mb=879,
-        language_count=52,
+        language_count=30,
         accuracy_stars=5,
         download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-qwen3-asr-0.6B-int8-2026-03-25.tar.bz2",
         hotword_support=True,
@@ -78,12 +105,15 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── Qwen3-ASR 1.7B ─────────────────────────────────────────────────
     ModelInfo(
         id="qwen3-asr-17b-mlx",
+        params="1.7B",
+        languages=list(QWEN_LANGUAGES),
+        speed="unmeasured",
         family="Qwen3-ASR-1.7B",
         name="Qwen3-ASR-1.7B",
         variant="MLX fp16",
         backend="mlx",
         size_mb=4703,
-        language_count=52,
+        language_count=30,
         accuracy_stars=5,
         download_url="hf://Qwen/Qwen3-ASR-1.7B",
         hotword_support=True,
@@ -93,6 +123,10 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── NVIDIA Parakeet-TDT 0.6B v3 (multilingual) ─────────────────────
     ModelInfo(
         id="parakeet-tdt-06b-v3-int8",
+        params="0.6B",
+        languages=list(PARAKEET_LANGUAGES),
+        speed="unmeasured",
+        timestamps=True,
         family="Parakeet-TDT-v3",
         name="Parakeet-TDT 0.6B v3",
         variant="ONNX int8",
@@ -108,6 +142,10 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── NVIDIA Parakeet-TDT 0.6B v2 (English) ──────────────────────────
     ModelInfo(
         id="parakeet-tdt-06b-v2-int8",
+        params="0.6B",
+        languages=list(("en",)),
+        speed="parakeet",
+        timestamps=True,
         family="Parakeet-TDT-v2",
         name="Parakeet-TDT 0.6B v2",
         variant="ONNX int8",
@@ -123,6 +161,9 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── SenseVoice-Small ────────────────────────────────────────────────
     ModelInfo(
         id="sensevoice-small-int8",
+        params="234M",
+        languages=list(("zh", "en", "ja", "ko", "yue")),
+        speed="fast",
         family="SenseVoice",
         name="SenseVoice-Small",
         variant="ONNX int8",
@@ -137,6 +178,12 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── MOSS-Transcribe-Diarize (Studio: multi-speaker transcription) ─────
     ModelInfo(
         id="moss-transcribe-diarize-mlx",
+        params="0.9B",
+        languages=list(MOSS_LANGUAGES),
+        speed="unmeasured",
+        speaker_labels=True,
+        timestamps=True,
+        languages_complete=False,
         family="MOSS-Transcribe-Diarize",
         name="MOSS-Transcribe-Diarize 0.9B",
         variant="MLX bf16",
@@ -149,15 +196,39 @@ BUILTIN_MODELS: list[ModelInfo] = [
         platform="apple-silicon",
         notes="Multi-speaker ASR · Diarization + timestamps in Studio · Metal GPU",
     ),
+    ModelInfo(
+        id="fireredasr2-ctc-int8", timestamps=True, experimental=True, family="FireRedASR2-CTC", name="FireRedASR2 CTC",
+        variant="ONNX int8", backend="onnx", size_mb=521,
+        params="", languages=['zh', 'en'], language_count=2,
+        accuracy_stars=0, hotword_support=False,
+        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25.tar.bz2",
+    ),
+    ModelInfo(
+        id="fireredasr2-aed-int8", experimental=True, family="FireRedASR2-AED", name="FireRedASR2 AED",
+        variant="ONNX int8", backend="onnx", size_mb=839,
+        params="", languages=['zh', 'en'], language_count=2,
+        accuracy_stars=0, hotword_support=False,
+        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26.tar.bz2",
+    ),
+    ModelInfo(
+        id="funasr-nano-int8", experimental=True, family="Fun-ASR-Nano", name="Fun-ASR-Nano-2512",
+        variant="ONNX int8", backend="onnx", size_mb=842,
+        params="0.8B", languages=['zh', 'en', 'ja'], language_count=3,
+        accuracy_stars=0, hotword_support=True,
+        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2",
+    ),
     # ── SeamlessM4T v2 (translation) ────────────────────────────────────
     ModelInfo(
         id="seamless-m4t-v2-large",
+        params="2.3B",
+        languages=list(SEAMLESS_LANGUAGES),
+        speed="unmeasured",
         family="SeamlessM4T-v2",
         name="SeamlessM4T v2 Large",
         variant="PyTorch fp16",
         backend="seamless-torch",
         size_mb=9258,
-        language_count=96,
+        language_count=len(SEAMLESS_LANGUAGES),
         accuracy_stars=5,
         download_url="hf://facebook/seamless-m4t-v2-large",
         hotword_support=False,

@@ -37,7 +37,14 @@ def test_memory_guard_falls_back_without_constructing_engine(monkeypatch, instal
 
 
 def test_only_one_extra_model_and_cleanup(monkeypatch, installed):
-    temporary = SimpleNamespace(load_model=lambda *a, **k: None, unload=lambda: None)
+    class TemporaryEngine:
+        def load_model(self, *a, **k):
+            pass
+
+        def unload(self):
+            pass
+
+    temporary = TemporaryEngine()
     constructions = []
     monkeypatch.setattr(asr, "AsrEngine", lambda: constructions.append(temporary) or temporary)
     monkeypatch.setattr(transcribe, "_has_model_headroom", lambda _: True)

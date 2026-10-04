@@ -41,6 +41,8 @@ def _third_party() -> Path:
 
 class IndexTTSBackend(TtsBackend):
     info = BackendInfo(
+        params="~0.8B", language_codes=("zh", "en", "ja", "es", "ar"), speed="realtime",
+        backbone_params=True,
         id="indextts",
         name="IndexTTS-2.5",
         blurb_en=("bilibili IndexTTS-2.5 (8-bit MLX). Very faithful voice cloning in Chinese, English, "

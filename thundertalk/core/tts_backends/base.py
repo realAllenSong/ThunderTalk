@@ -43,6 +43,10 @@ class BackendInfo:
     supports_presets: bool
     supports_clone: bool
     needs_gpu: bool             # True → MLX / Apple GPU (serialise with GPU_LOCK)
+    params: str = ""
+    language_codes: tuple[str, ...] = ()
+    speed: str = "unmeasured"
+    backbone_params: bool = False
     downloads: tuple[Download, ...] = field(default_factory=tuple)
 
     @property

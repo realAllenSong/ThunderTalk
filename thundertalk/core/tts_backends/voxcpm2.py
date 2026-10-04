@@ -33,6 +33,7 @@ from typing import Optional
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.model_metadata import VOXCPM_LANGUAGES
 from thundertalk.core.mlx_runtime import evaluate_model, serialized_mlx
 from thundertalk.core.tts_backends.base import (
     BackendInfo,
@@ -114,6 +115,7 @@ def _cache_complete(repo: str) -> bool:
 
 class VoxCPM2Backend(TtsBackend):
     info = BackendInfo(
+        params="2B", language_codes=VOXCPM_LANGUAGES, speed="realtime",
         id="voxcpm2",
         name="VoxCPM2",
         blurb_en=("OpenBMB VoxCPM2 (8-bit MLX, Apache-2.0). Studio-quality 48 kHz; "

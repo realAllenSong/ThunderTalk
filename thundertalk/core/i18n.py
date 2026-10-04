@@ -572,6 +572,9 @@ from thundertalk.core.i18n_studio import STUDIO as _STUDIO  # noqa: E402
 
 from thundertalk.core.i18n_cleanup import CLEANUP as _CLEANUP  # noqa: E402
 
+from thundertalk.core.i18n_models import MODELS as _MODELS  # noqa: E402
+
+_STRINGS.update(_MODELS)
 _STRINGS.update(_CLEANUP)
 _STRINGS.update(_EXTRA)
 _STRINGS.update(_STUDIO)

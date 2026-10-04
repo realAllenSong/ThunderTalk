@@ -145,8 +145,8 @@ EXTRA: dict[str, dict[str, str]] = {
     "models.big_download_go": {"en": "Download", "zh": "开始下载"},
 
     "model.blurb.qwen3-asr-06b-mlx": {
-        "en": "Runs on the Apple Silicon GPU. 52 languages, hotwords.",
-        "zh": "在 Apple 芯片的 GPU 上运行，支持 52 种语言和热词。",
+        "en": "30 languages and 22 Chinese dialects.",
+        "zh": "支持 30 种语言及 22 种中文方言。",
     },
     "model.blurb.qwen3-asr-06b-int8": {
         "en": "Runs on the CPU, at about the same speed as the GPU build.",
@@ -173,8 +173,8 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "多人对话转写并标注说话人（见工作室）。",
     },
     "model.blurb.seamless-m4t-v2-large": {
-        "en": "Speech translation across 96 languages. Required for Translation.",
-        "zh": "覆盖 96 种语言的语音翻译，翻译功能必需。",
+        "en": "100+ source speech languages; translation targets vary by language.",
+        "zh": "支持 100 多种源语音语言；翻译目标的支持范围有所不同。",
     },
 
     # ── Settings page ───────────────────────────────────────────────

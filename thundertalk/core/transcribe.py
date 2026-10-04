@@ -427,7 +427,9 @@ def selected_engine(engine, model_id: str, progress=None):
                     progress(-1, "load_model")
                 temporary.load_model(get_model_path(model_id), info.family, info.backend,
                                      memory_mode=getattr(engine, "_memory_mode", "high"))
-        yield temporary if temporary is not None else engine
+        from thundertalk.core.memory_policy import using
+        with using(temporary) if temporary is not None else nullcontext():
+            yield temporary if temporary is not None else engine
     finally:
         try:
             if temporary is not None:
