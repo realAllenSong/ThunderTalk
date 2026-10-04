@@ -67,7 +67,7 @@ def test_three_small_changes_can_share_page_when_they_fit():
 def test_many_changes_count_overflow_exactly():
     before = '。'.join(f'第{i}段用错词再继续说明' for i in range(60))
     pages = proofread_pages(before, before.replace('错词', '术语'), fits_two_lines)
-    assert sum(p.duration for p in pages) <= 30
+    assert sum(p.duration for p in pages) <= 25
     assert pages[-1].omitted > 0
     assert sum(p.changes for p in pages) + pages[-1].omitted == 60
     assert all(p.omitted == 0 for p in pages[:-1])
@@ -77,7 +77,7 @@ def test_many_changes_count_overflow_exactly():
                                          ('', '新' * 1000), ('旧' * 1000, '')])
 def test_very_long_single_change_elides_both_sides(before, after):
     page, = proofread_pages(before, after, fits_two_lines)
-    assert page.duration == 7 and page.changes == 1 and page.omitted == 0
+    assert page.duration == 6 and page.changes == 1 and page.omitted == 0
     assert fits_two_lines(display_text(page.spans))
     change = next(s for s in page.spans if s.kind != 'equal')
     for text in (change.original, change.corrected):
@@ -90,7 +90,7 @@ def test_no_changes_has_no_pages():
     assert proofread_pages('', '', fits_two_lines) == []
 
 
-@pytest.mark.parametrize('units,seconds', [(0, 3.5), (1, 3.7), (10, 5.5), (17, 6.9), (18, 7), (1000, 7)])
+@pytest.mark.parametrize('units,seconds', [(0, 3.0), (1, 3.17), (10, 4.7), (17, 5.89), (18, 6), (1000, 6)])
 def test_timing_clamps(units, seconds):
     assert page_duration(units) == pytest.approx(seconds)
 
@@ -105,6 +105,6 @@ def test_reading_units_are_mixed_language_aware():
 
 def test_timing_uses_full_changes_not_context_or_elided_text():
     page, = proofread_pages('a ' + '错' * 100 + ' z', 'a ' + '对' * 100 + ' z', fits_two_lines)
-    assert page.duration == 7
+    assert page.duration == 6
     page, = proofread_pages('context wrong words context', 'context correct words context', fits_two_lines)
-    assert page.duration == pytest.approx(3.7)
+    assert page.duration == pytest.approx(3.17)
