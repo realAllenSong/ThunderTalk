@@ -17,11 +17,13 @@
 from __future__ import annotations
 
 import json
+import platform
 import shutil
+import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -29,7 +31,7 @@ import numpy as np
 
 from thundertalk.core import audio_io, repetition
 from thundertalk.core.gpu_lock import GPU_LOCK
-from thundertalk.core.priority import DICTATION
+from thundertalk.core.priority import DICTATION, STUDIO
 
 SR = 16000
 ProgressCB = Callable[[int, str], None]
@@ -41,6 +43,33 @@ FAST_TARGET_S = 12.0
 FAST_MAX_SPAN_S = 18.0
 REDECODE_TARGET_S = 5.0
 REDECODE_MAX_S = 8.0
+
+# Reserve one slot for an alternate ASR model across simultaneous Studio jobs.
+# This is independent of GPU_LOCK: dictation can use Metal between spans.
+_EXTRA_MODEL_LOCK = threading.Lock()
+
+
+def _has_model_headroom(info) -> bool:
+    """Fail closed; leave RAM for inference buffers and the user's apps.
+
+    Use macOS's native gauge (including reclaimable pages) on Macs and
+    psutil elsewhere. Leave 4 GiB after a 3x model-size allowance.
+    """
+    import psutil
+    try:
+        mem = psutil.virtual_memory()
+        needed = 4 * 1024**3 + info.size_mb * 1024**2 * 3
+        if platform.system() == "Darwin":
+            out = subprocess.run(["memory_pressure"], capture_output=True,
+                                 text=True, timeout=2, check=True).stdout
+            for line in out.splitlines():
+                if "free percentage" in line:
+                    pct = int(line.rsplit(":", 1)[1].strip().rstrip("%"))
+                    return 40 <= pct <= 100 and mem.total * pct / 100 >= needed
+            return False
+        return mem.available >= needed and mem.available / mem.total >= 0.4
+    except (OSError, ValueError, subprocess.SubprocessError):
+        return False
 
 
 class TranscribeCancelled(Exception):
@@ -371,46 +400,52 @@ def active_model_id(engine) -> str:
 
 @contextmanager
 def selected_engine(engine, model_id: str, progress=None):
-    """Temporarily use one model, then restore dictation even on failure.
-
-    The shared lock covers unload, load, inference and restoration, so
-    dictation cannot run against a temporary model or partially loaded state.
-    """
-    from thundertalk.core import diarize
+    """Own an alternate engine for this job; never mutate dictation's engine."""
     from thundertalk.core.asr import AsrEngine
     from thundertalk.core.models import BUILTIN_MODELS, get_model_path, is_downloaded
-    with GPU_LOCK:
-        current = active_model_id(engine)
-        if model_id == current and getattr(engine, "is_loaded", False):
-            yield engine
-            return
-        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
-        if info is None or not is_downloaded(model_id):
-            raise RuntimeError("no_model")
-        restore = None
-        if getattr(engine, "is_loaded", False):
-            restore = (engine._model_dir, engine._model_family, engine.active_backend,
-                       getattr(engine, "_memory_mode", "high"))
-        temporary = engine or AsrEngine()
-        temporary.unload()
-        diarize.unload_model()
+    if model_id == active_model_id(engine) or model_id == "moss-transcribe-diarize-mlx":
+        # MOSS owns its model in diarize and releases Metal between tokens.
+        yield engine
+        return
+    info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+    if info is None or not is_downloaded(model_id):
+        raise RuntimeError("no_model")
+    slot = _EXTRA_MODEL_LOCK.acquire(blocking=False)
+    temporary = None
+    try:
+        reason = "model_busy" if not slot else "memory"
+        # Check immediately before loading, under Metal for GPU models.
+        with GPU_LOCK if info.backend.startswith("mlx") else nullcontext():
+            if not slot or not _has_model_headroom(info):
+                if not getattr(engine, "is_loaded", False):
+                    raise RuntimeError(reason)
+                if progress:
+                    progress(-1, reason + "_fallback")
+            else:
+                temporary = AsrEngine()
+                if progress:
+                    progress(-1, "load_model")
+                temporary.load_model(get_model_path(model_id), info.family, info.backend,
+                                     memory_mode=getattr(engine, "_memory_mode", "high"))
+        yield temporary if temporary is not None else engine
+    finally:
         try:
-            if progress:
-                progress(-1, "load_model")
-            temporary.load_model(get_model_path(model_id), info.family, info.backend,
-                                 memory_mode=getattr(engine, "_memory_mode", "high"))
-            yield temporary
+            if temporary is not None:
+                temporary.unload()
         finally:
-            temporary.unload()
-            diarize.unload_model()
-            if restore:
-                engine.load_model(*restore[:3], memory_mode=restore[3])
+            if slot:
+                _EXTRA_MODEL_LOCK.release()
 
 
 def transcribe_file(path: str, engine, speakers: bool = False,
                     progress: Optional[ProgressCB] = None,
                     cancel: Optional[threading.Event] = None,
                     model_id: str = "") -> Transcript:
+    with STUDIO.running():
+        return _transcribe_selected(path, engine, speakers, progress, cancel, model_id)
+
+
+def _transcribe_selected(path, engine, speakers, progress, cancel, model_id):
     if cancel is not None and cancel.is_set():
         raise TranscribeCancelled()
     selected = model_id or ("moss-transcribe-diarize-mlx" if speakers else "")
@@ -420,10 +455,14 @@ def transcribe_file(path: str, engine, speakers: bool = False,
         tr.model_id = selected
         return tr
     if selected:
+        DICTATION.wait_clear(cancel, on_wait=lambda: progress and progress(-1, "yield"))
+        if cancel is not None and cancel.is_set():
+            raise TranscribeCancelled()
         with selected_engine(engine, selected, progress) as chosen:
             tr = _transcribe_file(path, chosen, speakers, progress, cancel,
                                   moss=selected == "moss-transcribe-diarize-mlx")
-        tr.model_id = selected
+            tr.model_id = (selected if selected == "moss-transcribe-diarize-mlx"
+                           else active_model_id(chosen))
         return tr
     tr = _transcribe_file(path, engine, speakers, progress, cancel)
     tr.model_id = active_model_id(engine)
@@ -460,7 +499,8 @@ def _transcribe_file(
     if speakers or moss:
         from thundertalk.core import diarize
         _p(10, "load_moss")
-        diarize.load_model()
+        with GPU_LOCK:
+            diarize.load_model()
         _check()
         _p(25, "diarize")
 
@@ -518,17 +558,23 @@ def _transcribe_file(
 
 
 def _uses_gpu(engine) -> bool:
-    """MLX models share the Metal GPU and decode under GPU_LOCK. The
-    sherpa-onnx models run on the CPU; their recognizer is safe to call from
-    two threads at once, so a dictation never waits behind a file decode."""
+    """MLX shares Metal; CPU work uses only its own engine's state lock."""
     backend = getattr(engine, "active_backend", None)
     return backend is None or str(backend).startswith("mlx")
 
 
-def _recognize(engine, seg: np.ndarray) -> str:
+def _recognize(engine, seg: np.ndarray, before_decode=None) -> str:
     if _uses_gpu(engine):
-        with GPU_LOCK:
-            r = engine.recognize(seg, SR, cut_loops=False)
+        while True:
+            with GPU_LOCK:
+                # A dictation may have started while we waited for Metal.
+                if not DICTATION.active:
+                    r = engine.recognize(seg, SR, cut_loops=False)
+                    break
+            if before_decode is not None:
+                before_decode()
+            else:
+                DICTATION.wait_clear()
     else:
         r = engine.recognize(seg, SR, cut_loops=False)
     return (r.text or "").strip()
@@ -554,7 +600,7 @@ def decode_guarded(engine, seg: np.ndarray, before_decode: Optional[Callable[[],
     the pieces (maybe split across them), so the original is kept. Whatever
     still doesn't fit the audio is cut back at the loop."""
     dur = len(seg) / SR
-    text = _recognize(engine, seg)
+    text = _recognize(engine, seg, before_decode)
     if not text or not repetition.looks_degenerate(text, dur):
         return text
     subs = (segment_speech(seg, target=REDECODE_TARGET_S, max_len=REDECODE_MAX_S, min_gap=0.15)
@@ -564,7 +610,7 @@ def decode_guarded(engine, seg: np.ndarray, before_decode: Optional[Callable[[],
         for a, b in subs:
             if before_decode is not None:
                 before_decode()
-            piece = _recognize(engine, seg[int(a * SR): int(b * SR)])
+            piece = _recognize(engine, seg[int(a * SR): int(b * SR)], before_decode)
             piece, cut = repetition.clean(piece, b - a)
             if cut:
                 print(f"[Transcribe] {where}: piece {a:.1f}–{b:.1f}s still looped; cut back")

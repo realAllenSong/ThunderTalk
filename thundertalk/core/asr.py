@@ -15,7 +15,10 @@ os.environ.setdefault("HF_HUB_DISABLE_PROGRESS_BARS", "1")
 
 import platform
 import re
+import sys
+import threading
 import time
+from contextlib import contextmanager
 from dataclasses import dataclass
 from typing import Optional
 
@@ -137,6 +140,7 @@ class AsrResult:
 
 class AsrEngine:
     def __init__(self) -> None:
+        self._state_lock = threading.RLock()
         self._recognizer = None          # sherpa-onnx recognizer (ONNX backends)
         self._mlx_model = None           # pre-loaded mlx model object
         self._moss_model = None          # MOSS-Transcribe-Diarize (mlx-audio)
@@ -218,22 +222,54 @@ class AsrEngine:
             self._language = _LANG_MAP.get(language, language)
         print(f"[ASR] Language set to: {self._language or 'auto-detect'}")
 
+    @contextmanager
+    def _locked(self, *, gpu: bool = False):
+        """Keep model state stable; always take Metal before the state lock.
+
+        CPU calls use only this instance's lock. Recheck after acquiring it
+        because another thread may have changed the backend in the meantime.
+        """
+        while True:
+            metal = gpu or self.uses_gpu
+            if metal:
+                GPU_LOCK.acquire()
+            self._state_lock.acquire()
+            if metal or not self.uses_gpu:
+                break
+            self._state_lock.release()
+        try:
+            yield
+        finally:
+            self._state_lock.release()
+            if metal:
+                GPU_LOCK.release()
+
     def unload(self) -> None:
-        with GPU_LOCK:
+        with self._locked():
             self._unload()
 
     def _unload(self) -> None:
+        had_mlx = self._mlx_model is not None
+        mx = sys.modules.get("mlx.core") if had_mlx else None
+        if mx is not None:
+            mx.synchronize()
         self._recognizer = None
         self._mlx_model = None
         self._moss_model = None
         self._model_id = None
+        if mx is not None:
+            mx.clear_cache()
 
     # -- Loading ----------------------------------------------------------
 
     def load_model(self, model_dir: str, family: str, backend: str = "onnx",
                    memory_mode: str = "high") -> None:
-        with GPU_LOCK:
-            self._load_model(model_dir, family, backend, memory_mode)
+        with self._locked(gpu=backend.startswith("mlx")):
+            try:
+                self._load_model(model_dir, family, backend, memory_mode)
+            except BaseException:
+                self._unload()
+                raise
 
     def _load_model(
         self,
@@ -418,7 +454,8 @@ class AsrEngine:
         touched (repetition.clean). File transcription passes
         ``cut_loops=False``: it re-decodes a looping span in pieces instead,
         which recovers the words a cut would lose."""
-        r = self._recognize_any(samples, sample_rate, preview=preview)
+        with self._locked():
+            r = self._recognize_any(samples, sample_rate, preview=preview)
         if cut_loops and not preview and r.text:
             from thundertalk.core.repetition import clean
             text, cut = clean(r.text, len(samples) / sample_rate)
@@ -642,5 +679,3 @@ def _find(directory: str, keyword: str, ext: str) -> str:
     if os.path.isfile(exact):
         return exact
     raise FileNotFoundError(f"No {ext} file matching '{keyword}' in {directory}")
-
-

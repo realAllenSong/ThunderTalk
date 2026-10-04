@@ -85,7 +85,8 @@ def phase_text(msg: str) -> str:
     if "/" in msg:
         i, n = msg.split("/", 1)
         return t("studio.progress.part").format(i=i, n=n)
-    if msg in ("decode", "load_model", "load_moss", "diarize", "probe", "render", "yield"):
+    if msg in ("decode", "load_model", "load_moss", "diarize", "probe", "render", "yield",
+               "memory_fallback", "model_busy_fallback"):
         return t(f"studio.progress.{msg}")
     return ""
 
@@ -708,6 +709,8 @@ class TranscribeTab(QWidget):
             self._drop.set_link(self._url, title)
 
     def _on_progress(self, pct: int, msg: str) -> None:
+        if msg in ("memory_fallback", "model_busy_fallback"):
+            self.toast.emit(phase_text(msg), "warn")
         if msg.startswith("notes:"):
             self._phase = phase_text(msg)
             self._bar.set_value(pct)
@@ -844,6 +847,8 @@ class TranscribeTab(QWidget):
         self._bar.set_value(100 * i / max(1, len(self._run_rows)))
 
     def _on_item_progress(self, i: int, pct: int, msg: str) -> None:
+        if msg in ("memory_fallback", "model_busy_fallback"):
+            self.toast.emit(phase_text(msg), "warn")
         row = self._run_rows[i]
         if row.status_text() == t("studio.cancelling"):
             return

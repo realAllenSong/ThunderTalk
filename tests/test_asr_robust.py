@@ -57,7 +57,10 @@ class Engine:
 
 
 @pytest.fixture(autouse=True)
-def _clean_priority():
+def _clean_priority(monkeypatch):
+    # A lock regression must fail in seconds, not wait for production's
+    # ten-minute stale signal safety valve.
+    monkeypatch.setattr(DICTATION, "_stale_s", 2.0)
     yield
     while DICTATION.active:
         DICTATION.end()
@@ -259,12 +262,12 @@ def test_cancel_while_paused_for_dictation(tmp_path):
 
 
 def test_dictation_completes_during_a_long_studio_job(tmp_path):
-    """Studio decodes 30 spans at 0.2 s each on a CPU engine. A dictation
+    """Studio decodes 30 spans at 0.04 s each on a CPU engine. A dictation
     started mid-job gets its whole clip decoded right away (no lock shared
     with Studio), and Studio does no work until the dictation is done."""
     x = _talk([(9.0, 0.6)] * 30)
     said = "我想确认一下明天下午三点的会议，please bring the report."
-    eng = Engine(reply=lambda s: said if 9.0 < s < 9.5 else "studio", delay=0.2)
+    eng = Engine(reply=lambda s: said if 9.0 < s < 9.5 else "studio", delay=0.04)
     progress: list[tuple[float, str]] = []
     out: dict = {}
 
@@ -272,21 +275,22 @@ def test_dictation_completes_during_a_long_studio_job(tmp_path):
         out["tr"] = transcribe.transcribe_file(
             _wav(tmp_path, x), eng, progress=lambda p, m: progress.append((time.monotonic(), m)))
 
-    th = threading.Thread(target=job)
+    th = threading.Thread(target=job, daemon=True)
     th.start()
-    time.sleep(0.5)
+    time.sleep(0.1)
     DICTATION.begin()
     t_start = time.monotonic()
-    time.sleep(0.4)                                   # the user speaks
+    time.sleep(0.2)                                   # the user speaks
     t_stop = time.monotonic()
     clip = _burst(9.2)
     text = eng.recognize(clip).text                  # the AsrWorker call (CPU: no GPU_LOCK)
     latency = time.monotonic() - t_stop
     DICTATION.end()
-    th.join(30)
+    th.join(3)
+    assert not th.is_alive()
     assert text == said
     assert latency < 0.5                              # one decode, no queueing behind Studio
-    started_during = [m for t, m in progress if t_start + 0.25 < t < t_stop and "/" in m]
+    started_during = [m for t, m in progress if t_start + 0.08 < t < t_stop and "/" in m]
     assert started_during == []                       # Studio paused after its in-flight span
     assert "yield" in [m for _, m in progress]
     assert len(out["tr"].segments) == 30

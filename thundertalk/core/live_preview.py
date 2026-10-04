@@ -29,6 +29,7 @@ import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.priority import STUDIO
 from thundertalk.core.preview_guard import preview_is_looping
 
 SAMPLE_RATE = 16_000
@@ -193,7 +194,8 @@ class LivePreview(QObject):
         self._interval = self._base_interval
         self._window = self._max_window
         self.stats = {"ran": 0, "skipped_busy": 0, "skipped_lock": 0, "errors": 0,
-                      "decode_s": [], "latency_s": [], "commits": 0, "loops": 0}
+                      "decode_s": [], "uncontended_decode_s": [], "contended": 0,
+                      "latency_s": [], "commits": 0, "loops": 0}
         self._timer.start(self._first_tick)
 
     def stop(self) -> None:
@@ -242,9 +244,9 @@ class LivePreview(QObject):
             try:
                 if self._stale(gen):
                     return
-                n0 = len(self.stats["decode_s"])
+                n0 = len(self.stats["uncontended_decode_s"])
                 text = self._decode(gen)
-                slowest = max(self.stats["decode_s"][n0:], default=0.0)
+                slowest = max(self.stats["uncontended_decode_s"][n0:], default=0.0)
             finally:
                 self._lock.release()
             dt = time.perf_counter() - t_tick
@@ -288,12 +290,17 @@ class LivePreview(QObject):
         return join_text(self._committed_text, text)
 
     def _timed(self, samples: np.ndarray) -> str:
+        contended = STUDIO.active
         t0 = time.perf_counter()
         text = self._recognize(samples) or ""
         dt = time.perf_counter() - t0
         self.stats["ran"] += 1
         self.stats["decode_s"].append(dt)
-        self._adapt(dt, len(samples) / self._sr)
+        if contended:
+            self.stats["contended"] += 1
+        else:
+            self.stats["uncontended_decode_s"].append(dt)
+            self._adapt(dt, len(samples) / self._sr)
         if preview_is_looping(text, len(samples) / self._sr):
             self.stats["loops"] += 1
             print("[Preview] discarded looping/implausibly long window")

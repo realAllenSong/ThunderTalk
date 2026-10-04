@@ -655,7 +655,7 @@ def test_queue_to_a_folder_with_a_link_and_one_cancelled(studio, tmp_path, fake_
     gate = threading.Event()
 
     class GatedAsr(CountingAsr):
-        def recognize(self, x, sr):
+        def recognize(self, x, sr, **kw):
             assert gate.wait(10)
             return super().recognize(x, sr)
     tab.set_engine(GatedAsr(0.05))
@@ -1010,3 +1010,21 @@ def test_failed_queue_item_stays_and_can_retry(studio, tmp_path, monkeypatch):
     tab._go.click()
     assert wait_for(lambda: not tab.busy())
     assert tab._rows == [] and tab._transcript.to_text() == "Retry"
+
+
+@pytest.mark.parametrize("reason", ["memory_fallback", "model_busy_fallback"])
+def test_model_fallback_shows_clear_warning(studio, reason):
+    from thundertalk.core.i18n import t
+    from thundertalk.core import i18n_studio
+    from thundertalk.ui.studio.workers import error_code, friendly_error
+    tab = studio.transcribe_tab
+    tab._on_progress(-1, reason)
+    assert studio._toasts[-1] == ("warn", t("studio.progress." + reason))
+    tab.add_files(["fake.wav", "second.wav"])
+    tab._run_rows = list(tab._rows)
+    tab._on_item_progress(0, -1, reason)
+    assert studio._toasts[-1] == ("warn", t("studio.progress." + reason))
+    for key in ("studio.progress." + reason, "studio.err.model_busy"):
+        assert i18n_studio.STUDIO[key]["en"] and i18n_studio.STUDIO[key]["zh"]
+    assert error_code(RuntimeError("model_busy")) == "model_busy"
+    assert friendly_error("model_busy") == t("studio.err.model_busy")

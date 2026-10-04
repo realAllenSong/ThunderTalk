@@ -30,7 +30,7 @@ def error_code(exc: BaseException) -> str:
         return f"decode:{exc}"
     if isinstance(exc, tts.TtsModelMissing):
         return "tts_missing"
-    if isinstance(exc, RuntimeError) and str(exc) in ("no_model", "no_speech"):
+    if isinstance(exc, RuntimeError) and str(exc) in ("no_model", "no_speech", "memory", "model_busy"):
         return str(exc)
     if isinstance(exc, MemoryError):
         return "memory"
@@ -42,7 +42,7 @@ def friendly_error(code: str) -> str:
     from thundertalk.core.i18n import t
     if code.startswith("notes:"):
         return t(f"studio.notes.err.{code[6:]}")
-    if code in ("no_speech", "no_model", "tts_missing", "memory"):
+    if code in ("no_speech", "no_model", "tts_missing", "memory", "model_busy"):
         return t(f"studio.err.{code}")
     for kind in ("link", "burn"):
         if code.startswith(kind + ":"):

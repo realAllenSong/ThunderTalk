@@ -36,6 +36,10 @@ STUDIO: dict[str, dict[str, str]] = {
         "en": "Not enough memory for this. Close other apps, or try a shorter passage.",
         "zh": "内存不足。请关闭其他应用，或换一段短一点的内容。",
     },
+    "studio.err.model_busy": {
+        "en": "Another Studio job is using an extra model. Try again when it finishes.",
+        "zh": "另一项工作室任务正在使用额外模型，请等它完成后重试。",
+    },
     "studio.err.decode": {"en": "Couldn't read this file: {msg}", "zh": "无法读取这个文件：{msg}"},
     "studio.err.other": {"en": "Something went wrong: {msg}", "zh": "出错了：{msg}"},
 
@@ -69,6 +73,14 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.progress.decode": {"en": "Reading the audio…", "zh": "正在读取音频…"},
     "studio.progress.load_moss": {"en": "Loading the speaker model…", "zh": "正在加载说话人模型…"},
     "studio.progress.load_model": {"en": "Loading the selected model…", "zh": "正在加载所选模型…"},
+    "studio.progress.memory_fallback": {
+        "en": "Not enough free memory for another model. Using your dictation model instead.",
+        "zh": "可用内存不足，无法加载额外模型。本次改用你的听写模型。",
+    },
+    "studio.progress.model_busy_fallback": {
+        "en": "Another Studio job is using an extra model. Using your dictation model instead.",
+        "zh": "另一项工作室任务正在使用额外模型。本次改用你的听写模型。",
+    },
     "studio.progress.diarize": {
         "en": "Listening for speakers — long recordings take a while…",
         "zh": "正在识别说话人——较长的录音需要一些时间…",

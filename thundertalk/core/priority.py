@@ -17,6 +17,7 @@ from __future__ import annotations
 
 import threading
 import time
+from contextlib import contextmanager
 from typing import Callable, Optional
 
 
@@ -61,3 +62,33 @@ class DictationPriority:
 
 
 DICTATION = DictationPriority()
+
+
+class StudioActivity:
+    """Preview timing is not a model speed measurement during Studio work.
+
+    Include yielding/loading as well as decoding: the first preview can
+    still be waiting for an in-flight span on the same CPU engine.
+    """
+
+    def __init__(self) -> None:
+        self._lock = threading.Lock()
+        self._count = 0
+
+    @property
+    def active(self) -> bool:
+        with self._lock:
+            return self._count > 0
+
+    @contextmanager
+    def running(self):
+        with self._lock:
+            self._count += 1
+        try:
+            yield
+        finally:
+            with self._lock:
+                self._count -= 1
+
+
+STUDIO = StudioActivity()

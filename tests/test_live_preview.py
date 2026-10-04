@@ -272,6 +272,25 @@ def test_model_too_slow_turns_preview_off_for_the_recording(qapp, monkeypatch):
     p.stop()
 
 
+def test_slow_first_preview_during_studio_does_not_disable_preview(qapp, monkeypatch):
+    from thundertalk.core.priority import STUDIO
+    monkeypatch.setattr(lp, "MAX_DECODE_S", 0.01)
+    rec, asr = FakeRecorder(_speech(10)), FakeAsr(delay=0.03)
+    rec.feed(2.0)
+    p, _ = _preview(rec, asr)
+    p.start()
+    p._timer.stop()
+    with STUDIO.running():
+        p._run(p._gen)
+    assert p.stats["contended"] == 1 and not p._too_slow
+    assert p.stats["uncontended_decode_s"] == []
+    assert p.window_s == p._max_window
+    # The next uncontended decode still detects a genuinely slow model.
+    p._run(p._gen)
+    assert p._too_slow and len(p.stats["uncontended_decode_s"]) == 1
+    p.stop()
+
+
 def test_preview_caps_qwen_mlx_generation(qapp, monkeypatch):
     import sys
     import types
