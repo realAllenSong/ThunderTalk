@@ -238,6 +238,9 @@ class AsrEngine:
         self._model_family = family
         self._active_backend = backend
 
+        if backend in ("mlx", "mlx-moss"):
+            from thundertalk.core import speech
+            speech.release_gpu()          # an idle Studio voice model makes room
         if backend == "mlx":
             if not _check_mlx():
                 raise RuntimeError("MLX is not available on this system")

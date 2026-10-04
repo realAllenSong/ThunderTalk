@@ -72,6 +72,12 @@ class TtsBackend:
     def unload(self) -> None:
         pass
 
+    def warm_up(self, voice, language: str) -> None:
+        """Pay the first-call costs (lazy sub-models, kernel set-up, preparing
+        ``voice``'s reference) ahead of the first real request. The default
+        speaks one short word and throws it away."""
+        self.generate("你好。" if language == "chinese" else "Hello.", voice, language, seed=0, context={})
+
     def generate(self, text: str, voice, language: str, *, seed: int = 0,
                  speed: float = 1.0, context: Optional[dict] = None) -> np.ndarray:
         """Speak one short piece (a few sentences) and return mono float32 at

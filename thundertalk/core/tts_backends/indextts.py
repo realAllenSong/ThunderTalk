@@ -89,13 +89,13 @@ class IndexTTSBackend(TtsBackend):
         tp = str(_third_party())
         if tp not in sys.path:
             sys.path.insert(0, tp)
+        import os
+        from thundertalk.core.models import hf_snapshot_dir
+        # Point the port at the cached encoder so it never reaches the network.
+        os.environ.setdefault("INDEXTTS_W2V_BERT_DIR", str(hf_snapshot_dir(W2V_REPO)))
+        from mlx_indextts.generate_v25 import IndexTTSv25      # torch & co: CPU work, outside GPU_LOCK
         with self._lock, GPU_LOCK:
             if self._model is None:
-                import os
-                from thundertalk.core.models import hf_snapshot_dir
-                # Point the port at the cached encoder so it never reaches the network.
-                os.environ.setdefault("INDEXTTS_W2V_BERT_DIR", str(hf_snapshot_dir(W2V_REPO)))
-                from mlx_indextts.generate_v25 import IndexTTSv25
                 self._model = IndexTTSv25(model_dir=str(self._snapshot()), quantize_bits=8)
 
     def unload(self) -> None:
@@ -118,6 +118,21 @@ class IndexTTSBackend(TtsBackend):
                 text, str(ref), language=_LANG.get(language, "auto"), seed=int(seed) & 0x7FFFFFFF,
                 speed=float(speed), max_text_tokens_per_segment=120, interval_silence=200)
         return np.asarray(audio, dtype=np.float32).reshape(-1)
+
+    def warm_up(self, voice, language: str) -> None:
+        """The port loads W2V-BERT and CAMPPlus on its first request and caches
+        each reference's speaker features by path; do both now, each step in its
+        own GPU_LOCK hold so a dictation can slip in between, then speak one word."""
+        ref = self._reference_path(voice)
+        self.load()
+        m = self._model
+        if hasattr(m, "_ensure_pytorch_modules"):
+            with GPU_LOCK:
+                m._ensure_pytorch_modules()
+        if hasattr(m, "_process_reference_audio"):
+            with GPU_LOCK:
+                m._process_reference_audio(str(ref))
+        super().warm_up(voice, language)
 
     # ── references ───────────────────────────────────────────────────────
     def _reference_path(self, voice) -> Path:
