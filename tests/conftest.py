@@ -27,6 +27,21 @@ def _no_real_preload(monkeypatch):
     monkeypatch.setattr("thundertalk.ui.studio.speak_tab.AUTO_PRELOAD", False)
 
 
+@pytest.fixture(autouse=True)
+def _isolated_audio_log(monkeypatch):
+    """Fake audio sessions must not fill the user's real diagnostic log."""
+    from thundertalk.core import audio_diagnostics as diag
+    import io
+    import logging
+    logger = logging.Logger("audio-test")
+    stream = io.StringIO()
+    handler = logging.StreamHandler(stream)
+    logger.addHandler(handler)
+    monkeypatch.setattr(diag, "_logger", logger)
+    yield stream
+    handler.close()
+
+
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     """Point every persisted path (settings, history, models, i18n) at tmp_path

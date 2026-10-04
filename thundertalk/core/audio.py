@@ -225,6 +225,12 @@ class AudioRecorder:
 
             return samples
 
+    def discard_pending(self) -> None:
+        """Drop microphone startup samples until output silence is verified."""
+        # Atomic list replacement keeps the PortAudio callback lock-free.
+        self._chunks = []
+        self._current_rms = 0.0
+
     def snapshot(self) -> Optional[np.ndarray]:
         """Copy of the audio captured so far, without stopping (live preview).
 

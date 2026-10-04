@@ -1,0 +1,26 @@
+INITIAL {"apple": [38, false], "default_id": 113, "devices": {"113": {"channels": 2, "controls": {"mute:0": false, "volm:1": 0.375, "volm:2": 0.375}, "virtual_volume": 0.375}, "124": {"channels": 2, "controls": {}, "virtual_volume": null}, "76": {"channels": 2, "controls": {"mute:0": true, "volm:0": 0.0}, "virtual_volume": 0.0}, "88": {"channels": 1, "controls": {"mute:0": true, "volm:0": 0.0}, "virtual_volume": 0.0}, "98": {"channels": 2, "controls": {"mute:0": true, "volm:0": 0.0}, "virtual_volume": 0.0}}}
+cold_microphone BEFORE {"apple": [38, false], "default_id": 113, "devices": {"113": {"channels": 2, "controls": {"mute:0": false, "volm:1": 0.375, "volm:2": 0.375}, "virtual_volume": 0.375}, "124": {"channels": 2, "controls": {}, "virtual_volume": null}, "76": {"channels": 2, "controls": {"mute:0": true, "volm:0": 0.0}, "virtual_volume": 0.0}, "88": {"channels": 1, "controls": {"mute:0": true, "volm:0": 0.0}, "virtual_volume": 0.0}, "98": {"channels": 2, "controls": {"mute:0": true, "volm:0": 0.0}, "virtual_volume": 0.0}}}
+cold_microphone READY {"mute:0": true, "volm:1": 0.375, "volm:2": 0.375}
+cold_microphone CAPTURE {"mute:0": true, "volm:1": 0.375, "volm:2": 0.375}
+[Audio] User changed output controls; preserving their change
+Traceback (most recent call last):
+  File "$WORKTREE/tools/check_dictation_audio.py", line 100, in main
+    assert backend.write(uid, key, value)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+During handling of the above exception, another exception occurred:
+
+Traceback (most recent call last):
+  File "$WORKTREE/tools/check_dictation_audio.py", line 121, in <module>
+    main()
+  File "$WORKTREE/tools/check_dictation_audio.py", line 113, in main
+    assert backend.write(uid, key, value)
+           ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+AssertionError
+
+Cleanup continuation (summarized from the subsequent read/write/read tool result, not from the failed guard above):
+Before continuation: output 113 had returned to stereo volm:1/2=0.4375, mute:0=false, AppleScript [44,false].
+Restored original volm:1/2=0.375, mute:0=false, then read repeatedly.
+After continuation: output 113 volm:1/2=0.375, mute:0=false, virtual_volume=0.375, AppleScript [38,false].
+All other outputs matched INITIAL unchanged. Exact full-snapshot equality was asserted successfully.

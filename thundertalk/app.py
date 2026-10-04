@@ -32,6 +32,7 @@ from thundertalk.core.platform_utils import (
 )
 from thundertalk.core.system_audio import (
     mute_system_audio, recover_system_audio, shutdown_system_audio, stop_recording_and_restore,
+    audio_diagnostic,
 )
 from thundertalk.core.text_output import paste_text, save_frontmost_app
 from thundertalk.ui.main_window import MainWindow
@@ -294,6 +295,7 @@ class Pipeline(QObject):
 
     toggle_signal = Signal()
     audio_ready = Signal(object)
+    capture_ready = Signal(object)
     review_ready = Signal(str, str, str)    # original, translated, tgt_lang
     review_started = Signal(str, str)       # original, tgt_lang (popup loads now)
 
@@ -307,6 +309,7 @@ class Pipeline(QObject):
         self._starting = False
         self._stopping = False
         self._ducking_session = None
+        self._stopping_session = None
         # All in-flight QThread workers are kept alive in this list. Each
         # worker's `.finished` signal removes it. Single-reference patterns
         # (e.g. `self._worker = worker`) are unsafe because reassigning to a
@@ -325,6 +328,13 @@ class Pipeline(QObject):
 
     def toggle(self) -> None:
         self.toggle_signal.emit()
+
+    def stop_capture(self):
+        """Quit owns the token even while a delayed microphone tail is pending."""
+        session = self._ducking_session or self._stopping_session
+        self._ducking_session = self._stopping_session = None
+        self._starting = self._recording = False
+        return stop_recording_and_restore(self.recorder, session)
 
     def get_translator(self):
         """Return the TranslationEngine, creating it lazily on first call.
@@ -351,7 +361,6 @@ def main() -> None:
     app.setQuitOnLastWindowClosed(False)
     app.setApplicationName("ThunderTalk")
     recover_system_audio()
-    app.aboutToQuit.connect(shutdown_system_audio)
     import atexit
     atexit.register(shutdown_system_audio)
 
@@ -361,6 +370,21 @@ def main() -> None:
     settings = Settings()
     history = HistoryStore()
     pipe = Pipeline(settings)
+    def _shutdown_recording():
+        session = pipe._ducking_session or pipe._stopping_session
+        if session is not None:
+            session.microphone_transition("close")
+        from thundertalk.ui.studio.clone_dialog import CloneDialog
+        for widget in app.topLevelWidgets():
+            if isinstance(widget, CloneDialog):
+                widget.reject()  # close Studio input before publishing restores
+        try:
+            pipe.stop_capture()
+        except Exception as exc:
+            audio_diagnostic("quit_capture_failed", error=type(exc).__name__)
+        finally:
+            shutdown_system_audio()
+    app.aboutToQuit.connect(_shutdown_recording)
     overlay = VoiceOverlay()
     overlay.set_hotkey(settings.hotkey)
     from thundertalk.ui.review_overlay import ReviewOverlay
@@ -735,14 +759,20 @@ def main() -> None:
 
     @Slot()
     def on_toggle() -> None:
+        audio_diagnostic("hotkey", recording=pipe._recording, starting=pipe._starting,
+                         stopping=pipe._stopping)
         print(f"[Toggle] on_toggle called, _recording={pipe._recording}")
         if pipe._stopping:
+            audio_diagnostic("hotkey_skipped", reason="microphone_tail")
             return  # the previous microphone stream still owns its tail
         if pipe._starting:
+            audio_diagnostic("capture_cancelled", reason="hotkey_during_startup")
             pipe._starting = False
             session, pipe._ducking_session = pipe._ducking_session, None
-            if session is not None:
-                session.restore()
+            try:
+                stop_recording_and_restore(pipe.recorder, session)
+            except Exception as exc:
+                audio_diagnostic("cancel_capture_failed", error=type(exc).__name__)
             DICTATION.end()
             state.set_recording(st.REC_IDLE)
             overlay.hide_overlay()
@@ -757,6 +787,7 @@ def main() -> None:
             pipe._recording = False
             pipe._stopping = True
             session, pipe._ducking_session = pipe._ducking_session, None
+            pipe._stopping_session = session
 
             def _finalize_stop() -> None:
                 try:
@@ -769,6 +800,7 @@ def main() -> None:
                     return
                 finally:
                     pipe._stopping = False
+                    pipe._stopping_session = None
                 stop_ms = int((time.perf_counter() - t_stop) * 1000)
                 print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
 
@@ -838,6 +870,8 @@ def main() -> None:
         else:
             # ---- START recording ----
             if not pipe.asr.is_loaded:
+                audio_diagnostic("hotkey_skipped", reason="model_unavailable",
+                                 loading=state.model_status == st.MODEL_LOADING)
                 overlay.show_error(
                     t("status.loading") if state.model_status == st.MODEL_LOADING
                     else t("overlay.load_model")
@@ -847,6 +881,7 @@ def main() -> None:
             # which used to surface as a baffling "No speech detected".
             state.refresh_permissions()
             if state.mic_status in ("denied", "restricted"):
+                audio_diagnostic("hotkey_skipped", reason="microphone_denied")
                 overlay.show_error(t("overlay.mic_denied"))
                 return
             # Dismiss any leftover Review popup from a previous round
@@ -859,6 +894,7 @@ def main() -> None:
                 text_output.activity.start()
             # Show overlay immediately so user gets instant visual feedback
             pipe._starting = True
+            audio_diagnostic("recording_requested", ducking=bool(settings.get("mute_speakers")))
             DICTATION.begin()
             overlay.show_recording()
             app.processEvents()
@@ -880,31 +916,62 @@ def main() -> None:
 
     def _start_capture(session) -> None:
         if not pipe._starting or session is not pipe._ducking_session:
+            audio_diagnostic("capture_skipped", reason="stale_or_cancelled_ready")
             return  # cancelled startup or a completion from an older generation
         error_text = t("overlay.audio_unavailable")
         try:
             if session is not None:
                 session.ready.result()  # already done; never blocks the Qt thread
+                session.microphone_transition("open")
             error_text = t("overlay.mic_unavailable")
             mic = settings.microphone
+            audio_diagnostic("microphone_open")
             pipe.recorder.start(device=None if mic == "auto" else mic)
+            audio_diagnostic("microphone_opened")
             if not pipe.recorder.is_recording:
                 raise RuntimeError("microphone startup timed out")
         except Exception as exc:
-            if session is not None:
-                session.restore()
+            try:
+                stop_recording_and_restore(pipe.recorder, session)
+            except Exception as stop_exc:
+                audio_diagnostic("startup_cleanup_failed", error=type(stop_exc).__name__)
             pipe._ducking_session = None
             pipe._starting = False
             DICTATION.end()
             print(f"[Toggle] recording startup failed: {exc}")
             overlay.show_error(error_text)
             return
+        if session is not None:
+            checked = session.synchronize()
+            checked.add_done_callback(lambda future: pipe.capture_ready.emit((session, future)))
+        else:
+            _finish_capture((None, None))
+
+    def _finish_capture(payload) -> None:
+        session, checked = payload
+        if not pipe._starting or session is not pipe._ducking_session:
+            audio_diagnostic("capture_skipped", reason="stale_or_cancelled_check")
+            return
+        try:
+            if checked is not None:
+                checked.result()  # delivered by the worker after graph verification
+            pipe.recorder.discard_pending()
+        except Exception as exc:
+            pipe._starting = False
+            pipe._ducking_session = None
+            try:
+                stop_recording_and_restore(pipe.recorder, session)
+            except Exception as stop_exc:
+                audio_diagnostic("startup_cleanup_failed", error=type(stop_exc).__name__)
+            DICTATION.end()
+            state.set_recording(st.REC_IDLE)
+            overlay.show_error(t("overlay.audio_unavailable"))
+            audio_diagnostic("capture_check_failed", error=type(exc).__name__)
+            return
+        if session is not None:
+            session.diagnostic("capture_started")
         pipe._starting = False
         pipe._recording = True
-        # Bluetooth input activation can switch the output route after opening
-        # the microphone. Refresh immediately, then keep monitoring on the worker.
-        if session is not None:
-            session.refresh()
         state.set_recording(st.REC_RECORDING)
         live.reset()
         if preview_wanted(settings):
@@ -912,6 +979,7 @@ def main() -> None:
         print("[Toggle] Recording started")
 
     pipe.audio_ready.connect(_start_capture, Qt.QueuedConnection)
+    pipe.capture_ready.connect(_finish_capture, Qt.QueuedConnection)
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 

@@ -40,9 +40,11 @@ class MuteOnlyAudio(_DarwinAudio):
     def __init__(self, allowed_uid):
         super().__init__()
         self.allowed_uid = allowed_uid
+        self.original = self.controls(allowed_uid)
 
     def write(self, uid, key, value):
-        assert uid == self.allowed_uid and key.startswith("mute:"), "unexpected hardware mutation"
+        assert uid == self.allowed_uid and (key.startswith("mute:") or
+                                           value == self.original.get(key)), "unexpected hardware mutation"
         return super().write(uid, key, value)
 
     def apple_mute(self, muted):
