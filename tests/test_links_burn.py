@@ -165,7 +165,7 @@ class FakeAsr:
     is_loaded = True
     current_model = "Fake-ASR"
 
-    def recognize(self, x, sr):
+    def recognize(self, x, sr, **kw):
         from types import SimpleNamespace
         return SimpleNamespace(text="hello there")
 

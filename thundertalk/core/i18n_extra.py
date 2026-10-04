@@ -111,6 +111,7 @@ EXTRA: dict[str, dict[str, str]] = {
     "overlay.no_translator": {"en": "Translation model not loaded", "zh": "翻译模型尚未加载"},
     "overlay.press_to_stop": {"en": "{key} to finish", "zh": "按 {key} 结束"},
     "overlay.done": {"en": "Pasted", "zh": "已粘贴"},
+    "overlay.waiting_studio": {"en": "Waiting for Studio…", "zh": "正在等待工作室…"},
     "overlay.mic_denied": {
         "en": "Microphone access is off — see Home",
         "zh": "麦克风权限未开启，请查看主页",

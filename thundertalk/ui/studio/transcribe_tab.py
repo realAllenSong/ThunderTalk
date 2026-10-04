@@ -85,7 +85,7 @@ def phase_text(msg: str) -> str:
     if "/" in msg:
         i, n = msg.split("/", 1)
         return t("studio.progress.part").format(i=i, n=n)
-    if msg in ("decode", "load_model", "load_moss", "diarize", "probe", "render"):
+    if msg in ("decode", "load_model", "load_moss", "diarize", "probe", "render", "yield"):
         return t(f"studio.progress.{msg}")
     return ""
 
@@ -724,7 +724,7 @@ class TranscribeTab(QWidget):
             i, n = msg.split("/", 1)
             self._phase = phase_text(msg)
             self._note_part(int(i), int(n))
-        elif msg in ("decode", "load_model", "load_moss", "diarize"):
+        elif msg in ("decode", "load_model", "load_moss", "diarize", "yield"):
             self._phase = phase_text(msg)
         if msg in ("diarize", "load_model", "load_moss", "decode"):
             self._bar.set_indeterminate(True)

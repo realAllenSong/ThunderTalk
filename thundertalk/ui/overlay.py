@@ -160,6 +160,13 @@ class VoiceOverlay(QWidget):
         self._anim.start(320)
         self.update()
 
+    def show_waiting(self) -> None:
+        """Transcribing, but behind a Studio job; the whole clip is kept."""
+        if self._state != self._TRANSCRIBING:
+            return
+        self._text = t("overlay.waiting_studio").rstrip("…")
+        self.update()
+
     def show_cleanup(self) -> None:
         self.show_transcribing()
         self._text = t("cleanup.progress").rstrip("…")

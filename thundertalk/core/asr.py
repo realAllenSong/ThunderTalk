@@ -149,6 +149,7 @@ class AsrEngine:
         self._language: Optional[str] = None  # forced language (None = auto-detect)
         self._itn_enabled: bool = True   # Inverse Text Normalization
         self._speaker_labels: bool = False  # MOSS: keep S01:/S02: in dictation
+        self._max_new_tokens: int = 2048    # sherpa Qwen3 load-time generation limit
 
         print(f"[ASR] Platform: {_SYSTEM}/{_MACHINE}  "
               f"mlx=lazy  "
@@ -169,6 +170,11 @@ class AsrEngine:
     @property
     def active_backend(self) -> str:
         return self._active_backend
+
+    @property
+    def uses_gpu(self) -> bool:
+        """MLX models decode on the shared Metal GPU (under GPU_LOCK)."""
+        return self._mlx_model is not None or self._moss_model is not None
 
     @property
     def needs_reload_for_hotwords(self) -> bool:
@@ -378,6 +384,7 @@ class AsrEngine:
         else:
             max_total_len = 4096
             max_new_tokens = 2048
+        self._max_new_tokens = max_new_tokens
 
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
             encoder=encoder,
@@ -400,18 +407,28 @@ class AsrEngine:
     # -- Inference --------------------------------------------------------
 
     def recognize(self, samples: np.ndarray, sample_rate: int = 16000,
-                  *, preview: bool = False) -> AsrResult:
-        # Studio may temporarily replace this engine, including CPU models.
-        # Check readiness only after acquiring the same lock as model loading.
-        with GPU_LOCK:
-            return self._recognize(samples, sample_rate, preview=preview)
-
-    def _recognize(self, samples: np.ndarray, sample_rate: int = 16000,
-                  *, preview: bool = False) -> AsrResult:
+                  *, preview: bool = False, cut_loops: bool = True) -> AsrResult:
         """*preview*: a live-preview decode of a partial clip. Generation is
         capped by clip length (with the 4096-token limit, Qwen3 MLX once ran
         57 s on a 5 s partial clip); the result is never pasted, so a
-        truncated preview is harmless."""
+        truncated preview is harmless.
+
+        A final result that loops ("hands up，hands up，…" far beyond what the
+        clip can hold) is cut back at the loop; plausible text is never
+        touched (repetition.clean). File transcription passes
+        ``cut_loops=False``: it re-decodes a looping span in pieces instead,
+        which recovers the words a cut would lose."""
+        r = self._recognize_any(samples, sample_rate, preview=preview)
+        if cut_loops and not preview and r.text:
+            from thundertalk.core.repetition import clean
+            text, cut = clean(r.text, len(samples) / sample_rate)
+            if cut:
+                print(f"[ASR] Repetition loop cut back: {len(r.text)} → {len(text)} chars")
+                r.text = text
+        return r
+
+    def _recognize_any(self, samples: np.ndarray, sample_rate: int,
+                       *, preview: bool = False) -> AsrResult:
         if not self.is_loaded:
             raise RuntimeError("No model loaded")
         if len(samples) == 0:
@@ -436,13 +453,13 @@ class AsrEngine:
         from thundertalk.core.vad import segment_audio
         segments = segment_audio(samples, sr=sample_rate)
         if len(segments) == 1:
-            return self._recognize_sherpa(segments[0], sample_rate)
+            return self._recognize_sherpa(segments[0], sample_rate, preview=preview)
 
         all_text: list[str] = []
         total_ms = 0
         total_dur = 0.0
         for seg in segments:
-            r = self._recognize_sherpa(seg, sample_rate)
+            r = self._recognize_sherpa(seg, sample_rate, preview=preview)
             if r.text:
                 all_text.append(r.text)
             total_ms += r.inference_ms
@@ -515,8 +532,11 @@ class AsrEngine:
 
         duration_secs = len(samples) / sample_rate
         context = self._hotwords.replace("/", " ") if self._hotwords else ""
-        # Dictated speech stays well under 12 tokens/s; 32 covers the language tag.
-        max_new_tokens = int(32 + 12 * duration_secs) if preview else 4096
+        # Dictated speech stays well under 12 tokens/s; 32 covers the language
+        # tag. Final decodes get twice that, so a repetition loop ends within
+        # a second or two instead of running to the old 4096-token limit.
+        max_new_tokens = (int(32 + 12 * duration_secs) if preview
+                          else min(4096, int(64 + 24 * duration_secs)))
 
         lang_info = f", lang={self._language}" if self._language else ""
         print(f"[ASR-MLX] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s{lang_info})...")
@@ -561,9 +581,19 @@ class AsrEngine:
             rtf=rtf,
         )
 
-    def _recognize_sherpa(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
+    def _recognize_sherpa(self, samples: np.ndarray, sample_rate: int,
+                          preview: bool = False) -> AsrResult:
         duration_secs = len(samples) / sample_rate
         stream = self._recognizer.create_stream()
+        if self._model_family.startswith("Qwen3-ASR"):
+            # Same per-clip budget as the MLX path. The load-time limit (2048)
+            # let one looping 20 s span decode for minutes on a busy CPU.
+            budget = int(32 + 12 * duration_secs) if preview else int(64 + 24 * duration_secs)
+            budget = min(budget, self._max_new_tokens)
+            try:
+                stream.set_option("max_new_tokens", str(budget))
+            except Exception:
+                pass                    # older sherpa-onnx: load-time limit only
         stream.accept_waveform(sample_rate, samples)
 
         t0 = time.perf_counter()

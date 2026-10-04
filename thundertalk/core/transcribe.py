@@ -1,11 +1,15 @@
 """File transcription: fast single-speaker, or multi-speaker with MOSS.
 
   * decoding uses macOS `afconvert` (see audio_io) — no ffmpeg required;
-  * fast path: the audio is cut at natural pauses into 10–30 s utterances and
+  * fast path: the audio is cut at natural pauses into 12–18 s utterances and
     each is recognised by the active dictation model, which also gives
-    sentence-level timestamps for free;
+    sentence-level timestamps for free. A result that loops ("hands up，
+    hands up，…" hundreds of times) is re-decoded in ≤ 8 s pieces, and cut
+    back if it still loops (see repetition.py);
   * speaker path: MOSS-Transcribe-Diarize returns speaker turns with
     timestamps in a single pass (up to ~90 minutes);
+  * a hold-to-talk dictation always goes first: both paths pause between
+    units of work (a span, a MOSS token) while one is in progress (priority.py);
   * web links (YouTube, Bilibili, …) are fetched audio-only via links.py;
   * results export to TXT / Markdown / SRT / VTT / JSON.
 """
@@ -23,11 +27,20 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from thundertalk.core import audio_io
+from thundertalk.core import audio_io, repetition
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.priority import DICTATION
 
 SR = 16000
 ProgressCB = Callable[[int, str], None]
+
+# Fast-path span lengths. Qwen3-ASR 0.6B dropped words and fell into loops on
+# 20–30 s spans of mixed-language video audio; no single decode runs past
+# FAST_MAX_SPAN_S, and a looping span is re-decoded in REDECODE_MAX_S pieces.
+FAST_TARGET_S = 12.0
+FAST_MAX_SPAN_S = 18.0
+REDECODE_TARGET_S = 5.0
+REDECODE_MAX_S = 8.0
 
 
 class TranscribeCancelled(Exception):
@@ -450,8 +463,23 @@ def _transcribe_file(
         diarize.load_model()
         _check()
         _p(25, "diarize")
+
+        def between_tokens() -> None:
+            # Called with GPU_LOCK held and generation suspended: hand the
+            # GPU to a dictation, then carry on where we stopped.
+            _check()
+            if DICTATION.active:
+                diarize.synchronize()
+                GPU_LOCK.release()
+                try:
+                    DICTATION.wait_clear(cancel, on_wait=lambda: _p(-1, "yield"))
+                finally:
+                    GPU_LOCK.acquire()
+                _check()
+                _p(-1, "diarize")
+
         with GPU_LOCK:
-            segs = diarize.transcribe(x)
+            segs = diarize.transcribe(x, between_tokens=between_tokens)
         _check()
         if not segs:
             raise RuntimeError("no_speech")
@@ -462,25 +490,100 @@ def _transcribe_file(
 
     if engine is None or not getattr(engine, "is_loaded", False):
         raise RuntimeError("no_model")
-    spans = segment_speech(x)
+    spans = segment_speech(x, target=FAST_TARGET_S, max_len=FAST_MAX_SPAN_S)
     if not spans:
         raise RuntimeError("no_speech")
     segs: list[Segment] = []
     total = len(spans)
     for i, (a, b) in enumerate(spans):
-        _check()
-        _p(8 + int(90 * i / total), f"{i + 1}/{total}")
+        pct = 8 + int(90 * i / total)
+
+        def yield_to_dictation(pct: int = pct, i: int = i) -> None:
+            _check()
+            if DICTATION.wait_clear(cancel, on_wait=lambda: _p(pct, "yield")):
+                _check()
+                _p(pct, f"{i + 1}/{total}")
+
+        yield_to_dictation()
+        _p(pct, f"{i + 1}/{total}")
         pad = int(0.15 * SR)
         seg = x[max(0, int(a * SR) - pad): min(len(x), int(b * SR) + pad)]
-        with GPU_LOCK:
-            r = engine.recognize(seg, SR)
-        text = (r.text or "").strip()
+        text = decode_guarded(engine, seg, before_decode=yield_to_dictation, where=f"{a:.1f}–{b:.1f}s")
         if text:
             segs.append(Segment(a, b, text))
     if not segs:
         raise RuntimeError("no_speech")
     _p(100, "done")
     return Transcript(segs, duration, getattr(engine, "current_model", "") or "ASR", time.monotonic() - t0)
+
+
+def _uses_gpu(engine) -> bool:
+    """MLX models share the Metal GPU and decode under GPU_LOCK. The
+    sherpa-onnx models run on the CPU; their recognizer is safe to call from
+    two threads at once, so a dictation never waits behind a file decode."""
+    backend = getattr(engine, "active_backend", None)
+    return backend is None or str(backend).startswith("mlx")
+
+
+def _recognize(engine, seg: np.ndarray) -> str:
+    if _uses_gpu(engine):
+        with GPU_LOCK:
+            r = engine.recognize(seg, SR, cut_loops=False)
+    else:
+        r = engine.recognize(seg, SR, cut_loops=False)
+    return (r.text or "").strip()
+
+
+def _join(parts: list[str]) -> str:
+    out = ""
+    for s in parts:
+        sep = "" if not out or _ends_cjk(out) or _starts_cjk(s) else " "
+        out += sep + s
+    return out
+
+
+def decode_guarded(engine, seg: np.ndarray, before_decode: Optional[Callable[[], None]] = None,
+                   where: str = "") -> str:
+    """Recognise one span, guarding against repetition loops.
+
+    A result that looks degenerate (a phrase repeated many times in a row, or
+    more speech than the span can hold) is re-decoded in ≤ 8 s pieces cut at
+    pauses — loops come from long decodes and rarely survive the split. The
+    pieces replace the original when it was implausibly long or repeated its
+    phrase far more often than they do; a real chorus comes back as often in
+    the pieces (maybe split across them), so the original is kept. Whatever
+    still doesn't fit the audio is cut back at the loop."""
+    dur = len(seg) / SR
+    text = _recognize(engine, seg)
+    if not text or not repetition.looks_degenerate(text, dur):
+        return text
+    subs = (segment_speech(seg, target=REDECODE_TARGET_S, max_len=REDECODE_MAX_S, min_gap=0.15)
+            if dur > REDECODE_MAX_S + 0.5 else [])
+    if len(subs) >= 2:
+        parts = []
+        for a, b in subs:
+            if before_decode is not None:
+                before_decode()
+            piece = _recognize(engine, seg[int(a * SR): int(b * SR)])
+            piece, cut = repetition.clean(piece, b - a)
+            if cut:
+                print(f"[Transcribe] {where}: piece {a:.1f}–{b:.1f}s still looped; cut back")
+            if piece:
+                parts.append(piece)
+        redone = _join(parts)
+        runs = repetition.find_runs(text)
+        worst = max(runs, key=lambda r: r.count) if runs else None
+        if (repetition.is_implausible(text, dur) or worst is None
+                or repetition.count_phrase(redone, worst.phrase) < 0.6 * worst.count):
+            print(f"[Transcribe] {where}: loop ({len(text)} chars) → re-decoded in "
+                  f"{len(subs)} pieces ({len(redone)} chars)")
+            return redone
+        print(f"[Transcribe] {where}: repetition is real (pieces agree); kept")
+        return text
+    cleaned, cut = repetition.clean(text, dur)
+    if cut:
+        print(f"[Transcribe] {where}: loop cut back ({len(text)} → {len(cleaned)} chars)")
+    return cleaned
 
 
 def transcribe_link(

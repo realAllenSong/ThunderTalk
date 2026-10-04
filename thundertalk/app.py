@@ -15,7 +15,9 @@ from thundertalk.core.audio import AudioRecorder
 from thundertalk.core.device_watcher import get_watcher
 from thundertalk.core.history import HistoryStore
 from thundertalk.core.hotkey import HotkeyListener
+from thundertalk.core.gpu_lock import GPU_LOCK
 from thundertalk.core.live_preview import LivePreview, preview_wanted
+from thundertalk.core.priority import DICTATION
 from thundertalk.core.settings import Settings
 from thundertalk.core.text_merge import merge_preview_terms
 from thundertalk.core.recordings import save_recording
@@ -83,18 +85,30 @@ class AsrWorker(QThread):
 
     done = Signal(str, int, float, str, float)  # text, inference_ms, duration_secs, backend, rtf
     error = Signal(str)
+    waiting = Signal()      # the GPU is busy with a Studio job; the clip is kept and decoded after
 
-    def __init__(self, engine: AsrEngine, samples: np.ndarray, wait_before=None) -> None:
+    def __init__(self, engine: AsrEngine, samples: np.ndarray, wait_before=None, lock=None) -> None:
         super().__init__()
         self._engine = engine
         self._samples = samples
         self._wait_before = wait_before
+        self._lock = lock
 
     def run(self) -> None:
         try:
             if self._wait_before is not None:
                 self._wait_before()     # let a live-preview decode finish first
-            result = self._engine.recognize(self._samples)
+            lock = self._lock if getattr(self._engine, "uses_gpu", False) else None
+            if lock is not None and not lock.acquire(blocking=False):
+                # Studio jobs pause for dictation between units of work, so
+                # this is at most one span (or MOSS's start-up pass).
+                self.waiting.emit()
+                lock.acquire()
+            try:
+                result = self._engine.recognize(self._samples)
+            finally:
+                if lock is not None:
+                    lock.release()
             self.done.emit(result.text, result.inference_ms, result.duration_secs,
                            result.backend, result.rtf)
         except Exception as e:
@@ -523,8 +537,18 @@ def main() -> None:
         notify_auto_learn(text)
 
     # --- Voice pipeline ------------------------------------------------
+    # DICTATION is raised when recording starts and lowered exactly once per
+    # recording: here (after the paste is dispatched), in _on_asr_error, or on
+    # an early exit in on_toggle. Studio jobs pause while it is raised.
     def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float,
                      recording=None) -> None:
+        try:
+            _handle_asr_done(text, ms, dur, backend, rtf, recording)
+        finally:
+            DICTATION.end()
+
+    def _handle_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float,
+                         recording=None) -> None:
         # Audio is restored when recording stops (before ASR), not here.
         t_start = time.perf_counter()
         state.set_recording(st.REC_IDLE)
@@ -612,6 +636,7 @@ def main() -> None:
             overlay.show_error(t("overlay.no_speech"))
 
     def _on_asr_error(msg: str, recording=None) -> None:
+        DICTATION.end()
         print("[Toggle] _on_asr_error called")
         state.set_recording(st.REC_IDLE)
         print(f"[ASR] Error: {msg}")
@@ -701,6 +726,7 @@ def main() -> None:
 
                 if samples is None or len(samples) < 800:
                     print("[Toggle] Too short (audio already restored on stop)")
+                    DICTATION.end()
                     state.set_recording(st.REC_IDLE)
                     overlay.show_error(t("overlay.too_short"))
                     return
@@ -726,6 +752,7 @@ def main() -> None:
                     translator = pipe.get_translator()
                     if not translator.is_loaded:
                         print("[Toggle] Direct translation but model not loaded")
+                        DICTATION.end()
                         state.set_recording(st.REC_IDLE)
                         overlay.show_error(t("overlay.no_translator"))
                         return
@@ -742,6 +769,7 @@ def main() -> None:
                 # is pasted, then shows the review popup.
                 if not pipe.asr.is_loaded:
                     print("[Toggle] No ASR model (audio already restored on stop)")
+                    DICTATION.end()
                     state.set_recording(st.REC_IDLE)
                     overlay.show_error(t("overlay.no_model"))
                     return
@@ -751,9 +779,10 @@ def main() -> None:
                 else:
                     print(f"[Toggle] Starting ASR on {len(samples)} samples")
                 worker = AsrWorker(pipe.asr, samples,
-                                   wait_before=live.wait_idle)
+                                   wait_before=live.wait_idle, lock=GPU_LOCK)
                 worker.done.connect(_done)
                 worker.error.connect(_error)
+                worker.waiting.connect(overlay.show_waiting)
                 _track_worker(worker)
                 worker.start()
 
@@ -788,9 +817,11 @@ def main() -> None:
             # Start mic BEFORE muting: muting Bluetooth speakers can trigger
             # a profile switch (A2DP→HFP) that changes the default input device.
             mic = settings.microphone
+            DICTATION.begin()           # Studio pauses from the first word on
             try:
                 pipe.recorder.start(device=None if mic == "auto" else mic)
             except Exception as exc:
+                DICTATION.end()
                 print(f"[Toggle] recorder.start failed: {exc}")
                 overlay.show_error(t("overlay.mic_unavailable"))
                 return
