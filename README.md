@@ -32,6 +32,16 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.8.0
+
+- **AI Proofread page:** pick a provider and model in the sidebar; providers are detected automatically with their status. Proofreading works out what you meant and fixes misrecognized words, including real words that don't fit (homophones, names, jargon), without rewriting you. Changes show over your full text, struck out beside the correction, in readable pages.
+- **Smarter final text:** English terms recognized correctly in the live preview are kept in the final text, and repetition loops are caught and re-decoded.
+- **Studio Transcribe:** choose the model per job, see every transcript in History, and the queue clears itself. The page stays compact after a transcription, and switching between timestamps and plain text is instant even for hour-long recordings.
+- **Lower memory:** only the dictation model stays loaded. Studio, text-to-speech and translation models are released after three idle minutes; idle memory went from about 9 GB to under 2 GB.
+- **Background audio:** muting during dictation now restores the exact previous volume, mutes reliably on the first press, and recovers after a crash.
+- **Dictation goes first:** dictation no longer waits behind a long Studio job, and text-to-speech voices load faster.
+- **Permissions that stick:** the app now has a stable signature, so microphone and accessibility permissions survive future updates. After updating from v1.7.0 or earlier, macOS may ask for them one last time.
+
 ## New in v1.7.0
 
 - **See text while you speak:** Live Preview shows provisional words in the recording bar. It is on by default; the final text still comes from recognition of the full recording.
