@@ -309,6 +309,7 @@ class Pipeline(QObject):
         self._starting = False
         self._stopping = False
         self._ducking_session = None
+        self._stopping_session = None
         # All in-flight QThread workers are kept alive in this list. Each
         # worker's `.finished` signal removes it. Single-reference patterns
         # (e.g. `self._worker = worker`) are unsafe because reassigning to a
@@ -327,6 +328,13 @@ class Pipeline(QObject):
 
     def toggle(self) -> None:
         self.toggle_signal.emit()
+
+    def stop_capture(self):
+        """Quit owns the token even while a delayed microphone tail is pending."""
+        session = self._ducking_session or self._stopping_session
+        self._ducking_session = self._stopping_session = None
+        self._starting = self._recording = False
+        return stop_recording_and_restore(self.recorder, session)
 
     def get_translator(self):
         """Return the TranslationEngine, creating it lazily on first call.
@@ -363,14 +371,15 @@ def main() -> None:
     history = HistoryStore()
     pipe = Pipeline(settings)
     def _shutdown_recording():
+        session = pipe._ducking_session or pipe._stopping_session
+        if session is not None:
+            session.microphone_transition("close")
         from thundertalk.ui.studio.clone_dialog import CloneDialog
         for widget in app.topLevelWidgets():
             if isinstance(widget, CloneDialog):
                 widget.reject()  # close Studio input before publishing restores
-        session, pipe._ducking_session = pipe._ducking_session, None
-        pipe._starting = pipe._recording = False
         try:
-            stop_recording_and_restore(pipe.recorder, session)
+            pipe.stop_capture()
         except Exception as exc:
             audio_diagnostic("quit_capture_failed", error=type(exc).__name__)
         finally:
@@ -778,6 +787,7 @@ def main() -> None:
             pipe._recording = False
             pipe._stopping = True
             session, pipe._ducking_session = pipe._ducking_session, None
+            pipe._stopping_session = session
 
             def _finalize_stop() -> None:
                 try:
@@ -790,6 +800,7 @@ def main() -> None:
                     return
                 finally:
                     pipe._stopping = False
+                    pipe._stopping_session = None
                 stop_ms = int((time.perf_counter() - t_stop) * 1000)
                 print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
 

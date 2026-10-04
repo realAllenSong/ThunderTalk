@@ -1,18 +1,19 @@
-[lock:gpu] waiting for: pid 28064 since 13:18:28: /Users/songallen/Desktop/ThunderTalk/.venv/bin/python -m pytest -q
+[lock:gpu] waiting for: pid 32395 since 13:21:39: /Users/songallen/Desktop/ThunderTalk/.venv/bin/python -u tools/measure_memory.py --output .memory-measurements/after.json --idle 0,60,300 --reload --threaded
+[lock:gpu] waiting for: pid 32395 since 13:21:39: /Users/songallen/Desktop/ThunderTalk/.venv/bin/python -u tools/measure_memory.py --output .memory-measurements/after.json --idle 0,60,300 --reload --threaded
 ........................................................................ [  7%]
 ........................................................................ [ 14%]
-.....................s.................................................. [ 22%]
+.........................s.............................................. [ 22%]
 ........................................................................ [ 29%]
 ........................................................................ [ 37%]
 ........................................................................ [ 44%]
-........................................................................ [ 52%]
+........................................................................ [ 51%]
 ........................................................................ [ 59%]
-........................................................................ [ 67%]
+........................................................................ [ 66%]
 ........................................................................ [ 74%]
 ........................................................................ [ 81%]
 ........................................................................ [ 89%]
 ........................................................................ [ 96%]
-........s.....................                                           [100%]
+............s.....................                                       [100%]
 =============================== warnings summary ===============================
 tests/test_asr_robust.py::test_diarize_between_tokens_streams_and_releases_model_lock
   <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyPacked has no __module__ attribute
@@ -21,5 +22,9 @@ tests/test_asr_robust.py::test_diarize_between_tokens_streams_and_releases_model
   <frozen importlib._bootstrap>:488: DeprecationWarning: builtin type SwigPyObject has no __module__ attribute
 
 -- Docs: https://docs.pytest.org/en/stable/how-to/capture-warnings.html
-964 passed, 2 skipped, 2 warnings in 56.41s
+968 passed, 2 skipped, 2 warnings in 59.39s
 sys:1: DeprecationWarning: builtin type swigvarlink has no __module__ attribute
+
+Additional strengthened fake microphone-graph teardown checks:
+lock.py gpu -- $PY -m pytest -q tests/test_app_ducking.py
+4 passed in 1.27s

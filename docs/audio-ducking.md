@@ -153,7 +153,10 @@ released while re-publishing the user's current native gains. An unavailable
 original layout keeps its journal for retry; it never becomes an empty
 "successful" restore. Quit closes dictation and Studio microphones before
 system-audio restoration, so microphone teardown cannot follow shutdown's
-final publication. Crash/partial-write journals remain backward compatible.
+final publication. The pipeline retains its session token during the 250 ms
+microphone tail; quit can mark that transition and restore it even before
+the scheduled stop callback runs. Fakes cover active/tail ownership and
+close errors against the observed temporary master/channel graph change. Crash/partial-write journals remain backward compatible.
 
 The final real check used the public session API with a cold worker,
 release-before-ready, and two rapid repeats. It deliberately **did not reopen
