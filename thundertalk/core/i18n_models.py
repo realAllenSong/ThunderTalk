@@ -45,21 +45,9 @@ MODELS = {
         "en": "~Real time · Apple silicon",
         "zh": "约实时速度 · Apple 芯片",
     },
-    "model.blurb.fireredasr2-ctc-int8": {
-        "en": "Chinese / English recognition. Studio uses sentence-span timestamps.",
-        "zh": "中英文识别。Studio 提供句段时间戳。",
-    },
-    "model.blurb.fireredasr2-aed-int8": {
-        "en": "Chinese / English recognition. This ONNX export uses Studio sentence-span timestamps.",
-        "zh": "中英文识别。此 ONNX 版本使用 Studio 的句段时间戳。",
-    },
     "model.blurb.funasr-nano-int8": {
         "en": "Chinese, English and Japanese, with hotwords. Studio uses sentence-span timestamps.",
         "zh": "支持中英日语及热词。Studio 提供句段时间戳。",
-    },
-    "studio.engine.tag.zipvoice": {
-        "en": "CPU voice cloning · reference audio and its exact transcript required",
-        "zh": "CPU 声音克隆 · 需要参考音频及其准确文本",
     },
     "models.backbone_params": {
         "en": "~0.8B backbone parameters",

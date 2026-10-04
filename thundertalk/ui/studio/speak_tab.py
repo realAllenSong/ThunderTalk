@@ -348,8 +348,6 @@ class SpeakTab(QWidget):
         self._lang.blockSignals(True)
         self._lang.clear()
         for code in tts.LANGUAGES:
-            if self._engine_id == "zipvoice" and code not in ("auto", "chinese", "english"):
-                continue
             self._lang.addItem(t(f"studio.lang.{code}"), code)
         self._lang.setCurrentIndex(max(0, self._lang.findData(cur)))
         self._lang.blockSignals(False)

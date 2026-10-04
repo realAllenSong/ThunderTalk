@@ -224,7 +224,7 @@ def run(argv: list[str]) -> int:
     ap.add_argument("--text", default="")
     ap.add_argument("--model", default="", help="ASR model id from the Models page")
     ap.add_argument("--model-dir", default="", help="Optional ASR model directory (read-only)")
-    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts | zipvoice (default: all downloaded / the clone default)")
+    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
     ok = True
     try:

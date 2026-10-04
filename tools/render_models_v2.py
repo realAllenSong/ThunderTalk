@@ -22,7 +22,7 @@ def main():
     app = QApplication([])
     theme.force_light(app)
     speak_tab.AUTO_PRELOAD = False
-    out = Path("artifacts/models-v2/screenshots")
+    out = Path("artifacts/models-v2/screenshots-retained")
     out.mkdir(parents=True, exist_ok=True)
     for lang in ("en", "zh"):
         i18n.set_language(lang)
@@ -40,7 +40,7 @@ def main():
         scroll = page.findChild(QScrollArea)
         for key, family in (
             ("parakeet", "Parakeet-TDT-v3"),
-            ("new-cpu", "FireRedASR2-CTC"),
+            ("new-cpu", "Fun-ASR-Nano"),
         ):
             y = page._family_cards[family].y()
             scroll.verticalScrollBar().setValue(y)
@@ -49,7 +49,7 @@ def main():
         shell.close()
         page.deleteLater()
         settle()
-        for bid in ("voxcpm2", "indextts", "kokoro", "zipvoice"):
+        for bid in ("voxcpm2", "indextts", "kokoro"):
             tab = speak_tab.SpeakTab()
             tab._engine_pick.set_current(bid)
             tab._on_engine(bid)

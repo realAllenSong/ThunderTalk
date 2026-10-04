@@ -55,9 +55,6 @@ _BACKENDS: dict[str, TtsBackend] = {}
 
 
 def _make(bid: str) -> TtsBackend:
-    if bid == "zipvoice":
-        from thundertalk.core.tts_backends.zipvoice import ZipVoiceBackend
-        return ZipVoiceBackend()
     if bid == "kokoro":
         from thundertalk.core.tts_backends.kokoro import KokoroBackend
         return KokoroBackend()
@@ -70,7 +67,7 @@ def _make(bid: str) -> TtsBackend:
     raise KeyError(bid)
 
 
-BACKEND_ORDER = ("voxcpm2", "indextts", "kokoro", "zipvoice")
+BACKEND_ORDER = ("voxcpm2", "indextts", "kokoro")
 
 
 def backend(bid: str) -> TtsBackend:

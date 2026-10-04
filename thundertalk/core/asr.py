@@ -311,8 +311,8 @@ class AsrEngine:
             self._load_sherpa_sensevoice(model_dir, backend, memory_mode)
         elif family in ("Qwen3-ASR", "Qwen3-ASR-1.7B"):
             self._load_sherpa_qwen3(model_dir, backend, memory_mode)
-        elif family in ("FireRedASR2-CTC", "FireRedASR2-AED", "Fun-ASR-Nano"):
-            self._load_sherpa_cpu(model_dir, family, memory_mode)
+        elif family == "Fun-ASR-Nano":
+            self._load_sherpa_funasr(model_dir, memory_mode)
         elif family.startswith("Parakeet-TDT"):
             self._load_sherpa_parakeet(model_dir, backend, memory_mode)
         else:
@@ -410,32 +410,22 @@ class AsrEngine:
             f"threads={threads}  provider={provider}"
         )
 
-    def _load_sherpa_cpu(self, model_dir: str, family: str, memory_mode: str) -> None:
+    def _load_sherpa_funasr(self, model_dir: str, memory_mode: str) -> None:
         import sherpa_onnx
-        factories = sherpa_onnx.OfflineRecognizer
-        common = dict(num_threads=_detect_threads(memory_mode), provider="cpu")
-        if family == "FireRedASR2-CTC":
-            self._recognizer = factories.from_fire_red_asr_ctc(
-                model=_find(model_dir, "model", ".onnx"),
-                tokens=os.path.join(model_dir, "tokens.txt"), **common)
-        elif family == "FireRedASR2-AED":
-            self._recognizer = factories.from_fire_red_asr(
-                encoder=_find(model_dir, "encoder", ".onnx"),
-                decoder=_find(model_dir, "decoder", ".onnx"),
-                tokens=os.path.join(model_dir, "tokens.txt"), **common)
-        else:
-            tokenizer = os.path.join(model_dir, "Qwen3-0.6B")
-            if not os.path.isdir(tokenizer):
-                raise FileNotFoundError(f"Missing Fun-ASR-Nano tokenizer: {tokenizer}")
-            self._recognizer = factories.from_funasr_nano(
-                encoder_adaptor=_find(model_dir, "encoder_adaptor", ".onnx"),
-                llm=_find(model_dir, "llm", ".onnx"),
-                embedding=_find(model_dir, "embedding", ".onnx"),
-                tokenizer=tokenizer, hotwords=self._hotwords.replace("/", ","),
-                language="", itn=self._itn_enabled,
-                max_new_tokens=256 if memory_mode == "low" else 512, **common)
+        threads = _detect_threads(memory_mode)
+        tokenizer = os.path.join(model_dir, "Qwen3-0.6B")
+        if not os.path.isdir(tokenizer):
+            raise FileNotFoundError(f"Missing Fun-ASR-Nano tokenizer: {tokenizer}")
+        self._recognizer = sherpa_onnx.OfflineRecognizer.from_funasr_nano(
+            encoder_adaptor=_find(model_dir, "encoder_adaptor", ".onnx"),
+            llm=_find(model_dir, "llm", ".onnx"),
+            embedding=_find(model_dir, "embedding", ".onnx"),
+            tokenizer=tokenizer, hotwords=self._hotwords.replace("/", ","),
+            language="", itn=self._itn_enabled,
+            max_new_tokens=256 if memory_mode == "low" else 512,
+            num_threads=threads, provider="cpu")
         self._model_id = os.path.basename(model_dir)
-        print(f"[ASR] Loaded {family} on CPU  threads={common['num_threads']}")
+        print(f"[ASR] Loaded Fun-ASR-Nano on CPU  threads={threads}")
 
     def _load_sherpa_qwen3(
         self, model_dir: str, backend: str, memory_mode: str = "high"
@@ -712,8 +702,7 @@ class AsrEngine:
             # Fun-ASR-Nano distributes token times uniformly over the audio;
             # those are estimates, not acoustic alignment timestamps.
             token_timestamps=(list(getattr(stream.result, "timestamps", ()) or ())
-                              if self._model_family == "FireRedASR2-CTC"
-                              or self._model_family.startswith("Parakeet-TDT") else []),
+                              if self._model_family.startswith("Parakeet-TDT") else []),
         )
 
 

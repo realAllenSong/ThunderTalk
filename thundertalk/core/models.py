@@ -197,20 +197,6 @@ BUILTIN_MODELS: list[ModelInfo] = [
         notes="Multi-speaker ASR · Diarization + timestamps in Studio · Metal GPU",
     ),
     ModelInfo(
-        id="fireredasr2-ctc-int8", timestamps=True, experimental=True, family="FireRedASR2-CTC", name="FireRedASR2 CTC",
-        variant="ONNX int8", backend="onnx", size_mb=521,
-        params="", languages=['zh', 'en'], language_count=2,
-        accuracy_stars=0, hotword_support=False,
-        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-ctc-zh_en-int8-2026-02-25.tar.bz2",
-    ),
-    ModelInfo(
-        id="fireredasr2-aed-int8", experimental=True, family="FireRedASR2-AED", name="FireRedASR2 AED",
-        variant="ONNX int8", backend="onnx", size_mb=839,
-        params="", languages=['zh', 'en'], language_count=2,
-        accuracy_stars=0, hotword_support=False,
-        download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-fire-red-asr2-zh_en-int8-2026-02-26.tar.bz2",
-    ),
-    ModelInfo(
         id="funasr-nano-int8", experimental=True, family="Fun-ASR-Nano", name="Fun-ASR-Nano-2512",
         variant="ONNX int8", backend="onnx", size_mb=842,
         params="0.8B", languages=['zh', 'en', 'ja'], language_count=3,
