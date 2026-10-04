@@ -1115,9 +1115,13 @@ def test_notes_collapse_and_long_notes_scroll(studio):
 
 
 @pytest.mark.parametrize("speaker_mode", ["none", "alternating", "single"])
-def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypatch, speaker_mode):
+@pytest.mark.parametrize("start_plain", [False, True])
+def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypatch, speaker_mode, start_plain):
     from PySide6.QtWidgets import QWidget
     tab = studio.transcribe_tab
+    if start_plain:
+        tab._time_toggle.set_current("plain")
+        tab._time_toggle.changed.emit("plain")
     transcript = tr.Transcript(
         [tr.Segment(i * 1.8, (i + 1) * 1.8,
                     f"Segment {i}: Review the release plan and verify the next build. 我们确认了下一步。",
@@ -1131,11 +1135,15 @@ def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypa
     assert tab._view._editor.document().blockCount() == 2000
     assert tab._view._editor.height() <= 420
     assert tab._view._editor.verticalScrollBar().maximum() > 0
-    assert len(tab._view._chips) == {"none": 0, "alternating": 2, "single": 1}[speaker_mode]
+    assert len(tab._view._chips) <= tab._view._timestamp.POOL_SIZE
+    assert bool(tab._view._chips) == (speaker_mode != "none")
     documents = dict(tab._view._documents)
+    row_data = tab._view._timestamp._data
+    row_pool = tuple(tab._view._timestamp._pool)
     widgets = tab._view.findChildren(QWidget)
-    assert len(widgets) < 12
+    assert len(widgets) < 150
     monkeypatch.setattr(tab._view, "_build_documents", lambda: pytest.fail("Toggle rebuilt text"))
+    monkeypatch.setattr(tab._view._timestamp, "set_transcript", lambda *_: pytest.fail("Toggle rebuilt rows"))
     samples = []
     for _ in range(5):
         for key in ("plain", "time"):
@@ -1144,10 +1152,16 @@ def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypa
             tab._time_toggle.changed.emit(key)
             _settle_layout()
             samples.append(time.perf_counter() - start)
-            assert tab._view._editor.document() is documents[key == "time"]
+            assert tab._view._editor.document() is documents[False]
     assert max(samples) < 0.050, f"Slow toggle: {max(samples) * 1000:.1f} ms"
-    assert tab._view.findChildren(QWidget) == widgets
+    assert set(tab._view.findChildren(QWidget)) == set(widgets)
     assert tab._view._documents == documents
+    assert tab._view._timestamp._data is row_data
+    assert tuple(tab._view._timestamp._pool) == row_pool
+    if speaker_mode == "single":
+        row = row_pool[0]
+        assert row._text._long_document is not None
+        assert row._text._long_document.textWidth() == row._text.width()
     assert tab._setup_card.height() < 190
     assert tab._result.height() < 550
     for size in ((1600, 1000), (900, 700), (1200, 800)):
@@ -1158,6 +1172,73 @@ def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypa
         assert tab._result.height() <= tab._result.layout().sizeHint().height() + 2
 
 
+def test_timestamp_rows_preserve_grouping_style_and_wrapped_height(studio, qtbot):
+    from PySide6.QtCore import Qt
+    from thundertalk.ui import theme
+    tab = studio.transcribe_tab
+    transcript = tr.Transcript([
+        tr.Segment(0, 2, "First sentence.", "S01"),
+        tr.Segment(2, 4, "Continuation.", "S01"),
+        tr.Segment(4, 6, "A longer speaker turn wraps naturally. 我们确认了下一步。 " * 7, "S02"),
+        tr.Segment(6, 8, "Last turn.", "S01"),
+    ], 8, "Fake", has_speakers=True, speaker_names={"S01": "Host", "S02": "Reviewer"})
+    tab._show_result(transcript)
+    studio.resize(1200, 800)
+    _settle_layout()
+    viewport = tab._view._timestamp
+    assert len(viewport._data) == 3
+    rows = viewport._pool[:3]
+    assert rows[0]._text.text() == "First sentence. Continuation."
+    assert [row._time.text() for row in rows] == ["0:00", "0:04", "0:06"]
+    assert [row._chip.text() for row in rows] == ["Host", "Reviewer", "Host"]
+    assert rows[0]._rule.isHidden() and not rows[1]._rule.isHidden()
+    assert len({row._text.x() for row in rows}) == 1
+    for row in rows:
+        assert row._time.width() == 46
+        assert row._time.alignment() == Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop
+        assert row._body_layout.spacing() == 14
+        assert row._body_layout.contentsMargins().top() == 10
+        assert row._text.font().pixelSize() == 14
+        assert row._text.height() >= row._text.heightForWidth(row._text.width())
+        assert row.height() == row.heightForWidth(viewport.viewport().width())
+    assert rows[0]._chip._bg == theme.qcolor(theme.PASTELS["blue"][1])
+    assert rows[1]._chip._bg == theme.qcolor(theme.PASTELS["orange"][1])
+    with qtbot.waitSignal(tab._view.speaker_clicked) as emitted:
+        # Avoid opening the rename dialog: the renderer emits the speaker id.
+        tab._view.speaker_clicked.disconnect(tab._rename_speaker)
+        qtbot.mouseClick(rows[1]._chip, Qt.MouseButton.LeftButton)
+    assert emitted.args == ["S02"]
+    tab._view.set_timestamps(False)
+    assert tab._view._editor.isVisible() and viewport.isHidden()
+    assert "Host: First sentence.\nContinuation." in tab._view._editor.toPlainText()
+    assert "0:00" not in tab._view._editor.toPlainText()
+
+
+def test_timestamp_scroll_reuses_rows_and_keeps_last_turn(studio):
+    tab = studio.transcribe_tab
+    tab._show_result(tr.Transcript([tr.Segment(i * 2, i * 2 + 2, f"Turn {i}", f"S{i % 2}")
+                                   for i in range(100)], 200, "Fake", has_speakers=True))
+    _settle_layout()
+    viewport = tab._view._timestamp
+    pool = tuple(viewport._pool)
+    scrollbar = viewport.verticalScrollBar()
+    scrollbar.setValue(scrollbar.maximum())
+    _settle_layout()
+    visible = [row for row in pool if not row.isHidden()]
+    assert visible[-1]._text.text() == "Turn 99"
+    assert visible[-1]._time.text() == "3:18"
+    assert visible[-1].geometry().bottom() == viewport.viewport().height() - 1
+    assert tuple(viewport._pool) == pool
+    scrollbar.setValue(0)
+    _settle_layout()
+    assert pool[0]._text.text() == "Turn 0" and pool[0]._rule.isHidden()
+    scrollbar.setValue(scrollbar.maximum())
+    viewport.set_transcript(tr.Transcript([tr.Segment(0, 1, "Replacement")], 1, "Fake"))
+    _settle_layout()
+    assert scrollbar.value() == 0
+    assert pool[0]._text.text() == "Replacement"
+
+
 def test_cached_views_keep_renamed_speakers_and_scroll_position(studio, monkeypatch):
     from PySide6.QtCore import QCoreApplication, QEvent
     from PySide6.QtWidgets import QInputDialog
@@ -1165,7 +1246,7 @@ def test_cached_views_keep_renamed_speakers_and_scroll_position(studio, monkeypa
     tab._show_result(tr.Transcript([tr.Segment(i, i + 1, f"Line {i}", f"S{i % 2}")
                                    for i in range(100)], 100, "Fake", has_speakers=True))
     _settle_layout()
-    scroll = tab._view._editor.verticalScrollBar()
+    scroll = tab._view._timestamp.verticalScrollBar()
     scroll.setValue(40)
     tab._view.set_timestamps(False)
     _settle_layout()
@@ -1176,6 +1257,7 @@ def test_cached_views_keep_renamed_speakers_and_scroll_position(studio, monkeypa
     tab._view._chips[0][0].clicked.emit()
     assert all("Host: Line 0" in doc.toPlainText() for doc in tab._view._documents.values())
     assert all("S0:" not in doc.toPlainText() for doc in tab._view._documents.values())
+    assert tab._view._chips[0][0].text() == "Host"
     tab._view.clear()
     QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
     _settle_layout()

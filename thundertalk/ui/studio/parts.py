@@ -5,23 +5,30 @@ from __future__ import annotations
 
 import math
 import os
+from bisect import bisect_right
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
-from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QTextDocument
+from PySide6.QtCore import QPoint, QPointF, QRectF, QSignalBlocker, QSize, Qt, QTimer, Signal
+from PySide6.QtGui import (
+    QAbstractTextDocumentLayout, QColor, QFontMetrics, QPainter, QPalette, QPen,
+    QTextCursor, QTextDocument,
+)
 from PySide6.QtWidgets import (
     QAbstractButton,
+    QAbstractScrollArea,
     QFileDialog,
     QFrame,
     QHBoxLayout,
+    QLayout,
     QLabel,
     QMenu,
     QPlainTextDocumentLayout,
     QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QStackedLayout,
     QTextBrowser,
     QVBoxLayout,
     QWidget,
@@ -602,28 +609,269 @@ class ContentTextBrowser(QTextBrowser):
         self._fit_height()
 
 
-class TranscriptView(QWidget):
-    """One scrolling editor with cached text documents; one chip per speaker.
+class _TurnText(QLabel):
+    """Keep QLabel's original appearance/selection, caching very long turns.
 
-    Both modes keep a block per segment, so Qt lays out visible text
-    lazily instead of thousands of labels. Switching never formats the text
-    or constructs widgets. Plain mode retains paragraph breaks for reading.
+    QLabel remeasures a large selectable paragraph when it is shown again.
+    A persistent document lets its paint pass visit only the clipped lines.
+    Ordinary rows still use QLabel's original paint and sizing verbatim.
     """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._long_document: Optional[QTextDocument] = None
+        self._height_cache: dict[int, int] = {}
+
+    def setText(self, text: str) -> None:
+        super().setText(text)
+        self._height_cache.clear()
+        if self._long_document is not None:
+            self._long_document.deleteLater()
+            self._long_document = None
+        if len(text) >= 4096:
+            self.ensurePolished()
+            doc = QTextDocument(self)
+            doc.setDocumentMargin(0)
+            doc.setDefaultFont(self.font())
+            doc.setPlainText(text)
+            self._long_document = doc
+
+    def _document_height(self, width: int) -> int:
+        if self._long_document.textWidth() != width:
+            self._long_document.setTextWidth(width)
+        return math.ceil(self._long_document.size().height())
+
+    def heightForWidth(self, width: int) -> int:
+        if self._long_document is not None:
+            if width not in self._height_cache:
+                if len(self._height_cache) >= 4:
+                    self._height_cache.clear()
+                self._height_cache[width] = self._document_height(width)
+            return self._height_cache[width]
+        return super().heightForWidth(width)
+
+    def minimumSizeHint(self) -> QSize:
+        if self._long_document is not None:
+            return QSize(self.fontMetrics().horizontalAdvance("M"), self.fontMetrics().height())
+        return super().minimumSizeHint()
+
+    def sizeHint(self) -> QSize:
+        if self._long_document is not None:
+            width = max(1, self.width())
+            return QSize(width, self.heightForWidth(width))
+        return super().sizeHint()
+
+    def paintEvent(self, ev) -> None:
+        if self._long_document is None:
+            super().paintEvent(ev)
+            return
+        height = self._document_height(self.width())
+        y = max(0, (self.height() - height) / 2)
+        painter = QPainter(self)
+        painter.translate(0, y)
+        context = QAbstractTextDocumentLayout.PaintContext()
+        context.clip = QRectF(ev.rect()).translated(0, -y)
+        context.palette = self.palette()
+        context.palette.setColor(QPalette.ColorRole.Text, theme.qcolor(theme.TEXT_PRIMARY))
+        if self.hasSelectedText():
+            selection = QAbstractTextDocumentLayout.Selection()
+            selection.cursor = QTextCursor(self._long_document)
+            selection.cursor.setPosition(self.selectionStart())
+            length = len(self.selectedText().encode("utf-16-le")) // 2
+            selection.cursor.setPosition(self.selectionStart() + length,
+                                         QTextCursor.MoveMode.KeepAnchor)
+            selection.format.setBackground(self.palette().brush(QPalette.ColorRole.Highlight))
+            selection.format.setForeground(self.palette().brush(QPalette.ColorRole.HighlightedText))
+            context.selections = [selection]
+        self._long_document.documentLayout().draw(painter, context)
+
+
+class _TimestampRow(QWidget):
+    """The original timestamp row, reused for different visible turns."""
+
+    speaker_clicked = Signal(str)
+
+    def __init__(self, parent: QWidget) -> None:
+        super().__init__(parent)
+        from thundertalk.ui.widgets import Rule
+        self.setStyleSheet("background: transparent;")
+        self._index = -1
+        self._speaker = ""
+        col = QVBoxLayout(self)
+        col.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        col.setContentsMargins(0, 0, 0, 0)
+        col.setSpacing(0)
+        self._rule = Rule()
+        col.addWidget(self._rule)
+        body = QWidget()
+        body.setStyleSheet("background: transparent;")
+        row = self._body_layout = QHBoxLayout(body)
+        row.setSizeConstraint(QLayout.SizeConstraint.SetNoConstraint)
+        row.setContentsMargins(0, 10, 0, 10)
+        row.setSpacing(14)
+        self._time = QLabel()
+        self._time.setFont(theme.font_mono(11))
+        self._time.setFixedWidth(46)
+        self._time.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
+        self._time.setStyleSheet(f"color: {theme.TEXT_MUTED}; background: transparent; padding-top: 3px;")
+        row.addWidget(self._time)
+        self._chip = _SpeakerChip("", "blue")
+        self._chip.clicked.connect(lambda: self.speaker_clicked.emit(self._speaker))
+        row.addWidget(self._chip, alignment=Qt.AlignmentFlag.AlignTop)
+        self._text = _TurnText()
+        self._text.setWordWrap(True)
+        self._text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self._text.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 14px; background: transparent;")
+        self._text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
+        row.addWidget(self._text, 1)
+        col.addWidget(body)
+
+    def bind(self, index: int, data: tuple, chip_width: int) -> None:
+        self._index = index
+        time, text, speaker, label, kind = data
+        self._speaker = speaker
+        self._rule.setVisible(index != 0)
+        self._time.setText(time)
+        self._text.setText(text)
+        self._chip.setVisible(bool(speaker))
+        if speaker:
+            self._chip.setText(label)
+            self._chip.set_colors(*theme.PASTELS[kind])
+            self._chip.setFixedWidth(chip_width)
+        # Qt ignores updateGeometry() from hidden widgets. The measuring row
+        # stays hidden, so invalidate both levels before asking heightForWidth.
+        self._text.parentWidget().layout().invalidate()
+        self.layout().invalidate()
+
+    def heightForWidth(self, width: int) -> int:
+        # Query the body directly: QWidgetItem's cached height is not refreshed
+        # by hidden probe updates, even when the surrounding layout is invalidated.
+        return self._body_layout.heightForWidth(width) + (self._rule.height() if self._index > 0 else 0)
+
+
+class _TimestampViewport(QAbstractScrollArea):
+    """Virtualized original rows: only the visible turns own widgets.
+
+    Turn text and row heights are cached when data/width changes. Showing a
+    cached viewport does not rebuild, rebind or reformat its rows.
+    """
+
+    speaker_clicked = Signal(str)
+    content_height_changed = Signal()
+    POOL_SIZE = 16                 # enough for a 420 px viewport, including clipped rows
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setFrameShape(QFrame.Shape.NoFrame)
+        self.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
+        self.setVerticalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOn)
+        self.setStyleSheet("background: transparent;")
+        self._pool = [_TimestampRow(self.viewport()) for _ in range(self.POOL_SIZE)]
+        for row in self._pool:
+            row.speaker_clicked.connect(self.speaker_clicked)
+            row.hide()
+        self._probe = _TimestampRow(self.viewport())
+        self._probe.hide()
+        self._probe._text.setTextInteractionFlags(Qt.TextInteractionFlag.NoTextInteraction)
+        self._probe.ensurePolished()
+        self._data: list[tuple] = []
+        self._chip_width = 0
+        self._metrics: dict[int, list[int]] = {}
+        self._offsets = [0]
+        self.verticalScrollBar().setSingleStep(20)
+        self.verticalScrollBar().valueChanged.connect(self._show_rows)
+
+    @property
+    def content_height(self) -> int:
+        return self._offsets[-1]
+
+    def set_transcript(self, tr: Optional[Transcript]) -> None:
+        order = tr.speakers if tr else []
+        kinds = {speaker: SPEAKER_KINDS[i % len(SPEAKER_KINDS)] for i, speaker in enumerate(order)}
+        rows = (tr.turns() if tr.has_speakers else tr.segments) if tr else []
+        self._data = [(fmt_time(seg.start), seg.text, seg.speaker,
+                       tr.label(seg.speaker), kinds.get(seg.speaker, "blue")) for seg in rows]
+        widths = []
+        for speaker in order:
+            self._probe._chip.setText(tr.label(speaker))
+            widths.append(self._probe._chip.sizeHint().width())
+        self._chip_width = min(150, max(widths, default=0))
+        self._metrics.clear()
+        for row in self._pool:
+            row._index = -1
+        with QSignalBlocker(self.verticalScrollBar()):
+            self.verticalScrollBar().setValue(0)
+        self._layout_rows()
+
+    def _layout_rows(self) -> None:
+        # Hidden scroll areas defer their viewport resize until shown. Measure
+        # the eventual viewport now so a first switch from plain text is cached.
+        width = max(1, self.width() - self.verticalScrollBar().sizeHint().width())
+        if width not in self._metrics:
+            offsets = [0]
+            for i, data in enumerate(self._data):
+                self._probe.bind(i, data, self._chip_width)
+                height = self._probe.heightForWidth(width)
+                offsets.append(offsets[-1] + height)
+            if len(self._metrics) >= 4:
+                self._metrics.clear()
+            self._metrics[width] = offsets
+        self._offsets = self._metrics[width]
+        self.verticalScrollBar().setRange(0, max(0, self.content_height - self.viewport().height()))
+        self.verticalScrollBar().setPageStep(self.viewport().height())
+        self._show_rows()
+        self.content_height_changed.emit()
+
+    def prepare_width(self, width: int) -> None:
+        self.resize(width, self.height())
+        self._layout_rows()
+
+    def _show_rows(self, *_args) -> None:
+        scroll = self.verticalScrollBar().value()
+        first = max(0, bisect_right(self._offsets, scroll) - 1)
+        for slot, row in enumerate(self._pool):
+            index = first + slot
+            if index >= len(self._data) or self._offsets[index] - scroll >= self.viewport().height():
+                row.hide()
+                continue
+            if row._index != index:
+                row.bind(index, self._data[index], self._chip_width)
+            width = max(1, self.width() - self.verticalScrollBar().sizeHint().width())
+            row.setGeometry(0, self._offsets[index] - scroll, width,
+                            self._offsets[index + 1] - self._offsets[index])
+            row.show()
+            # Layout events for a hidden renderer are deferred. Prime nested
+            # geometry too, including the cached document's final text width.
+            row.layout().setGeometry(row.rect())
+            row._body_layout.setGeometry(row._text.parentWidget().rect())
+            if row._text._long_document is not None:
+                row._text._document_height(row._text.width())
+
+    def scrollContentsBy(self, dx: int, dy: int) -> None:
+        # Moving the reusable rows is cheaper than scrolling/repainting their
+        # entire document, especially for a long continuous speaker turn.
+        self._show_rows()
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._layout_rows()
+
+
+class TranscriptView(QWidget):
+    """Original timestamp styling and a separate cached plain text editor."""
 
     speaker_clicked = Signal(str)
 
     def __init__(self) -> None:
         super().__init__()
         self.setStyleSheet("background: transparent;")
-        self._ly = QVBoxLayout(self)
+        self._ly = QStackedLayout(self)
         self._ly.setContentsMargins(0, 0, 0, 0)
-        self._ly.setSpacing(0)
         self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
-        self._speakers = QWidget()
-        self._speaker_layout = QHBoxLayout(self._speakers)
-        self._speaker_layout.setContentsMargins(0, 0, 0, 8)
-        self._speaker_layout.setSpacing(8)
-        self._ly.addWidget(self._speakers)
+        self._timestamp = _TimestampViewport()
+        self._timestamp.speaker_clicked.connect(self.speaker_clicked)
+        self._timestamp.content_height_changed.connect(self._fit_height)
+        self._ly.addWidget(self._timestamp)
         self._editor = QPlainTextEdit()
         self._editor.setReadOnly(True)
         self._editor.setUndoRedoEnabled(False)
@@ -638,60 +886,49 @@ class TranscriptView(QWidget):
         self._editor.setDocument(self._empty_document)
         self._tr: Optional[Transcript] = None
         self._show_time = True
-        self._chips: list[tuple[_SpeakerChip, str]] = []
         self._documents: dict[bool, QTextDocument] = {}
-        self._positions = {True: 0, False: 0}
         self._height_limit = 320
-        self._speakers.hide()
+
+    @property
+    def _chips(self) -> list[tuple[_SpeakerChip, str]]:
+        return [(row._chip, row._speaker) for row in self._timestamp._pool
+                if row._index >= 0 and row._speaker and not row.isHidden()]
 
     def clear(self) -> None:
         self._tr = None
-        self._chips.clear()
-        while self._speaker_layout.count():
-            it = self._speaker_layout.takeAt(0)
-            if it.widget():
-                it.widget().deleteLater()
-        self._speakers.hide()
+        self._timestamp.set_transcript(None)
         self._editor.setDocument(self._empty_document)
         for doc in self._documents.values():
             doc.deleteLater()
         self._documents.clear()
-        self._positions = {True: 0, False: 0}
         self._fit_height()
 
     def set_transcript(self, tr: Transcript) -> None:
         self.clear()
         self._tr = tr
-        for i, speaker in enumerate(tr.speakers if tr.has_speakers else []):
-            chip = _SpeakerChip(tr.label(speaker), SPEAKER_KINDS[i % len(SPEAKER_KINDS)])
-            chip.clicked.connect(lambda s=speaker: self.speaker_clicked.emit(s))
-            self._chips.append((chip, speaker))
-            self._speaker_layout.addWidget(chip)
-        self._speaker_layout.addStretch()
-        self._speakers.setVisible(bool(self._chips))
+        self._timestamp.prepare_width(self.width())
+        self._timestamp.set_transcript(tr)
         self._build_documents()
 
     def set_timestamps(self, on: bool) -> None:
-        if self._show_time == on and self._editor.document() is self._documents.get(on):
+        if self._show_time == on:
             return
-        self._positions[self._show_time] = self._editor.verticalScrollBar().value()
         self._show_time = on
-        if on in self._documents:
-            self._editor.setDocument(self._documents[on])
-            self._editor.verticalScrollBar().setValue(self._positions[on])
-            self._fit_height()
+        self._ly.setCurrentIndex(0 if on else 1)
+        self._fit_height()
 
     def refresh_speaker_names(self) -> None:
         if self._tr is None:
             return
-        for chip, spk in self._chips:
-            chip.setText(self._tr.label(spk))
+        position = self._timestamp.verticalScrollBar().value()
+        self._timestamp.set_transcript(self._tr)
+        self._timestamp.verticalScrollBar().setValue(position)
         self._build_documents()
 
     def _build_documents(self) -> None:
         old = self._documents
         self._documents = {}
-        plain, timed = [], []
+        plain = []
         previous_speaker = ""
         # A single speaker can span an hour. Merging that into one paragraph
         # defeats Qt's lazy block layout even when the documents are cached.
@@ -701,17 +938,15 @@ class TranscriptView(QWidget):
                 text = f"{self._tr.label(seg.speaker)}: {text}"
             previous_speaker = seg.speaker
             plain.append(text)
-            timed.append(f"[{fmt_time(seg.start)}] {text}")
-        for on, lines in ((False, plain), (True, timed)):
-            doc = QTextDocument(self._editor)
-            doc.setDocumentLayout(QPlainTextDocumentLayout(doc))
-            doc.setDefaultFont(self._editor.font())
-            doc.setUndoRedoEnabled(False)
-            doc.setPlainText("\n".join(lines))
-            self._documents[on] = doc
-        self._positions = {True: 0, False: 0}
+        doc = QTextDocument(self._editor)
+        doc.setDocumentLayout(QPlainTextDocumentLayout(doc))
+        doc.setDefaultFont(self._editor.font())
+        doc.setUndoRedoEnabled(False)
+        doc.setPlainText("\n".join(plain))
+        self._documents[False] = doc
+        self._editor.setDocument(doc)
         self._editor.verticalScrollBar().setValue(0)
-        self.set_timestamps(self._show_time)
+        self._fit_height()
         for doc in old.values():
             doc.deleteLater()
 
@@ -720,19 +955,28 @@ class TranscriptView(QWidget):
         self._fit_height()
 
     def _fit_height(self) -> None:
+        if not hasattr(self, "_height_limit"):
+            return
         height = 2 * self._editor.document().documentMargin() + 2
         line_height = self._editor.fontMetrics().height()
         if height + self._editor.document().blockCount() * line_height >= self._height_limit:
-            self._editor.setFixedHeight(self._height_limit)
-            return
-        block = self._editor.document().begin()
-        while block.isValid() and height < self._height_limit:
-            height += max(line_height, self._editor.blockBoundingRect(block).height())
-            block = block.next()
-        self._editor.setFixedHeight(min(self._height_limit, max(32, math.ceil(height))))
+            height = self._height_limit
+        else:
+            block = self._editor.document().begin()
+            while block.isValid() and height < self._height_limit:
+                height += max(line_height, self._editor.blockBoundingRect(block).height())
+                block = block.next()
+        if self._show_time:
+            height = self._timestamp.content_height
+        height = min(self._height_limit, max(32, math.ceil(height)))
+        self._editor.setFixedHeight(height)
+        self._timestamp.setFixedHeight(height)
+        self.setFixedHeight(height)
 
     def resizeEvent(self, ev) -> None:
         super().resizeEvent(ev)
+        if self._timestamp.isHidden():
+            self._timestamp.prepare_width(self.width())
         self._fit_height()
 
 
