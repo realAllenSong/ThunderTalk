@@ -53,7 +53,7 @@ def heights(tab):
             if hasattr(tab, name)}
 
 
-def benchmark_viewer(output, label, baseline_ref, speaker_mode):
+def benchmark_viewer(output, label, baseline_ref, speaker_mode, start_plain=False):
     from PySide6.QtWidgets import QScrollArea
     if baseline_ref:
         source = subprocess.run(["git", "show", f"{baseline_ref}:thundertalk/ui/studio/parts.py"],
@@ -64,6 +64,8 @@ def benchmark_viewer(output, label, baseline_ref, speaker_mode):
     else:
         from thundertalk.ui.studio.parts import TranscriptView
         view = TranscriptView()
+    if start_plain:
+        view.set_timestamps(False)
     window = QScrollArea()
     window.resize(860, 440)
     window.setWidgetResizable(True)
@@ -83,7 +85,8 @@ def benchmark_viewer(output, label, baseline_ref, speaker_mode):
             elapsed = (time.perf_counter() - start) * 1000
             samples[key].append(elapsed)
             print(f"{key}: {elapsed:.3f} ms", flush=True)
-    result = {"load_ms": load_ms, "widget_count": len(view.findChildren(QWidget)),
+    result = {"speaker_mode": speaker_mode, "start_plain": start_plain,
+              "load_ms": load_ms, "widget_count": len(view.findChildren(QWidget)),
               "toggle_ms": {key: {"median": statistics.median(values), "max": max(values), "samples": values}
                             for key, values in samples.items()}}
     (output / f"{label}-viewer-measurements.json").write_text(json.dumps(result, indent=2) + "\n")
@@ -98,13 +101,14 @@ def main():
     parser.add_argument("--viewer-only", action="store_true")
     parser.add_argument("--baseline-ref", help="Load the viewer from this git revision in memory")
     parser.add_argument("--speaker-mode", choices=("none", "alternating", "single"), default="none")
+    parser.add_argument("--start-plain", action="store_true", help="Benchmark the first switch from plain text too")
     args = parser.parse_args()
     output = Path(args.output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
     theme.force_light(app)
     if args.viewer_only:
-        benchmark_viewer(output, args.label, args.baseline_ref, args.speaker_mode)
+        benchmark_viewer(output, args.label, args.baseline_ref, args.speaker_mode, args.start_plain)
         return
     result = {"label": args.label, "captures": []}
     with tempfile.TemporaryDirectory(dir=output) as home, \
