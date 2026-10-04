@@ -6,7 +6,7 @@ import time
 from typing import Optional
 
 import numpy as np
-from PySide6.QtCore import QRectF, Qt, QTimer
+from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
     QDialog,
@@ -23,6 +23,7 @@ from thundertalk.core import audio_io, i18n, voices
 from thundertalk.core.audio import AudioRecorder
 from thundertalk.core.i18n import t
 from thundertalk.core.tts import SR
+from thundertalk.core.system_audio import mute_system_audio, stop_recording_and_restore
 from thundertalk.ui import theme
 from thundertalk.ui.studio.parts import PlayerBar, RoundButton
 from thundertalk.ui.studio.workers import RefTranscribeWorker
@@ -39,14 +40,20 @@ def _muted(text: str = "", size: int = 12) -> QLabel:
 
 
 class CloneDialog(QDialog):
+    audio_ready = Signal(object)
+
     def __init__(self, parent: Optional[QWidget], asr_engine, library: voices.VoiceLibrary,
-                 microphone: str = "auto") -> None:
+                 microphone: str = "auto", mute_speakers: bool = True) -> None:
         super().__init__(parent)
         self._asr = asr_engine
         self._lib = library
         self._mic = None if microphone in ("", "auto") else microphone
         self._check: Optional[voices.ReferenceCheck] = None
         self._recorder: Optional[AudioRecorder] = None
+        self._ducking_session = None
+        self._starting = False
+        self._mute_speakers = mute_speakers
+        self.audio_ready.connect(self._start_capture, Qt.QueuedConnection)
         self._rec_t0 = 0.0
         self._ref_worker: Optional[RefTranscribeWorker] = None
         self._text_touched = False
@@ -174,7 +181,10 @@ class CloneDialog(QDialog):
         p.end()
 
     def done(self, r: int) -> None:
-        self._stop_recording(discard=True)
+        try:
+            self._stop_recording(discard=True)
+        except Exception as exc:
+            print(f"[Audio] Studio recorder stop failed during close: {exc}")
         self._player.shutdown()
         if self._ref_worker is not None:
             self._ref_worker.cancel()
@@ -182,21 +192,46 @@ class CloneDialog(QDialog):
 
     # ── recording ─────────────────────────────────────────────────────
     def _toggle_record(self) -> None:
+        if self._starting:
+            self._stop_recording(discard=True)
+            return
         if self._recorder is not None:
             self._finish_recording()
             return
+        self._player.shutdown()
+        self._starting = True
+        if self._mute_speakers:
+            try:
+                session = mute_system_audio()
+            except Exception as exc:
+                self._starting = False
+                self._show_error(t("overlay.audio_unavailable"))
+                print(f"[Audio] Studio speaker mute startup failed: {exc}")
+                return
+            self._ducking_session = session
+            session.ready.add_done_callback(lambda _future: self.audio_ready.emit(session))
+        else:
+            self._start_capture(None)
+
+    def _start_capture(self, session) -> None:
+        if not self._starting or session is not self._ducking_session:
+            return
         try:
+            if session is not None:
+                session.ready.result()
             self._recorder = AudioRecorder(sample_rate=SR)
             self._recorder.start(self._mic)
         except Exception as exc:                      # no input device, permission, …
-            self._recorder = None
+            self._stop_recording(discard=True)
             self._show_error(t("studio.clone.err_mic").format(msg=exc))
             return
         if not self._recorder.is_recording:
-            self._recorder = None
+            self._stop_recording(discard=True)
             self._show_error(t("studio.clone.err_mic").format(msg="timeout"))
             return
-        self._player.shutdown()
+        self._starting = False
+        if session is not None:
+            session.refresh()
         self._msg.setVisible(False)
         self._rec_t0 = time.monotonic()
         self._rec_btn.set_icon("stop")
@@ -216,18 +251,22 @@ class CloneDialog(QDialog):
 
     def _stop_recording(self, discard: bool = False) -> Optional[np.ndarray]:
         rec, self._recorder = self._recorder, None
+        session, self._ducking_session = self._ducking_session, None
+        self._starting = False
         self._timer.stop()
         self._rec_btn.set_icon("record")
         self._rec_label.setText(t("studio.clone.record"))
         self._level.set_idle(True)
         self._import_btn.setEnabled(True)
-        if rec is None:
-            return None
-        x = rec.stop()
+        x = stop_recording_and_restore(rec, session)
         return None if discard else x
 
     def _finish_recording(self) -> None:
-        x = self._stop_recording()
+        try:
+            x = self._stop_recording()
+        except Exception as exc:
+            self._show_error(t("studio.clone.err_mic").format(msg=exc))
+            return
         if x is None or len(x) < SR:
             self._show_error(t("studio.clone.err_short_rec"))
             return

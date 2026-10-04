@@ -1,0 +1,11 @@
+BEFORE 128 {('volm', 1): 0.3125, ('volm', 2): 0.3125, ('mute', 0): 0} (31, False)
+[Audio] mute_system_audio() called
+[Audio]   + aggregate output via AppleScript (saved vol=31 muted=False)
+[Audio]   silenced via CoreAudio (devices=4 ids=[76, 88, 98, 128]) result=OK
+DURING 0.0 0.0 1 (0, True)
+[Audio] unmute_system_audio() called  (_we_muted=True, devices=4)
+[Audio]   restored aggregate via AppleScript (vol=31 muted=False)
+[Audio]   restored via CoreAudio (count=4 ids=[76, 88, 98, 128]) ok=True
+[Audio]   verify OK (vol=31 muted=False)
+OLD_AFTER 0.3100000023841858 0.3100000023841858 0 (31, False)
+GUARD_RESTORED_EXACTLY {('volm', 1): 0.3125, ('volm', 2): 0.3125, ('mute', 0): 0} (31, False)
