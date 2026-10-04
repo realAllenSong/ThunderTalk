@@ -6,6 +6,7 @@ in or starting an app shows up without a refresh button.
 """
 from __future__ import annotations
 
+import re
 import subprocess
 import threading
 
@@ -31,6 +32,19 @@ _BADGE = {"ready": "green", "login": "amber", "unverified": "blue", "checking": 
           "needs_key": "amber", "no_models": "amber", "not_running": "muted",
           "not_installed": "muted", "unsupported": "red", "unavailable": "red"}
 _MUTED = f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;"
+
+
+def error_reason(error) -> str:
+    if isinstance(error, lp.ProviderError) and error.reason == "exit":
+        status = re.search(r"status (-?\d+)", str(error))
+        if status:
+            return t("cleanup.error.exit_status").format(status=status[1])
+    if isinstance(error, lp.ProviderError) and error.reason == "version":
+        return t("cleanup.error.version").format(version=str(error).split(": ")[-1].split(" ")[0])
+    if isinstance(error, lp.ProviderError):
+        return t("cleanup.error." + error.reason) if error.reason in (
+            "auth", "rate_limit", "quota", "model", "flags", "network", "timeout", "empty", "exit", "request") else str(error)
+    return t("cleanup.error.request")
 
 
 class _Worker(QThread):
@@ -195,6 +209,7 @@ class ProofreadPage(QWidget):
         self._checking: tuple[str, str, str] | None = None  # provider, model, purpose
         self._verify_failed: set[str] = set()
         self._model_failed: set[tuple[str, str]] = set()
+        self._errors: dict[tuple[str, str], Exception] = {}
         self._open_panels: set[str] = set()
         self._rows: dict[str, ProviderRow] = {}
         self._syncing = False
@@ -241,6 +256,15 @@ class ProofreadPage(QWidget):
         theme.style_combo(self.model_combo)
         self.model_combo.currentIndexChanged.connect(self._model_chosen)
         self._model_card.add_row("cleanup.model", "cleanup.model_hint", self.model_combo)
+        self.model_search = self._edit("")
+        self.model_search.textChanged.connect(self._sync_models)
+        self._model_card.add_row("cleanup.model_search", "cleanup.model_search_hint", self.model_search)
+        self.effort_combo = QComboBox()
+        self.effort_combo.setFixedWidth(300)
+        self.effort_combo.setFixedHeight(38)
+        theme.style_combo(self.effort_combo)
+        self.effort_combo.currentIndexChanged.connect(self._effort_chosen)
+        self._model_card.add_row("cleanup.effort", "cleanup.effort_hint", self.effort_combo)
         self._other_row = QWidget()
         self._other_row.setStyleSheet("background: transparent;")
         ol = QHBoxLayout(self._other_row)
@@ -258,6 +282,11 @@ class ProofreadPage(QWidget):
         ol.addWidget(self.other_button)
         self._other_row.hide()
         self._model_card.add_widget(self._other_row)
+        self.model_id = QLabel("")
+        self.model_id.setWordWrap(True)
+        self.model_id.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
+        self.model_id.setStyleSheet(_MUTED)
+        self._model_card.add_widget(self.model_id)
         self.model_status = QLabel("")
         self.model_status.setWordWrap(True)
         self.model_status.setStyleSheet(_MUTED)
@@ -342,6 +371,8 @@ class ProofreadPage(QWidget):
             if getattr(self, slot) is worker:
                 setattr(self, slot, None)
             worker.deleteLater()
+            if slot == "_check_worker":
+                self._auto_check()
         worker.finished.connect(finished)
         worker.start()
         return worker
@@ -378,14 +409,53 @@ class ProofreadPage(QWidget):
 
     def chosen_model(self, provider: lp.Provider) -> str:
         saved = (self.settings.get("cleanup_models") or {}).get(provider.id)
-        if saved and saved in self._models(provider):
+        if provider.id == "claude" and saved in ("haiku", "sonnet", "opus"):
+            saved = next((m for m in provider.models if m.startswith("claude-" + saved + "-")), saved)
+        if saved and (saved in self._models(provider) or saved in provider.model_groups()):
             return saved
-        return lp.preferred_model(provider)
+        model = lp.preferred_model(provider)
+        return lp.split_cursor_model(model)[0] if provider.id == "cursor" else model
+
+    def chosen_effort(self, provider: lp.Provider, model: str | None = None) -> str:
+        model = model or self.chosen_model(provider)
+        saved = (self.settings.get("cleanup_efforts") or {}).get(provider.id)
+        return saved if saved in provider.effort_levels(model) else provider.default_effort(model)
+
+    def _sync_efforts(self) -> None:
+        provider = self.chosen_provider()
+        model = self.model_combo.currentData()
+        levels = provider.effort_levels(model) if provider and model and model != _OTHER else []
+        self.effort_combo.blockSignals(True)
+        self.effort_combo.clear()
+        for effort in levels:
+            self.effort_combo.addItem(t("cleanup.effort." + effort), effort)
+        if levels:
+            self.effort_combo.setCurrentIndex(max(0, self.effort_combo.findData(self.chosen_effort(provider, model))))
+        else:
+            self.effort_combo.addItem(t("cleanup.effort.unsupported"), "")
+        self.effort_combo.setEnabled(bool(levels))
+        self.effort_combo.blockSignals(False)
+
+    def _effort_chosen(self, _index: int) -> None:
+        provider = self.chosen_provider()
+        if provider is None:
+            return
+        efforts = dict(self.settings.get("cleanup_efforts") or {})
+        efforts[provider.id] = self.effort_combo.currentData()
+        self.settings.set("cleanup_efforts", efforts)
+        self._update_model_status()
+        self._auto_check()
+        self.selection_changed.emit()
 
     def _choose(self, pid: str) -> None:
         if pid == self.settings.get("cleanup_provider"):
             return
         self.settings.set("cleanup_provider", pid)
+        self._syncing = True
+        self.model_combo.setCurrentIndex(-1)
+        self._syncing = False
+        self._other_row.hide()
+        self.model_search.clear()
         self._apply()
         self.selection_changed.emit()
 
@@ -439,7 +509,10 @@ class ProofreadPage(QWidget):
             return "ready", t("cleanup.hint.ready_server").format(port=p.port, n=n), "", ""
         if p.status == "unverified":
             if p.id in self._verify_failed:
-                return "login", t("cleanup.hint.verify_failed"), "verify", p.login_command
+                error = self._errors.get((p.id, self._check_key(p, self.chosen_model(p))))
+                status = "login" if getattr(error, "reason", "") == "auth" else "unverified"
+                hint = t("cleanup.error").format(reason=error_reason(error))
+                return status, hint, "verify", p.login_command if status == "login" else ""
             return "unverified", t("cleanup.hint.unverified"), "verify", ""
         if p.status == "login":
             return "login", t("cleanup.hint.login"), "login", p.login_command
@@ -496,27 +569,42 @@ class ProofreadPage(QWidget):
 
     # ── model ───────────────────────────────────────────────────────
 
-    def _sync_models(self) -> None:
+    def _sync_models(self, *_args) -> None:
         provider = self.chosen_provider()
-        items = [*self._models(provider), _OTHER] if provider is not None else []
+        models = self._models(provider) if provider else []
+        if provider and provider.id == "cursor":
+            models = list(dict.fromkeys(lp.split_cursor_model(m)[0] if m in provider.models else m for m in models))
+        query = self.model_search.text().casefold().strip()
+        models = [m for m in models if query in lp.model_label(m).casefold()]
+        selected = self.chosen_model(provider) if provider else ""
+        if provider and provider.id == "cursor":
+            selected = lp.split_cursor_model(selected)[0] if selected in provider.models else selected
+        items = [*models, _OTHER] if provider is not None else []
         current = [self.model_combo.itemData(i) for i in range(self.model_combo.count())]
         if items != current:  # periodic detection must not close an open popup
             self._syncing = True
             self.model_combo.clear()
             for model in items[:-1]:
-                self.model_combo.addItem(model, model)
+                self.model_combo.addItem(lp.model_label(model), model)
+                self.model_combo.setItemData(self.model_combo.count() - 1, model, Qt.ItemDataRole.ToolTipRole)
             if provider is not None:
                 self.model_combo.addItem(t("cleanup.model_other"), _OTHER)
                 self.model_combo.setCurrentIndex(
-                    max(0, self.model_combo.findData(self.chosen_model(provider))))
+                    self.model_combo.findData(selected))
             else:
                 self._other_row.hide()
             self._syncing = False
         elif provider is not None:
+            self._syncing = True
+            if self.model_combo.currentData() != _OTHER:
+                self.model_combo.setCurrentIndex(self.model_combo.findData(selected))
+            self._syncing = False
             self.model_combo.setItemText(len(items) - 1, t("cleanup.model_other"))
         self.model_combo.setEnabled(provider is not None)
+        self._sync_efforts()
         self._update_model_status()
-        self._auto_check()
+        if not query:
+            self._auto_check()
 
     def _model_chosen(self, _index: int) -> None:
         if self._syncing:
@@ -533,12 +621,18 @@ class ProofreadPage(QWidget):
         models = dict(self.settings.get("cleanup_models") or {})
         models[provider.id] = model
         self.settings.set("cleanup_models", models)
+        self._sync_efforts()
         self._update_model_status()
         self._auto_check()
         self.selection_changed.emit()
 
+    def _check_key(self, provider: lp.Provider, model: str, effort=None) -> str:
+        effort = self.chosen_effort(provider, model) if effort is None else effort
+        return f"{model}@{effort}" if effort else model
+
     def _checked(self, pid: str, model: str):
-        return ((self.settings.get("cleanup_checks") or {}).get(pid) or {}).get(model)
+        provider = next(p for p in self.providers if p.id == pid)
+        return ((self.settings.get("cleanup_checks") or {}).get(pid) or {}).get(self._check_key(provider, model))
 
     def _auto_check(self) -> None:
         """Curated IDs are only suggestions: prove the selected one works."""
@@ -547,7 +641,7 @@ class ProofreadPage(QWidget):
             return
         model = self.chosen_model(provider)
         if (self._checked(provider.id, model) is None
-                and (provider.id, model) not in self._model_failed):
+                and (provider.id, self._check_key(provider, model)) not in self._model_failed):
             self._start_check(provider, model, "model")
 
     def _check_other(self) -> None:
@@ -560,22 +654,26 @@ class ProofreadPage(QWidget):
         if self._check_worker is not None or not model:
             return
         self._checking = (provider.id, model, purpose)
+        effort = self.chosen_effort(provider, model)
         self._check_worker = self._start(
-            lambda cancel: self._check_fn(provider, model, 60, cancel),
-            lambda result: self._check_done(provider, model, purpose, result), "_check_worker")
+            lambda cancel: self._check_fn(provider, model, 60, cancel,
+                                           effort=effort or None),
+            lambda result: self._check_done(provider, model, purpose, result, effort), "_check_worker")
         if purpose == "verify":
             self._apply()
         else:
             self._update_model_status()
 
-    def _check_done(self, provider: lp.Provider, model: str, purpose: str, result) -> None:
+    def _check_done(self, provider: lp.Provider, model: str, purpose: str, result, effort="") -> None:
+        key = self._check_key(provider, model, effort)
         self._checking = None
         if isinstance(result, (int, float)) and not isinstance(result, bool):
             checks = dict(self.settings.get("cleanup_checks") or {})
-            checks[provider.id] = {**(checks.get(provider.id) or {}), model: round(float(result), 2)}
+            checks[provider.id] = {**(checks.get(provider.id) or {}), key: round(float(result), 2)}
             self.settings.set("cleanup_checks", checks)
             self._verify_failed.discard(provider.id)
-            self._model_failed.discard((provider.id, model))
+            self._model_failed.discard((provider.id, key))
+            self._errors.pop((provider.id, key), None)
             if provider.status == "unverified":
                 provider.status, provider.ready = "ready", True
             if purpose == "other":
@@ -589,27 +687,39 @@ class ProofreadPage(QWidget):
                 self._other_row.hide()
                 self.selection_changed.emit()
         elif not isinstance(result, lp.CompletionCancelled):
+            checks = dict(self.settings.get("cleanup_checks") or {})
+            checked = dict(checks.get(provider.id) or {})
+            if key in checked:
+                checked.pop(key)
+                checks[provider.id] = checked
+                self.settings.set("cleanup_checks", checks)
             if purpose == "verify":
                 self._verify_failed.add(provider.id)
-            self._model_failed.add((provider.id, model))
+            self._model_failed.add((provider.id, key))
+            self._errors[(provider.id, key)] = result
         self._apply()
 
     def _update_model_status(self) -> None:
         provider = self.chosen_provider()
         if provider is None:
+            self.model_id.clear()
             self.model_status.setText(t("cleanup.model_none"))
             return
         model = self.model_combo.currentData()
         if model == _OTHER:
             model = self.other_edit.text().strip()
+        model = model or self.chosen_model(provider)
+        key = self._check_key(provider, model)
+        resolved = provider.resolve_model(model, self.chosen_effort(provider, model) or None)
+        self.model_id.setText(t("cleanup.model_id").format(model=resolved))
         if self._checking and self._checking[0] == provider.id and self._checking[2] != "verify":
             self.model_status.setText(t("cleanup.check.running").format(model=self._checking[1]))
             return
         seconds = self._checked(provider.id, model)
         if seconds is not None:
             self.model_status.setText(t("cleanup.check.ok").format(model=model, s=seconds))
-        elif (provider.id, model) in self._model_failed:
-            self.model_status.setText(t("cleanup.check.failed").format(model=model))
+        elif (provider.id, key) in self._model_failed:
+            self.model_status.setText(t("cleanup.check.failed").format(model=model) + " " + t("cleanup.error").format(reason=error_reason(self._errors.get((provider.id, key)))))
         else:
             self.model_status.setText(t("cleanup.models." + provider.models_source).format(
                 name=provider.display_name))
@@ -623,6 +733,7 @@ class ProofreadPage(QWidget):
             card.retranslate()
         self.privacy.setText(t("cleanup.privacy"))
         self._providers_hint.setText(t("cleanup.providers_hint"))
+        self.model_search.setPlaceholderText(t("cleanup.model_search"))
         self.other_edit.setPlaceholderText(t("cleanup.model_other_placeholder"))
         self.other_button.setText(t("cleanup.model_check"))
         self._apply()

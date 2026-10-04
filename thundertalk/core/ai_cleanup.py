@@ -44,7 +44,7 @@ _MAX_HOTWORDS = 200
 
 
 def build_request(text: str, reference_text: str | None = None,
-                  hotwords=None) -> str:
+                  hotwords=None, effort: str | None = None) -> str:
     payload = {"transcript": text}
     reference = (reference_text or "").strip()
     if reference and reference != text.strip():
@@ -55,8 +55,8 @@ def build_request(text: str, reference_text: str | None = None,
     return json.dumps(payload, ensure_ascii=False)
 
 
-def cleanup(provider, text: str, model: str, style: str | None = None, timeout: float = 30,
-            cancel=None, *, reference_text: str | None = None, hotwords=None) -> str:
+def cleanup(provider, text: str, model: str, style: str | None = None, timeout: float = 60,
+            cancel=None, *, reference_text: str | None = None, hotwords=None, effort: str | None = None) -> str:
     """Proofread *text*; returns it unchanged when the result is unsafe.
 
     ``style`` is accepted for backward compatibility and ignored.
@@ -65,7 +65,7 @@ def cleanup(provider, text: str, model: str, style: str | None = None, timeout: 
     if not text.strip():
         return text
     result = provider.complete(SYSTEM, build_request(text, reference_text, hotwords),
-                               model, timeout, cancel=cancel)
+                               model, timeout, cancel=cancel, **({"effort": effort} if effort is not None else {}))
     result = _unwrap(result, text)
     return result if acceptable(text, result) else text
 

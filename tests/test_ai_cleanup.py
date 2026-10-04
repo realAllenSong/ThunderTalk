@@ -14,9 +14,12 @@ from thundertalk.core import ai_cleanup as ai
 from thundertalk.core import llm_providers as lp
 from thundertalk.core import text_output as output
 
+_REAL_RETRY_PAUSE = lp._retry_pause
+
 
 @pytest.fixture(autouse=True)
-def fresh_caches():
+def fresh_caches(monkeypatch):
+    monkeypatch.setattr(lp, "_retry_pause", lambda cancel: None)
     lp._HELP_CACHE.clear()
     lp._MODEL_CACHE.clear()
 
@@ -194,7 +197,7 @@ def test_cli_arguments_and_empty_workdir(monkeypatch, ident):
         calls.append((args, kwargs))
         if ident == "codex":
             Path(args[args.index("-o") + 1]).write_text("Clean text")
-        return "Clean text", ""
+        return (json.dumps({"result": "Clean text", "is_error": False}) if ident == "claude" else "Clean text"), ""
     monkeypatch.setattr(lp, "_run", run)
     p = lp.Provider(ident, "Fake", ["m"], ready=True, executable="/fake/cli",
                     help_text="--ephemeral --ignore-user-config --ignore-rules",
@@ -532,3 +535,178 @@ def test_worker_failure_preserves_raw(qapp, guarded):
             raise lp.ProviderError("timeout")
     LlmRewriteWorker(Fake(), "raw", "fake", ticket, 1, False).run()
     assert not calls and ticket.valid
+
+
+@pytest.mark.parametrize('ident,model,effort,expected', [
+    ('codex', 'gpt-6.1-sol', 'xhigh', 'model_reasoning_effort="xhigh"'),
+    ('claude', 'claude-sonnet-5-5', 'low', '--effort'),
+    ('cursor', 'claude-opus-5-5', 'medium', 'claude-opus-5-5-medium'),
+    ('cursor', 'gpt-5.6-sol-fast', 'high', 'gpt-5.6-sol-high-fast'),
+])
+def test_selected_effort_reaches_cli(monkeypatch, ident, model, effort, expected):
+    calls = []
+    def run(args, **kwargs):
+        calls.append(args)
+        if ident == 'codex':
+            Path(args[args.index('-o') + 1]).write_text('OK')
+        return (json.dumps({'result': 'OK'}) if ident == 'claude' else 'OK'), ''
+    monkeypatch.setattr(lp, '_run', run)
+    p = lp.Provider(ident, 'Fake', [model] if ident != 'cursor' else [expected], ready=True,
+                    executable='/fake', help_text='--effort --safe-mode',
+                    efforts={model: ['low', 'medium', 'high', 'xhigh']})
+    assert p.complete('s', 'u', model, 10, effort=effort) == 'OK'
+    assert expected in calls[0]
+    if ident == 'claude':
+        assert calls[0][calls[0].index('--effort') + 1] == effort
+        assert '--safe-mode' in calls[0]
+
+
+def test_cursor_groups_keep_fast_and_thinking_variants():
+    p = lp.Provider('cursor', 'Cursor', ['claude-opus-5-5-low', 'claude-opus-5-5-medium',
+        'claude-opus-5-5-low-fast', 'claude-opus-5-5-high-fast', 'claude-opus-5-thinking-high', 'auto'])
+    assert list(p.model_groups()) == ['claude-opus-5-5', 'claude-opus-5-5-fast', 'claude-opus-5-thinking', 'auto']
+    assert p.effort_levels('claude-opus-5-5-fast') == ['low', 'high']
+    assert p.resolve_model('claude-opus-5-5', 'medium') == 'claude-opus-5-5-medium'
+    assert p.default_effort('claude-opus-5-5') == 'low'
+
+
+def test_claude_exact_models_and_effort_detection(offline, monkeypatch):
+    _fake_cli(monkeypatch, claude_logged_in=True)
+    original = lp._run
+    monkeypatch.setattr(lp, '_run', lambda args, **kw: (original(args, **kw)[0] + ' --effort', '') if '--help' in args else original(args, **kw))
+    p = by_id(lp.detect_clis())['claude']
+    assert {'claude-sonnet-5-5', 'claude-opus-5-5', 'claude-haiku-4-5-20251001'} <= set(p.models)
+    assert 'sonnet' not in p.models and p.default_effort('claude-sonnet-5-5') == 'low'
+    assert p.effort_levels('claude-haiku-4-5-20251001') == []
+    assert lp.model_label('claude-sonnet-5-5') == 'Claude Sonnet 5.5 · claude-sonnet-5-5'
+
+
+@pytest.mark.parametrize('first', ['timeout', 'empty', 'network'])
+def test_transient_failure_retries_exactly_once(monkeypatch, first):
+    attempts, pauses = [], []
+    def run(*args, **kwargs):
+        attempts.append(kwargs)
+        if len(attempts) == 1:
+            if first == 'empty':
+                return '', ''
+            raise lp.ProviderError(first, reason=first, transient=True)
+        return 'OK', ''
+    monkeypatch.setattr(lp, '_run', run)
+    monkeypatch.setattr(lp, '_retry_pause', lambda cancel: pauses.append(cancel))
+    p = lp.Provider('cursor', 'Fake', ['m'], ready=True, executable='/fake')
+    assert lp.check_model(p, 'm', 2) >= 0
+    assert len(attempts) == 2 and pauses == [None]
+    assert all(a['timeout'] == 2 for a in attempts)
+
+
+@pytest.mark.parametrize('reason', ['auth', 'model', 'version', 'flags', 'quota'])
+def test_permanent_failure_does_not_retry(monkeypatch, reason):
+    calls = []
+    def run(*args, **kwargs):
+        calls.append(1)
+        raise lp.ProviderError(reason, reason=reason)
+    monkeypatch.setattr(lp, '_run', run)
+    p = lp.Provider('cursor', 'Fake', ['m'], ready=True, executable='/fake')
+    with pytest.raises(lp.ProviderError):
+        p.complete('s', 'u', 'm', 2)
+    assert calls == [1]
+
+
+def test_retry_stops_after_second_empty(monkeypatch):
+    calls = []
+    monkeypatch.setattr(lp, '_run', lambda *a, **kw: (calls.append(1) or '', ''))
+    p = lp.Provider('cursor', 'Fake', ['m'], ready=True, executable='/fake')
+    with pytest.raises(lp.ProviderError, match='empty'):
+        p.complete('s', 'u', 'm', 2)
+    assert len(calls) == 2
+
+
+def test_retry_wait_is_five_seconds_and_cancellable(monkeypatch):
+    ticks = [0.0]
+    monkeypatch.setattr(lp.time, 'monotonic', lambda: ticks[0])
+    monkeypatch.setattr(lp.time, 'sleep', lambda dt: ticks.__setitem__(0, ticks[0] + dt))
+    helper = _REAL_RETRY_PAUSE
+    helper(None)
+    assert ticks[0] == pytest.approx(5)
+    event = threading.Event()
+    event.set()
+    with pytest.raises(lp.CompletionCancelled):
+        helper(event)
+
+
+@pytest.mark.parametrize('diagnostic,reason', [
+    ('Authentication failed token=SECRET', 'auth'), ('unknown option --oops', 'flags'),
+    ('rate limit 429', 'rate_limit'), ('API Error: 400 Claude Code 2.1.214 does not support this model; version 2.1.280 or newer is required.', 'version'),
+    ('model not found: foo', 'model'), ('connection refused', 'network'),
+])
+def test_real_fake_cli_exit_classification(tmp_path, diagnostic, reason):
+    cli = tmp_path / 'fake_cli.py'
+    cli.write_text('import sys\nsys.stderr.write(' + repr(diagnostic) + ')\nsys.exit(1)\n')
+    import sys
+    with pytest.raises(lp.ProviderError) as exc:
+        lp._run([sys.executable, str(cli)], cwd=tmp_path, timeout=3)
+    assert exc.value.reason == reason and 'SECRET' not in str(exc.value)
+
+
+def test_claude_json_error_is_not_pasted(monkeypatch):
+    monkeypatch.setattr(lp, '_run', lambda *a, **k: (json.dumps({'is_error': True, 'result': 'Authentication failed'}), ''))
+    p = lp.Provider('claude', 'Fake', ['m'], ready=True, executable='/fake')
+    with pytest.raises(lp.ProviderError) as exc:
+        p.complete('s', 'u', 'm', 2)
+    assert exc.value.reason == 'auth'
+
+
+@pytest.mark.parametrize('model,effort,thinking', [
+    ('gemini-2.5-flash', 'low', {'thinkingBudget': 512}),
+    ('gemini-2.5-pro', 'high', {'thinkingBudget': 24576}),
+    ('gemini-3-flash-preview', 'minimal', {'thinkingLevel': 'MINIMAL'}),
+    ('gemini-3-pro-preview', 'low', {'thinkingLevel': 'LOW'}),
+])
+def test_gemini_effort_in_project_config(monkeypatch, model, effort, thinking):
+    def run(args, **kw):
+        data = json.loads((Path(kw['cwd']) / '.gemini/settings.json').read_text())
+        assert data['modelConfigs']['customOverrides'] == [{
+            'match': {'model': model}, 'modelConfig': {'generateContentConfig': {'thinkingConfig': thinking}}}]
+        return 'OK', ''
+    monkeypatch.setattr(lp, '_run', run)
+    p = lp.Provider('gemini', 'Gemini', [model], ready=True, executable='/fake', help_text='--approval-mode')
+    assert p.complete('s', 'u', model, 2, effort=effort) == 'OK'
+
+
+def test_http_timeout_retries_and_auth_does_not(monkeypatch):
+    calls = []
+    def http(*args, **kw):
+        calls.append(1)
+        if len(calls) == 1:
+            raise TimeoutError()
+        return {'choices': [{'message': {'content': 'OK'}}]}
+    monkeypatch.setattr(lp, '_http', http)
+    p = lp.Provider('custom', 'Fake', ['m'], ready=True)
+    assert p.complete('s', 'u', 'm', 2) == 'OK' and len(calls) == 2
+    calls.clear()
+    def unauthenticated(*args, **kw):
+        calls.append(1)
+        raise HTTPError('http://example.invalid', 401, 'Unauthorized', {}, None)
+    monkeypatch.setattr(lp, '_http', unauthenticated)
+    with pytest.raises(lp.ProviderError) as exc:
+        p.complete('s', 'u', 'm', 2)
+    assert exc.value.reason == 'auth' and len(calls) == 1
+
+
+def test_worker_signals_after_guarded_paste(qapp, guarded):
+    from thundertalk.app import LlmRewriteWorker
+    ticket, calls = guarded
+    worker = LlmRewriteWorker(Recorder('这个 prompt 要改一下'), '这个 promp 要改一下', 'fake', ticket, 1, False)
+    visual = []
+    worker.proofread_ready.connect(lambda *args: visual.append((args, list(calls))))
+    worker.run()
+    assert visual == [(('这个 promp 要改一下', '这个 prompt 要改一下', True), [6, 'paste'])]
+
+
+def test_plain_claude_auth_diagnostic_never_retries(monkeypatch):
+    attempts = []
+    monkeypatch.setattr(lp, '_run', lambda *a, **k: (attempts.append(1) or 'Please log in', ''))
+    p = lp.Provider('claude', 'Fake', ['m'], ready=True, executable='/fake')
+    with pytest.raises(lp.ProviderError) as exc:
+        p.complete('s', 'u', 'm', 2)
+    assert exc.value.reason == 'auth' and attempts == [1]

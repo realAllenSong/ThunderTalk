@@ -2,7 +2,7 @@
 
 Run through the machine-wide GPU lock, even for cloud providers:
   python3 ~/Library/Caches/ThunderTalk-bench/lock.py gpu -- env PYTHONPATH=$PWD \
-    $PY tools/check_ai_cleanup.py [provider[:model] ...]
+    $PY tools/check_ai_cleanup.py [provider[:model[:effort]] ...]
   (default: codex:gpt-6.1-sol and cursor with its default model)
 Results are written to .ai-cleanup-checks.json; do not commit it.
 """
@@ -33,16 +33,19 @@ report = {"detection_seconds": round(time.monotonic() - start, 3), "providers": 
 print(json.dumps(report, ensure_ascii=False), flush=True)
 targets = sys.argv[1:] or ["codex:gpt-6.1-sol", "cursor"]
 for target in targets:
-    ident, _, model = target.partition(":")
+    parts = target.split(":")
+    ident = parts[0]
+    model = parts[1] if len(parts) > 1 else ""
+    effort = parts[2] if len(parts) > 2 else None
     provider = next((p for p in providers if p.id == ident and p.is_ready()), None)
     model = model or (preferred_model(provider) if provider else "")
     for text, reference, expected in SAMPLES:
-        item = {"provider": ident, "model": model, "input": text, "reference_text": reference}
+        item = {"provider": ident, "model": model, "effort": effort, "input": text, "reference_text": reference}
         started = time.monotonic()
         try:
             if provider is None:
                 raise RuntimeError("Provider not ready")
-            item["output"] = cleanup(provider, text, model, timeout=90, reference_text=reference)
+            item["output"] = cleanup(provider, text, model, timeout=60, reference_text=reference, effort=effort)
             item["as_expected"] = item["output"] == expected
         except Exception as exc:
             item["error"] = str(exc)

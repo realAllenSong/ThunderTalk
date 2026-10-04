@@ -189,15 +189,18 @@ class LlmRewriteWorker(QThread):
     """Bounded provider work, followed by a guarded paste off the Qt thread."""
 
     done = Signal()
+    proofread_ready = Signal(str, str, bool)
+    proofread_failed = Signal(object)
 
     def __init__(self, provider, text, model, ticket, timeout, keep_clipboard,
-                 hotwords=(), reference_text=None):
+                 hotwords=(), reference_text=None, effort=None):
         super().__init__()
         import threading
         self.cancel = threading.Event()
         self.provider, self.text, self.model = provider, text, model
         self.ticket, self.timeout, self.keep_clipboard = ticket, timeout, keep_clipboard
         self.hotwords, self.reference_text = list(hotwords or []), reference_text
+        self.effort = effort
 
     def run(self):
         from thundertalk.core.ai_cleanup import cleanup
@@ -205,11 +208,14 @@ class LlmRewriteWorker(QThread):
         try:
             result = cleanup(self.provider, self.text, self.model, timeout=self.timeout,
                              cancel=self.cancel, reference_text=self.reference_text,
-                             hotwords=self.hotwords)
-            if not self.cancel.is_set() and result != self.text:
-                apply_if_unchanged(self.ticket, result, self.keep_clipboard, self.cancel)
-        except Exception:
-            pass  # raw text stays untouched; no prompt logging
+                             hotwords=self.hotwords, effort=self.effort)
+            if not self.cancel.is_set():
+                applied = result == self.text or apply_if_unchanged(
+                    self.ticket, result, self.keep_clipboard, self.cancel)
+                self.proofread_ready.emit(self.text, result, bool(applied))
+        except Exception as exc:
+            if not self.cancel.is_set():
+                self.proofread_failed.emit(exc)
         finally:
             self.done.emit()
 
@@ -682,17 +688,33 @@ def main() -> None:
         try:
             timeout = min(120.0, max(1.0, float(settings.get("cleanup_timeout"))))
         except (ValueError, TypeError):
-            timeout = 30.0
+            timeout = 60.0
         worker = LlmRewriteWorker(provider, text, proofread.chosen_model(provider),
                                   ticket, timeout, not settings.get("save_to_clipboard"),
-                                  hotwords=settings.hotwords, reference_text=reference_text)
+                                  hotwords=settings.hotwords, reference_text=reference_text,
+                                  effort=proofread.chosen_effort(provider) or None)
         pipe._cleanup_worker = worker
-        overlay.show_cleanup()
+        overlay.show_cleanup(text)
+
+        def _ready(original, corrected, applied):
+            if pipe._cleanup_worker is worker and not worker.cancel.is_set() and not pipe._recording:
+                if applied:
+                    overlay.show_cleanup_diff(original, corrected)
+                else:
+                    overlay.show_result(t("cleanup.skipped"))
+
+        def _failed(error):
+            if pipe._cleanup_worker is worker and not worker.cancel.is_set() and not pipe._recording:
+                from thundertalk.ui.pages.proofread_page import error_reason
+                overlay.show_error(t("cleanup.error").format(reason=error_reason(error)))
+
+        worker.proofread_ready.connect(_ready)
+        worker.proofread_failed.connect(_failed)
 
         def _done():
             if pipe._cleanup_worker is worker:
                 pipe._cleanup_worker = None
-                if not pipe._recording and state.recording == st.REC_IDLE:
+                if not pipe._recording and state.recording == st.REC_IDLE and overlay._state == overlay._CLEANUP:
                     overlay.hide_overlay()
         worker.done.connect(_done)
         _track_worker(worker)

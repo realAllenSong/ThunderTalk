@@ -42,13 +42,14 @@ DEFAULTS: dict[str, Any] = {
     # dropped on the next save.
     "llm_rewrite_enabled": False,
     "cleanup_provider": "",
+    "cleanup_efforts": {},          # provider id -> selected reasoning effort
     "cleanup_models": {},           # provider id -> chosen model
     "cleanup_checks": {},           # provider id -> {model: seconds} that passed a real call
     "cleanup_extra_models": {},     # provider id -> validated "Other…" model IDs
     "cleanup_base_url": "",
     "cleanup_api_key": "",
     "cleanup_cherry_key": "",
-    "cleanup_timeout": 30.0,
+    "cleanup_timeout": 60.0,
     # MOSS dictation: prefix each speaker turn with S01:/S02: labels when
     # two or more speakers are detected in the utterance.
     "moss_speaker_labels": False,
