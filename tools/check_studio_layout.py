@@ -29,12 +29,13 @@ from thundertalk.ui import theme  # noqa: E402
 from thundertalk.ui.pages.studio_page import StudioPage  # noqa: E402
 
 
-def synthetic_transcript(count=2000):
+def synthetic_transcript(count=2000, speaker_mode="none"):
     return Transcript(
         [Segment(i * 1.8, (i + 1) * 1.8,
-                 f"Segment {i + 1}: We reviewed the release plan and agreed to test the next build. 我们确认了下一步。")
+                 f"Segment {i + 1}: We reviewed the release plan and agreed to test the next build. 我们确认了下一步。",
+                 "S0" if speaker_mode == "single" else f"S{i % 2}" if speaker_mode == "alternating" else "")
          for i in range(count)],
-        count * 1.8, "Synthetic ASR", count * 0.09, title="Release discussion",
+        count * 1.8, "Synthetic ASR", count * 0.09, has_speakers=speaker_mode != "none", title="Release discussion",
         notes="## Summary\nThe team reviewed the release plan.\n\n"
               "## Decisions\n- Test the next build before release.\n\n"
               "## Action items\n- Verify transcription and export. Owner and deadline not mentioned.",
@@ -52,7 +53,7 @@ def heights(tab):
             if hasattr(tab, name)}
 
 
-def benchmark_viewer(output, label, baseline_ref):
+def benchmark_viewer(output, label, baseline_ref, speaker_mode):
     from PySide6.QtWidgets import QScrollArea
     if baseline_ref:
         source = subprocess.run(["git", "show", f"{baseline_ref}:thundertalk/ui/studio/parts.py"],
@@ -68,7 +69,7 @@ def benchmark_viewer(output, label, baseline_ref):
     window.setWidgetResizable(True)
     window.setWidget(view)
     start = time.perf_counter()
-    view.set_transcript(synthetic_transcript())
+    view.set_transcript(synthetic_transcript(speaker_mode=speaker_mode))
     window.show()
     settle()
     load_ms = (time.perf_counter() - start) * 1000
@@ -96,13 +97,14 @@ def main():
     parser.add_argument("--output-dir", default="artifacts/studio-layout")
     parser.add_argument("--viewer-only", action="store_true")
     parser.add_argument("--baseline-ref", help="Load the viewer from this git revision in memory")
+    parser.add_argument("--speaker-mode", choices=("none", "alternating", "single"), default="none")
     args = parser.parse_args()
     output = Path(args.output_dir).resolve()
     output.mkdir(parents=True, exist_ok=True)
     app = QApplication.instance() or QApplication([])
     theme.force_light(app)
     if args.viewer_only:
-        benchmark_viewer(output, args.label, args.baseline_ref)
+        benchmark_viewer(output, args.label, args.baseline_ref, args.speaker_mode)
         return
     result = {"label": args.label, "captures": []}
     with tempfile.TemporaryDirectory(dir=output) as home, \
@@ -131,7 +133,7 @@ def main():
                     result["captures"].append({"path": str(path), "heights": heights(tab)})
 
         start = time.perf_counter()
-        tab._show_result(synthetic_transcript())
+        tab._show_result(synthetic_transcript(speaker_mode=args.speaker_mode))
         settle()
         result["load_ms"] = (time.perf_counter() - start) * 1000
         samples = {"plain": [], "time": []}

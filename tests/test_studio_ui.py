@@ -1114,15 +1114,16 @@ def test_notes_collapse_and_long_notes_scroll(studio):
     assert tab._notes_card.isHidden()
 
 
-@pytest.mark.parametrize("speakers", [False, True])
-def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypatch, speakers):
+@pytest.mark.parametrize("speaker_mode", ["none", "alternating", "single"])
+def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypatch, speaker_mode):
     from PySide6.QtWidgets import QWidget
     tab = studio.transcribe_tab
     transcript = tr.Transcript(
         [tr.Segment(i * 1.8, (i + 1) * 1.8,
                     f"Segment {i}: Review the release plan and verify the next build. 我们确认了下一步。",
-                    f"S{i % 2}" if speakers else "") for i in range(2000)],
-        3600, "Fake", has_speakers=speakers,
+                    "" if speaker_mode == "none" else "S0" if speaker_mode == "single" else f"S{i % 2}")
+         for i in range(2000)],
+        3600, "Fake", has_speakers=speaker_mode != "none",
     )
     tab._show_result(transcript)
     studio.resize(1200, 800)
@@ -1130,7 +1131,7 @@ def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypa
     assert tab._view._editor.document().blockCount() == 2000
     assert tab._view._editor.height() <= 420
     assert tab._view._editor.verticalScrollBar().maximum() > 0
-    assert len(tab._view._chips) == (2 if speakers else 0)
+    assert len(tab._view._chips) == {"none": 0, "alternating": 2, "single": 1}[speaker_mode]
     documents = dict(tab._view._documents)
     widgets = tab._view.findChildren(QWidget)
     assert len(widgets) < 12

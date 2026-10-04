@@ -605,7 +605,7 @@ class ContentTextBrowser(QTextBrowser):
 class TranscriptView(QWidget):
     """One scrolling editor with cached text documents; one chip per speaker.
 
-    Both modes keep a block per turn/segment, so Qt lays out visible text
+    Both modes keep a block per segment, so Qt lays out visible text
     lazily instead of thousands of labels. Switching never formats the text
     or constructs widgets. Plain mode retains paragraph breaks for reading.
     """
@@ -691,10 +691,15 @@ class TranscriptView(QWidget):
     def _build_documents(self) -> None:
         old = self._documents
         self._documents = {}
-        rows = self._tr.turns() if self._tr.has_speakers else self._tr.segments
         plain, timed = [], []
-        for seg in rows:
-            text = f"{self._tr.label(seg.speaker)}: {seg.text}" if seg.speaker else seg.text
+        previous_speaker = ""
+        # A single speaker can span an hour. Merging that into one paragraph
+        # defeats Qt's lazy block layout even when the documents are cached.
+        for seg in self._tr.segments:
+            text = seg.text
+            if seg.speaker and seg.speaker != previous_speaker:
+                text = f"{self._tr.label(seg.speaker)}: {text}"
+            previous_speaker = seg.speaker
             plain.append(text)
             timed.append(f"[{fmt_time(seg.start)}] {text}")
         for on, lines in ((False, plain), (True, timed)):
