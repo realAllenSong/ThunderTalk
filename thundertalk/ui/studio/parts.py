@@ -3,13 +3,14 @@ transcript rows, voice chips and the audio player bar."""
 
 from __future__ import annotations
 
+import math
 import os
 from pathlib import Path
 from typing import Optional
 
 import numpy as np
 from PySide6.QtCore import QPoint, QPointF, QRectF, QSize, Qt, QTimer, Signal
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPen, QTextDocument
 from PySide6.QtWidgets import (
     QAbstractButton,
     QFileDialog,
@@ -17,8 +18,11 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QMenu,
+    QPlainTextDocumentLayout,
+    QPlainTextEdit,
     QPushButton,
     QSizePolicy,
+    QTextBrowser,
     QVBoxLayout,
     QWidget,
 )
@@ -71,6 +75,7 @@ class DropZone(QFrame):
         self._hover = False
         self._drag = False
         self._path = ""
+        self._compact = False
         self._link: tuple[str, str] = ("", "")          # url, title
 
         ly = QVBoxLayout(self)
@@ -117,6 +122,16 @@ class DropZone(QFrame):
     def retranslate(self) -> None:
         self._refresh_text()
 
+    def set_compact(self, compact: bool) -> None:
+        if compact == self._compact:
+            return
+        self._compact = compact
+        self.setFixedHeight(48 if compact else 120)
+        margins = (16, 8, 16, 8) if compact else (24, 18, 24, 18)
+        self.layout().setContentsMargins(*margins)
+        self._sub.setVisible(not compact)
+        self._refresh_text()
+
     def _refresh_text(self) -> None:
         url, title = self._link
         if url:
@@ -125,7 +140,7 @@ class DropZone(QFrame):
             self._sub.setText(t("studio.link.sub").format(site=site_name(url)))
             return
         if not self._path:
-            self._title.setText(t("studio.drop.hint"))
+            self._title.setText(t("studio.drop.another" if self._compact else "studio.drop.hint"))
             self._sub.setText(t("studio.drop.sub"))
             return
         p = Path(self._path)
@@ -569,8 +584,31 @@ class _SpeakerChip(theme.Chip):
             self.clicked.emit()
 
 
+class ContentTextBrowser(QTextBrowser):
+    """Markdown sized to its content, with scrolling only for long notes."""
+
+    def __init__(self) -> None:
+        super().__init__()
+        self.setMinimumHeight(0)
+        self.document().documentLayout().documentSizeChanged.connect(self._fit_height)
+
+    def _fit_height(self, *_args) -> None:
+        height = min(360, max(32, math.ceil(self.document().size().height()) + 2))
+        if height != self.height():
+            self.setFixedHeight(height)
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._fit_height()
+
+
 class TranscriptView(QWidget):
-    """One row per segment (or per speaker turn): timestamp, speaker chip, text."""
+    """One scrolling editor with cached text documents; one chip per speaker.
+
+    Both modes keep a block per turn/segment, so Qt lays out visible text
+    lazily instead of thousands of labels. Switching never formats the text
+    or constructs widgets. Plain mode retains paragraph breaks for reading.
+    """
 
     speaker_clicked = Signal(str)
 
@@ -580,86 +618,117 @@ class TranscriptView(QWidget):
         self._ly = QVBoxLayout(self)
         self._ly.setContentsMargins(0, 0, 0, 0)
         self._ly.setSpacing(0)
+        self.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
+        self._speakers = QWidget()
+        self._speaker_layout = QHBoxLayout(self._speakers)
+        self._speaker_layout.setContentsMargins(0, 0, 0, 8)
+        self._speaker_layout.setSpacing(8)
+        self._ly.addWidget(self._speakers)
+        self._editor = QPlainTextEdit()
+        self._editor.setReadOnly(True)
+        self._editor.setUndoRedoEnabled(False)
+        self._editor.setFrameShape(QFrame.Shape.NoFrame)
+        editor_font = theme.font(14)
+        editor_font.setPixelSize(14)
+        self._editor.setFont(editor_font)
+        self._editor.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent; border: none;")
+        self._ly.addWidget(self._editor)
+        self._empty_document = QTextDocument(self._editor)
+        self._empty_document.setDocumentLayout(QPlainTextDocumentLayout(self._empty_document))
+        self._editor.setDocument(self._empty_document)
         self._tr: Optional[Transcript] = None
         self._show_time = True
-        self._times: list[QLabel] = []
         self._chips: list[tuple[_SpeakerChip, str]] = []
+        self._documents: dict[bool, QTextDocument] = {}
+        self._positions = {True: 0, False: 0}
+        self._height_limit = 320
+        self._speakers.hide()
 
     def clear(self) -> None:
         self._tr = None
-        self._times.clear()
         self._chips.clear()
-        while self._ly.count():
-            it = self._ly.takeAt(0)
+        while self._speaker_layout.count():
+            it = self._speaker_layout.takeAt(0)
             if it.widget():
                 it.widget().deleteLater()
+        self._speakers.hide()
+        self._editor.setDocument(self._empty_document)
+        for doc in self._documents.values():
+            doc.deleteLater()
+        self._documents.clear()
+        self._positions = {True: 0, False: 0}
+        self._fit_height()
 
     def set_transcript(self, tr: Transcript) -> None:
         self.clear()
         self._tr = tr
-        rows = tr.turns() if tr.has_speakers else tr.segments
-        order = tr.speakers
-        for i, seg in enumerate(rows):
-            self._ly.addWidget(self._row(seg, order, first=(i == 0)))
-        self._equalise_chips()
+        for i, speaker in enumerate(tr.speakers if tr.has_speakers else []):
+            chip = _SpeakerChip(tr.label(speaker), SPEAKER_KINDS[i % len(SPEAKER_KINDS)])
+            chip.clicked.connect(lambda s=speaker: self.speaker_clicked.emit(s))
+            self._chips.append((chip, speaker))
+            self._speaker_layout.addWidget(chip)
+        self._speaker_layout.addStretch()
+        self._speakers.setVisible(bool(self._chips))
+        self._build_documents()
 
     def set_timestamps(self, on: bool) -> None:
+        if self._show_time == on and self._editor.document() is self._documents.get(on):
+            return
+        self._positions[self._show_time] = self._editor.verticalScrollBar().value()
         self._show_time = on
-        for lb in self._times:
-            lb.setVisible(on)
+        if on in self._documents:
+            self._editor.setDocument(self._documents[on])
+            self._editor.verticalScrollBar().setValue(self._positions[on])
+            self._fit_height()
 
     def refresh_speaker_names(self) -> None:
         if self._tr is None:
             return
         for chip, spk in self._chips:
             chip.setText(self._tr.label(spk))
-        self._equalise_chips()
+        self._build_documents()
 
-    def _equalise_chips(self) -> None:
-        """One shared chip width, so every row's text starts at the same x."""
-        if not self._chips:
+    def _build_documents(self) -> None:
+        old = self._documents
+        self._documents = {}
+        rows = self._tr.turns() if self._tr.has_speakers else self._tr.segments
+        plain, timed = [], []
+        for seg in rows:
+            text = f"{self._tr.label(seg.speaker)}: {seg.text}" if seg.speaker else seg.text
+            plain.append(text)
+            timed.append(f"[{fmt_time(seg.start)}] {text}")
+        for on, lines in ((False, plain), (True, timed)):
+            doc = QTextDocument(self._editor)
+            doc.setDocumentLayout(QPlainTextDocumentLayout(doc))
+            doc.setDefaultFont(self._editor.font())
+            doc.setUndoRedoEnabled(False)
+            doc.setPlainText("\n".join(lines))
+            self._documents[on] = doc
+        self._positions = {True: 0, False: 0}
+        self._editor.verticalScrollBar().setValue(0)
+        self.set_timestamps(self._show_time)
+        for doc in old.values():
+            doc.deleteLater()
+
+    def set_height_limit(self, height: int) -> None:
+        self._height_limit = height
+        self._fit_height()
+
+    def _fit_height(self) -> None:
+        height = 2 * self._editor.document().documentMargin() + 2
+        line_height = self._editor.fontMetrics().height()
+        if height + self._editor.document().blockCount() * line_height >= self._height_limit:
+            self._editor.setFixedHeight(self._height_limit)
             return
-        w = min(150, max(c.sizeHint().width() for c, _ in self._chips))
-        for chip, _ in self._chips:
-            chip.setFixedWidth(w)
+        block = self._editor.document().begin()
+        while block.isValid() and height < self._height_limit:
+            height += max(line_height, self._editor.blockBoundingRect(block).height())
+            block = block.next()
+        self._editor.setFixedHeight(min(self._height_limit, max(32, math.ceil(height))))
 
-    def _row(self, seg, order: list[str], first: bool) -> QWidget:
-        w = QWidget()
-        w.setStyleSheet("background: transparent;")
-        row = QHBoxLayout(w)
-        row.setContentsMargins(0, 10, 0, 10)
-        row.setSpacing(14)
-        tm = QLabel(fmt_time(seg.start))
-        tm.setFont(theme.font_mono(11))
-        tm.setFixedWidth(46)
-        tm.setAlignment(Qt.AlignmentFlag.AlignRight | Qt.AlignmentFlag.AlignTop)
-        tm.setStyleSheet(f"color: {theme.TEXT_MUTED}; background: transparent; padding-top: 3px;")
-        tm.setVisible(self._show_time)
-        self._times.append(tm)
-        row.addWidget(tm)
-        if seg.speaker and self._tr is not None:
-            kind = SPEAKER_KINDS[order.index(seg.speaker) % len(SPEAKER_KINDS)]
-            chip = _SpeakerChip(self._tr.label(seg.speaker), kind)
-            chip.clicked.connect(lambda s=seg.speaker: self.speaker_clicked.emit(s))
-            self._chips.append((chip, seg.speaker))
-            row.addWidget(chip, alignment=Qt.AlignmentFlag.AlignTop)
-        text = QLabel(seg.text)
-        text.setWordWrap(True)
-        text.setTextInteractionFlags(Qt.TextInteractionFlag.TextSelectableByMouse)
-        text.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 14px; background: transparent;")
-        text.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Minimum)
-        row.addWidget(text, 1)
-        if not first:
-            holder = QWidget()
-            holder.setStyleSheet("background: transparent;")
-            v = QVBoxLayout(holder)
-            v.setContentsMargins(0, 0, 0, 0)
-            v.setSpacing(0)
-            from thundertalk.ui.widgets import Rule
-            v.addWidget(Rule())
-            v.addWidget(w)
-            return holder
-        return w
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._fit_height()
 
 
 # ── voice chips ──────────────────────────────────────────────────────────
