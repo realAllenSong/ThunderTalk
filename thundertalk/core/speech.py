@@ -228,14 +228,17 @@ class SpeechEngine:
             self._warm = {k for k in self._warm if k[0] != bid}
 
     def unload(self) -> None:
-        for bid in list(self._loaded):
-            backend(bid).unload()
-            self._forget(bid)
-        try:
-            import mlx.core as mx
-            mx.clear_cache()
-        except Exception:
-            pass
+        # A closing window may race a preload/synthesis worker. Keep model
+        # destruction under the same slot and Metal locks as its use.
+        with self._swap, GPU_LOCK:
+            for bid in list(self._loaded):
+                backend(bid).unload()
+                self._forget(bid)
+            try:
+                import mlx.core as mx
+                mx.clear_cache()
+            except ImportError:
+                pass
 
     def release_gpu(self) -> bool:
         """Free the GPU voice model so another big model (MOSS, a dictation
@@ -336,8 +339,10 @@ class SpeechEngine:
     def _gen(self, b: TtsBackend, text: str, voice: VoiceSel, lang: str, seed: int, speed: float,
              ctx: dict) -> np.ndarray:
         if b.info.needs_gpu:
-            with GPU_LOCK:
+            from thundertalk.core.mlx_runtime import mlx_context
+            with GPU_LOCK, mlx_context():
                 a = b.generate(text, voice, lang, seed=seed, speed=speed, context=ctx)
+                return np.asarray(a, dtype=np.float32).reshape(-1)
         else:
             a = b.generate(text, voice, lang, seed=seed, speed=speed, context=ctx)
         return np.asarray(a, dtype=np.float32).reshape(-1)

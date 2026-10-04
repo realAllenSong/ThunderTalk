@@ -18,6 +18,8 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Optional
 
+from thundertalk.core.mlx_runtime import evaluate_model, serialized_mlx
+
 MODEL_REPO = "OpenMOSS-Team/MOSS-Transcribe-Diarize"
 MODEL_ID = "moss-transcribe-diarize-mlx"  # catalog id / local dir name
 
@@ -52,6 +54,7 @@ def resolve_model_path() -> str:
     return MODEL_REPO
 
 
+@serialized_mlx
 def load_model():
     """Load (and cache) the MOSS model. Thread-safe; blocking on first call."""
     global _MODEL
@@ -64,11 +67,14 @@ def load_model():
             path = resolve_model_path()
             print(f"[Diarize] Loading MOSS-Transcribe-Diarize from {path}…")
             t0 = time.monotonic()
-            _MODEL = _load(path)
+            model = _load(path)
+            evaluate_model(model)
+            _MODEL = model
             print(f"[Diarize] Model loaded in {time.monotonic() - t0:.1f}s")
         return _MODEL
 
 
+@serialized_mlx
 def unload_model() -> None:
     """Release the cached model before switching Studio engines."""
     global _MODEL
@@ -124,6 +130,7 @@ def dictation_max_tokens(seconds: float) -> int:
     return int(96 + 24 * max(seconds, 0.0))
 
 
+@serialized_mlx
 def transcribe(audio, max_tokens: int | None = None,
                between_tokens: Optional[Callable[[], None]] = None) -> list[DiarizedSegment]:
     """Transcribe *audio* with speaker labels.
@@ -140,19 +147,28 @@ def transcribe(audio, max_tokens: int | None = None,
     budget = max_tokens or max_tokens_for(audio)
     with _MODEL_LOCK:
         if between_tokens is None or not hasattr(model, "stream_generate"):
-            result = model.generate(audio, max_tokens=budget)
+            try:
+                result = model.generate(audio, max_tokens=budget)
+            finally:
+                synchronize()
             raw = result.text if hasattr(result, "text") else str(result)
         else:
             tokens: list[int] = []
-            for token, _ in model.stream_generate(audio, max_tokens=budget):
-                tokens.append(int(token))
-                # A MOSS dictation may run while this one is paused (its
-                # generation has its own cache; GPU_LOCK keeps them apart).
-                _MODEL_LOCK.release()
-                try:
-                    between_tokens()
-                finally:
-                    _MODEL_LOCK.acquire()
+            generator = model.stream_generate(audio, max_tokens=budget)
+            try:
+                for token, _ in generator:
+                    tokens.append(int(token))
+                    # Finish async look-ahead on the producing thread before
+                    # handing the queues to a dictation or cancelling.
+                    synchronize()
+                    _MODEL_LOCK.release()
+                    try:
+                        between_tokens()
+                    finally:
+                        _MODEL_LOCK.acquire()
+            finally:
+                generator.close()
+                synchronize()
             raw = model._tokenizer.decode(tokens, skip_special_tokens=True).strip()
     return parse_transcript(raw)
 
@@ -160,12 +176,11 @@ def transcribe(audio, max_tokens: int | None = None,
 def synchronize() -> None:
     """Finish the GPU work MOSS queued ahead (mlx-lm evaluates the next token
     asynchronously) before another thread uses the GPU."""
-    try:
-        import mlx.core as mx
-        from mlx_lm.generate import generation_stream
-        mx.synchronize(generation_stream)
-    except Exception:
-        pass
+    import mlx.core as mx
+    from thundertalk.core.mlx_runtime import synchronize as drain_shared
+    from mlx_lm.generate import generation_stream
+    mx.synchronize(generation_stream)
+    drain_shared()
 
 
 def _is_cjk(ch: str) -> bool:

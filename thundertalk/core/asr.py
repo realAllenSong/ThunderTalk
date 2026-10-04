@@ -25,6 +25,7 @@ from typing import Optional
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.mlx_runtime import evaluate_model, serialized_mlx
 
 
 # Strip leaked model special tokens from ASR output. Qwen3-ASR was
@@ -249,10 +250,11 @@ class AsrEngine:
             self._unload()
 
     def _unload(self) -> None:
-        had_mlx = self._mlx_model is not None
+        had_mlx = self.uses_gpu
         mx = sys.modules.get("mlx.core") if had_mlx else None
         if mx is not None:
-            mx.synchronize()
+            from thundertalk.core.mlx_runtime import synchronize
+            synchronize()
         self._recognizer = None
         self._mlx_model = None
         self._moss_model = None
@@ -315,6 +317,7 @@ class AsrEngine:
             return "cuda"
         return "cpu"
 
+    @serialized_mlx
     def _load_mlx_qwen3(self, model_dir: str) -> None:
         import mlx_qwen3_asr
         import mlx.core as mx
@@ -332,6 +335,7 @@ class AsrEngine:
 
         print(f"[ASR-MLX] Calling load_model({hf_repo!r})...")
         model, _cfg = mlx_qwen3_asr.load_model(hf_repo, dtype=mx.float16)
+        evaluate_model(model)
         mx.clear_cache()
         print("[ASR-MLX] load_model returned")
         self._mlx_model = model
@@ -339,6 +343,7 @@ class AsrEngine:
         print(f"[ASR] Loaded {hf_repo} via MLX (Metal GPU)  "
               f"hotwords={len(self._hotwords.split('/')) if self._hotwords else 0}")
 
+    @serialized_mlx
     def _load_mlx_moss(self, model_dir: str) -> None:
         # diarize.load_model prefers the Models-page copy on disk and
         # falls back to the HF repo/cache — model_dir points at the same
@@ -513,6 +518,7 @@ class AsrEngine:
             rtf=rtf,
         )
 
+    @serialized_mlx
     def _recognize_moss(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
         """Dictation via MOSS-Transcribe-Diarize: speaker labels and
         timestamps are stripped — the paste target gets plain text."""
@@ -561,6 +567,7 @@ class AsrEngine:
             rtf=rtf,
         )
 
+    @serialized_mlx
     def _recognize_mlx(self, samples: np.ndarray, sample_rate: int,
                        preview: bool = False) -> AsrResult:
         import mlx.core as mx

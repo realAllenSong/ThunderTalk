@@ -384,3 +384,30 @@ def test_short_take_that_reads_back_wrong_is_retried(fakes):
     r = speech.SpeechEngine().synthesize("一句正常长度的测试句子，看看会不会重试。", "gpu1:a", language="chinese",
                                          seed=1, verifier=verifier)
     assert r.segments[0].attempts == 2 and r.segments[0].ok
+
+
+def test_unload_waits_until_synthesis_has_returned_numpy_audio(slow):
+    e = speech.SpeechEngine()
+    generating, finish, unloaded = threading.Event(), threading.Event(), threading.Event()
+    original = slow["g1"].generate
+    def generate(*args, **kwargs):
+        generating.set()
+        assert finish.wait(3)
+        return original(*args, **kwargs)
+    slow["g1"].generate = generate
+    synth, result = _bg(e.synthesize, "这是一句测试。", "g1:a", seed=1)
+    assert generating.wait(2)
+    def unload():
+        e.unload()
+        unloaded.set()
+    closer, outcome = _bg(unload)
+    try:
+        assert not unloaded.wait(0.05)
+        assert slow["g1"].model
+    finally:
+        finish.set()
+        synth.join(5)
+        closer.join(5)
+    assert not synth.is_alive() and not closer.is_alive()
+    assert "error" not in result and "error" not in outcome
+    assert unloaded.is_set() and not e.is_loaded("g1")

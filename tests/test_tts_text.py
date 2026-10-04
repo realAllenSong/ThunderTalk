@@ -230,7 +230,13 @@ def fake_engine(monkeypatch):
     import sys
     import types
     fake_mx = types.SimpleNamespace(random=types.SimpleNamespace(seed=lambda s: None), clear_cache=lambda: None,
-                                    array=lambda a: a)
+                                    array=lambda a: a, cpu="cpu", gpu="gpu",
+                                    default_stream=lambda device: device,
+                                    set_default_stream=lambda stream: None,
+                                    new_thread_unsafe_stream=lambda device: device,
+                                    synchronize=lambda stream: None)
+    from thundertalk.core import mlx_runtime
+    monkeypatch.setattr(mlx_runtime, "_STREAMS", None)
     monkeypatch.setitem(sys.modules, "mlx", types.SimpleNamespace(core=fake_mx))
     monkeypatch.setitem(sys.modules, "mlx.core", fake_mx)
     eng = tts.TtsEngine()
