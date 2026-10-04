@@ -46,6 +46,8 @@ class ModelInfo:
     languages_complete: bool = True
     speed: str = "unmeasured"
     experimental: bool = False
+    max_clip_seconds: float = 30.0  # safe decode window, not a recording limit
+    max_hotword_bytes: int = 512  # bounds byte-BPE tokens as well as prompt bytes
     notes: str = ""
     hotword_support: bool = False
     platform: str = "all"  # "apple-silicon" | "nvidia" | "all"
@@ -87,6 +89,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
     ),
     ModelInfo(
         id="qwen3-asr-06b-int8",
+        max_clip_seconds=20.0, max_hotword_bytes=64,
         params="0.6B",
         languages=list(QWEN_LANGUAGES),
         speed="qwen_cpu",
@@ -178,6 +181,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
     # ── MOSS-Transcribe-Diarize (Studio: multi-speaker transcription) ─────
     ModelInfo(
         id="moss-transcribe-diarize-mlx",
+        max_clip_seconds=5400.0,
         params="0.9B",
         languages=list(MOSS_LANGUAGES),
         speed="unmeasured",
@@ -197,6 +201,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
         notes="Multi-speaker ASR · Diarization + timestamps in Studio · Metal GPU",
     ),
     ModelInfo(
+        max_clip_seconds=20.0, max_hotword_bytes=64,
         id="funasr-nano-int8", experimental=True, family="Fun-ASR-Nano", name="Fun-ASR-Nano-2512",
         variant="ONNX int8", backend="onnx", size_mb=842,
         params="0.8B", languages=['zh', 'en', 'ja'], language_count=3,

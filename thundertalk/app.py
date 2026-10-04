@@ -20,7 +20,8 @@ from thundertalk.core.live_preview import LivePreview, preview_wanted
 from thundertalk.core.priority import DICTATION
 from thundertalk.core.settings import Settings
 from thundertalk.core.text_merge import merge_preview_terms
-from thundertalk.core.recordings import save_recording
+from thundertalk.core.recordings import new_recording_id, save_recording
+from thundertalk.core.dictation import has_audio_energy, recover_final
 from thundertalk.core.i18n import t
 from thundertalk.core import state as st
 from thundertalk.core.state import AppState
@@ -60,17 +61,25 @@ def _qt_message_filter(mode, context, message) -> None:
         sys.stderr.write(message + "\n")
 
 
-def _save_recent_recording(recording, final_text: str, pasted_text: str, enabled: bool):
+def _save_recent_recording(recording, final_text: str, pasted_text: str, enabled: bool,
+                           *, recognition_source: str = "final", force: bool = False):
     """Save a per-take snapshot off the UI thread, including failed recognition."""
-    if not recording or not recording["keep"] or not enabled:
+    if not recording or (not force and (not recording["keep"] or not enabled)):
         return None
     import threading
+    from pathlib import Path
 
+    directory = Path.home() / ".thundertalk" / "recordings"
+    if force:
+        directory /= "recovery"
+    rid = new_recording_id()
+    recording["recording_path"] = str(directory / (rid + ".wav"))
     metadata = dict(model=recording["model"], language=recording["language"],
                     final_text=final_text, preview_text=recording["preview"],
                     pasted_text=pasted_text,
                     loop_detected=bool(recording["preview_stats"].get("loops", 0)),
-                    hotwords=list(recording["hotwords"]))
+                    hotwords=list(recording["hotwords"]), directory=directory,
+                    recording_id=rid, recognition_source=recognition_source)
     samples = recording["samples"]
 
     def _save():
@@ -83,6 +92,18 @@ def _save_recent_recording(recording, final_text: str, pasted_text: str, enabled
     return worker
 
 
+def _remember_dictation(history, recording, raw_text, pasted_text, duration, ms,
+                        model, source, enabled):
+    """Make the history entry durable before a paste can fail."""
+    worker = _save_recent_recording(recording, raw_text, pasted_text, enabled,
+                                    recognition_source=source,
+                                    force=source in ("preview", "failed", "partial", "redecoded"))
+    history.add(text=pasted_text, duration_secs=duration, inference_ms=ms, model=model,
+                recognition_source=source,
+                recording_path=recording.get("recording_path", "") if recording else "")
+    return worker
+
+
 class AsrWorker(QThread):
     """Runs ASR inference off the main thread."""
 
@@ -90,12 +111,16 @@ class AsrWorker(QThread):
     error = Signal(str)
     waiting = Signal()      # the GPU is busy with a Studio job; the clip is kept and decoded after
 
-    def __init__(self, engine: AsrEngine, samples: np.ndarray, wait_before=None, lock=None) -> None:
+    def __init__(self, engine: AsrEngine, samples: np.ndarray, wait_before=None, lock=None,
+                 *, preview_text: str = "", initial=None) -> None:
         super().__init__()
         self._engine = engine
         self._samples = samples
         self._wait_before = wait_before
         self._lock = lock
+        self._preview_text = preview_text
+        self._initial = initial
+        self.result = None
 
     def run(self) -> None:
         try:
@@ -108,7 +133,8 @@ class AsrWorker(QThread):
                 self.waiting.emit()
                 lock.acquire()
             try:
-                result = self._engine.recognize(self._samples)
+                result = recover_final(self._engine, self._samples, self._preview_text, initial=self._initial)
+                self.result = result
             finally:
                 if lock is not None:
                     lock.release()
@@ -594,8 +620,31 @@ def main() -> None:
         # Qt aborts on with SIGABRT. _clear_asr_worker() handles it from the
         # built-in finished signal, after run() has returned.
         print(f'[ASR] Result: "{text}" ({ms}ms, backend={backend}, RTF={rtf:.3f})')
-        raw_text = text
         reference = recording["preview"] if recording else ""
+        speech = bool(reference.strip()) or (recording is not None and has_audio_energy(recording["samples"]))
+        if (recording is not None and speech
+                and (not text.strip() or recording.get("truncated", False))
+                and not recording.get("recovery_attempted", False)):
+            from thundertalk.core.asr import AsrResult
+            recording["recovery_attempted"] = True
+            recovery = AsrWorker(pipe.asr, recording["samples"], wait_before=live.wait_idle,
+                                 lock=GPU_LOCK, preview_text=reference,
+                                 initial=AsrResult(text, dur, ms, recording["model"], backend,
+                                                   truncated=recording.get("truncated", False)))
+
+            def recovered(txt, elapsed, duration, be, ratio):
+                recording["recovery_source"] = recovery.result.recovery_source
+                _on_asr_done(txt, elapsed, duration, be, ratio, recording)
+
+            recovery.done.connect(recovered)
+            recovery.error.connect(lambda msg: _on_asr_error(msg, recording))
+            recovery.waiting.connect(overlay.show_waiting)
+            DICTATION.begin()  # the current completion relinquishes its own lease
+            _track_worker(recovery)
+            recovery.start()
+            return
+        source = recording.get("recovery_source", "final") if recording else "final"
+        raw_text = "" if source == "preview" else text
         if not backend.startswith("seamless-torch"):
             text = merge_preview_terms(text, reference)
             if text != raw_text:
@@ -603,16 +652,26 @@ def main() -> None:
 
         def _remember(pasted):
             _save_recent_recording(recording, raw_text, pasted,
-                                   settings.get("keep_recent_recordings"))
+                                   settings.get("keep_recent_recordings"),
+                                   recognition_source=source,
+                                   force=source in ("preview", "failed", "partial", "redecoded"))
+
+        # Persist even an unrecoverable take before dispatching its paste.
+        if text or speech:
+            if not text:
+                source = "failed"
+            _remember_dictation(history, recording, raw_text, text, dur, ms,
+                                 pipe.asr.current_model or "unknown", source,
+                                 settings.get("keep_recent_recordings"))
+            QTimer.singleShot(50, window.home_page.refresh)
 
         if text:
             overlay.hide_overlay()
-            # Paste FIRST — lowest latency path to the user's target app.
+            # Dispatch the recovered/final text after its history entry is durable.
             ticket = text_output.paste_dictation(text, not settings.get("save_to_clipboard"))
             if pipe._last_paste is not None:
                 pipe._last_paste.invalidate()
             pipe._last_paste = ticket
-            _remember(text)
             notify_auto_learn(text)
             paste_dispatch_ms = int((time.perf_counter() - t_start) * 1000)
             print(f"[Toggle] Post-ASR dispatch took {paste_dispatch_ms}ms")
@@ -621,14 +680,6 @@ def main() -> None:
                     and settings.get("llm_rewrite_enabled")
                     and not (settings.translation_target != "off" and settings.translation_mode == "review")):
                 _launch_rewrite(text, ticket, reference_text=reference or None)
-            # Defer non-critical UI updates so they don't block paste
-            history.add(
-                text=text,
-                duration_secs=dur,
-                inference_ms=ms,
-                model=pipe.asr.current_model or "unknown",
-            )
-            QTimer.singleShot(50, window.home_page.refresh)
             # Review mode: kick off T2TT translation in parallel; the popup
             # is shown when translated text comes back. Only triggers when
             # the result we just got was an ASR pass (not S2TT translator).
@@ -663,10 +714,15 @@ def main() -> None:
                 _track_worker(t2t_worker)
                 t2t_worker.start()
         else:
-            _remember("")
-            overlay.show_error(t("overlay.no_speech"))
+            if not speech:
+                _remember("")
+            overlay.show_error(t("overlay.recognition_failed" if speech else "overlay.no_speech"))
 
     def _on_asr_error(msg: str, recording=None) -> None:
+        if recording is not None and (recording["preview"].strip() or has_audio_energy(recording["samples"])):
+            _on_asr_done("", 0, len(recording["samples"]) / 16000,
+                         pipe.asr.active_backend, 0, recording)
+            return
         DICTATION.end()
         print("[Toggle] _on_asr_error called")
         state.set_recording(st.REC_IDLE)
@@ -814,6 +870,11 @@ def main() -> None:
                              "keep": settings.get("keep_recent_recordings")}
 
                 def _done(text, ms, dur, backend, rtf):
+                    result = getattr(worker, "result", None)
+                    if result is not None:
+                        recording["recovery_attempted"] = True
+                        recording["recovery_source"] = result.recovery_source or "final"
+                        recording["truncated"] = result.truncated
                     _on_asr_done(text, ms, dur, backend, rtf, recording=recording)
 
                 def _error(msg):
@@ -854,7 +915,8 @@ def main() -> None:
                 else:
                     print(f"[Toggle] Starting ASR on {len(samples)} samples")
                 worker = AsrWorker(pipe.asr, samples,
-                                   wait_before=live.wait_idle, lock=GPU_LOCK)
+                                   wait_before=live.wait_idle, lock=GPU_LOCK,
+                                   preview_text=recording["preview"])
                 worker.done.connect(_done)
                 worker.error.connect(_error)
                 worker.waiting.connect(overlay.show_waiting)

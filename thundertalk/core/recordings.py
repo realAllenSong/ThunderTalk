@@ -3,6 +3,7 @@
 from datetime import datetime, timezone
 import json
 import os
+import re
 from pathlib import Path
 import threading
 import uuid
@@ -14,10 +15,15 @@ from thundertalk.core.audio_io import wav_bytes
 _LOCK = threading.Lock()
 
 
+def new_recording_id() -> str:
+    return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex[:8]
+
+
 def save_recording(samples: np.ndarray, *, model: str, language: str,
                    final_text: str, preview_text: str, pasted_text: str,
                    loop_detected: bool, hotwords: list[str] | None = None,
-                   directory: Path | None = None) -> Path:
+                   directory: Path | None = None, recording_id: str = "",
+                   recognition_source: str = "final") -> Path:
     """Save 16 kHz mono PCM + metadata, then retain only the latest 20 pairs.
 
     Metadata is the completion marker; failed writes remove their audio.
@@ -28,12 +34,15 @@ def save_recording(samples: np.ndarray, *, model: str, language: str,
     now = datetime.now(timezone.utc)
     with _LOCK:
         directory.mkdir(parents=True, exist_ok=True, mode=0o700)
-        stem = now.strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex[:8]
+        stem = recording_id or new_recording_id()
+        if not re.fullmatch(r"[A-Za-z0-9_-]+", stem):
+            raise ValueError("Invalid recording id")
         audio, sidecar = directory / (stem + ".wav"), directory / (stem + ".json")
         data = {"timestamp": now.isoformat(), "model": model, "language": language,
                 "duration": len(samples) / 16000, "final_asr_text": final_text,
                 "last_preview_text": preview_text, "merged_pasted_text": pasted_text,
-                "loop_detected": loop_detected, "hotwords": hotwords or []}
+                "loop_detected": loop_detected, "hotwords": hotwords or [],
+                "recognition_source": recognition_source}
         try:
             for path, content in ((audio, wav_bytes(samples, 16000)),
                                   (sidecar, json.dumps(data, ensure_ascii=False,
@@ -41,7 +50,8 @@ def save_recording(samples: np.ndarray, *, model: str, language: str,
                 fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "wb") as out:
                     out.write(content)
-            for old in sorted(directory.glob("*.json"))[:-20]:
+            for old in (sorted(directory.glob("*.json"))[:-20]
+                        if directory.name != "recovery" else []):
                 old.with_suffix(".wav").unlink(missing_ok=True)
                 old.unlink(missing_ok=True)
         except Exception:

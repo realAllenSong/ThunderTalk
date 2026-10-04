@@ -193,7 +193,9 @@ def test_sherpa_qwen3_generation_budget_follows_clip_length():
     eng.recognize(x, preview=True)
     eng._max_new_tokens = 256                         # "low" memory mode
     eng.recognize(_burst(60.0))
-    assert [s.options["max_new_tokens"] for s in streams] == ["304", "152", "256"]
+    assert [s.options["max_new_tokens"] for s in streams[:2]] == ["304", "152"]
+    assert len(streams) > 3
+    assert all(int(s.options["max_new_tokens"]) <= 256 for s in streams[2:])
     eng._model_family = "SenseVoice"
     eng.recognize(x)
     assert streams[-1].options == {}

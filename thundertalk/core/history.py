@@ -43,6 +43,8 @@ class HistoryEntry:
     # translation was produced for this entry.
     translation: str = ""
     translation_lang: str = ""
+    recognition_source: str = "final"
+    recording_path: str = ""
 
 
 def _maybe_migrate_legacy() -> None:
@@ -161,6 +163,8 @@ class HistoryStore:
                             model=rec["model"],
                             translation=rec.get("translation", ""),
                             translation_lang=rec.get("translation_lang", ""),
+                            recognition_source=rec.get("recognition_source", "final"),
+                            recording_path=rec.get("recording_path", ""),
                         )
                     except (KeyError, TypeError):
                         skipped.append(stripped)
@@ -226,6 +230,8 @@ class HistoryStore:
         model: str,
         translation: str = "",
         translation_lang: str = "",
+        recognition_source: str = "final",
+        recording_path: str = "",
     ) -> None:
         entry = HistoryEntry(
             id=_generate_id(),
@@ -236,6 +242,8 @@ class HistoryStore:
             model=model,
             translation=translation,
             translation_lang=translation_lang,
+            recognition_source=recognition_source,
+            recording_path=recording_path,
         )
         self._append_record({
             "v": 1,
@@ -248,6 +256,8 @@ class HistoryStore:
             "model": entry.model,
             "translation": entry.translation,
             "translation_lang": entry.translation_lang,
+            "recognition_source": entry.recognition_source,
+            "recording_path": entry.recording_path,
         })
         self._entries.append(entry)
 

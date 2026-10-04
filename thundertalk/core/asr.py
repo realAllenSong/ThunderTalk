@@ -135,6 +135,9 @@ class AsrResult:
     rtf: float = 0.0
     tokens: list[str] = field(default_factory=list)
     token_timestamps: list[float] = field(default_factory=list)
+    truncated: bool = False
+    recovery_source: str = ""
+    no_speech: bool = False  # explicit decoder silence marker, not an energy gate
 
 
 # ---------------------------------------------------------------------------
@@ -182,6 +185,29 @@ class AsrEngine:
     def uses_gpu(self) -> bool:
         """MLX models decode on the shared Metal GPU (under GPU_LOCK)."""
         return self._mlx_model is not None or self._moss_model is not None
+
+    def _model_info(self):
+        from thundertalk.core.models import BUILTIN_MODELS
+        return next((m for m in BUILTIN_MODELS
+                     if m.family == self._model_family and m.backend == self._active_backend), None)
+
+    @property
+    def max_clip_seconds(self) -> float:
+        info = self._model_info()
+        return info.max_clip_seconds if info else 20.0
+
+    def _prompt_hotwords(self) -> str:
+        info = self._model_info()
+        limit = info.max_hotword_bytes if info else 64
+        words, size = [], 0
+        for word in self._hotwords.split("/"):
+            cost = len(word.encode("utf-8")) + bool(words)
+            if size + cost <= limit:
+                words.append(word)
+                size += cost
+        if "/".join(words) != self._hotwords:
+            print(f"[ASR] Hotword prompt bounded to {size} UTF-8 bytes")
+        return ",".join(words)
 
     @property
     def needs_reload_for_hotwords(self) -> bool:
@@ -420,11 +446,12 @@ class AsrEngine:
             encoder_adaptor=_find(model_dir, "encoder_adaptor", ".onnx"),
             llm=_find(model_dir, "llm", ".onnx"),
             embedding=_find(model_dir, "embedding", ".onnx"),
-            tokenizer=tokenizer, hotwords=self._hotwords.replace("/", ","),
+            tokenizer=tokenizer, hotwords=self._prompt_hotwords(),
             language="", itn=self._itn_enabled,
             max_new_tokens=256 if memory_mode == "low" else 512,
             num_threads=threads, provider="cpu")
         self._model_id = os.path.basename(model_dir)
+        self._max_new_tokens = 256 if memory_mode == "low" else 512
         print(f"[ASR] Loaded Fun-ASR-Nano on CPU  threads={threads}")
 
     def _load_sherpa_qwen3(
@@ -457,7 +484,7 @@ class AsrEngine:
             tokenizer=tokenizer_dir if os.path.isdir(tokenizer_dir) else "",
             num_threads=threads,
             provider=provider,
-            hotwords=self._hotwords,
+            hotwords=self._prompt_hotwords(),
             max_total_len=max_total_len,
             max_new_tokens=max_new_tokens,
         )
@@ -483,13 +510,18 @@ class AsrEngine:
         ``cut_loops=False``: it re-decodes a looping span in pieces instead,
         which recovers the words a cut would lose."""
         with self._locked():
-            r = self._recognize_any(samples, sample_rate, preview=preview)
+            if not preview and len(samples) / sample_rate > self.max_clip_seconds:
+                from thundertalk.core.dictation import decode_chunks
+                r = decode_chunks(self._recognize_any, samples, sample_rate, self.max_clip_seconds)
+            else:
+                r = self._recognize_any(samples, sample_rate, preview=preview)
         if cut_loops and not preview and r.text:
             from thundertalk.core.repetition import clean
             text, cut = clean(r.text, len(samples) / sample_rate)
             if cut:
                 print(f"[ASR] Repetition loop cut back: {len(r.text)} → {len(text)} chars")
                 r.text = text
+                r.truncated = True
         return r
 
     def _recognize_any(self, samples: np.ndarray, sample_rate: int,
@@ -516,19 +548,21 @@ class AsrEngine:
                 return self._recognize_mlx(samples, sample_rate, preview=preview)
 
         from thundertalk.core.vad import segment_audio
-        segments = segment_audio(samples, sr=sample_rate)
+        segments = segment_audio(samples, sr=sample_rate, max_secs=self.max_clip_seconds)
         if len(segments) == 1:
             return self._recognize_sherpa(segments[0], sample_rate, preview=preview)
 
         all_text: list[str] = []
         total_ms = 0
         total_dur = 0.0
+        truncated = False
         for seg in segments:
             r = self._recognize_sherpa(seg, sample_rate, preview=preview)
             if r.text:
                 all_text.append(r.text)
             total_ms += r.inference_ms
             total_dur += r.duration_secs
+            truncated |= r.truncated
 
         merged_text = " ".join(all_text)
         rtf = (total_ms / 1000) / total_dur if total_dur > 0 else 0
@@ -536,6 +570,7 @@ class AsrEngine:
             text=merged_text,
             duration_secs=total_dur,
             inference_ms=total_ms,
+            truncated=truncated,
             model=self._model_id or "unknown",
             backend=self._active_backend,
             rtf=rtf,
@@ -601,7 +636,7 @@ class AsrEngine:
         mx.set_cache_limit(2048 << 20)
 
         duration_secs = len(samples) / sample_rate
-        context = self._hotwords.replace("/", " ") if self._hotwords else ""
+        context = self._prompt_hotwords().replace(",", " ")
         # Dictated speech stays well under 12 tokens/s; 32 covers the language
         # tag. Final decodes get twice that, so a repetition loop ends within
         # a second or two instead of running to the old 4096-token limit.
@@ -655,6 +690,7 @@ class AsrEngine:
                           preview: bool = False) -> AsrResult:
         duration_secs = len(samples) / sample_rate
         stream = self._recognizer.create_stream()
+        budget = self._max_new_tokens
         if self._model_family.startswith("Qwen3-ASR"):
             # Same per-clip budget as the MLX path. The load-time limit (2048)
             # let one looping 20 s span decode for minutes on a busy CPU.
@@ -670,6 +706,14 @@ class AsrEngine:
         self._recognizer.decode_stream(stream)
         inference_ms = int((time.perf_counter() - t0) * 1000)
 
+        tokens = list(getattr(stream.result, "tokens", ()) or ())
+        if self._model_family == "Fun-ASR-Nano":
+            # 512-token export: upper audio rate + scaffold + byte-BPE prompt.
+            remaining = 512 - int(np.ceil(17 * duration_secs)) - 64 - len(self._prompt_hotwords().encode())
+            budget = min(budget, max(1, remaining))
+        truncated = (bool(getattr(stream.result, "truncated", False))
+                     or getattr(stream.result, "finish_reason", "") == "length"
+                     or len(tokens) >= budget)
         text = stream.result.text.strip()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
 
@@ -698,7 +742,9 @@ class AsrEngine:
             model=self._model_id or "unknown",
             backend=self._active_backend,
             rtf=rtf,
-            tokens=list(getattr(stream.result, "tokens", ()) or ()),
+            tokens=tokens,
+            truncated=truncated,
+            no_speech=stream.result.text.strip() == "/sil",
             # Fun-ASR-Nano distributes token times uniformly over the audio;
             # those are estimates, not acoustic alignment timestamps.
             token_timestamps=(list(getattr(stream.result, "timestamps", ()) or ())

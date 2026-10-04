@@ -58,6 +58,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "home.characters": {"en": "Characters", "zh": "字符数"},
     "home.sessions": {"en": "Sessions", "zh": "次数"},
     "home.recent": {"en": "Recent", "zh": "最近"},
+    "home.preview_recovered": {"en": "Recovered from live preview", "zh": "已从实时预览恢复"},
+    "home.recognition_failed": {"en": "Recognition failed — recording kept for retry", "zh": "识别失败，已保留录音以便重试"},
+    "home.recognition_partial": {"en": "Partial recognition — recording kept for retry", "zh": "识别不完整，已保留录音以便重试"},
+    "home.open_recording": {"en": "Open recording folder", "zh": "打开录音所在文件夹"},
+    "overlay.recognition_failed": {"en": "Recognition failed · audio kept in History", "zh": "识别失败 · 已在历史记录中保留录音"},
     "home.clear": {"en": "Clear", "zh": "清空"},
     "home.clear.confirm_title": {
         "en": "Clear all history?",
@@ -384,8 +389,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Keep recent recordings", "zh": "保留最近录音",
     },
     "settings.keep_recent_recordings.desc": {
-        "en": "Keep the last 20 dictations for troubleshooting, stored only on this Mac.",
-        "zh": "保留最近 20 次听写以排查问题，仅储存在这台 Mac 上。",
+        "en": "Keep the last 20 dictations on this Mac. Failed or preview-recovered takes are always kept locally for retry.",
+        "zh": "在本机保留最近 20 次听写。识别失败或从预览恢复的录音始终保留在本机，以便重试。",
     },
     "settings.llm_rewrite.label": {
         "en": "Grammar Correction", "zh": "语法修正",

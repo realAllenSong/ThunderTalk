@@ -340,6 +340,25 @@ class _HistoryRow(QWidget):
         body.addWidget(self._more, alignment=Qt.AlignmentFlag.AlignLeft)
 
         model = (entry.model or "").strip()
+        source = getattr(entry, "recognition_source", "final")
+        if source in ("preview", "failed", "partial"):
+            key = {"preview": "home.preview_recovered", "failed": "home.recognition_failed",
+                   "partial": "home.recognition_partial"}[source]
+            notice = QLabel(t(key))
+            notice.setWordWrap(True)
+            notice.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
+            body.addWidget(notice)
+        if getattr(entry, "recording_path", ""):
+            from pathlib import Path
+            from PySide6.QtCore import QUrl
+            from PySide6.QtGui import QDesktopServices
+            recording_button = QPushButton(t("home.open_recording"))
+            recording_button.setFlat(True)
+            recording_button.setCursor(Qt.CursorShape.PointingHandCursor)
+            recording_button.setToolTip(entry.recording_path)
+            recording_button.clicked.connect(lambda: QDesktopServices.openUrl(
+                QUrl.fromLocalFile(str(Path(entry.recording_path).parent))))
+            body.addWidget(recording_button, alignment=Qt.AlignmentFlag.AlignLeft)
         if model and model != "unknown":
             m_lbl = QLabel(model)
             m_lbl.setFont(theme.font_mono(11))

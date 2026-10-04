@@ -298,7 +298,7 @@ def cues_to_srt(cues: list[Segment]) -> str:
 # ── segmentation at natural pauses ───────────────────────────────────────
 
 def segment_speech(x: np.ndarray, sr: int = SR, target: float = 15.0, max_len: float = 30.0,
-                   min_gap: float = 0.30) -> list[tuple[float, float]]:
+                   min_gap: float = 0.30, *, keep_all: bool = False) -> list[tuple[float, float]]:
     """Cut audio into utterances at pauses. Returns (start_s, end_s) spans.
 
     The silence threshold adapts to the recording (noise floor × 4) so quiet
@@ -306,7 +306,7 @@ def segment_speech(x: np.ndarray, sr: int = SR, target: float = 15.0, max_len: f
     pause are cut at their quietest moment instead of at a hard boundary."""
     n_total = len(x) / sr
     if n_total <= max_len:
-        return [(0.0, n_total)] if _has_speech(x) else []
+        return [(0.0, n_total)] if keep_all or _has_speech(x, sr) else []
     frame = int(0.02 * sr)
     n = len(x) // frame
     rms = np.sqrt(np.mean(x[: n * frame].reshape(n, frame) ** 2, axis=1) + 1e-12)
@@ -359,7 +359,7 @@ def segment_speech(x: np.ndarray, sr: int = SR, target: float = 15.0, max_len: f
     out = []
     for a, b in spans:
         seg = x[int(a * sr): int(b * sr)]
-        if _has_speech(seg):
+        if keep_all or _has_speech(seg, sr):
             out.append((a, b))
     return out
 
