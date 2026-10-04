@@ -26,7 +26,7 @@ from PySide6.QtWidgets import (
     QLabel,
     QLineEdit,
     QMenu,
-    QTextBrowser,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
@@ -37,7 +37,7 @@ from thundertalk.core.models import BUILTIN_MODELS, is_downloaded
 from thundertalk.core.transcribe import EXPORT_EXTS, Transcript, active_model_id, fmt_time
 from thundertalk.core.transcript_history import TranscriptHistory
 from thundertalk.ui import theme
-from thundertalk.ui.studio.parts import DropZone, QueueRow, TranscriptView, fmt_seconds, fmt_size
+from thundertalk.ui.studio.parts import ContentTextBrowser, DropZone, QueueRow, TranscriptView, fmt_seconds, fmt_size
 from thundertalk.ui.studio.workers import (
     BatchItem,
     BatchWorker,
@@ -124,6 +124,8 @@ class TranscribeTab(QWidget):
 
         # ── input card ────────────────────────────────────────────────
         card = theme.make_card()
+        self._setup_card = card
+        card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         cly = QVBoxLayout(card)
         cly.setContentsMargins(24, 22, 24, 22)
         cly.setSpacing(14)
@@ -214,7 +216,10 @@ class TranscribeTab(QWidget):
         nly.addWidget(self._notice_btn)
         cly.addWidget(self._notice)
 
-        act = QHBoxLayout()
+        self._actions = QWidget()
+        self._actions.setStyleSheet("background: transparent;")
+        act = QHBoxLayout(self._actions)
+        act.setContentsMargins(0, 0, 0, 0)
         act.setSpacing(10)
         self._go = theme.accent_button(t("studio.transcribe.go"), 40)
         self._go.clicked.connect(self._start)
@@ -225,7 +230,7 @@ class TranscribeTab(QWidget):
         act.addWidget(self._cancel)
         self._status = _muted()
         act.addWidget(self._status, 1)
-        cly.addLayout(act)
+        cly.addWidget(self._actions)
         self._bar = ThinProgress(4)
         self._bar.setVisible(False)
         cly.addWidget(self._bar)
@@ -233,6 +238,7 @@ class TranscribeTab(QWidget):
 
         # ── result card ───────────────────────────────────────────────
         self._result = theme.make_card()
+        self._result.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         rly = QVBoxLayout(self._result)
         rly.setContentsMargins(24, 20, 24, 12)
         rly.setSpacing(10)
@@ -263,12 +269,16 @@ class TranscribeTab(QWidget):
         self._view.speaker_clicked.connect(self._rename_speaker)
         rly.addWidget(self._view)
         self._result.setVisible(False)
+        root.addWidget(self._result)
         self._notes_hint = _muted()
-        root.addWidget(self._notes_hint)
+        notes_options = QHBoxLayout()
+        notes_options.addWidget(self._notes_hint, 1)
         self._notes_settings = theme.make_button(t("studio.notes.settings"), "ghost", 32, font_px=12)
         self._notes_settings.clicked.connect(lambda: self.navigate.emit("proofread"))
-        root.addWidget(self._notes_settings)
+        notes_options.addWidget(self._notes_settings)
+        root.addLayout(notes_options)
         self._notes_card = theme.make_card()
+        self._notes_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         nly = QVBoxLayout(self._notes_card)
         nly.setContentsMargins(24, 20, 24, 20)
         nhead = QHBoxLayout()
@@ -277,6 +287,11 @@ class TranscribeTab(QWidget):
         self._notes_title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         nhead.addWidget(self._notes_title)
         nhead.addStretch()
+        self._notes_toggle = theme.make_button(t("studio.notes.collapse"), "ghost", 34, font_px=12)
+        self._notes_toggle.setCheckable(True)
+        self._notes_toggle.setChecked(True)
+        self._notes_toggle.toggled.connect(self._toggle_notes)
+        nhead.addWidget(self._notes_toggle)
         self._notes_copy = theme.make_button(t("studio.notes.copy"), "secondary", 34, font_px=12)
         self._notes_copy.clicked.connect(self._copy_notes)
         nhead.addWidget(self._notes_copy)
@@ -284,17 +299,16 @@ class TranscribeTab(QWidget):
         self._notes_save.clicked.connect(self._save_notes)
         nhead.addWidget(self._notes_save)
         nly.addLayout(nhead)
-        self._notes_view = QTextBrowser()
+        self._notes_view = ContentTextBrowser()
         self._notes_view.setOpenLinks(False)
         self._notes_view.setOpenExternalLinks(False)
         self._notes_view.setStyleSheet(
             f"QTextBrowser {{ color: {theme.TEXT_PRIMARY}; background: transparent; border: none; font-size: 14px; }}")
-        self._notes_view.setMinimumHeight(300)
         nly.addWidget(self._notes_view)
         self._notes_card.hide()
         root.addWidget(self._notes_card)
-        root.addWidget(self._result)
         self._history_card = theme.make_card()
+        self._history_card.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         hly = QVBoxLayout(self._history_card)
         hly.setContentsMargins(24, 20, 24, 20)
         self._history_title = theme.section_heading(t("studio.history"))
@@ -313,7 +327,8 @@ class TranscribeTab(QWidget):
             f"QListWidget {{ background: transparent; color: {theme.TEXT_PRIMARY}; border: none; }}"
             f"QListWidget::item {{ padding: 8px; }}"
             f"QListWidget::item:selected {{ background: {theme.HOVER_FILL}; color: {theme.TEXT_PRIMARY}; }}")
-        self._history_list.setFixedHeight(210)
+        self._history_list.setMaximumHeight(210)
+        self._history_list.setHorizontalScrollBarPolicy(Qt.ScrollBarPolicy.ScrollBarAlwaysOff)
         self._history_list.itemActivated.connect(self._open_history)
         self._history_list.itemClicked.connect(self._open_history)
         self._history_list.currentItemChanged.connect(lambda *_: self._refresh())
@@ -398,6 +413,7 @@ class TranscribeTab(QWidget):
         self._notes_title.setText(t("studio.summary"))
         self._notes_copy.setText(t("studio.notes.copy"))
         self._notes_save.setText(t("studio.notes.save"))
+        self._toggle_notes(self._notes_toggle.isChecked())
         self._burn_btn.setText(t("studio.burn"))
         self._copy_btn.setText(t("studio.copy"))
         self._export_btn.setText(t("studio.export"))
@@ -455,6 +471,11 @@ class TranscribeTab(QWidget):
 
     def _refresh(self) -> None:
         busy = self.busy()
+        compact = self._transcript is not None and not (self._path or self._url)
+        self._drop.set_compact(compact)
+        margins = (24, 16, 24, 16) if compact else (24, 22, 24, 22)
+        self._setup_card.layout().setContentsMargins(*margins)
+        self._setup_card.layout().setSpacing(10 if compact else 14)
         sp = self._model_picker.currentData() == MOSS_ID
         self._label_speakers.setVisible(sp)
         self._mode_desc.setText(t("studio.model.moss.desc" if sp else "studio.model.desc"))
@@ -475,6 +496,8 @@ class TranscribeTab(QWidget):
 
         model_ok = self._moss_ready() if sp else bool(self._model_picker.currentData() or self._engine_ready())
         queue = self.queue_mode()
+        self._actions.setVisible(busy or queue or bool(self._path or self._url or self._status.text())
+                                 or self._transcript is None)
         if queue:
             n = len(self._runnable_rows())
             self._go.setText(t("studio.batch.go").format(n=n))
@@ -937,6 +960,9 @@ class TranscribeTab(QWidget):
             item.setToolTip(entry['source'])
             self._history_list.addItem(item)
         self._history_more.setVisible(len(rows) > 50)
+        # An empty/single-entry history should not reserve a whole list panel.
+        row_height = self._history_list.sizeHintForRow(0) if self._history_list.count() else 0
+        self._history_list.setFixedHeight(min(210, row_height * self._history_list.count() + 2))
 
     def _open_history(self, item) -> None:
         if self.busy():
@@ -1071,7 +1097,12 @@ class TranscribeTab(QWidget):
     def _show_notes(self) -> None:
         notes = self._transcript.notes if self._transcript else ""
         self._notes_view.setMarkdown(notes)
+        self._notes_view._fit_height()
         self._notes_card.setVisible(bool(notes))
+
+    def _toggle_notes(self, expanded: bool) -> None:
+        self._notes_view.setVisible(expanded)
+        self._notes_toggle.setText(t("studio.notes.collapse" if expanded else "studio.notes.expand"))
 
     def _copy_notes(self) -> None:
         if self._transcript and self._transcript.notes:

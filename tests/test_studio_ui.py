@@ -80,7 +80,7 @@ def test_transcribe_a_file_end_to_end(studio, tmp_path):
     assert wait_for(lambda: tab._result.isVisible())
     assert tab._transcript is not None and len(tab._transcript.segments) >= 2
     assert "faster than real time" in tab._stats.text() and "Fake-ASR" in tab._stats.text()
-    assert tab._go.isVisible() and not tab._cancel.isVisible() and not tab._bar.isVisible()
+    assert not tab._go.isEnabled() and not tab._cancel.isVisible() and not tab._bar.isVisible()
 
 
 def test_transcribe_export_and_copy(studio, tmp_path, monkeypatch):
@@ -751,7 +751,7 @@ def test_burn_from_the_result_card(studio, tmp_path):
     assert tab.busy() and tab._cancel.isVisible()
     assert wait_for(lambda: not tab.busy(), 20)
     assert out.is_file() and studio._toasts[-1][0] == "success" and "clip (subtitled).mov" in studio._toasts[-1][1]
-    assert tab._go.isVisible() and not tab._cancel.isVisible()
+    assert not tab._go.isEnabled() and not tab._cancel.isVisible()
 
 
 def test_done_leaves_pick_mode_and_keeps_voices(speak):
@@ -1028,3 +1028,167 @@ def test_model_fallback_shows_clear_warning(studio, reason):
         assert i18n_studio.STUDIO[key]["en"] and i18n_studio.STUDIO[key]["zh"]
     assert error_code(RuntimeError("model_busy")) == "model_busy"
     assert friendly_error("model_busy") == t("studio.err.model_busy")
+
+
+def _settle_layout():
+    for _ in range(20):
+        QApplication.processEvents()
+
+
+@pytest.mark.parametrize("size", [(1200, 800), (1600, 1000), (900, 700)])
+def test_transcribe_cards_follow_content_and_resize(studio, size):
+    tab = studio.transcribe_tab
+    studio.resize(*size)
+    _settle_layout()
+    assert tab._setup_card.height() <= 340
+    assert tab._history_card.height() <= 175
+    assert tab._history_list.height() <= 2
+    # The inactive Speak tab must not introduce a blank region above setup.
+    assert studio._stack.y() - studio._tabs.geometry().bottom() <= 21
+    assert tab._setup_card.y() == 0
+
+    tab._on_done(tr.Transcript([tr.Segment(0, 2, "A short result.")], 2, "Fake",
+                              notes="## Summary\nA short decision."))
+    _settle_layout()
+    assert tab._drop.height() == 48
+    assert tab._setup_card.height() <= 190
+    assert tab._view.height() <= 50
+    assert tab._result.height() <= 175
+    assert tab._notes_view.height() < 100
+    assert tab._notes_card.height() < 185
+    assert tab._history_list.height() < 50
+    assert tab._history_card.height() < 210
+    for card in (tab._setup_card, tab._result, tab._notes_card, tab._history_card):
+        assert card.height() <= card.layout().sizeHint().height() + 2
+    assert tab._result.y() - tab._setup_card.geometry().bottom() <= 17
+
+    # A newly chosen input restores its details and transcription action.
+    tab.load_file("next.wav")
+    _settle_layout()
+    assert tab._drop.height() == 120
+    assert tab._actions.isVisible() and tab._go.isVisible()
+
+
+def test_history_height_is_capped_and_search_shrinks_it(studio):
+    tab = studio.transcribe_tab
+    for i in range(12):
+        tab._save_history(tr.Transcript([tr.Segment(0, 1, f"Discussion {i}")], 1, "Fake",
+                                       title=f"Meeting {i}"))
+    _settle_layout()
+    assert tab._history_list.height() == 210
+    assert tab._history_list.maximumHeight() == 210
+    assert tab._history_list.verticalScrollBar().maximum() > 0
+    assert tab._history_card.height() < 390
+    tab._history_search.setText("Meeting 11")
+    tab._reload_history()
+    _settle_layout()
+    assert tab._history_list.count() == 1
+    assert tab._history_list.height() < 50
+    assert tab._history_card.height() < 210
+
+
+def test_notes_collapse_and_long_notes_scroll(studio):
+    tab = studio.transcribe_tab
+    transcript = tr.Transcript([tr.Segment(0, 1, "Discussion")], 1, "Fake",
+                               notes="## Summary\nA short decision.")
+    tab._show_result(transcript)
+    _settle_layout()
+    expanded = tab._notes_card.height()
+    tab._notes_toggle.click()
+    _settle_layout()
+    assert tab._notes_view.isHidden()
+    assert tab._notes_card.height() < expanded
+    assert tab._notes_card.height() < 90
+    tab._notes_toggle.click()
+    transcript.notes = "## Decisions\n" + "\n".join(f"- Decision {i}" for i in range(100))
+    tab._show_notes()
+    _settle_layout()
+    assert tab._notes_view.height() == 360
+    assert tab._notes_card.height() < 450
+    assert tab._notes_view.verticalScrollBar().maximum() > 0
+    studio.resize(1200, 800)
+    _settle_layout()
+    assert tab._notes_view.height() <= 360
+    transcript.notes = ""
+    tab._show_notes()
+    assert tab._notes_card.isHidden()
+
+
+@pytest.mark.parametrize("speaker_mode", ["none", "alternating", "single"])
+def test_long_transcript_toggle_is_instant_and_reuses_documents(studio, monkeypatch, speaker_mode):
+    from PySide6.QtWidgets import QWidget
+    tab = studio.transcribe_tab
+    transcript = tr.Transcript(
+        [tr.Segment(i * 1.8, (i + 1) * 1.8,
+                    f"Segment {i}: Review the release plan and verify the next build. 我们确认了下一步。",
+                    "" if speaker_mode == "none" else "S0" if speaker_mode == "single" else f"S{i % 2}")
+         for i in range(2000)],
+        3600, "Fake", has_speakers=speaker_mode != "none",
+    )
+    tab._show_result(transcript)
+    studio.resize(1200, 800)
+    _settle_layout()
+    assert tab._view._editor.document().blockCount() == 2000
+    assert tab._view._editor.height() <= 420
+    assert tab._view._editor.verticalScrollBar().maximum() > 0
+    assert len(tab._view._chips) == {"none": 0, "alternating": 2, "single": 1}[speaker_mode]
+    documents = dict(tab._view._documents)
+    widgets = tab._view.findChildren(QWidget)
+    assert len(widgets) < 12
+    monkeypatch.setattr(tab._view, "_build_documents", lambda: pytest.fail("Toggle rebuilt text"))
+    samples = []
+    for _ in range(5):
+        for key in ("plain", "time"):
+            start = time.perf_counter()
+            tab._time_toggle.set_current(key)
+            tab._time_toggle.changed.emit(key)
+            _settle_layout()
+            samples.append(time.perf_counter() - start)
+            assert tab._view._editor.document() is documents[key == "time"]
+    assert max(samples) < 0.050, f"Slow toggle: {max(samples) * 1000:.1f} ms"
+    assert tab._view.findChildren(QWidget) == widgets
+    assert tab._view._documents == documents
+    assert tab._setup_card.height() < 190
+    assert tab._result.height() < 550
+    for size in ((1600, 1000), (900, 700), (1200, 800)):
+        studio.resize(*size)
+        _settle_layout()
+        assert tab._view._editor.height() == min(420, max(240, int(size[1] * 0.36)))
+        assert tab._view.height() >= tab._view._editor.height()
+        assert tab._result.height() <= tab._result.layout().sizeHint().height() + 2
+
+
+def test_cached_views_keep_renamed_speakers_and_scroll_position(studio, monkeypatch):
+    from PySide6.QtCore import QCoreApplication, QEvent
+    from PySide6.QtWidgets import QInputDialog
+    tab = studio.transcribe_tab
+    tab._show_result(tr.Transcript([tr.Segment(i, i + 1, f"Line {i}", f"S{i % 2}")
+                                   for i in range(100)], 100, "Fake", has_speakers=True))
+    _settle_layout()
+    scroll = tab._view._editor.verticalScrollBar()
+    scroll.setValue(40)
+    tab._view.set_timestamps(False)
+    _settle_layout()
+    tab._view.set_timestamps(True)
+    _settle_layout()
+    assert scroll.value() == 40
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Host", True)))
+    tab._view._chips[0][0].clicked.emit()
+    assert all("Host: Line 0" in doc.toPlainText() for doc in tab._view._documents.values())
+    assert all("S0:" not in doc.toPlainText() for doc in tab._view._documents.values())
+    tab._view.clear()
+    QCoreApplication.sendPostedEvents(None, QEvent.Type.DeferredDelete)
+    _settle_layout()
+    assert not tab._view._editor.toPlainText()
+
+
+def test_switching_studio_tabs_does_not_reserve_hidden_content(studio):
+    studio.show_tab("speak")
+    _settle_layout()
+    assert studio.speak_tab.isVisible()
+    assert studio.transcribe_tab.isHidden()
+    studio.show_tab("transcribe")
+    _settle_layout()
+    assert studio.transcribe_tab.isVisible()
+    assert studio.speak_tab.isHidden()
+    assert studio._stack.y() - studio._tabs.geometry().bottom() <= 21

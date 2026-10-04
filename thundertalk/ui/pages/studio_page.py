@@ -6,12 +6,36 @@ everything it needs ships inside the app or is a one-click model download."""
 from __future__ import annotations
 
 from PySide6.QtCore import Signal
-from PySide6.QtWidgets import QStackedWidget, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
 from thundertalk.core.i18n import t
 from thundertalk.ui.studio.speak_tab import SpeakTab
 from thundertalk.ui.studio.transcribe_tab import TranscribeTab
 from thundertalk.ui.widgets import PageHeader, SegmentedControl, column_scroll
+
+
+class _StudioStack(QWidget):
+    """Hidden tabs must not contribute minimum heights or height-for-width.
+
+    QStackedLayout measures every page, including the inactive Speak tab.
+    A normal vertical layout excludes hidden pages from all three measures.
+    """
+
+    def __init__(self) -> None:
+        super().__init__()
+        self._pages: list[QWidget] = []
+        self._layout = QVBoxLayout(self)
+        self._layout.setContentsMargins(0, 0, 0, 0)
+        self._layout.setSpacing(0)
+
+    def addWidget(self, widget: QWidget) -> None:
+        self._layout.addWidget(widget)
+        widget.setVisible(not self._pages)
+        self._pages.append(widget)
+
+    def setCurrentIndex(self, index: int) -> None:
+        for i, page in enumerate(self._pages):
+            page.setVisible(i == index)
 
 
 class StudioPage(QWidget):
@@ -33,7 +57,8 @@ class StudioPage(QWidget):
         self._tabs.changed.connect(self._on_tab)
         layout.addWidget(self._tabs)
 
-        self._stack = QStackedWidget()
+        self._stack = _StudioStack()
+        self._stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._transcribe = TranscribeTab()
         self._speak = SpeakTab(settings)
         self._stack.addWidget(self._transcribe)
@@ -76,8 +101,13 @@ class StudioPage(QWidget):
 
     def _on_tab(self, key: str) -> None:
         self._stack.setCurrentIndex(0 if key == "transcribe" else 1)
+        self._stack.updateGeometry()
         if key != "speak":
             self._speak.stop_playback()
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        self._transcribe._view.set_height_limit(min(420, max(240, int(self.height() * 0.36))))
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)

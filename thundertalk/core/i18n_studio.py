@@ -45,6 +45,7 @@ STUDIO: dict[str, dict[str, str]] = {
 
     # ── transcribe ───────────────────────────────────────────────────
     "studio.drop.hint": {"en": "Drop a recording here", "zh": "把录音拖到这里"},
+    "studio.drop.another": {"en": "Drop another file or click to browse", "zh": "拖入下一个文件，或点击选择"},
     "studio.drop.sub": {
         "en": "or click to choose — audio or video: MP3, M4A, WAV, MP4, MOV and more. Several at once make a queue.",
         "zh": "或点击选择——音频或视频：MP3、M4A、WAV、MP4、MOV 等。一次选多个会排成队列。",
@@ -121,6 +122,8 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.notes.cloud": {"en": "Notes use {provider} · {model}. Transcript text is sent to this provider, which may process it in the cloud.",
                            "zh": "纪要使用 {provider} · {model}。文稿内容会发送给此服务，可能在云端处理。"},
     "studio.notes.copy": {"en": "Copy notes", "zh": "复制纪要"},
+    "studio.notes.collapse": {"en": "Hide notes", "zh": "收起纪要"},
+    "studio.notes.expand": {"en": "Show notes", "zh": "展开纪要"},
     "studio.notes.save": {"en": "Save notes (Markdown)…", "zh": "保存纪要（Markdown）…"},
     "studio.notes.part": {"en": "Writing notes · part {i} of {n}…", "zh": "正在生成纪要 · 第 {i} / {n} 段…"},
     "studio.notes.merge": {"en": "Merging meeting notes…", "zh": "正在合并会议纪要…"},
