@@ -89,8 +89,8 @@ def test_pages_fit_actual_overlay_font(qapp, before, after):
     ov.show_cleanup_diff(before, after)
     assert ov._diff_pages
     for page in ov._diff_pages:
-        assert ov._diff_layout(display_text(page.spans)).lineCount() <= 2
-        assert 1 <= page.changes <= 3
+        assert ov._diff_layout(display_text(page.spans)).lineCount() <= 3
+        assert page.changes >= 1
     assert sum(p.duration for p in ov._diff_pages) <= 25
     ov.hide_overlay()
 

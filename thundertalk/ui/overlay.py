@@ -6,7 +6,7 @@ a live level meter, a seconds counter and the hotkey; with live preview on,
 the words recognized so far appear under that row (last few lines, newest at
 the bottom). Transcribing: plain text with cycling dots. Then a one-line
 result or error. Proofreading adds a quiet working meter and a short inline
-word/character diff in readable pages; replacement happens independently.
+word/character diff over the full text, in readable pages; replacement happens independently.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QT
 from PySide6.QtWidgets import QWidget
 
 from thundertalk.core.i18n import t
-from thundertalk.core.proofread_diff import proofread_pages
+from thundertalk.core.proofread_diff import display_text, proofread_pages
 from thundertalk.ui import theme
 from thundertalk.ui.icons import paint_icon
 from thundertalk.ui.keys import display_combo
@@ -36,7 +36,7 @@ _PV_LINES = 3                 # at most this many lines; older text scrolls off 
 _PV_PAD_X, _PV_PAD_B = 24, 14
 _PV_LINE_H = 20
 _PV_FONT_PT = 13
-_DIFF_LINES = 2
+_DIFF_LINES = _PV_LINES      # proofread pages use the same width and height as the live text
 
 _INK = QColor(theme.INK)
 _PAPER = QColor("#FBFBFA")
@@ -201,7 +201,9 @@ class VoiceOverlay(QWidget):
         self._text = t("cleanup.corrected")
         self._diff_started = time.monotonic()
         self._diff_progress = 0.0
-        self._set_preview_lines([""] * _DIFF_LINES)
+        lines = max(self._diff_layout(display_text(page.spans)).lineCount()
+                    for page in self._diff_pages)
+        self._set_preview_lines([""] * max(1, min(_DIFF_LINES, lines)))
         self._present()
         if self._hovered or self.underMouse():
             self._pause_started = self._diff_started

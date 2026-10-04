@@ -51,20 +51,6 @@ def page_duration(units: int) -> float:
     return min(6.0, 3.0 + 0.17 * units)
 
 
-def _context(text: str, *, tail: bool) -> str:
-    tokens = _tokens(text)
-    # Four non-space tokens: four Chinese characters or a few English words.
-    selected, count = [], 0
-    for token in reversed(tokens) if tail else tokens:
-        if not token.isspace():
-            count += 1
-        if count > 4:
-            break
-        selected.append(token)
-    value = "".join(reversed(selected) if tail else selected)
-    return ("…" + value if tail else value + "…") if len(value) < len(text) else value
-
-
 def _elide(text: str, limit: int) -> str:
     if len(text) <= limit:
         return text
@@ -74,56 +60,78 @@ def _elide(text: str, limit: int) -> str:
     return text[:left] + "…" + text[-(limit - left - 1):] if limit > 2 else text[:1] + "…"
 
 
+def _merge(spans: list[DiffSpan]) -> tuple[DiffSpan, ...]:
+    out: list[DiffSpan] = []
+    for span in spans:
+        if out and span.kind == "equal" and out[-1].kind == "equal":
+            text = out[-1].original + span.original
+            out[-1] = DiffSpan("equal", text, text)
+        else:
+            out.append(span)
+    return tuple(out)
+
+
 def proofread_pages(original: str, corrected: str,
                     fits: Callable[[str], bool]) -> list[DiffPage]:
-    """Group contextual changes into measured two-line pages, at most 25 s.
+    """Lay out the whole text with inline changes and cut it into pages.
 
-    The UI supplies its actual font/width measurement. Oversized single edits
-    are elided on both sides, preserving the arrow and correction styling.
-    Durations use the full edits, so truncation never shortens reading time.
+    *fits* is the UI's measurement of one page (its width and line count), so
+    pages use the full overlay width like the live transcript. Only pages that
+    contain a change are kept; "…" marks text skipped before or after a page.
+    An edit too large for one page is elided on both sides. Durations count the
+    full edits plus a little for the surrounding text, at most 25 s in total.
     """
-    diff = proofread_diff(original, corrected)
-    snippets = []
-    for i, span in enumerate(diff):
+    atoms: list[tuple[DiffSpan, int]] = []
+    for span in proofread_diff(original, corrected):
         if span.kind == "equal":
+            atoms += [(DiffSpan("equal", tok, tok), 0) for tok in _tokens(span.original)]
             continue
-        before = _context(diff[i - 1].original, tail=True) if i else ""
-        after = _context(diff[i + 1].original, tail=False) if i + 1 < len(diff) else ""
-        def snippet(old=span.original, new=span.corrected):
-            return (DiffSpan("equal", before, before), DiffSpan(span.kind, old, new),
-                    DiffSpan("equal", after, after))
-        spans = snippet()
-        if not fits(display_text(spans)):
-            before = "…" if before else ""
-            after = "…" if after else ""
-            spans = snippet()
-        if not fits(display_text(spans)):
+        units = max(reading_units(span.original), reading_units(span.corrected))
+        if not fits("…" + display_text((span,)) + "…"):
             low, high = 1, max(len(span.original), len(span.corrected))
             while low < high:
                 mid = (low + high + 1) // 2
-                candidate = snippet(_elide(span.original, mid), _elide(span.corrected, mid))
-                if fits(display_text(candidate)):
+                candidate = DiffSpan(span.kind, _elide(span.original, mid), _elide(span.corrected, mid))
+                if fits("…" + display_text((candidate,)) + "…"):
                     low = mid
                 else:
                     high = mid - 1
-            spans = snippet(_elide(span.original, low), _elide(span.corrected, low))
-        snippets.append((spans, max(reading_units(span.original), reading_units(span.corrected))))
+            span = DiffSpan(span.kind, _elide(span.original, low), _elide(span.corrected, low))
+        atoms.append((span, units))
 
-    pages, current, count, units = [], (), 0, 0
-    separator = (DiffSpan("equal", "\u2028", "\u2028"),)
-    for spans, size in snippets:
-        candidate = current + (separator if current else ()) + spans
-        if current and (count == 3 or not fits(display_text(candidate))):
-            pages.append(DiffPage(current, count, page_duration(units)))
-            current, count, units = (), 0, 0
-        current += (separator if current else ()) + spans
-        count += 1
-        units += size
+    chunks: list[list[tuple[DiffSpan, int]]] = []
+    current: list[tuple[DiffSpan, int]] = []
+    for atom in atoms:
+        if not current and atom[0].kind == "equal" and atom[0].original.isspace():
+            continue
+        if current and not fits("…" + display_text(tuple(a[0] for a in current + [atom])) + "…"):
+            chunks.append(current)
+            current = []
+            if atom[0].kind == "equal" and atom[0].original.isspace():
+                continue
+        current.append(atom)
     if current:
-        pages.append(DiffPage(current, count, page_duration(units)))
+        chunks.append(current)
+
+    shown = [any(span.kind != "equal" for span, _ in chunk) for chunk in chunks]
+    pages = []
+    for i, chunk in enumerate(chunks):
+        if not shown[i]:
+            continue
+        spans = [span for span, _ in chunk]
+        while spans and spans[-1].kind == "equal" and spans[-1].original.isspace():
+            spans.pop()
+        if i > 0 and not shown[i - 1]:
+            spans.insert(0, DiffSpan("equal", "…", "…"))
+        if i + 1 < len(chunks) and not shown[i + 1]:
+            spans.append(DiffSpan("equal", "…", "…"))
+        changes = sum(1 for span, _ in chunk if span.kind != "equal")
+        context = reading_units("".join(span.original for span, _ in chunk if span.kind == "equal"))
+        units = sum(u for _, u in chunk) + context // 10
+        pages.append(DiffPage(_merge(spans), changes, page_duration(units)))
     kept, total = [], 0.0
     for page in pages:
-        if total + page.duration > 25.0:
+        if kept and total + page.duration > 25.0:
             break
         kept.append(page)
         total += page.duration

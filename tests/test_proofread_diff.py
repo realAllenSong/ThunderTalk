@@ -44,9 +44,24 @@ def test_grouping_preserves_all_changes_with_context(before, after):
     changes = [s for s in proofread_diff(before, after) if s.kind != 'equal']
     displayed = [s for p in pages for s in p.spans if s.kind != 'equal']
     assert displayed == changes
-    assert all(1 <= p.changes <= 3 and fits_two_lines(display_text(p.spans)) for p in pages)
+    assert all(p.changes >= 1 and fits_two_lines(display_text(p.spans)) for p in pages)
     assert sum(p.changes for p in pages) == len(changes)
-    assert len(pages) >= 2
+
+
+def test_pages_show_the_full_text_inline():
+    before = '我们用lama index做检索，再用rag生成，最后改promp。'
+    after = '我们用LlamaIndex做检索，再用RAG生成，最后改prompt。'
+    page, = proofread_pages(before, after, fits_two_lines)
+    assert display_text(page.spans) == ('我们用lama index → LlamaIndex做检索，再用rag → RAG生成，'
+                                        '最后改promp → prompt。')
+
+
+def test_long_text_pages_use_full_width_without_line_breaks():
+    before = '。'.join(f'第{i}段我们继续讨论这个方案的细节和实现' for i in range(12))
+    after = before.replace('第3段', '第三段').replace('第9段', '第九段')
+    pages = proofread_pages(before, after, fits_two_lines)
+    assert len(pages) == 2 and all('\u2028' not in display_text(p.spans) for p in pages)
+    assert all(len(display_text(p.spans)) > 80 for p in pages)
 
 
 def test_one_change_excludes_long_unchanged_transcript():
