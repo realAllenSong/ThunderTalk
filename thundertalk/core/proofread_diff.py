@@ -48,7 +48,7 @@ def reading_units(text: str) -> int:
 
 
 def page_duration(units: int) -> float:
-    return min(6.0, max(2.5, 2.5 + 0.12 * units))
+    return min(7.0, 3.5 + 0.2 * units)
 
 
 def _context(text: str, *, tail: bool) -> str:
@@ -76,7 +76,7 @@ def _elide(text: str, limit: int) -> str:
 
 def proofread_pages(original: str, corrected: str,
                     fits: Callable[[str], bool]) -> list[DiffPage]:
-    """Group contextual changes into measured two-line pages, at most 15 s.
+    """Group contextual changes into measured two-line pages, at most 30 s.
 
     The UI supplies its actual font/width measurement. Oversized single edits
     are elided on both sides, preserving the arrow and correction styling.
@@ -123,7 +123,7 @@ def proofread_pages(original: str, corrected: str,
         pages.append(DiffPage(current, count, page_duration(units)))
     kept, total = [], 0.0
     for page in pages:
-        if total + page.duration > 15.0:
+        if total + page.duration > 30.0:
             break
         kept.append(page)
         total += page.duration

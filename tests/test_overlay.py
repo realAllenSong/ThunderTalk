@@ -91,13 +91,13 @@ def test_pages_fit_actual_overlay_font(qapp, before, after):
     for page in ov._diff_pages:
         assert ov._diff_layout(display_text(page.spans)).lineCount() <= 2
         assert 1 <= page.changes <= 3
-    assert sum(p.duration for p in ov._diff_pages) <= 15
+    assert sum(p.duration for p in ov._diff_pages) <= 30
     ov.hide_overlay()
 
 
 def test_pages_advance_and_expire_without_sleeps(qapp):
     ov = VoiceOverlay()
-    before = '。'.join(f'第{i}段用错词继续说明' for i in range(12))
+    before = '。'.join(f'第{i}段用错词继续说明' for i in range(40))
     after = before.replace('错词', '术语')
     ov.show_cleanup_diff(before, after)
     pages = list(ov._diff_pages)
