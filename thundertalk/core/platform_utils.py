@@ -151,7 +151,7 @@ def _mic_status_via_objc() -> str | None:
 
 
 def check_microphone() -> str:
-    """Return microphone permission status: 'authorized', 'denied', 'not_determined', 'restricted'."""
+    """Return microphone permission status: 'authorized', 'denied', 'not_determined', 'restricted', or 'unknown' if the OS check failed."""
     if _SYSTEM != "Darwin":
         return "authorized"
     try:
@@ -159,10 +159,10 @@ def check_microphone() -> str:
         status = AVFoundation.AVCaptureDevice.authorizationStatusForMediaType_(
             AVFoundation.AVMediaTypeAudio
         )
-        return _MIC_STATUS.get(status, "authorized")
+        return _MIC_STATUS.get(int(status), "unknown")
     except ImportError:
         pass
-    return _mic_status_via_objc() or "authorized"
+    return _mic_status_via_objc() or "unknown"
 
 
 def request_microphone(callback=None) -> None:
@@ -188,10 +188,17 @@ def request_microphone(callback=None) -> None:
     def _probe() -> None:
         try:
             import sounddevice as sd
-            with sd.InputStream(channels=1, samplerate=16000):
-                sd.sleep(150)
+            from thundertalk.core.audio_executor import get_executor
+
+            def prompt():
+                with sd.InputStream(channels=1, samplerate=16000):
+                    pass
+
+            get_executor().call(prompt, timeout=30)
         except Exception:
             pass
+        if callback is not None:
+            callback(check_microphone() == "authorized")
 
     threading.Thread(target=_probe, daemon=True, name="mic-permission-probe").start()
 
@@ -214,3 +221,34 @@ def open_microphone_settings() -> None:
             ["open", "x-apple.systempreferences:com.apple.preference.security?Privacy_Microphone"],
             check=False,
         )
+
+
+def _reset_permission(service: str) -> bool:
+    """Reset only this app's entry, and only after an explicit UI action."""
+    if service not in ("Microphone", "Accessibility"):
+        raise ValueError(f"Unsupported permission: {service}")
+    if _SYSTEM != "Darwin":
+        return True
+    import subprocess
+    try:
+        result = subprocess.run(["tccutil", "reset", service, "com.thundertalk.app"],
+                                capture_output=True, text=True, timeout=5, check=False)
+        return result.returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def reset_microphone() -> bool:
+    if not _reset_permission("Microphone"):
+        return False
+    request_microphone()
+    open_microphone_settings()
+    return True
+
+
+def reset_accessibility() -> bool:
+    if not _reset_permission("Accessibility"):
+        return False
+    request_accessibility()
+    open_accessibility_settings()
+    return True

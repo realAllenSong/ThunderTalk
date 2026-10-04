@@ -20,6 +20,7 @@ dependencies = [
 
 [project.optional-dependencies]
 mlx = [
+    "mlx>=0.32",  # shareable streams for serialized cross-thread inference
     "mlx-qwen3-asr>=0.3",
     "mlx-lm>=0.22",
     "mlx-audio>=0.4.5",

@@ -247,9 +247,14 @@ EXTRA: dict[str, dict[str, str]] = {
     "onb.perm.granted": {"en": "Granted", "zh": "已授权"},
     "onb.perm.allow": {"en": "Allow", "zh": "允许"},
     "onb.perm.open": {"en": "Open Settings", "zh": "打开系统设置"},
+    "onb.perm.reset": {"en": "Reset and grant again", "zh": "重置并重新授权"},
+    "onb.perm.reset_failed": {
+        "en": "macOS could not reset this permission. Open System Settings and remove and re-add ThunderTalk.",
+        "zh": "macOS 无法重置此权限。请在系统设置中移除 ThunderTalk 后重新添加。",
+    },
     "onb.perm.hint": {
-        "en": "Turn ThunderTalk on in the list, then come back — this page updates by itself.",
-        "zh": "在列表中打开 ThunderTalk，然后回到这里——本页会自动更新。",
+        "en": "A toggle can stay on after a grant expires. Ad-hoc builds tie permissions to the app version; stable local signing preserves future grants on this Mac. Developer ID signing is planned. Reset and grant again to repair an old grant; this clears only ThunderTalk’s permission.",
+        "zh": "授权失效后，开关仍可能显示开启。临时签名版本的权限与应用版本绑定；稳定的本地签名可保留此 Mac 上后续版本的授权。Developer ID 签名正在筹备。点击“重置并重新授权”可修复旧授权，仅清除 ThunderTalk 的对应权限。",
     },
 
     "onb.model.title": {"en": "Pick your voice model", "zh": "选择语音模型"},

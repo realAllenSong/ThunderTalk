@@ -33,6 +33,7 @@ from typing import Callable, Optional, Union
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.mlx_runtime import evaluate_model, serialized_mlx
 
 SR = 24000
 FRAMES_PER_SEC = 12.5          # Qwen3-TTS 12 Hz codec: tokens per second of audio
@@ -464,6 +465,7 @@ class TtsEngine:
     def is_available(self, voice: VoiceRef) -> bool:
         return repo_ready(self.repo_for(voice))
 
+    @serialized_mlx
     def unload(self) -> None:
         with GPU_LOCK:
             self._model = None
@@ -474,6 +476,7 @@ class TtsEngine:
             except Exception:
                 pass
 
+    @serialized_mlx
     def _ensure(self, repo: str):
         if self._model is not None and self._repo == repo:
             return self._model
@@ -483,10 +486,12 @@ class TtsEngine:
         with GPU_LOCK:
             from mlx_audio.tts.utils import load_model
             self._model = load_model(repo)
+            evaluate_model(self._model)
             self._repo = repo
         return self._model
 
     # -- one piece ------------------------------------------------------
+    @serialized_mlx
     def _generate_piece(self, model, text: str, voice: VoiceRef, lang: str, style: Optional[str],
                         params: TtsParams, temperature: float, max_tokens: int, seed: int) -> np.ndarray:
         import mlx.core as mx

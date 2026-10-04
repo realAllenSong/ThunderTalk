@@ -21,6 +21,7 @@ from typing import Optional
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.mlx_runtime import serialized_mlx
 from thundertalk.core.tts_backends.base import BackendInfo, BackendVoice, Download, TtsBackend
 from thundertalk.core.tts_backends.presets import load_presets
 
@@ -78,6 +79,7 @@ class IndexTTSBackend(TtsBackend):
         return [BackendVoice(id=f"indextts:{p.slug}", name=p.name, language=p.language, gender=p.gender,
                              blurb_en=p.blurb_en, blurb_zh=p.blurb_zh) for p in load_presets()]
 
+    @serialized_mlx
     def load(self) -> None:
         if self._model is not None:
             return
@@ -98,6 +100,7 @@ class IndexTTSBackend(TtsBackend):
             if self._model is None:
                 self._model = IndexTTSv25(model_dir=str(self._snapshot()), quantize_bits=8)
 
+    @serialized_mlx
     def unload(self) -> None:
         with self._lock:
             self._model = None
@@ -107,6 +110,7 @@ class IndexTTSBackend(TtsBackend):
         except Exception:
             pass
 
+    @serialized_mlx
     def generate(self, text: str, voice, language: str, *, seed: int = 0,
                  speed: float = 1.0, context: Optional[dict] = None) -> np.ndarray:
         ref = self._reference_path(voice)
@@ -119,6 +123,7 @@ class IndexTTSBackend(TtsBackend):
                 speed=float(speed), max_text_tokens_per_segment=120, interval_silence=200)
         return np.asarray(audio, dtype=np.float32).reshape(-1)
 
+    @serialized_mlx
     def warm_up(self, voice, language: str) -> None:
         """The port loads W2V-BERT and CAMPPlus on its first request and caches
         each reference's speaker features by path; do both now, each step in its

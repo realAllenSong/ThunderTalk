@@ -108,7 +108,7 @@ brew install --cask realallensong/tap/thundertalk
 
 Or download the latest **ThunderTalk.app** from [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), move it to your Applications folder and open it. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
 
-ThunderTalk is signed ad hoc rather than notarised (an Apple Developer ID costs $99 a year), so macOS shows a warning the first time you open a browser download. See [First launch: "ThunderTalk can't be opened"](#first-launch-thundertalk-cant-be-opened) below; it takes about ten seconds.
+ThunderTalk is not yet notarised with an Apple Developer ID, so macOS shows a warning the first time you open a browser download. See [First launch: "ThunderTalk can't be opened"](#first-launch-thundertalk-cant-be-opened) below; it takes about ten seconds.
 
 ## Using ThunderTalk
 
@@ -259,15 +259,15 @@ ThunderTalk reads `~/.thundertalk/history.json`. If a write was interrupted (for
 
 ### The microphone is allowed but the app says "no audio"
 
-macOS sometimes ties the permission to a specific binary path, for example after the app was moved between folders. Remove and re-add it under **System Settings, Privacy & Security, Microphone**.
+An old permission grant can stop matching an updated ad-hoc binary while System Settings still shows the toggle on. In onboarding, or the Home permission banner, choose **Reset and grant again**. This resets only ThunderTalk’s microphone entry and asks macOS for access again. Permission status updates automatically while the page is visible. Restricted permissions must be changed by the administrator.
 
 ### The hotkey does not start recording
 
-ThunderTalk needs **Accessibility** permission to read global key events. In **System Settings, Privacy & Security, Accessibility**, switch ThunderTalk off and on again, then restart the app.
+ThunderTalk needs **Accessibility** permission to read global key events. Choose **Reset and grant again** for Accessibility in onboarding or Home, then enable ThunderTalk in the settings pane that opens. The app rechecks access automatically.
 
 ### First launch: "ThunderTalk can't be opened"
 
-Because the app is signed ad hoc, Gatekeeper warns about browser downloads. To allow it:
+Because the app is not notarised, Gatekeeper warns about browser downloads. To allow it:
 
 1. Drag `ThunderTalk.app` into `/Applications`.
 2. Try to open it once; macOS refuses and shows the warning.
@@ -285,14 +285,9 @@ macOS remembers the choice. Updates that arrive through the in-app updater strip
 
 ### After an update, the hotkey or microphone stops working
 
-Ad-hoc signing gives every build a different code-directory hash, and macOS keys its privacy permissions to that hash. After the updater swaps the bundle, macOS treats the new binary as a different app, so the old **Accessibility** entry quietly stops applying and **Microphone** access has to be granted again. ThunderTalk shows a one-time note about this after an update. To fix it:
+Ad-hoc signing gives every build a different code-directory hash. macOS can retain an “on” toggle for the old hash while denying the updated app. In onboarding or Home, choose **Reset and grant again**, then grant the microphone prompt or enable Accessibility in the settings pane. This clears only the selected ThunderTalk permission; no other app’s grants are affected. Status is polled about once per second while the permission page is visible.
 
-1. Open **System Settings, Privacy & Security, Accessibility**.
-2. Remove the old `ThunderTalk` entry (the one that is on but greyed out, or has a stale path).
-3. Click `+`, choose `/Applications/ThunderTalk.app`, and add it again.
-4. Switch it on and try the hotkey. The first recording may ask for microphone access again; allow it.
-
-This is a constraint of shipping an un-notarised app. Signing and notarising each release with an Apple Developer ID would remove it, at a cost of $99 a year and a few more release steps.
+Local builds now reuse a signing certificate when available, preserving future grants across builds made with that certificate. Switching from an old ad-hoc build requires granting access once to the new identity. Developer ID signing and notarization are still pending; a self-signed local identity does not remove Gatekeeper warnings.
 
 ### What is the minimum machine?
 
@@ -317,6 +312,25 @@ uv run python run.py
 # Build the macOS app (output: dist/ThunderTalk.app)
 .venv/bin/python build_macos.py
 ```
+
+### Stable local signing
+
+Run `tools/make_signing_identity.sh` once on the build Mac. It creates **ThunderTalk Local Signing** using OpenSSL, imports its private key into a dedicated `~/Library/Keychains/ThunderTalkLocalSigning.keychain-db`, and applies user trust **for code signing only** with `security add-trusted-cert`. macOS may request your login password for the trust setting. For an unattended machine, use `THUNDERTALK_DEFER_TRUST=1 tools/make_signing_identity.sh` and rerun without that variable when you can approve the prompt. Explicit certificate-leaf requirements and `codesign --verify` work for local builds even with that global trust setting deferred.
+
+The encrypted keychain and its random password in `~/.thundertalk/signing/keychain-password` are private, local files; never commit or distribute either. The script preserves existing keychain search entries, grants `/usr/bin/codesign` access only to the dedicated keychain, deletes scratch keys on exit, and reuses the identity rather than replacing it. Keep a secure backup of the keychain/password: replacing the certificate invalidates existing permission grants. `build_macos.py` unlocks only this dedicated keychain and automatically uses the local identity when present, with an explicit requirement for `com.thundertalk.app` and the certificate leaf. It verifies the whole bundle after signing. When the identity is absent it retains ad-hoc signing; `SIGN_IDENTITY=-` forces that fallback.
+
+For Developer ID, set `SIGN_IDENTITY` to your certificate name/hash and supply the existing `APPLE_ID`, `APPLE_APP_PASSWORD`, and `TEAM_ID` notarization variables. `SIGN_REQUIREMENT` can supply a reviewed team-based requirement when migrating/renewing that certificate. Do not share the local private key with end users.
+
+Thread regression checks (no permission changes):
+
+```sh
+# Use lock.py gpu on shared Macs, and PYTHONPATH=$PWD with the shared interpreter.
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python tools/check_threaded_studio.py --preload
+HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 python tools/check_threaded_studio.py --case picker
+python tools/check_threaded_studio.py --streams-only
+```
+
+The public Bilibili clip is fetched through Studio’s real `TranscribeWorker` link path. The checks reuse cached Qwen 0.6B/1.7B, MOSS and VoxCPM2 weights, start dictation on another thread during inference, and exercise preload. The memory admission guard can fall back to dictation’s model; each run prints the actual model id. `--streams-only --baseline-streams` intentionally reproduces the old native CPU-stream abort in an isolated process; use it only for diagnosing the baseline.
 
 Use all three extras for source runs and release builds so PyInstaller can analyze the complete dependencies. The release bundle excludes PyTorch and its exclusive dependencies and installs pinned wheels on demand. The optional release runtime requires Python 3.12 / Apple Silicon macOS; Intel source runs are untested.
 
@@ -352,7 +366,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 - **Translation:** SeamlessM4T v2 through PyTorch and Transformers
 - **Audio:** [sounddevice](https://python-sounddevice.readthedocs.io/) for capture; macOS `afconvert` for decoding files
 - **Hotkeys:** native NSEvent on macOS
-- **Build:** [PyInstaller](https://pyinstaller.org/), ad-hoc signed
+- **Build:** [PyInstaller](https://pyinstaller.org/), stable local signing when available, ad-hoc fallback
 
 ## FAQ
 

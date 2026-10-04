@@ -33,6 +33,7 @@ from typing import Optional
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.mlx_runtime import evaluate_model, serialized_mlx
 from thundertalk.core.tts_backends.base import (
     BackendInfo,
     BackendVoice,
@@ -153,6 +154,7 @@ class VoxCPM2Backend(TtsBackend):
         return [BackendVoice(id=f"voxcpm2:{p.slug}", name=p.name, language=p.language, gender=p.gender,
                              blurb_en=p.blurb_en, blurb_zh=p.blurb_zh) for p in presets]
 
+    @serialized_mlx
     def load(self) -> None:
         if self._model is not None:
             return
@@ -170,8 +172,10 @@ class VoxCPM2Backend(TtsBackend):
                 with _fast_tokenizer_hook(arch.Model):
                     model = load_model(str(snap) if snap else self.repo)
                 _cache_encodes(model)
+                evaluate_model(model)
                 self._model = model
 
+    @serialized_mlx
     def unload(self) -> None:
         with self._lock:
             self._model = None
@@ -181,12 +185,14 @@ class VoxCPM2Backend(TtsBackend):
         except Exception:
             pass
 
+    @serialized_mlx
     def generate(self, text: str, voice, language: str, *, seed: int = 0,
                  speed: float = 1.0, context: Optional[dict] = None) -> np.ndarray:
         self.load()
         ref, ref_text = self._reference(voice, context if context is not None else {})
         return self._run(text, seed, ref_audio=ref, prompt_audio=ref, prompt_text=ref_text)
 
+    @serialized_mlx
     def warm_up(self, voice, language: str) -> None:
         """Prepare and VAE-encode ``voice``'s reference (cached for later
         requests) and run a few decoding steps so every kernel is built."""

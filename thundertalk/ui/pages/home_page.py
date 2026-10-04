@@ -252,14 +252,14 @@ class _PermBanner(theme.Card):
         self._text.setWordWrap(True)
         ly.addWidget(self._text, stretch=1)
         self._btn = theme.make_button(t("home.perm.fix"), "primary", 30, font_px=12)
-        self._btn.setFixedWidth(84)
+        self._btn.setMinimumWidth(84)
         self._btn.clicked.connect(lambda: self.fix_clicked.emit(self._which))
         ly.addWidget(self._btn)
 
     def show_for(self, which: str, text: str) -> None:
         self._which = which
         self._text.setText(text)
-        self._btn.setText(t("home.perm.fix"))
+        self._btn.setText(t("onb.perm.reset" if which in ("mic", "mic_prompt", "acc") else "home.perm.fix"))
 
     def paintEvent(self, ev) -> None:
         super().paintEvent(ev)
@@ -509,7 +509,7 @@ class HomePage(QWidget):
 
         # Permission polling only while this page is on screen.
         self._perm_timer = QTimer(self)
-        self._perm_timer.setInterval(2500)
+        self._perm_timer.setInterval(1000)
         self._perm_timer.timeout.connect(self._state.refresh_permissions)
         self._state.permissions_changed.connect(self._update_perm_banner)
 
@@ -529,8 +529,8 @@ class HomePage(QWidget):
     # ── permissions ──
     def _update_perm_banner(self) -> None:
         s = self._state
-        if s.mic_status in ("denied", "restricted"):
-            self._perm.show_for("mic", t("home.perm.mic"))
+        if s.mic_status in ("denied", "restricted", "unknown"):
+            self._perm.show_for("mic" if s.mic_status == "denied" else "mic_settings", t("home.perm.mic"))
             self._perm.show()
         elif s.mic_status == "not_determined":
             self._perm.show_for("mic_prompt", t("home.perm.mic_prompt"))
@@ -543,13 +543,16 @@ class HomePage(QWidget):
 
     def _fix_permission(self, which: str) -> None:
         from thundertalk.core import platform_utils as pu
-        if which == "mic_prompt":
-            pu.request_microphone()
-        elif which == "mic":
+        if which in ("mic_prompt", "mic"):
+            ok = pu.reset_microphone()
+        elif which == "mic_settings":
             pu.open_microphone_settings()
+            ok = True
         else:
-            pu.request_accessibility()
-            pu.open_accessibility_settings()
+            ok = pu.reset_accessibility()
+        if not ok:
+            self._perm._text.setText(t("onb.perm.reset_failed"))
+        self._state.refresh_permissions()
 
     # ── data ──
     def refresh(self) -> None:

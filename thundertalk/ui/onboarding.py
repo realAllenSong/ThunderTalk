@@ -117,6 +117,7 @@ class _Feature(QWidget):
 
 class _PermRow(theme.Card):
     action = Signal()
+    reset = Signal()
 
     def __init__(self, icon: str, title: str, why: str) -> None:
         super().__init__(radius=8)
@@ -142,6 +143,10 @@ class _PermRow(theme.Card):
         self._btn.setMinimumWidth(120)
         self._btn.clicked.connect(self.action)
         ly.addWidget(self._btn)
+        self._reset_btn = theme.make_button(t("onb.perm.reset"), "secondary", 32, font_px=12)
+        self._reset_btn.clicked.connect(self.reset)
+        ly.addWidget(self._reset_btn)
+        self._reset_btn.hide()
         self._is_granted = False
         self.set_state(False, t("onb.perm.allow"))
 
@@ -153,6 +158,8 @@ class _PermRow(theme.Card):
         self.update()
 
     def retranslate(self, title: str, why: str) -> None:
+        self._granted.setText(t("onb.perm.granted"))
+        self._reset_btn.setText(t("onb.perm.reset"))
         self._title.setText(title)
         self._why.setText(why)
 
@@ -314,9 +321,11 @@ class OnboardingOverlay(QWidget):
         ly.addSpacing(18)
         self._mic_row = _PermRow("mic", t("onb.perm.mic.title"), t("onb.perm.mic.why"))
         self._mic_row.action.connect(self._on_mic_action)
+        self._mic_row.reset.connect(self._on_mic_reset)
         ly.addWidget(self._mic_row)
         self._acc_row = _PermRow("keyboard", t("onb.perm.acc.title"), t("onb.perm.acc.why"))
         self._acc_row.action.connect(self._on_acc_action)
+        self._acc_row.reset.connect(self._on_acc_reset)
         ly.addWidget(self._acc_row)
         ly.addSpacing(6)
         self._perm_hint = QLabel(t("onb.perm.hint"))
@@ -504,7 +513,9 @@ class OnboardingOverlay(QWidget):
             self._acc_row.set_state(True, "")
         else:
             self._acc_row.set_state(False, t("onb.perm.allow"))
-        self._perm_hint.setVisible(not s.permissions_ok and self._acc_prompted)
+        self._mic_row._reset_btn.setVisible(mic in ("denied", "not_determined"))
+        self._acc_row._reset_btn.setVisible(not s.accessibility_ok)
+        self._perm_hint.setVisible(not s.permissions_ok)
         if self._step == 1:
             self._update_next()
 
@@ -522,6 +533,28 @@ class OnboardingOverlay(QWidget):
         pu.request_accessibility()
         pu.open_accessibility_settings()
         self._perm_hint.show()
+
+    def _on_mic_reset(self) -> None:
+        from thundertalk.core import platform_utils as pu
+        self._reset_result(pu.reset_microphone())
+
+    def _on_acc_reset(self) -> None:
+        from thundertalk.core import platform_utils as pu
+        self._reset_result(pu.reset_accessibility())
+
+    def _reset_result(self, ok: bool) -> None:
+        self._perm_hint.setText(t("onb.perm.hint" if ok else "onb.perm.reset_failed"))
+        self._state.refresh_permissions()
+
+    def showEvent(self, event) -> None:
+        super().showEvent(event)
+        if self._step == 1 and not self._closing:
+            self._state.refresh_permissions()
+            self._perm_timer.start()
+
+    def hideEvent(self, event) -> None:
+        self._perm_timer.stop()
+        super().hideEvent(event)
 
     # ── model ──
     def _enter_model(self) -> None:
@@ -649,6 +682,7 @@ class OnboardingOverlay(QWidget):
         self._w_sub.setText(t("onb.welcome.sub"))
         self._p_title.setText(t("onb.perm.title"))
         self._p_sub.setText(t("onb.perm.sub"))
+        self._perm_hint.setText(t("onb.perm.hint"))
         self._mic_row.retranslate(t("onb.perm.mic.title"), t("onb.perm.mic.why"))
         self._acc_row.retranslate(t("onb.perm.acc.title"), t("onb.perm.acc.why"))
         self._m_title.setText(t("onb.model.title"))
