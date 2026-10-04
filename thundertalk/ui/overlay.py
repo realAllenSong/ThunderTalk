@@ -6,7 +6,7 @@ a live level meter, a seconds counter and the hotkey; with live preview on,
 the words recognized so far appear under that row (last few lines, newest at
 the bottom). Transcribing: plain text with cycling dots. Then a one-line
 result or error. Proofreading adds a quiet working meter and a short inline
-word/character diff; replacement happens independently of the animation.
+word/character diff in readable pages; replacement happens independently.
 """
 
 from __future__ import annotations
@@ -20,7 +20,7 @@ from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QT
 from PySide6.QtWidgets import QWidget
 
 from thundertalk.core.i18n import t
-from thundertalk.core.proofread_diff import proofread_diff
+from thundertalk.core.proofread_diff import proofread_pages
 from thundertalk.ui import theme
 from thundertalk.ui.icons import paint_icon
 from thundertalk.ui.keys import display_combo
@@ -36,6 +36,7 @@ _PV_LINES = 3                 # at most this many lines; older text scrolls off 
 _PV_PAD_X, _PV_PAD_B = 24, 14
 _PV_LINE_H = 20
 _PV_FONT_PT = 13
+_DIFF_LINES = 2
 
 _INK = QColor(theme.INK)
 _PAPER = QColor("#FBFBFA")
@@ -76,7 +77,7 @@ def wrap_tail(text: str, font, width: int, max_lines: int = _PV_LINES) -> list[s
 
 class VoiceOverlay(QWidget):
 
-    _IDLE, _RECORDING, _TRANSCRIBING, _RESULT, _ERROR, _CLEANUP, _DIFF, _SETTLED = range(8)
+    _IDLE, _RECORDING, _TRANSCRIBING, _RESULT, _ERROR, _CLEANUP, _DIFF = range(7)
 
     def __init__(self) -> None:
         super().__init__(None)
@@ -101,9 +102,13 @@ class VoiceOverlay(QWidget):
         self._preview = ""
         self._pv_lines: list[str] = []
         self._diff = []
-        self._corrected = ""
+        self._diff_pages = []
+        self._diff_page = 0
         self._diff_started = 0.0
         self._diff_progress = 0.0
+        self._hovered = False
+        self._pause_started = None
+        self._paused_seconds = 0.0
 
         # Slow tick: advances the seconds counter and the "…" dots. (The level
         # meter repaints itself whenever a new sample arrives.)
@@ -124,6 +129,7 @@ class VoiceOverlay(QWidget):
 
     def show_recording(self) -> None:
         self._hide_timer.stop()
+        self._reset_diff()
         self._state = self._RECORDING
         self._text = t("overlay.listening").rstrip("…").rstrip(".")
         self._smooth = 0.0
@@ -159,6 +165,7 @@ class VoiceOverlay(QWidget):
 
     def show_transcribing(self) -> None:
         self._hide_timer.stop()
+        self._reset_diff()
         self._state = self._TRANSCRIBING
         self._text = t("overlay.transcribing").rstrip("…").rstrip(".")
         self._tick_n = 0
@@ -183,30 +190,43 @@ class VoiceOverlay(QWidget):
 
     def show_cleanup_diff(self, original: str, corrected: str) -> None:
         self._hide_timer.stop()
-        self._diff = proofread_diff(original, corrected)
-        self._corrected = corrected
+        self._reset_diff()
         if original == corrected:
             self.show_result(t("cleanup.no_changes"))
             self._hide_timer.start(900)
             return
+        self._diff_pages = proofread_pages(original, corrected, self._diff_fits)
+        self._diff = self._diff_pages[0].spans
         self._state = self._DIFF
         self._text = t("cleanup.corrected")
         self._diff_started = time.monotonic()
         self._diff_progress = 0.0
-        self._set_preview_lines([""] * _PV_LINES)
+        self._set_preview_lines([""] * _DIFF_LINES)
         self._present()
-        self._anim.start(30)
+        if self._hovered or self.underMouse():
+            self._pause_started = self._diff_started
+            self._anim.stop()
+        else:
+            self._anim.start(30)
 
     def advance_cleanup_animation(self, elapsed: float) -> None:
-        """Deterministic frame advancement, also used by offscreen tests."""
+        """Advance by wall seconds since presentation, excluding hover time."""
         if self._state != self._DIFF:
             return
-        self._diff_progress = min(1.0, max(0.0, elapsed / 1.2))
-        if elapsed >= 1.2:
-            self._state = self._SETTLED
-            self._anim.stop()
-            self._set_preview_lines(wrap_tail(self._corrected, theme.font(_PV_FONT_PT), _PW - 2 * _PV_PAD_X))
-            self._hide_timer.start(450)
+        if self._pause_started is not None:
+            elapsed = min(elapsed, self._pause_started - self._diff_started)
+        elapsed = max(0.0, elapsed - self._paused_seconds)
+        start = 0.0
+        for index, page in enumerate(self._diff_pages):
+            if elapsed < start + page.duration:
+                self._diff_page = index
+                self._diff = page.spans
+                self._diff_progress = min(1.0, (elapsed - start) / 0.18)
+                break
+            start += page.duration
+        else:
+            self.hide_overlay()
+            return
         self.update()
 
     def complete_transcribing(self) -> None:
@@ -216,6 +236,7 @@ class VoiceOverlay(QWidget):
             self.hide_overlay()
 
     def show_result(self, text: str) -> None:
+        self._reset_diff()
         self._set_preview_lines([])
         self._state = self._RESULT
         self._text = text[:80] + ("…" if len(text) > 80 else "")
@@ -224,6 +245,7 @@ class VoiceOverlay(QWidget):
         self._hide_timer.start(1500)
 
     def show_error(self, msg: str) -> None:
+        self._reset_diff()
         self._set_preview_lines([])
         self._state = self._ERROR
         self._text = msg[:70]
@@ -235,10 +257,62 @@ class VoiceOverlay(QWidget):
         self._hide_timer.stop()
         self._anim.stop()
         self._state = self._IDLE
+        self._reset_diff()
+        self._hovered = False
         self._set_preview_lines([])
         self.hide()
 
     # ── internals ───────────────────────────────────────────────────────
+
+    def _reset_diff(self) -> None:
+        self._diff = []
+        self._diff_pages = []
+        self._diff_page = 0
+        self._pause_started = None
+        self._paused_seconds = 0.0
+
+    def enterEvent(self, event) -> None:
+        self._hovered = True
+        if self._state == self._DIFF and self._pause_started is None:
+            now = time.monotonic()
+            self.advance_cleanup_animation(now - self._diff_started)
+            if self._state == self._DIFF:
+                self._pause_started = now
+                self._anim.stop()
+        super().enterEvent(event)
+
+    def leaveEvent(self, event) -> None:
+        self._hovered = False
+        if self._state == self._DIFF and self._pause_started is not None:
+            self._paused_seconds += time.monotonic() - self._pause_started
+            self._pause_started = None
+            self._anim.start(30)
+        super().leaveEvent(event)
+
+    def mousePressEvent(self, event) -> None:
+        if self._state == self._DIFF and event.button() == Qt.MouseButton.LeftButton:
+            self.hide_overlay()
+            event.accept()
+        else:
+            super().mousePressEvent(event)
+
+    def _diff_layout(self, text: str, ranges=()) -> QTextLayout:
+        layout = QTextLayout(text, theme.font(_PV_FONT_PT))
+        layout.setFormats(ranges)
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        layout.setTextOption(option)
+        layout.beginLayout()
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(_PW - 2 * _PV_PAD_X)
+        layout.endLayout()
+        return layout
+
+    def _diff_fits(self, text: str) -> bool:
+        return self._diff_layout(text).lineCount() <= _DIFF_LINES
 
     def _set_preview_lines(self, lines: list[str]) -> None:
         if not lines:
@@ -370,8 +444,23 @@ class VoiceOverlay(QWidget):
         p.setFont(f)
         p.setPen(_PAPER)
         fm = QFontMetrics(f)
-        p.drawText(QRectF(50, 0, w - 50 - 20, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
-                   fm.elidedText(self._text, Qt.TextElideMode.ElideRight, int(w - 72)))
+        available = w - 72
+        if self._state == self._DIFF:
+            page = self._diff_pages[self._diff_page]
+            label = f"{self._diff_page + 1}/{len(self._diff_pages)}"
+            if page.omitted:
+                label = t("cleanup.more_changes").format(n=page.omitted) + " · " + label
+            p.setFont(theme.font(11))
+            p.setPen(_DIM)
+            width = p.fontMetrics().horizontalAdvance(label) + 4
+            p.drawText(QRectF(w - width - 24, 0, width, h),
+                       Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignRight | Qt.TextFlag.TextSingleLine,
+                       label)
+            available -= width + 16
+            p.setFont(f)
+            p.setPen(_PAPER)
+        p.drawText(QRectF(50, 0, available, h), Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft,
+                   fm.elidedText(self._text, Qt.TextElideMode.ElideRight, available))
 
     def _paint_preview(self, p: QPainter) -> None:
         p.setPen(QPen(_RULE, 1))
@@ -398,35 +487,18 @@ class VoiceOverlay(QWidget):
                 fmt = QTextCharFormat()
                 color = QColor(_PV_INK if kind == "equal" else _DIM)
                 if kind == "old":
-                    fmt.setFontStrikeOut(self._diff_progress >= 0.12)
+                    fmt.setFontStrikeOut(True)
                 elif kind == "new":
                     color = QColor("#FFAD8F")
-                    color.setAlpha(int(255 * min(1, max(0, (self._diff_progress - 0.15) / 0.45))))
+                color.setAlpha(int(color.alpha() * (0.85 + 0.15 * self._diff_progress)))
                 fmt.setForeground(color)
                 fr = QTextLayout.FormatRange()
                 fr.start, fr.length, fr.format = start, len(value.encode("utf-16-le")) // 2, fmt
                 ranges.append(fr)
-        layout = QTextLayout(text, theme.font(_PV_FONT_PT))
-        layout.setFormats(ranges)
-        option = QTextOption()
-        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
-        layout.setTextOption(option)
-        lines = []
-        layout.beginLayout()
-        while True:
-            line = layout.createLine()
-            if not line.isValid():
-                break
-            line.setLineWidth(_PW - 2 * _PV_PAD_X)
-            lines.append(line)
-        layout.endLayout()
-        # Keep the first changed span visible even in long dictations.
-        changed = next((r.start for r in ranges if r.format.fontStrikeOut()), 0)
-        first = next((i for i, line in enumerate(lines)
-                      if line.textStart() <= changed < line.textStart() + line.textLength()), 0)
-        first = max(0, min(first, len(lines) - _PV_LINES))
+        layout = self._diff_layout(text, ranges)
         p.save()
-        p.setClipRect(QRectF(_PV_PAD_X, _PH + 4, _PW - 2 * _PV_PAD_X, _PV_LINES * _PV_LINE_H))
-        for i, line in enumerate(lines[first:first + _PV_LINES]):
+        p.setClipRect(QRectF(_PV_PAD_X, _PH + 4, _PW - 2 * _PV_PAD_X, _DIFF_LINES * _PV_LINE_H))
+        for i in range(layout.lineCount()):
+            line = layout.lineAt(i)
             line.draw(p, QPointF(_PV_PAD_X, _PH + 4 + i * _PV_LINE_H))
         p.restore()

@@ -110,6 +110,7 @@ CLEANUP = {
     "cleanup.effort.max": {"en": "Maximum", "zh": "最高"},
     "cleanup.no_changes": {"en": "No changes", "zh": "无需修改"},
     "cleanup.corrected": {"en": "Proofread", "zh": "已校对"},
+    "cleanup.more_changes": {"en": "+{n} more", "zh": "另有 {n} 处修改"},
     "cleanup.skipped": {"en": "Original kept — input changed", "zh": "输入已变动，保留原文"},
     "cleanup.error": {"en": "Proofreading: {reason}", "zh": "校对：{reason}"},
     "cleanup.error.version": {"en": "CLI update required: {version} or newer.", "zh": "请更新 CLI 至 {version} 或更高版本。"},
