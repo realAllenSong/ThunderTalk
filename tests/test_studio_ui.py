@@ -35,7 +35,7 @@ class FakeAsr:
     def __init__(self):
         self.calls = 0
 
-    def recognize(self, x, sr):
+    def recognize(self, x, sr, **kw):
         self.calls += 1
         return SimpleNamespace(text=f"words {self.calls}")
 
@@ -277,7 +277,7 @@ def test_shutdown_cancels_a_running_transcription(studio, tmp_path):
     audio_io.write_wav(str(wav), _talk(9.0, 8), SR)
 
     class SlowAsr(FakeAsr):
-        def recognize(self, x, sr):
+        def recognize(self, x, sr, **kw):
             time.sleep(0.25)
             return super().recognize(x, sr)
 
@@ -598,7 +598,7 @@ class CountingAsr(FakeAsr):
         super().__init__()
         self.delay, self.active, self.max_active = delay, 0, 0
 
-    def recognize(self, x, sr):
+    def recognize(self, x, sr, **kw):
         self.active += 1
         self.max_active = max(self.max_active, self.active)
         time.sleep(self.delay)

@@ -149,6 +149,7 @@ class AsrEngine:
         self._language: Optional[str] = None  # forced language (None = auto-detect)
         self._itn_enabled: bool = True   # Inverse Text Normalization
         self._speaker_labels: bool = False  # MOSS: keep S01:/S02: in dictation
+        self._max_new_tokens: int = 2048    # sherpa Qwen3 load-time generation limit
 
         print(f"[ASR] Platform: {_SYSTEM}/{_MACHINE}  "
               f"mlx=lazy  "
@@ -370,6 +371,7 @@ class AsrEngine:
         else:
             max_total_len = 4096
             max_new_tokens = 2048
+        self._max_new_tokens = max_new_tokens
 
         self._recognizer = sherpa_onnx.OfflineRecognizer.from_qwen3_asr(
             encoder=encoder,
@@ -392,7 +394,7 @@ class AsrEngine:
     # -- Inference --------------------------------------------------------
 
     def recognize(self, samples: np.ndarray, sample_rate: int = 16000,
-                  *, preview: bool = False) -> AsrResult:
+                  *, preview: bool = False, cut_loops: bool = True) -> AsrResult:
         """*preview*: a live-preview decode of a partial clip. Generation is
         capped by clip length (with the 4096-token limit, Qwen3 MLX once ran
         57 s on a 5 s partial clip); the result is never pasted, so a
@@ -400,9 +402,11 @@ class AsrEngine:
 
         A final result that loops ("hands up，hands up，…" far beyond what the
         clip can hold) is cut back at the loop; plausible text is never
-        touched (repetition.clean)."""
+        touched (repetition.clean). File transcription passes
+        ``cut_loops=False``: it re-decodes a looping span in pieces instead,
+        which recovers the words a cut would lose."""
         r = self._recognize_any(samples, sample_rate, preview=preview)
-        if not preview and r.text:
+        if cut_loops and not preview and r.text:
             from thundertalk.core.repetition import clean
             text, cut = clean(r.text, len(samples) / sample_rate)
             if cut:
@@ -436,13 +440,13 @@ class AsrEngine:
         from thundertalk.core.vad import segment_audio
         segments = segment_audio(samples, sr=sample_rate)
         if len(segments) == 1:
-            return self._recognize_sherpa(segments[0], sample_rate)
+            return self._recognize_sherpa(segments[0], sample_rate, preview=preview)
 
         all_text: list[str] = []
         total_ms = 0
         total_dur = 0.0
         for seg in segments:
-            r = self._recognize_sherpa(seg, sample_rate)
+            r = self._recognize_sherpa(seg, sample_rate, preview=preview)
             if r.text:
                 all_text.append(r.text)
             total_ms += r.inference_ms
@@ -564,9 +568,19 @@ class AsrEngine:
             rtf=rtf,
         )
 
-    def _recognize_sherpa(self, samples: np.ndarray, sample_rate: int) -> AsrResult:
+    def _recognize_sherpa(self, samples: np.ndarray, sample_rate: int,
+                          preview: bool = False) -> AsrResult:
         duration_secs = len(samples) / sample_rate
         stream = self._recognizer.create_stream()
+        if self._model_family.startswith("Qwen3-ASR"):
+            # Same per-clip budget as the MLX path. The load-time limit (2048)
+            # let one looping 20 s span decode for minutes on a busy CPU.
+            budget = int(32 + 12 * duration_secs) if preview else int(64 + 24 * duration_secs)
+            budget = min(budget, self._max_new_tokens)
+            try:
+                stream.set_option("max_new_tokens", str(budget))
+            except Exception:
+                pass                    # older sherpa-onnx: load-time limit only
         stream.accept_waveform(sample_rate, samples)
 
         t0 = time.perf_counter()

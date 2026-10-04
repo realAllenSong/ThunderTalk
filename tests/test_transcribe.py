@@ -179,7 +179,7 @@ class FakeEngine:
     def __init__(self):
         self.calls = 0
 
-    def recognize(self, samples, sr):
+    def recognize(self, samples, sr, **kw):
         self.calls += 1
         return SimpleNamespace(text=f"chunk {self.calls}")
 
@@ -222,7 +222,7 @@ def test_cancel_is_honoured_between_segments(wav_file):
     eng = FakeEngine()
     real = eng.recognize
 
-    def recognize(samples, sr):
+    def recognize(samples, sr, **kw):
         r = real(samples, sr)
         ev.set()
         return r

@@ -447,9 +447,9 @@ def _uses_gpu(engine) -> bool:
 def _recognize(engine, seg: np.ndarray) -> str:
     if _uses_gpu(engine):
         with GPU_LOCK:
-            r = engine.recognize(seg, SR)
+            r = engine.recognize(seg, SR, cut_loops=False)
     else:
-        r = engine.recognize(seg, SR)
+        r = engine.recognize(seg, SR, cut_loops=False)
     return (r.text or "").strip()
 
 
@@ -461,10 +461,6 @@ def _join(parts: list[str]) -> str:
     return out
 
 
-def _longest_run(text: str) -> int:
-    return max((r.count for r in repetition.find_runs(text)), default=0)
-
-
 def decode_guarded(engine, seg: np.ndarray, before_decode: Optional[Callable[[], None]] = None,
                    where: str = "") -> str:
     """Recognise one span, guarding against repetition loops.
@@ -472,9 +468,10 @@ def decode_guarded(engine, seg: np.ndarray, before_decode: Optional[Callable[[],
     A result that looks degenerate (a phrase repeated many times in a row, or
     more speech than the span can hold) is re-decoded in ≤ 8 s pieces cut at
     pauses — loops come from long decodes and rarely survive the split. The
-    pieces replace the original when it was implausibly long or looped more
-    than they do; a real chorus decodes the same in pieces, so it is kept.
-    Whatever still doesn't fit the audio is cut back at the loop."""
+    pieces replace the original when it was implausibly long or repeated its
+    phrase far more often than they do; a real chorus comes back as often in
+    the pieces (maybe split across them), so the original is kept. Whatever
+    still doesn't fit the audio is cut back at the loop."""
     dur = len(seg) / SR
     text = _recognize(engine, seg)
     if not text or not repetition.looks_degenerate(text, dur):
@@ -493,10 +490,14 @@ def decode_guarded(engine, seg: np.ndarray, before_decode: Optional[Callable[[],
             if piece:
                 parts.append(piece)
         redone = _join(parts)
-        if repetition.is_implausible(text, dur) or _longest_run(redone) < 0.6 * _longest_run(text):
+        runs = repetition.find_runs(text)
+        worst = max(runs, key=lambda r: r.count) if runs else None
+        if (repetition.is_implausible(text, dur) or worst is None
+                or repetition.count_phrase(redone, worst.phrase) < 0.6 * worst.count):
             print(f"[Transcribe] {where}: loop ({len(text)} chars) → re-decoded in "
                   f"{len(subs)} pieces ({len(redone)} chars)")
             return redone
+        print(f"[Transcribe] {where}: repetition is real (pieces agree); kept")
         return text
     cleaned, cut = repetition.clean(text, dur)
     if cut:

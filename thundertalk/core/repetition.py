@@ -117,6 +117,21 @@ def find_runs(text: str, min_count: int = 3, max_period: int = MAX_PERIOD) -> li
     return runs
 
 
+def count_phrase(text: str, phrase: str) -> int:
+    """Non-overlapping occurrences of ``phrase`` (a ``Run.phrase``) anywhere
+    in ``text``, contiguous or not."""
+    want = phrase.split(" ")
+    toks = [u.text for u in units(text)]
+    n, i, k = len(want), 0, 0
+    while i + n <= len(toks):
+        if toks[i:i + n] == want:
+            k += 1
+            i += n
+        else:
+            i += 1
+    return k
+
+
 def rate(text: str, seconds: float) -> float:
     """Syllables per second of audio."""
     return syllables(text) / seconds if seconds > 0 else float("inf")

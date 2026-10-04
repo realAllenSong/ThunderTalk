@@ -47,7 +47,7 @@ class Engine:
         self.durations: list[float] = []
         self.lock = threading.Lock()
 
-    def recognize(self, samples, sr=SR):
+    def recognize(self, samples, sr=SR, cut_loops=True):
         dur = len(samples) / sr
         with self.lock:
             self.durations.append(dur)
@@ -127,6 +127,14 @@ def test_real_chorus_is_kept_as_decoded():
     assert transcribe.decode_guarded(eng, seg) == chorus     # pieces repeat it too → original wins
 
 
+def test_chorus_split_across_pieces_is_still_recognised_as_real():
+    chorus = "Come on, teacher. " + "Hands up. " * 9
+    seg = _talk([(3.5, 0.5)] * 4)
+    eng = Engine(reply=lambda s: chorus if s > 10 else "Hands up. " * round(s / 2.2) + "先生")
+    assert transcribe.decode_guarded(eng, seg) == chorus.strip()
+    assert len(eng.durations) >= 3                    # it did take the second look
+
+
 def test_everyday_text_is_decoded_once():
     eng = Engine(reply=lambda s: "好的好的，没问题。")
     assert transcribe.decode_guarded(eng, _burst(12.0)) == "好的好的，没问题。"
@@ -148,6 +156,44 @@ def test_asr_engine_cuts_loops_from_final_results_only():
     x = _burst(5.0)
     assert eng.recognize(x).text == "come on，teacher，hands up，hands up，"
     assert eng.recognize(x, preview=True).text == LOOP
+    assert eng.recognize(x, cut_loops=False).text == LOOP   # Studio re-decodes instead
+
+
+def test_sherpa_qwen3_generation_budget_follows_clip_length():
+    from thundertalk.core.asr import AsrEngine
+
+    class Stream:
+        def __init__(self):
+            self.options = {}
+            self.result = SimpleNamespace(text="hello")
+
+        def set_option(self, k, v):
+            self.options[k] = v
+
+        def accept_waveform(self, sr, x):
+            pass
+
+    streams = []
+
+    class Rec:
+        def create_stream(self):
+            streams.append(Stream())
+            return streams[-1]
+
+        def decode_stream(self, s):
+            pass
+
+    eng = AsrEngine()
+    eng._recognizer, eng._model_family = Rec(), "Qwen3-ASR"
+    x = _burst(10.0)
+    eng.recognize(x)
+    eng.recognize(x, preview=True)
+    eng._max_new_tokens = 256                         # "low" memory mode
+    eng.recognize(_burst(60.0))
+    assert [s.options["max_new_tokens"] for s in streams] == ["304", "152", "256"]
+    eng._model_family = "SenseVoice"
+    eng.recognize(x)
+    assert streams[-1].options == {}
 
 
 # ── dictation priority ──────────────────────────────────────────────────
@@ -254,12 +300,12 @@ def test_gpu_engine_studio_holds_gpu_lock_per_span_only(tmp_path):
     class Gpu(Engine):
         active_backend = "mlx"
 
-        def recognize(self, samples, sr=SR):
+        def recognize(self, samples, sr=SR, cut_loops=True):
             got = GPU_LOCK.acquire(blocking=False)    # RLock: re-entrant if we hold it
             held.append(got and GPU_LOCK._is_owned())
             if got:
                 GPU_LOCK.release()
-            return super().recognize(samples, sr)
+            return super().recognize(samples, sr, cut_loops)
 
     transcribe.transcribe_file(_wav(tmp_path, x), Gpu())
     assert held and all(held)

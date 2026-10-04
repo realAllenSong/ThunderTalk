@@ -53,6 +53,12 @@ def test_find_runs_sentence_level_loop():
     assert r.count == 6 and r.period == len(rep.units(sent))
 
 
+def test_count_phrase_counts_scattered_occurrences():
+    text = "Hands up, hands up. 先生 hands up! One two. hands"
+    assert rep.count_phrase(text, "hands up") == 3
+    assert rep.count_phrase("好的好的好", "好 的") == 2
+
+
 def test_no_runs_in_ordinary_text():
     assert rep.find_runs("The quick brown fox jumps over the lazy dog.") == []
     assert rep.find_runs("我想确认一下明天下午三点的会议地点。") == []
