@@ -123,7 +123,9 @@ def test_speakers_mode_asks_for_the_model_first(studio, tmp_path, monkeypatch):
     from thundertalk.ui.studio import transcribe_tab as tt
     monkeypatch.setattr(tt, "is_downloaded", lambda _id: False)
     tab = studio.transcribe_tab
-    tab._mode.set_current("speakers")
+    tab._model_picker.blockSignals(True)
+    tab._model_picker.setCurrentIndex(tab._model_picker.findData(tt.MOSS_ID))
+    tab._model_picker.blockSignals(False)
     tab._refresh()
     assert tab._notice.isVisible() and "download" in tab._notice_text.text().lower()
     assert not tab._go.isEnabled()
@@ -567,7 +569,7 @@ def test_transcribe_a_link_end_to_end(studio, fake_link, monkeypatch, tmp_path):
     assert "youtube.com" in tab._drop._sub.text() and tab._go.isEnabled() and not tab.queue_mode()
     tab._go.click()
     assert wait_for(lambda: tab._result.isVisible() and not tab.busy())
-    assert tab._transcript.title == "My Talk: part 1/2" and tab._drop._title.text() == "My Talk: part 1/2"
+    assert tab._transcript.title == "My Talk: part 1/2" and tab._url == ""
     assert "My Talk" in tab._stats.text() and not tab._burn_btn.isVisible()     # audio only: nothing to burn
     asked = {}
     monkeypatch.setattr(QFileDialog, "getSaveFileName",
@@ -636,21 +638,27 @@ def test_queue_of_three_files_runs_one_at_a_time(studio, tmp_path):
     tab._go.click()
     assert tab._cancel.text() == "Cancel all"
     assert wait_for(lambda: not tab.busy(), 20)
-    assert [r.state for r in tab._rows] == ["done"] * 3 and asr.max_active == 1
+    assert tab._rows == [] and asr.max_active == 1
     for p in paths:
         assert Path(p).with_suffix(".txt").is_file() and Path(p).with_suffix(".srt").is_file()
     assert "words" in Path(paths[1]).with_suffix(".txt").read_text(encoding="utf-8")
     assert studio._toasts[-1] == ("success", "Queue finished: 3 of 3 saved")
-    assert not tab._result.isVisible()
-    tab._rows[1]._view.click()
-    assert tab._result.isVisible() and tab._transcript is tab._rows[1].transcript
-    assert tab._go.text() == "Transcribe all (0)" and not tab._go.isEnabled()
+    assert tab._result.isVisible() and tab._history_list.count() == 3
+    tab._open_history(tab._history_list.item(1))
+    assert "words" in tab._transcript.to_text()
+    assert not tab._go.isEnabled()
 
 
 def test_queue_to_a_folder_with_a_link_and_one_cancelled(studio, tmp_path, fake_link, monkeypatch):
     from PySide6.QtWidgets import QFileDialog
     tab = studio.transcribe_tab
-    tab.set_engine(CountingAsr(0.15))
+    gate = threading.Event()
+
+    class GatedAsr(CountingAsr):
+        def recognize(self, x, sr):
+            assert gate.wait(10)
+            return super().recognize(x, sr)
+    tab.set_engine(GatedAsr(0.05))
     out = tmp_path / "out"
     out.mkdir()
     monkeypatch.setattr(QFileDialog, "getExistingDirectory", staticmethod(lambda *a, **k: str(out)))
@@ -662,12 +670,15 @@ def test_queue_to_a_folder_with_a_link_and_one_cancelled(studio, tmp_path, fake_
     tab._toggle_format("md", True)
     tab._toggle_format("txt", False)
     assert tab._formats == ["srt", "md"] or tab._formats == ["md", "srt"]
+    a, b, _link = tab._rows                                  # finished rows leave tab._rows
     tab._go.click()
-    assert wait_for(lambda: tab._rows[0].state == "running")
-    tab._rows[1]._x.click()                                  # skip the waiting one
+    assert wait_for(lambda: a.state == "running")
+    b._x.click()                                             # skip the waiting one
+    gate.set()
     assert wait_for(lambda: not tab.busy(), 20)
-    assert [r.state for r in tab._rows] == ["done", "cancelled", "done"]
-    assert tab._rows[2].name() == "My Talk: part 1/2"
+    assert tab._rows == [b] and b.state == "cancelled"
+    assert tab._transcript.title == "My Talk: part 1/2"
+    assert tab._history_list.count() == 2
     names = sorted(p.name for p in out.iterdir())
     assert names == ["My Talk part 1 2.md", "My Talk part 1 2.srt", "a.md", "a.srt"]
     assert studio._toasts[-1][0] == "warn"
@@ -902,3 +913,100 @@ def test_idle_unload_waits_while_busy_then_frees_the_model(studio, preloading):
     fake.busy = False
     tab._unload_idle()
     assert fake.unloads == 1 and tab._status.text() == ""
+
+
+def test_history_reopens_after_restart_and_preserves_edits(studio, monkeypatch, tmp_path):
+    from PySide6.QtWidgets import QInputDialog
+    from thundertalk.ui.studio.transcribe_tab import TranscribeTab
+    tab = studio.transcribe_tab
+    tab._result_src = str(tmp_path / "meeting.mp4")
+    transcript = tr.Transcript([tr.Segment(0, 2, "Searchable discussion", "S01")], 2, "MOSS",
+                               has_speakers=True, notes="## Notes\nA decision")
+    tab._on_done(transcript)
+    tab._history_list.setCurrentRow(0)
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Renamed meeting", True)))
+    tab._rename_history()
+    monkeypatch.setattr(QInputDialog, "getText", staticmethod(lambda *a, **k: ("Host", True)))
+    tab._rename_speaker("S01")
+    tab._transcript.notes = "## Notes\nUpdated decision"
+    tab._save_history(tab._transcript, tab._result_src)
+    other = TranscribeTab()
+    other._open_history(other._history_list.item(0))
+    assert other._transcript.title == "Renamed meeting"
+    assert other._transcript.speaker_names == {"S01": "Host"}
+    assert other._transcript.notes.endswith("Updated decision")
+    assert other._result_src == str(tmp_path / "meeting.mp4")
+    assert other._export_stem() == "Renamed meeting"
+    other._history_search.setText("discussion")
+    other._reload_history()
+    assert other._history_list.count() == 1
+    other._history_search.setText("missing")
+    other._reload_history()
+    assert other._history_list.count() == 0
+    from thundertalk.ui.styled_dialog import StyledDialog
+    monkeypatch.setattr(StyledDialog, "confirm", staticmethod(lambda *a, **k: True))
+    other._history_search.clear()
+    other._reload_history()
+    other._history_list.setCurrentRow(0)
+    other._delete_history()
+    assert other._history_list.count() == 0 and other._transcript is None
+    other.close()
+
+
+def test_model_picker_defaults_to_dictation_and_offers_installed_asr_only(studio, monkeypatch):
+    from thundertalk.ui.studio import transcribe_tab as tt
+    monkeypatch.setattr(tt, "is_downloaded", lambda _id: True)
+    tab = studio.transcribe_tab
+    tab.set_engine(SimpleNamespace(is_loaded=True, current_model="qwen3-asr-06b-int8"))
+    assert tab._model_picker.currentData() == "qwen3-asr-06b-int8"
+    ids = [tab._model_picker.itemData(i) for i in range(tab._model_picker.count())]
+    assert tt.MOSS_ID in ids and "sensevoice-small-int8" in ids
+    assert not any("seamless" in i for i in ids)
+    assert tab._label_speakers.isHidden()
+    tab._model_picker.setCurrentIndex(tab._model_picker.findData(tt.MOSS_ID))
+    assert not tab._label_speakers.isHidden() and tab._speakers_mode()
+    assert "who said what" in tab._mode_desc.text()
+    tab._label_speakers.setChecked(False)
+    assert not tab._speakers_mode()
+
+
+def test_selecting_missing_moss_starts_existing_download_flow(studio, monkeypatch):
+    from thundertalk.ui.studio import transcribe_tab as tt
+    monkeypatch.setattr(tt, "is_downloaded", lambda _id: False)
+    tab = studio.transcribe_tab
+    tab._reload_models()
+    got = []
+    monkeypatch.setattr(tab, "_download_moss", lambda: got.append(True))
+    index = tab._model_picker.findData(tt.MOSS_ID)
+    assert "Download" in tab._model_picker.itemText(index)
+    tab._model_picker.setCurrentIndex(index)
+    assert got == [True]
+
+
+def test_success_resets_single_file_and_retains_result(studio, tmp_path):
+    tab = studio.transcribe_tab
+    path = _wavs(tmp_path / "in", ["short.wav"], 3, 1)[0]
+    tab.load_file(path)
+    tab._go.click()
+    assert wait_for(lambda: not tab.busy())
+    assert not tab._path and not tab._url and not tab._drop._path
+    assert tab._result.isVisible() and tab._result_src == path
+    assert tab._history_list.count() == 1 and not tab._go.isEnabled()
+
+
+def test_failed_queue_item_stays_and_can_retry(studio, tmp_path, monkeypatch):
+    tab = studio.transcribe_tab
+    def one(path, *a, **kw):
+        if path.endswith("bad.wav"):
+            raise RuntimeError("no_speech")
+        return tr.Transcript([tr.Segment(0, 1, "Good")], 1, "Fake")
+    monkeypatch.setattr(tr, "transcribe_file", one)
+    tab.add_files([str(tmp_path / "good.wav"), str(tmp_path / "bad.wav")])
+    tab._go.click()
+    assert wait_for(lambda: not tab.busy())
+    assert len(tab._rows) == 1 and tab._rows[0].state == "failed"
+    assert tab._go.isEnabled() and tab._history_list.count() == 1
+    monkeypatch.setattr(tr, "transcribe_file", lambda *a, **kw: tr.Transcript([tr.Segment(0, 1, "Retry")], 1, "Fake"))
+    tab._go.click()
+    assert wait_for(lambda: not tab.busy())
+    assert tab._rows == [] and tab._transcript.to_text() == "Retry"

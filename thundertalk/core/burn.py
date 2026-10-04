@@ -6,8 +6,8 @@ ffmpeg lays them over the picture with its ``overlay`` filter, fed by a concat
 list that holds each image for its cue's duration. This needs only the PNG
 decoder and ``overlay``, which every ffmpeg build has — Homebrew's current
 ffmpeg ships without libass/freetype, so the usual ``subtitles=``/``drawtext``
-filters are not available there. Optionally the same cues are also added as a
-selectable (soft) subtitle track.
+filters are not available there. Alternatively, the same cues can be added
+as a selectable (soft) subtitle track, without changing the picture.
 
 ffmpeg itself is not bundled with the app: ``audio_io.find_ffmpeg()`` locates
 an installed one, and the UI explains how to get it when missing.
@@ -50,13 +50,16 @@ class BurnCancelled(Exception):
 
 @dataclass
 class SubStyle:
-    """Readable defaults: white text, dark outline, bottom-centre."""
+    """White text on padded dark rounded boxes, bottom-centre."""
     families: tuple[str, ...] = tuple(_FONT_FAMILIES)
-    size_frac: float = 0.052          # font pixel size / shorter side of the picture
+    size_frac: float = 0.058          # font pixel size / shorter side (the height, for landscape)
     color: str = "#FFFFFF"
     outline: str = "#000000"
-    outline_frac: float = 0.13        # outline width / font size
+    outline_frac: float = 0.045        # outline width / font size
     margin_frac: float = 0.06         # bottom margin / picture height
+    box_opacity: float = 0.67
+    padding_frac: float = 0.24       # padding / font size
+    radius_frac: float = 0.18
     max_lines: int = 3
 
 
@@ -149,7 +152,21 @@ def wrap_text(text: str, width_of: Callable[[str], float], max_width: float) -> 
     """Greedy line wrap: between words for Latin text, between characters for CJK."""
     lines: list[str] = []
     cur = ""
+    tokens = []
     for tok in _TOKEN_RE.findall(text):
+        # A URL or a long unbroken word must also stay inside the safe width.
+        if width_of(tok) > max_width:
+            part = ""
+            for ch in tok:
+                if part and width_of(part + ch) > max_width:
+                    tokens.append(part)
+                    part = ""
+                part += ch
+            if part:
+                tokens.append(part)
+        else:
+            tokens.append(tok)
+    for tok in tokens:
         cand = cur + tok
         if cur and not tok.isspace() and width_of(cand.rstrip()) > max_width:
             lines.append(cur.rstrip())
@@ -168,6 +185,7 @@ class CueRenderer:
         from PySide6.QtGui import QFont, QFontMetricsF
         self.style = style or SubStyle()
         self.w, self.h = width, height
+        # Video height for landscape; portrait uses its width, or a line holds only two or three words.
         px = max(14, int(round(min(width, height) * self.style.size_frac)))
         f = QFont()
         f.setFamilies(list(self.style.families))
@@ -176,21 +194,41 @@ class CueRenderer:
         self.font = f
         self.metrics = QFontMetricsF(f)
         self.px = px
-        self.stroke = max(2.0, px * self.style.outline_frac)
-        self.line_h = self.metrics.lineSpacing()
+        self.stroke = max(1.0, px * self.style.outline_frac)
+        self.padding = max(4.0, px * self.style.padding_frac)
+        self.line_h = self.metrics.lineSpacing() + 2 * self.padding
         self.margin = int(round(height * self.style.margin_frac))
-        self.band_h = int(self.margin + self.style.max_lines * self.line_h + 2 * self.stroke + 4)
+        self.band_h = int(self.margin + self.style.max_lines * self.line_h + 2 * self.stroke + 2 * self.padding + 4)
         self.band_h += self.band_h % 2                 # yuv420 likes even sizes
 
     def lines(self, text: str) -> list[str]:
-        out = wrap_text(text.replace("\n", " "), self.metrics.horizontalAdvance, self.w * 0.9)
+        out = [line for paragraph in text.splitlines()
+               for line in wrap_text(paragraph, self.metrics.horizontalAdvance, self.w * 0.9 - 2 * self.padding)]
         if len(out) > self.style.max_lines:
             out = out[: self.style.max_lines]
-            out[-1] = self.metrics.elidedText(out[-1] + "…", _elide_right(), self.w * 0.9)
+            out[-1] = self.metrics.elidedText(out[-1] + "…", _elide_right(), self.w * 0.9 - 2 * self.padding)
+        return out
+
+    def fit_cues(self, cues: list[Segment]) -> list[Segment]:
+        """Split again to fit the actual font/video width, especially portrait.
+
+        Preserve all words instead of eliding a cue that needs extra lines.
+        """
+        out = []
+        for cue in cues:
+            lines = wrap_text(cue.text, self.metrics.horizontalAdvance, self.w * 0.9 - 2 * self.padding)
+            groups = ["\n".join(lines[i:i + self.style.max_lines])
+                      for i in range(0, len(lines), self.style.max_lines)]
+            total = sum(len(group) for group in groups) or 1
+            start = cue.start
+            for group in groups:
+                end = start + (cue.end - cue.start) * len(group) / total
+                out.append(Segment(start, end, group, cue.speaker))
+                start = end
         return out
 
     def render(self, text: str, path: str) -> None:
-        from PySide6.QtCore import Qt
+        from PySide6.QtCore import QRectF, Qt
         from PySide6.QtGui import QColor, QImage, QPainter, QPainterPath, QPen
         img = QImage(self.w, self.band_h, QImage.Format.Format_ARGB32_Premultiplied)
         img.fill(0)
@@ -199,10 +237,24 @@ class CueRenderer:
             p = QPainter(img)
             p.setRenderHint(QPainter.RenderHint.Antialiasing)
             path_ = QPainterPath()
-            base = self.band_h - self.margin - self.metrics.descent() - self.stroke
+            boxes = QPainterPath()
+            boxes.setFillRule(Qt.FillRule.WindingFill)
+            radius = self.px * self.style.radius_frac
+            base = self.band_h - self.margin - self.metrics.descent() - self.stroke - self.padding
             for i, line in enumerate(lines):
                 y = base - (len(lines) - 1 - i) * self.line_h
-                path_.addText((self.w - self.metrics.horizontalAdvance(line)) / 2, y, self.font, line)
+                width = self.metrics.horizontalAdvance(line)
+                x = (self.w - width) / 2
+                boxes.addRoundedRect(QRectF(x - self.padding, y - self.metrics.ascent() - self.padding,
+                                            width + 2 * self.padding, self.metrics.height() + 2 * self.padding),
+                                     radius, radius)
+                path_.addText(x, y, self.font, line)
+            # One merged shape, so touching line boxes don't darken where they meet.
+            bg = QColor("#000000")
+            bg.setAlpha(round(255 * self.style.box_opacity))
+            p.setPen(Qt.PenStyle.NoPen)
+            p.setBrush(bg)
+            p.drawPath(boxes.simplified())
             edge = QColor(self.style.outline)
             edge.setAlpha(235)
             p.setPen(QPen(edge, self.stroke * 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap,
@@ -256,22 +308,25 @@ def subtitle_language(tr: Transcript) -> str:
 
 def build_command(ffmpeg: str, src: str, concat: str, out: str, info: VideoInfo, encoder: str,
                   soft_srt: str = "", language: str = "und") -> list[str]:
-    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error",
-           "-i", src, "-f", "concat", "-safe", "0", "-i", concat]
+    cmd = [ffmpeg, "-hide_banner", "-nostdin", "-y", "-loglevel", "error", "-i", src]
     if soft_srt:
-        cmd += ["-i", soft_srt]
-    cmd += ["-filter_complex",
-            "[0:v:0][1:v]overlay=x=(W-w)/2:y=H-h:eof_action=pass:format=auto,format=yuv420p[v]",
-            "-map", "[v]"]
-    if info.has_audio:
-        cmd += ["-map", "0:a?"]
-    if soft_srt:
-        cmd += ["-map", "2:s", "-c:s", "mov_text", "-metadata:s:s:0", f"language={language}"]
-    if encoder == "libx264":
-        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
-    elif encoder == "h264_videotoolbox":
-        cmd += ["-c:v", "h264_videotoolbox", "-q:v", "62"]
+        # A selectable track leaves the video picture untouched.
+        cmd += ["-i", soft_srt, "-map", "0:v:0"]
+        if info.has_audio:
+            cmd += ["-map", "0:a?"]
+        cmd += ["-map", "1:s", "-c:v", "copy", "-c:s", "mov_text",
+                "-metadata:s:s:0", f"language={language}"]
     else:
+        cmd += ["-f", "concat", "-safe", "0", "-i", concat, "-filter_complex",
+                "[0:v:0][1:v]overlay=x=(W-w)/2:y=H-h:eof_action=pass:format=auto,format=yuv420p[v]",
+                "-map", "[v]"]
+        if info.has_audio:
+            cmd += ["-map", "0:a?"]
+    if not soft_srt and encoder == "libx264":
+        cmd += ["-c:v", "libx264", "-preset", "veryfast", "-crf", "20"]
+    elif not soft_srt and encoder == "h264_videotoolbox":
+        cmd += ["-c:v", "h264_videotoolbox", "-q:v", "62"]
+    elif not soft_srt:
         cmd += ["-c:v", encoder, "-q:v", "3"]
     if info.has_audio:
         keep = Path(src).suffix.lower() in _KEEP_CONTAINER and info.audio_codec in ("aac", "mp3", "alac", "ac3")
@@ -300,8 +355,10 @@ def burn(
     cancel: Optional[threading.Event] = None,
     ffmpeg: Optional[str] = None,
 ) -> BurnResult:
-    """Write ``out``: ``src`` with ``tr`` drawn on screen (and, with ``soft``,
-    also as a subtitle track). The partial file is removed on failure/cancel."""
+    """Write burned subtitles, or only a selectable track (``soft``).
+
+    The partial file is removed on failure/cancel.
+    """
     t0 = time.monotonic()
     ffmpeg = ffmpeg or audio_io.find_ffmpeg()
     if not ffmpeg:
@@ -323,18 +380,21 @@ def burn(
     proc: Optional[subprocess.Popen] = None
     done = False
     try:
-        _p(0, "render")
-        r = CueRenderer(info.width, info.height, style)
-        r.render("", os.path.join(work, "blank.png"))
-        images = []
-        for i, c in enumerate(cues):
-            if _cancelled():
-                raise BurnCancelled()
-            name = f"c{i:05d}.png"
-            r.render(c.text, os.path.join(work, name))
-            images.append(name)
-        concat = os.path.join(work, "cues.ffconcat")
-        Path(concat).write_text(concat_list(cues, images, "blank.png", info.duration), encoding="utf-8")
+        concat = ""
+        if not soft:
+            _p(0, "render")
+            r = CueRenderer(info.width, info.height, style)
+            cues = r.fit_cues(cues)
+            r.render("", os.path.join(work, "blank.png"))
+            images = []
+            for i, c in enumerate(cues):
+                if _cancelled():
+                    raise BurnCancelled()
+                name = f"c{i:05d}.png"
+                r.render(c.text, os.path.join(work, name))
+                images.append(name)
+            concat = os.path.join(work, "cues.ffconcat")
+            Path(concat).write_text(concat_list(cues, images, "blank.png", info.duration), encoding="utf-8")
         srt = ""
         if soft:
             srt = os.path.join(work, "subs.srt")

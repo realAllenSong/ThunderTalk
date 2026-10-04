@@ -4,6 +4,7 @@ a sentence in the user's language."""
 
 from __future__ import annotations
 
+import sqlite3
 import threading
 from dataclasses import dataclass
 from pathlib import Path
@@ -94,16 +95,17 @@ class TranscribeWorker(_Worker):
 
     titled = Signal(str)                  # the link's title, once known
 
-    def __init__(self, path: str, engine, speakers: bool, url: str = "") -> None:
+    def __init__(self, path: str, engine, speakers: bool, url: str = "", model_id: str = "") -> None:
         super().__init__()
+        self._model_id = model_id
         self._path, self._engine, self._speakers, self._url = path, engine, speakers, url
 
     def work(self):
         prog = lambda p, m: self.progress.emit(p, m)      # noqa: E731
         if self._url:
-            return transcribe.transcribe_link(self._url, self._engine, speakers=self._speakers,
+            return transcribe.transcribe_link(self._url, self._engine, speakers=self._speakers, model_id=self._model_id,
                                               progress=prog, cancel=self._cancel, on_title=self.titled.emit)
-        return transcribe.transcribe_file(self._path, self._engine, speakers=self._speakers,
+        return transcribe.transcribe_file(self._path, self._engine, speakers=self._speakers, model_id=self._model_id,
                                           progress=prog, cancel=self._cancel)
 
 
@@ -139,8 +141,10 @@ class BatchWorker(_Worker):
     item_notes_failed = Signal(int, str)
 
     def __init__(self, items: list[BatchItem], engine, speakers: bool, formats: list[str],
-                 out_dir: str = "", link_dir: str = "", notes_provider=None, notes_model: str = "") -> None:
+                 out_dir: str = "", link_dir: str = "", notes_provider=None, notes_model: str = "", model_id: str = "", history=None) -> None:
         super().__init__()
+        self._model_id = model_id
+        self._history = history
         self._items = list(items)
         self._lock = threading.Lock()
         self._engine, self._speakers, self._formats = engine, speakers, list(formats)
@@ -170,6 +174,15 @@ class BatchWorker(_Worker):
         with self._lock:
             return self._items[i] if i < len(self._items) else None
 
+    def _save_history(self, tr: transcribe.Transcript, source: str) -> None:
+        from thundertalk.core.transcript_history import TranscriptHistory
+        try:
+            self._history = self._history or TranscriptHistory()
+            self._history.save(tr, source)
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            # The exported files are already saved; history is a convenience copy.
+            print(f"[Studio] Could not save history: {exc}")
+
     def work(self):
         i, ok = 0, 0
         while (item := self._next(i)) is not None:
@@ -195,6 +208,7 @@ class BatchWorker(_Worker):
                 stem = (links.safe_name(tr.title) if item.is_url else Path(item.source).stem)
                 folder = self._out_dir or (self._link_dir if item.is_url else str(Path(item.source).parent))
                 paths = transcribe.save_outputs(tr, folder, stem, self._formats)
+                self._save_history(tr, item.source)
             except (transcribe.TranscribeCancelled, links.LinkCancelled, CompletionCancelled):
                 self.item_cancelled.emit(i)
             except Exception as exc:      # noqa: BLE001 - one bad item must not stop the queue
@@ -209,10 +223,10 @@ class BatchWorker(_Worker):
     def _one(self, i: int, item: BatchItem) -> transcribe.Transcript:
         prog = lambda p, m: self.item_progress.emit(i, p, m)      # noqa: E731
         if item.is_url:
-            return transcribe.transcribe_link(item.source, self._engine, speakers=self._speakers,
+            return transcribe.transcribe_link(item.source, self._engine, speakers=self._speakers, model_id=self._model_id,
                                               progress=prog, cancel=self._item_cancel,
                                               on_title=lambda s: self.item_titled.emit(i, s))
-        return transcribe.transcribe_file(item.source, self._engine, speakers=self._speakers,
+        return transcribe.transcribe_file(item.source, self._engine, speakers=self._speakers, model_id=self._model_id,
                                           progress=prog, cancel=self._item_cancel)
 
 

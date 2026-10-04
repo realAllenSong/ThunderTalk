@@ -6,15 +6,20 @@ of it as subtitles."""
 from __future__ import annotations
 
 import os
+import sqlite3
 import time
 from copy import deepcopy
+from datetime import datetime
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
     QApplication,
     QCheckBox,
+    QComboBox,
+    QListWidget,
+    QListWidgetItem,
     QFileDialog,
     QHBoxLayout,
     QInputDialog,
@@ -29,7 +34,8 @@ from PySide6.QtWidgets import (
 from thundertalk.core import audio_io, burn, links
 from thundertalk.core.i18n import t
 from thundertalk.core.models import BUILTIN_MODELS, is_downloaded
-from thundertalk.core.transcribe import EXPORT_EXTS, Transcript, fmt_time
+from thundertalk.core.transcribe import EXPORT_EXTS, Transcript, active_model_id, fmt_time
+from thundertalk.core.transcript_history import TranscriptHistory
 from thundertalk.ui import theme
 from thundertalk.ui.studio.parts import DropZone, QueueRow, TranscriptView, fmt_seconds, fmt_size
 from thundertalk.ui.studio.workers import (
@@ -79,7 +85,7 @@ def phase_text(msg: str) -> str:
     if "/" in msg:
         i, n = msg.split("/", 1)
         return t("studio.progress.part").format(i=i, n=n)
-    if msg in ("decode", "load_moss", "diarize", "probe", "render"):
+    if msg in ("decode", "load_model", "load_moss", "diarize", "probe", "render"):
         return t(f"studio.progress.{msg}")
     return ""
 
@@ -88,7 +94,7 @@ class TranscribeTab(QWidget):
     navigate = Signal(str)
     toast = Signal(str, str)              # message, kind
 
-    def __init__(self) -> None:
+    def __init__(self, history: Optional[TranscriptHistory] = None) -> None:
         super().__init__()
         self._engine = None
         self._worker: Optional[TranscribeWorker] = None
@@ -108,6 +114,7 @@ class TranscribeTab(QWidget):
         self._formats = ["txt", "srt"]
         self._t0 = 0.0
         self._phase = ""
+        self._history = history or TranscriptHistory()
         links.cleanup_stale()
 
         root = QVBoxLayout(self)
@@ -180,9 +187,16 @@ class TranscribeTab(QWidget):
 
         mode_row = QHBoxLayout()
         mode_row.setSpacing(14)
-        self._mode = SegmentedControl(self._mode_options(), "fast")
-        self._mode.changed.connect(lambda _k: self._refresh())
-        mode_row.addWidget(self._mode)
+        self._model_label = _muted(t("studio.model"))
+        mode_row.addWidget(self._model_label)
+        self._model_picker = QComboBox()
+        theme.style_combo(self._model_picker)
+        self._model_picker.currentIndexChanged.connect(self._on_model_changed)
+        mode_row.addWidget(self._model_picker)
+        self._label_speakers = QCheckBox(t("studio.label_speakers"))
+        self._label_speakers.setChecked(True)
+        self._label_speakers.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
+        mode_row.addWidget(self._label_speakers)
         self._mode_desc = _muted()
         mode_row.addWidget(self._mode_desc, 1)
         cly.addLayout(mode_row)
@@ -279,7 +293,46 @@ class TranscribeTab(QWidget):
         self._notes_card.hide()
         root.addWidget(self._notes_card)
         root.addWidget(self._result)
+        self._history_card = theme.make_card()
+        hly = QVBoxLayout(self._history_card)
+        hly.setContentsMargins(24, 20, 24, 20)
+        self._history_title = theme.section_heading(t("studio.history"))
+        hly.addWidget(self._history_title)
+        self._history_search = QLineEdit()
+        self._history_search.setStyleSheet(theme.INPUT_QSS)
+        self._history_search.setPlaceholderText(t("studio.history.search"))
+        hly.addWidget(self._history_search)
+        self._history_timer = QTimer(self)
+        self._history_timer.setSingleShot(True)
+        self._history_timer.setInterval(180)
+        self._history_timer.timeout.connect(self._reload_history)
+        self._history_search.textChanged.connect(lambda: self._history_timer.start())
+        self._history_list = QListWidget()
+        self._history_list.setStyleSheet(
+            f"QListWidget {{ background: transparent; color: {theme.TEXT_PRIMARY}; border: none; }}"
+            f"QListWidget::item {{ padding: 8px; }}"
+            f"QListWidget::item:selected {{ background: {theme.HOVER_FILL}; color: {theme.TEXT_PRIMARY}; }}")
+        self._history_list.setFixedHeight(210)
+        self._history_list.itemActivated.connect(self._open_history)
+        self._history_list.itemClicked.connect(self._open_history)
+        self._history_list.currentItemChanged.connect(lambda *_: self._refresh())
+        hly.addWidget(self._history_list)
+        actions = QHBoxLayout()
+        self._history_more = theme.make_button(t("studio.history.more"), "ghost", 32)
+        self._history_more.clicked.connect(lambda: self._reload_history(append=True))
+        actions.addWidget(self._history_more)
+        actions.addStretch()
+        self._history_rename = theme.make_button(t("studio.history.rename"), "secondary", 32)
+        self._history_rename.clicked.connect(self._rename_history)
+        actions.addWidget(self._history_rename)
+        self._history_delete = theme.make_button(t("studio.history.delete"), "ghost", 32)
+        self._history_delete.clicked.connect(self._delete_history)
+        actions.addWidget(self._history_delete)
+        hly.addLayout(actions)
+        root.addWidget(self._history_card)
         root.addStretch()
+        self._reload_models()
+        self._reload_history()
 
         self._tick = QTimer(self)
         self._tick.setInterval(500)
@@ -289,6 +342,7 @@ class TranscribeTab(QWidget):
     # ── public ────────────────────────────────────────────────────────
     def set_engine(self, engine) -> None:
         self._engine = engine
+        self._reload_models(default=True)
         self._refresh()
 
     def set_provider_source(self, source) -> None:
@@ -304,6 +358,7 @@ class TranscribeTab(QWidget):
         return provider, source.chosen_model(provider) if provider else ""
 
     def refresh(self) -> None:
+        self._reload_models()
         self._refresh()
 
     def busy(self) -> bool:
@@ -318,7 +373,14 @@ class TranscribeTab(QWidget):
                 w.wait()                 # HTTP completion may need its bounded timeout to return
 
     def retranslate(self) -> None:
-        self._mode.set_options(self._mode_options())
+        self._model_label.setText(t("studio.model"))
+        self._label_speakers.setText(t("studio.label_speakers"))
+        self._reload_models()
+        self._history_title.setText(t("studio.history"))
+        self._history_search.setPlaceholderText(t("studio.history.search"))
+        self._history_more.setText(t("studio.history.more"))
+        self._history_rename.setText(t("studio.history.rename"))
+        self._history_delete.setText(t("studio.history.delete"))
         self._time_toggle.set_options(self._time_options())
         self._dest.set_options(self._dest_options())
         self._drop.retranslate()
@@ -341,9 +403,31 @@ class TranscribeTab(QWidget):
         self._refresh()
 
     # ── state ─────────────────────────────────────────────────────────
-    @staticmethod
-    def _mode_options() -> list[tuple[str, str]]:
-        return [("fast", t("studio.mode.fast")), ("speakers", t("studio.mode.speakers"))]
+    def _reload_models(self, default: bool = False) -> None:
+        selected = active_model_id(self._engine) if default else self._model_picker.currentData()
+        active = active_model_id(self._engine)
+        self._model_picker.blockSignals(True)
+        self._model_picker.clear()
+        if not active:
+            name = getattr(self._engine, "current_model", "") or t("studio.model.active")
+            self._model_picker.addItem(name, "")
+        for info in BUILTIN_MODELS:
+            if info.family == "SeamlessM4T-v2":
+                continue
+            ready = is_downloaded(info.id)
+            if ready or info.id in (MOSS_ID, active):
+                label = f"{info.name} · {info.variant}"
+                if not ready and info.id != active:
+                    label += " · " + t("studio.download")
+                self._model_picker.addItem(label, info.id)
+        index = self._model_picker.findData(selected)
+        self._model_picker.setCurrentIndex(max(0, index))
+        self._model_picker.blockSignals(False)
+
+    def _on_model_changed(self) -> None:
+        self._refresh()
+        if self._model_picker.currentData() == MOSS_ID and not self._moss_ready() and not self.busy():
+            self._download_moss()
 
     @staticmethod
     def _time_options() -> list[tuple[str, str]]:
@@ -354,7 +438,7 @@ class TranscribeTab(QWidget):
         return [("next", t("studio.batch.next_to")), ("folder", t("studio.batch.folder"))]
 
     def _speakers_mode(self) -> bool:
-        return self._mode.current() == "speakers"
+        return self._model_picker.currentData() == MOSS_ID and self._label_speakers.isChecked()
 
     def _moss_ready(self) -> bool:
         return is_downloaded(MOSS_ID)
@@ -370,12 +454,9 @@ class TranscribeTab(QWidget):
 
     def _refresh(self) -> None:
         busy = self.busy()
-        sp = self._speakers_mode()
-        if sp:
-            self._mode_desc.setText(t("studio.mode.speakers.desc"))
-        else:
-            model = getattr(self._engine, "current_model", "") or "—"
-            self._mode_desc.setText(t("studio.mode.fast.desc").format(model=model))
+        sp = self._model_picker.currentData() == MOSS_ID
+        self._label_speakers.setVisible(sp)
+        self._mode_desc.setText(t("studio.model.moss.desc" if sp else "studio.model.desc"))
 
         notice, action = "", ""
         if sp and not self._moss_ready():
@@ -383,7 +464,7 @@ class TranscribeTab(QWidget):
             size = f"{info.size_mb / 1000:.1f} GB" if info else ""
             notice = t("studio.moss.missing").format(size=size)
             action = t("studio.download")
-        elif not sp and not self._engine_ready():
+        elif not sp and not (self._engine_ready() or self._model_picker.currentData()):
             notice, action = t("studio.err.no_model"), t("studio.choose_model")
         self._notice_text.setText(notice)
         self._notice_btn.setText(action)
@@ -391,7 +472,7 @@ class TranscribeTab(QWidget):
         if self._dl_worker is not None:
             self._notice.setVisible(False)
 
-        model_ok = self._moss_ready() if sp else self._engine_ready()
+        model_ok = self._moss_ready() if sp else bool(self._model_picker.currentData() or self._engine_ready())
         queue = self.queue_mode()
         if queue:
             n = len(self._runnable_rows())
@@ -414,7 +495,11 @@ class TranscribeTab(QWidget):
             t("studio.notes.local" if provider.local else "studio.notes.cloud").format(
                 provider=provider.display_name, model=model))
         self._summary_btn.setToolTip(self._notes_hint.text())
-        self._mode.setEnabled(not busy)
+        self._model_picker.setEnabled(not busy)
+        self._label_speakers.setEnabled(not busy)
+        self._history_list.setEnabled(not busy)
+        self._history_rename.setEnabled(not busy and self._history_list.currentItem() is not None)
+        self._history_delete.setEnabled(not busy and self._history_list.currentItem() is not None)
         can_add = not busy or self._batch is not None
         self._drop.setEnabled(can_add)
         self._link.setEnabled(can_add)
@@ -528,7 +613,7 @@ class TranscribeTab(QWidget):
         self._rows.remove(row)
         row.setParent(None)
         row.deleteLater()
-        if len(self._rows) == 1:                      # back to the single-item flow
+        if len(self._rows) == 1 and self._batch is None and self._rows[0].state == "waiting":                      # back to the single-item flow
             last = self._rows[0]
             self.clear_queue()
             if last.item.is_url:
@@ -604,7 +689,8 @@ class TranscribeTab(QWidget):
         if not (self._path or self._url):
             return
         sp = self._speakers_mode()
-        self._worker = TranscribeWorker(self._path, self._engine, sp, url=self._url)
+        self._worker = TranscribeWorker(self._path, self._engine, sp, url=self._url,
+                                        model_id=self._model_picker.currentData() or "")
         self._worker.progress.connect(self._on_progress)
         self._worker.titled.connect(self._on_titled)
         self._worker.done.connect(self._on_done)
@@ -614,8 +700,6 @@ class TranscribeTab(QWidget):
         self._result_src = self._path
         self._eta_base, self._eta_done, self._eta_total = None, 0, 0
         self._phase = t("studio.progress.fetch") if self._url else t("studio.progress.decode")
-        self._result.setVisible(False)
-        self._notes_card.setVisible(False)
         self._begin(t("common.cancel"))
         self._worker.start()
 
@@ -640,9 +724,9 @@ class TranscribeTab(QWidget):
             i, n = msg.split("/", 1)
             self._phase = phase_text(msg)
             self._note_part(int(i), int(n))
-        elif msg in ("decode", "load_moss", "diarize"):
+        elif msg in ("decode", "load_model", "load_moss", "diarize"):
             self._phase = phase_text(msg)
-        if msg == "diarize" or msg == "load_moss" or msg == "decode":
+        if msg in ("diarize", "load_model", "load_moss", "decode"):
             self._bar.set_indeterminate(True)
         elif pct >= 0:
             self._bar.set_value(pct)
@@ -683,6 +767,8 @@ class TranscribeTab(QWidget):
             self._phase = t("studio.cancelling_hint")
 
     def _on_done(self, tr: Transcript) -> None:
+        self._save_history(tr, self._url or self._result_src)
+        self._clear_single()
         self._show_result(tr, self._result_src)
         self._status.setText("")
         if tr.is_partial:
@@ -707,7 +793,7 @@ class TranscribeTab(QWidget):
         self._refresh()
 
     def _on_error(self, code: str) -> None:
-        self._status.setText("")
+        self._status.setText(friendly_error(code))
         self.toast.emit(friendly_error(code), "error")
 
     def _on_cancelled(self) -> None:
@@ -736,7 +822,7 @@ class TranscribeTab(QWidget):
             formats.append("md")
         w = BatchWorker([r.item for r in self._run_rows], self._engine, self._speakers_mode(),
                         formats, out_dir, notes_provider=provider if self._queue_notes.isChecked() else None,
-                        notes_model=model)
+                        notes_model=model, model_id=self._model_picker.currentData() or "", history=self._history)
         self._batch, self._batch_ok = w, 0
         w.item_started.connect(self._on_item_started)
         w.item_progress.connect(self._on_item_progress)
@@ -761,24 +847,29 @@ class TranscribeTab(QWidget):
         row = self._run_rows[i]
         if row.status_text() == t("studio.cancelling"):
             return
-        indeterminate = msg in ("fetch", "decode", "load_moss", "diarize")
+        indeterminate = msg in ("fetch", "decode", "load_model", "load_moss", "diarize")
         row.set_state("running", phase_text(msg) or t("studio.batch.running"), -1 if indeterminate else pct)
 
     def _on_item_done(self, i: int, tr: Transcript, paths: list) -> None:
         row = self._run_rows[i]
         row.transcript = tr
         self._batch_ok += 1
-        text = t("studio.batch.saved").format(files=", ".join(Path(p).name for p in paths))
-        if row.notes_error:
-            text += "  ·  " + row.notes_error
-        if tr.is_partial:
-            text = partial_text(tr) + "  ·  " + text
-        row.set_state("done", text)
-        row.setToolTip("\n".join(paths))
+        self._reload_history()                       # the worker saved it
+        self._show_result(tr, "" if row.item.is_url else row.item.source)
+        # Keep run indices stable as visible rows disappear during a batch.
+        self._rows.remove(row)
+        self._rows_box.removeWidget(row)
+        row.hide()
+        self._refresh()
 
     def _on_batch_finished(self) -> None:
         n = len(self._run_rows)
         self._batch = None
+        for row in self._run_rows:
+            if row not in self._rows:
+                row.deleteLater()
+        self._run_rows.clear()
+        self._reload_history()
         self._end()
         self._status.setText(t("studio.batch.finished").format(ok=self._batch_ok, n=n))
         self.toast.emit(t("studio.batch.finished").format(ok=self._batch_ok, n=n),
@@ -786,7 +877,7 @@ class TranscribeTab(QWidget):
 
     # ── notice action (download speaker model / choose a model) ───────
     def _on_notice_action(self) -> None:
-        if self._speakers_mode() and not self._moss_ready():
+        if self._model_picker.currentData() == MOSS_ID and not self._moss_ready():
             self._download_moss()
         else:
             self.navigate.emit("models")
@@ -815,8 +906,82 @@ class TranscribeTab(QWidget):
 
     def _on_dl_finished(self) -> None:
         self._dl_worker = None
+        self._reload_models()
         self._status.setText("")
         self._end()
+
+    # ── history ──────────────────────────────────────────────────────
+    def _save_history(self, tr: Transcript, source: str = "") -> None:
+        try:
+            self._history.save(tr, source)
+            self._reload_history()
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            self.toast.emit(t("studio.history.error").format(msg=str(exc)), "error")
+
+    def _reload_history(self, append: bool = False) -> None:
+        if not append:
+            self._history_list.clear()
+        rows = self._history.list(self._history_search.text().strip(), self._history_list.count(), 51)
+        for entry in rows[:50]:
+            try:
+                date = datetime.fromisoformat(entry['date']).astimezone().strftime("%Y-%m-%d %H:%M")
+            except (TypeError, ValueError):
+                date = str(entry['date'])[:10]
+            item = QListWidgetItem(f"{entry['title']}  ·  {fmt_time(entry['duration'])}  ·  {date}")
+            item.setData(Qt.ItemDataRole.UserRole, entry['id'])
+            item.setToolTip(entry['source'])
+            self._history_list.addItem(item)
+        self._history_more.setVisible(len(rows) > 50)
+
+    def _open_history(self, item) -> None:
+        if self.busy():
+            return
+        try:
+            tr, meta = self._history.load(item.data(Qt.ItemDataRole.UserRole))
+            self._show_result(tr, "" if tr.source_url else meta["source"])
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            self.toast.emit(t("studio.history.error").format(msg=str(exc)), "error")
+
+    def _rename_history(self) -> None:
+        item = self._history_list.currentItem()
+        if item is None or self.busy():
+            return
+        entry_id = item.data(Qt.ItemDataRole.UserRole)
+        try:
+            tr, _ = self._history.load(entry_id)
+            title, ok = QInputDialog.getText(self, t("studio.history.rename"), t("studio.history.title"),
+                                             text=tr.title)
+            if not (ok and title.strip()):
+                return
+            self._history.rename(entry_id, title)
+        except (OSError, ValueError, sqlite3.Error) as exc:
+            self.toast.emit(t("studio.history.error").format(msg=str(exc)), "error")
+            return
+        if self._transcript and self._transcript.history_id == entry_id:
+            self._transcript.title = title.strip()
+            self._show_result(self._transcript, self._result_src)
+        self._reload_history()
+
+    def _delete_history(self) -> None:
+        item = self._history_list.currentItem()
+        if item is None or self.busy():
+            return
+        entry_id = item.data(Qt.ItemDataRole.UserRole)
+        from thundertalk.ui.styled_dialog import StyledDialog
+        if StyledDialog.confirm(self, title=t("studio.history.delete"), body=t("studio.history.delete_body"),
+                                accept_label=t("studio.history.delete"), cancel_label=t("common.cancel")):
+            try:
+                self._history.delete(entry_id)
+            except (OSError, ValueError, sqlite3.Error) as exc:
+                self.toast.emit(t("studio.history.error").format(msg=str(exc)), "error")
+                return
+            if self._transcript and self._transcript.history_id == entry_id:
+                self._transcript.history_id = ""
+                self._transcript = None
+                self._result.hide()
+                self._notes_card.hide()
+            self._reload_history()
+            self._refresh()
 
     # ── result actions ────────────────────────────────────────────────
     def _copy(self) -> None:
@@ -865,6 +1030,7 @@ class TranscribeTab(QWidget):
             self._view.refresh_speaker_names()
             self._transcript.notes = ""     # regenerate with the current speaker names
             self._show_notes()
+            self._save_history(self._transcript, self._result_src)
 
     def _summarize(self) -> None:
         if self.busy() or self._transcript is None:
@@ -888,6 +1054,7 @@ class TranscribeTab(QWidget):
     def _on_notes_done(self, notes: str) -> None:
         if not self._notes_worker.cancel_event.is_set():
             self._transcript.notes = notes
+            self._save_history(self._transcript, self._result_src)
             self._show_notes()
             self._status.setText(t("studio.notes.done"))
 
@@ -928,7 +1095,7 @@ class TranscribeTab(QWidget):
             return
         menu = QMenu(self)
         menu.addAction(t("studio.burn.hard"), lambda: self.burn_subtitles(soft=False))
-        menu.addAction(t("studio.burn.hard_soft"), lambda: self.burn_subtitles(soft=True))
+        menu.addAction(t("studio.burn.soft"), lambda: self.burn_subtitles(soft=True))
         menu.exec(self._burn_btn.mapToGlobal(self._burn_btn.rect().bottomLeft()))
 
     def burn_subtitles(self, soft: bool = False, out: str = "") -> None:

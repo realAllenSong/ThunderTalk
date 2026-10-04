@@ -68,6 +68,19 @@ def load_model():
         return _MODEL
 
 
+def unload_model() -> None:
+    """Release the cached model before switching Studio engines."""
+    global _MODEL
+    with _MODEL_LOCK:
+        _MODEL = None
+    import gc
+    gc.collect()
+    import sys
+    mx = sys.modules.get("mlx.core")
+    if mx is not None:
+        mx.clear_cache()
+
+
 def parse_transcript(raw: str) -> list[DiarizedSegment]:
     segs = [
         DiarizedSegment(start=float(m[0]), end=float(m[3]), speaker=m[1], text=m[2].strip())
