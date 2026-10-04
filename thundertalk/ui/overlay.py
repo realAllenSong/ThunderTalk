@@ -5,20 +5,22 @@ A flat ink bar at the top of the screen. Recording: an orange dot, "Listening",
 a live level meter, a seconds counter and the hotkey; with live preview on,
 the words recognized so far appear under that row (last few lines, newest at
 the bottom). Transcribing: plain text with cycling dots. Then a one-line
-result or error. It appears and disappears without animation; the only
-movement is the meter, which is real input level.
+result or error. Proofreading adds a quiet working meter and a short inline
+word/character diff; replacement happens independently of the animation.
 """
 
 from __future__ import annotations
 
+import math
 import time
 from collections import deque
 
 from PySide6.QtCore import QPoint, QPointF, QRectF, Qt, QTimer
-from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QTextLayout, QTextOption
+from PySide6.QtGui import QColor, QFontMetrics, QPainter, QPainterPath, QPen, QTextCharFormat, QTextLayout, QTextOption
 from PySide6.QtWidgets import QWidget
 
 from thundertalk.core.i18n import t
+from thundertalk.core.proofread_diff import proofread_diff
 from thundertalk.ui import theme
 from thundertalk.ui.icons import paint_icon
 from thundertalk.ui.keys import display_combo
@@ -74,7 +76,7 @@ def wrap_tail(text: str, font, width: int, max_lines: int = _PV_LINES) -> list[s
 
 class VoiceOverlay(QWidget):
 
-    _IDLE, _RECORDING, _TRANSCRIBING, _RESULT, _ERROR = range(5)
+    _IDLE, _RECORDING, _TRANSCRIBING, _RESULT, _ERROR, _CLEANUP, _DIFF, _SETTLED = range(8)
 
     def __init__(self) -> None:
         super().__init__(None)
@@ -98,6 +100,10 @@ class VoiceOverlay(QWidget):
         self._hotkey = ""
         self._preview = ""
         self._pv_lines: list[str] = []
+        self._diff = []
+        self._corrected = ""
+        self._diff_started = 0.0
+        self._diff_progress = 0.0
 
         # Slow tick: advances the seconds counter and the "…" dots. (The level
         # meter repaints itself whenever a new sample arrives.)
@@ -167,9 +173,40 @@ class VoiceOverlay(QWidget):
         self._text = t("overlay.waiting_studio").rstrip("…")
         self.update()
 
-    def show_cleanup(self) -> None:
+    def show_cleanup(self, original: str = "") -> None:
         self.show_transcribing()
+        self._state = self._CLEANUP
         self._text = t("cleanup.progress").rstrip("…")
+        self._set_preview_lines(wrap_tail(original, theme.font(_PV_FONT_PT), _PW - 2 * _PV_PAD_X))
+        self._anim.start(50)
+        self.update()
+
+    def show_cleanup_diff(self, original: str, corrected: str) -> None:
+        self._hide_timer.stop()
+        self._diff = proofread_diff(original, corrected)
+        self._corrected = corrected
+        if original == corrected:
+            self.show_result(t("cleanup.no_changes"))
+            self._hide_timer.start(900)
+            return
+        self._state = self._DIFF
+        self._text = t("cleanup.corrected")
+        self._diff_started = time.monotonic()
+        self._diff_progress = 0.0
+        self._set_preview_lines([""] * _PV_LINES)
+        self._present()
+        self._anim.start(30)
+
+    def advance_cleanup_animation(self, elapsed: float) -> None:
+        """Deterministic frame advancement, also used by offscreen tests."""
+        if self._state != self._DIFF:
+            return
+        self._diff_progress = min(1.0, max(0.0, elapsed / 1.2))
+        if elapsed >= 1.2:
+            self._state = self._SETTLED
+            self._anim.stop()
+            self._set_preview_lines(wrap_tail(self._corrected, theme.font(_PV_FONT_PT), _PW - 2 * _PV_PAD_X))
+            self._hide_timer.start(450)
         self.update()
 
     def complete_transcribing(self) -> None:
@@ -223,6 +260,8 @@ class VoiceOverlay(QWidget):
         self.update()
 
     def _tick(self) -> None:
+        if self._state == self._DIFF:
+            self.advance_cleanup_animation(time.monotonic() - self._diff_started)
         self._tick_n += 1
         if self._state == self._RECORDING and self._audio_rms < 0.002:
             self._smooth *= 0.9
@@ -251,11 +290,13 @@ class VoiceOverlay(QWidget):
         p.translate(bar.topLeft())
         if self._state == self._RECORDING:
             self._paint_recording(p)
-        elif self._state == self._TRANSCRIBING:
+        elif self._state in (self._TRANSCRIBING, self._CLEANUP):
             self._paint_transcribing(p)
         else:
             self._paint_message(p)
-        if self._pv_lines:
+        if self._state == self._DIFF:
+            self._paint_diff(p)
+        elif self._pv_lines:
             self._paint_preview(p)
         p.restore()
         p.end()
@@ -310,7 +351,13 @@ class VoiceOverlay(QWidget):
         x = 24
         p.drawText(QRectF(x, 0, fm.horizontalAdvance(self._text) + 4, h),
                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, self._text)
-        dots = "." * (self._tick_n % 4)
+        if self._state == self._CLEANUP:
+            p.setPen(QPen(_DIM, 2, Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap))
+            cx = _PW - 38
+            for i in range(5):
+                amp = 2 + 3 * (1 + math.sin(self._tick_n * 0.22 + i * 0.7)) / 2
+                p.drawLine(QPointF(cx + i * 4, h / 2 - amp), QPointF(cx + i * 4, h / 2 + amp))
+        dots = "." * ((self._tick_n // 6 if self._state == self._CLEANUP else self._tick_n) % 4)
         p.drawText(QRectF(x + fm.horizontalAdvance(self._text), 0, 40, h),
                    Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, dots)
 
@@ -336,3 +383,50 @@ class VoiceOverlay(QWidget):
             p.drawText(QRectF(_PV_PAD_X, y, _PW - 2 * _PV_PAD_X, _PV_LINE_H),
                        Qt.AlignmentFlag.AlignVCenter | Qt.AlignmentFlag.AlignLeft, line)
             y += _PV_LINE_H
+
+    def _paint_diff(self, p: QPainter) -> None:
+        p.setPen(QPen(_RULE, 1))
+        p.drawLine(QPointF(_PV_PAD_X, _PH), QPointF(_PW - _PV_PAD_X, _PH))
+        text, ranges = "", []
+        for span in self._diff:
+            parts = [(span.original, "equal")] if span.kind == "equal" else [
+                (span.original, "old"), (" → " if span.original and span.corrected else "", "arrow"),
+                (span.corrected, "new")]
+            for value, kind in parts:
+                start = len(text.encode("utf-16-le")) // 2
+                text += value
+                fmt = QTextCharFormat()
+                color = QColor(_PV_INK if kind == "equal" else _DIM)
+                if kind == "old":
+                    fmt.setFontStrikeOut(self._diff_progress >= 0.12)
+                elif kind == "new":
+                    color = QColor("#FFAD8F")
+                    color.setAlpha(int(255 * min(1, max(0, (self._diff_progress - 0.15) / 0.45))))
+                fmt.setForeground(color)
+                fr = QTextLayout.FormatRange()
+                fr.start, fr.length, fr.format = start, len(value.encode("utf-16-le")) // 2, fmt
+                ranges.append(fr)
+        layout = QTextLayout(text, theme.font(_PV_FONT_PT))
+        layout.setFormats(ranges)
+        option = QTextOption()
+        option.setWrapMode(QTextOption.WrapMode.WrapAtWordBoundaryOrAnywhere)
+        layout.setTextOption(option)
+        lines = []
+        layout.beginLayout()
+        while True:
+            line = layout.createLine()
+            if not line.isValid():
+                break
+            line.setLineWidth(_PW - 2 * _PV_PAD_X)
+            lines.append(line)
+        layout.endLayout()
+        # Keep the first changed span visible even in long dictations.
+        changed = next((r.start for r in ranges if r.format.fontStrikeOut()), 0)
+        first = next((i for i, line in enumerate(lines)
+                      if line.textStart() <= changed < line.textStart() + line.textLength()), 0)
+        first = max(0, min(first, len(lines) - _PV_LINES))
+        p.save()
+        p.setClipRect(QRectF(_PV_PAD_X, _PH + 4, _PW - 2 * _PV_PAD_X, _PV_LINES * _PV_LINE_H))
+        for i, line in enumerate(lines[first:first + _PV_LINES]):
+            line.draw(p, QPointF(_PV_PAD_X, _PH + 4 + i * _PV_LINE_H))
+        p.restore()

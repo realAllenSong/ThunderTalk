@@ -43,6 +43,7 @@ class Fakes:
     def __init__(self, clis=(), servers=()):
         self.clis, self.servers = list(clis), list(servers)
         self.cli_calls, self.server_calls, self.checks = [], [], []
+        self.check_efforts = []
         self.check_result = 0.42
 
     def detect_clis(self, verified):
@@ -53,8 +54,9 @@ class Fakes:
         self.server_calls.append(options)
         return [lp.Provider(**{**p.__dict__}) for p in self.servers]
 
-    def check(self, provider, model, timeout, cancel):
+    def check(self, provider, model, timeout, cancel, *, effort=None):
         self.checks.append((provider.id, model))
+        self.check_efforts.append(effort)
         if isinstance(self.check_result, Exception):
             raise self.check_result
         return self.check_result
@@ -166,7 +168,7 @@ def test_verify_updates_status_automatically(make_page):
 
 def test_failed_verify_asks_to_log_in(make_page):
     fakes = everything()
-    fakes.check_result = lp.ProviderError("CLI exited with status 1")
+    fakes.check_result = lp.ProviderError("Authentication failed", reason="auth")
     page = make_page(fakes)
     page._rows["gemini"].button.click()
     assert wait_for(lambda: page._check_worker is None)
@@ -181,9 +183,9 @@ def test_model_dropdown_comes_from_provider_listing(make_page):
     page = make_page(fakes)
     combo = page.model_combo
     assert not combo.isEditable()
-    assert [combo.itemData(i) for i in range(combo.count() - 1)] == ["auto", "gemini-3.8-flash-low", "big-model"]
+    assert [combo.itemData(i) for i in range(combo.count() - 1)] == ["auto", "gemini-3.8-flash", "big-model"]
     assert combo.itemText(combo.count() - 1) == "Other…"
-    assert combo.currentData() == "gemini-3.8-flash-low"  # fast, inexpensive default
+    assert combo.currentData() == "gemini-3.8-flash"  # fast, inexpensive default
     assert "Models listed by Cursor CLI" in page.model_status.text()
     combo.setCurrentIndex(combo.findData("big-model"))
     assert page.settings.get("cleanup_models") == {"cursor": "big-model"}
@@ -206,7 +208,7 @@ def test_curated_model_is_validated(make_page):
     fakes.check_result = lp.ProviderError("bad model")
     page.model_combo.setCurrentIndex(page.model_combo.findData("sonnet"))
     assert wait_for(lambda: len(fakes.checks) == 2 and page._check_worker is None)
-    assert page.model_status.text() == "sonnet didn't work. Choose another model."
+    assert page.model_status.text().startswith("sonnet didn't work. Choose another model.")
     page.detect_clis()
     assert wait_for(lambda: page._cli_worker is None)
     assert len(fakes.checks) == 2  # a failed model is not retried on every detection
@@ -333,3 +335,62 @@ def test_main_window_has_proofread_page(qapp, isolated_home, no_audio_hw, monkey
     w.studio_page.shutdown()
     w.proofread_page.shutdown()
     w.close()
+
+
+def test_cursor_group_search_effort_and_exact_id(make_page):
+    p = cli('cursor', 'ready', ['auto', 'claude-opus-5-5-low', 'claude-opus-5-5-medium',
+                              'claude-opus-5-5-high', 'gpt-5.6-sol-high-fast'])
+    page = make_page(Fakes(clis=[p]))
+    assert page.model_combo.count() == 4  # three models + Other
+    page.model_combo.setCurrentIndex(page.model_combo.findData('claude-opus-5-5'))
+    assert page.effort_combo.currentData() == 'low'
+    page.effort_combo.setCurrentIndex(page.effort_combo.findData('medium'))
+    assert page.settings.get('cleanup_efforts') == {'cursor': 'medium'}
+    assert page.chosen_model(page.chosen_provider()) == 'claude-opus-5-5'
+    assert page.model_id.text() == 'Model ID: claude-opus-5-5-medium'
+    page.model_search.setText('gpt')
+    assert page.model_combo.count() == 2
+    assert page.model_combo.itemData(0) == 'gpt-5.6-sol-fast'
+    assert page.chosen_model(page.chosen_provider()) == 'claude-opus-5-5'
+    page.model_search.clear()
+    assert page.effort_combo.currentData() == 'medium'
+
+
+def test_effort_persisted_per_provider_and_checked(make_page):
+    codex = cli('codex', 'ready', ['gpt-6.1-sol'])
+    codex.efforts = {'gpt-6.1-sol': ['low', 'medium', 'high', 'xhigh']}
+    claude = cli('claude', 'ready', ['claude-sonnet-5-5'], source='curated')
+    claude.help_text = '--effort'
+    fakes = Fakes(clis=[codex, claude])
+    page = make_page(fakes)
+    page.effort_combo.setCurrentIndex(page.effort_combo.findData('high'))
+    page._choose('claude')
+    assert wait_for(lambda: page._check_worker is None and fakes.checks)
+    assert fakes.check_efforts == ['low']
+    assert 'Claude Sonnet 5.5 · claude-sonnet-5-5' == page.model_combo.currentText()
+    page.effort_combo.setCurrentIndex(page.effort_combo.findData('medium'))
+    assert wait_for(lambda: page._check_worker is None and len(fakes.checks) == 2)
+    assert fakes.check_efforts == ['low', 'medium']
+    assert set(page.settings.get('cleanup_checks')['claude']) == {'claude-sonnet-5-5@low', 'claude-sonnet-5-5@medium'}
+    page._choose('codex')
+    assert page.effort_combo.currentData() == 'high'
+    page._choose('claude')
+    assert page.effort_combo.currentData() == 'medium'
+
+
+def test_verify_timeout_does_not_claim_credentials_expired(make_page):
+    fakes = everything()
+    fakes.check_result = lp.ProviderError('timeout', reason='timeout', transient=True)
+    page = make_page(fakes)
+    page._rows['gemini'].button.click()
+    assert wait_for(lambda: page._check_worker is None)
+    row = page._rows['gemini']
+    assert row.status.text() == 'Not verified'
+    assert 'Timed out' in row.hint.text() and not row.panel.isVisible()
+
+
+def test_claude_alias_migrates_to_exact_id(make_page):
+    settings = Settings()
+    settings.set('cleanup_models', {'claude': 'sonnet'})
+    page = make_page(Fakes(clis=[cli('claude', 'ready', ['claude-haiku-4-5-20251001', 'claude-sonnet-5-5'])]), settings=settings)
+    assert page.chosen_model(page.chosen_provider()) == 'claude-sonnet-5-5'
