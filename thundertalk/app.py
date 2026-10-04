@@ -337,16 +337,10 @@ class Pipeline(QObject):
         return stop_recording_and_restore(self.recorder, session)
 
     def get_translator(self):
-        """Return the TranslationEngine, creating it lazily on first call.
-
-        We do not import translate.py at module top because it transitively
-        triggers torch/transformers imports the moment its lazy load_model()
-        is called. The class itself is light, so it's OK to construct here
-        — the heavy imports happen inside load_model().
-        """
+        """Return a light proxy; torch and weights live only in its job process."""
         if self.translator is None:
-            from thundertalk.core.translate import TranslationEngine
-            self.translator = TranslationEngine()
+            from thundertalk.core.translate_process import TranslationProcess
+            self.translator = TranslationProcess()
         return self.translator
 
 
@@ -418,6 +412,7 @@ def main() -> None:
     # cloning references / generated speech back to catch mistakes ---
     window.studio_page.set_engine(pipe.asr)
     app.aboutToQuit.connect(window.studio_page.shutdown)
+    app.aboutToQuit.connect(lambda: pipe.translator and pipe.translator.unload())
 
     # --- Live preview: words so far, shown under the indicator while recording.
     # The pasted text still comes from the full-clip recognition after stop.
@@ -647,7 +642,7 @@ def main() -> None:
                 and tgt != "off"
                 and mode == "review"
                 and translator
-                and translator.is_loaded
+                and translator.can_translate
             ):
                 from thundertalk.core.translate import detect_src_lang
                 src_lang = detect_src_lang(text)
@@ -830,7 +825,7 @@ def main() -> None:
                 # Direct mode: SeamlessM4T S2TT (audio → translated text directly)
                 if tgt and tgt != "off" and mode == "direct":
                     translator = pipe.get_translator()
-                    if not translator.is_loaded:
+                    if not translator.can_translate:
                         print("[Toggle] Direct translation but model not loaded")
                         DICTATION.end()
                         state.set_recording(st.REC_IDLE)
@@ -1006,7 +1001,7 @@ def main() -> None:
         Persist to settings and re-run T2TT immediately."""
         settings.set("translation_target", new_lang)
         translator = pipe.translator
-        if translator is None or not translator.is_loaded:
+        if translator is None or not translator.can_translate:
             print("[Review] Lang change requested but translator not loaded")
             return
         from thundertalk.core.translate import detect_src_lang
@@ -1091,7 +1086,7 @@ def main() -> None:
 
     # --- Translation engine (lazy load) --------------------------------
     def _maybe_load_translator() -> None:
-        """Load SeamlessM4T into RAM if target language is set AND model is on disk.
+        """Prepare SeamlessM4T for its next worker job when downloaded and enabled.
 
         Updates the inline translator-status row inside the TranslationModeCard
         with one of: hidden / missing / loading / ready / error so the user
@@ -1103,7 +1098,7 @@ def main() -> None:
             # the translator engine sits in RAM (~4 GB MPS + ~5 GB CPU)
             # until app quit even though the user has explicitly turned
             # translation off.
-            if pipe.translator is not None and pipe.translator.is_loaded:
+            if pipe.translator is not None and pipe.translator.can_translate:
                 print("[Translate] Target=off — unloading SeamlessM4T")
                 pipe.translator.unload()
                 window.models_page.set_translator_active(None)
@@ -1129,45 +1124,14 @@ def main() -> None:
             window.models_page.set_translator_status("missing")
             return
 
-        pipe._translator_loading = True
-        # Visible spinner on the SeamlessM4T card AND a status pill at the
-        # top so users understand the ~10s torch+MPS load isn't a stuck UI.
-        window.models_page.set_loading("seamless-m4t-v2-large", True)
-        window.models_page.set_translator_status("loading")
-
-        # Use a QThread (TranslatorLoadWorker) instead of threading.Thread.
-        # The previous version called QTimer.singleShot(0, _on_done) from
-        # inside the worker thread; QTimer.singleShot binds the timer to
-        # the calling thread's event loop, and a raw threading.Thread has
-        # none, so the completion callback never fired and the UI stayed
-        # in "loading" forever even after the model was actually loaded.
-        # Qt signals from a QThread auto-marshal to the receiver's
-        # thread (main UI) without any timer dance.
-        worker = TranslatorLoadWorker(
-            translator, "seamless-m4t-v2-large", model_path
-        )
-
-        def _on_translator_loaded(mid: str) -> None:
-            pipe._translator_loading = False
-            window.models_page.set_loading(mid, False)
-            window.models_page.set_translator_active(mid)
-            window.models_page.set_translator_status("ready")
-
-        def _on_translator_failed(mid: str, msg: str) -> None:
-            pipe._translator_loading = False
-            window.models_page.set_loading(mid, False)
-            window.models_page.set_translator_status("error", msg[:80])
-
-        worker.loaded.connect(_on_translator_loaded)
-        worker.error.connect(_on_translator_failed)
-        _track_worker(worker)
-        worker.start()
+        translator.prepare(model_path)
+        window.models_page.set_translator_status("ready", t("models.translator.on_demand"))
 
     QTimer.singleShot(1500, _maybe_load_translator)
     # The Translation Mode card on the Models page is the canonical control
     # for translation_target / translation_mode. Either signal triggers a
-    # translator-load check (loads SeamlessM4T into RAM if user just turned
-    # translation on, no-ops otherwise).
+    # translation-readiness check (prepares downloaded weights for the next
+    # worker request without holding the model in RAM).
     window.models_page.translation_target_changed.connect(
         lambda _code: _maybe_load_translator()
     )
@@ -1180,7 +1144,7 @@ def main() -> None:
     def _on_download_translator_requested() -> None:
         from thundertalk.core.models import BUILTIN_MODELS, is_downloaded
         if is_downloaded("seamless-m4t-v2-large"):
-            # Already on disk — kick the loader instead.
+            # Already on disk — prepare it for the next request.
             _maybe_load_translator()
             return
         info = next(m for m in BUILTIN_MODELS if m.id == "seamless-m4t-v2-large")

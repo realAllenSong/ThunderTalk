@@ -77,7 +77,7 @@ def test_transcribe_a_file_end_to_end(studio, tmp_path):
     tab.load_file(str(wav))
     assert tab._go.isEnabled() and "meeting.wav" in tab._drop._title.text()
     tab._go.click()
-    assert wait_for(lambda: tab._result.isVisible())
+    assert wait_for(lambda: tab._result.isVisible() and tab._worker is None)
     assert tab._transcript is not None and len(tab._transcript.segments) >= 2
     assert "faster than real time" in tab._stats.text() and "Fake-ASR" in tab._stats.text()
     assert not tab._go.isEnabled() and not tab._cancel.isVisible() and not tab._bar.isVisible()

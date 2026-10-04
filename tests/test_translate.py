@@ -177,6 +177,23 @@ def test_text_translation_keeps_requested_target(mock_engine):
     assert result.tgt_lang == "cmn"
 
 
+def test_text_translation_reloads_on_worker_request_after_idle(mock_engine, monkeypatch):
+    engine = mock_engine
+    model, processor = engine._model, engine._processor
+    processor.return_value = {"input_ids": "text tokens"}
+    processor.decode.return_value = "Hello."
+    engine.prepare("/downloaded/seamless")
+    engine.release_idle()
+    assert not engine.is_loaded and engine.can_translate
+    loads = []
+    def load(source):
+        loads.append(source)
+        engine._model, engine._processor = model, processor
+    monkeypatch.setattr(engine, "load_model", load)
+    assert engine.translate_text("你好", "cmn", "eng").text == "Hello."
+    assert loads == ["/downloaded/seamless"]
+
+
 def test_detect_src_lang_chinese() -> None:
     from thundertalk.core.translate import detect_src_lang
     assert detect_src_lang("你好世界") == "cmn"

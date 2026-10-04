@@ -179,6 +179,8 @@ class VoxCPM2Backend(TtsBackend):
     def unload(self) -> None:
         with self._lock:
             self._model = None
+            self._refs.clear()
+            self._clone_refs.clear()
         try:
             import mlx.core as mx
             mx.clear_cache()

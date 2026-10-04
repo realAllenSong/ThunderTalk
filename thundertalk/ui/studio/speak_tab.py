@@ -21,6 +21,7 @@ from PySide6.QtWidgets import (
 
 from thundertalk.core import audio_io, i18n, speech, tts
 from thundertalk.core.i18n import t
+from thundertalk.core.memory_policy import IDLE_SECONDS
 from thundertalk.core.playback import Player
 from thundertalk.core.tts_backends.previews import load_preview, preview_path
 from thundertalk.core.voices import SavedVoice, VoiceLibrary
@@ -31,8 +32,8 @@ from thundertalk.ui.studio.workers import BackendDownloadWorker, PreloadWorker, 
 from thundertalk.ui.widgets import FlowLayout, Rule, SegmentedControl, ThinProgress
 
 SPEEDS = [("0.75", 0.75), ("0.9", 0.9), ("1.0", 1.0), ("1.15", 1.15), ("1.3", 1.3), ("1.5", 1.5)]
-IDLE_UNLOAD_MS = 15 * 60 * 1000         # unused this long while the Speak tab is on screen → free the model
-HIDDEN_UNLOAD_MS = 3 * 60 * 1000        # … or this long after the tab / window went out of view
+IDLE_UNLOAD_MS = int(IDLE_SECONDS * 1000)
+HIDDEN_UNLOAD_MS = IDLE_UNLOAD_MS
 PRELOAD_DELAY_MS = 600                  # let a pick settle before loading the engine for it
 AUTO_PRELOAD = True                     # the test suite turns this off unless a test exercises it
 MY_PREFIX = "my:"
@@ -814,7 +815,14 @@ class SpeakTab(QWidget):
         if self._synth is not None or self._pre is not None or getattr(eng, "is_busy", lambda: False)():
             self._arm_idle()
             return
-        eng.unload()
+        # Real models are released by the shared policy's background sweeper.
+        # This timer only refreshes readiness; recheck until it has run.
+        if hasattr(eng, "release_idle"):
+            if self._model_loaded():
+                self._idle.start(15000)
+                return
+        else:
+            eng.unload()  # lightweight injected/test engines
         self._prep = ""
         if self._synth is None:
             self._show_prep()

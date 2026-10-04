@@ -32,6 +32,8 @@ def mlx_context():
             _LOCAL.depth -= 1
         return
     import mlx.core as mx
+    from thundertalk.core.memory_policy import MLX_CACHE_BYTES
+    mx.set_cache_limit(MLX_CACHE_BYTES)
     if _STREAMS is None:
         # Unlike new_stream, these encoders can be used from different threads.
         # The application, rather than MLX, must serialize access to them.
@@ -46,9 +48,13 @@ def mlx_context():
         try:
             synchronize()
         finally:
-            _LOCAL.depth = 0
-            for stream in previous:
-                mx.set_default_stream(stream)
+            try:
+                mx.clear_cache()
+                mx.set_cache_limit(MLX_CACHE_BYTES)
+            finally:
+                _LOCAL.depth = 0
+                for stream in previous:
+                    mx.set_default_stream(stream)
 
 
 def synchronize() -> None:

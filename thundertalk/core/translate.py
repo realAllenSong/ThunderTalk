@@ -15,10 +15,22 @@ from __future__ import annotations
 import os
 import platform
 import time
+from functools import wraps
 from dataclasses import dataclass
 from typing import Optional
 
 import numpy as np
+
+from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.memory_policy import managed
+
+
+def locked(fn):
+    @wraps(fn)
+    def call(self, *args, **kwargs):
+        with GPU_LOCK:
+            return fn(self, *args, **kwargs)
+    return call
 
 _IS_APPLE_SILICON = platform.system() == "Darwin" and platform.machine() == "arm64"
 
@@ -85,6 +97,23 @@ class TranslationEngine:
         self._model_id: Optional[str] = None
         self._device: str = "cpu"
         self._dtype = None  # torch.float16 on GPU, torch.float32 on CPU
+        self._source: str | None = None
+
+    @property
+    def can_translate(self) -> bool:
+        return self.is_loaded or self._source is not None
+
+    @locked
+    def prepare(self, source: str) -> None:
+        """Remember downloaded weights without importing torch or loading them."""
+        self._source = source
+
+    def release_idle(self) -> None:
+        self.unload(forget=False)
+
+    def _ensure_loaded(self) -> None:
+        if not self.is_loaded and self._source is not None:
+            self.load_model(self._source)
 
     @property
     def is_loaded(self) -> bool:
@@ -94,7 +123,8 @@ class TranslationEngine:
     def current_model(self) -> Optional[str]:
         return self._model_id
 
-    def unload(self) -> None:
+    @locked
+    def unload(self, *, forget: bool = True) -> None:
         """Release the model and free GPU/MPS allocator caches.
 
         Setting the attributes to None alone is not enough on macOS:
@@ -108,6 +138,8 @@ class TranslationEngine:
         self._model = None
         self._processor = None
         self._model_id = None
+        if forget:
+            self._source = None
 
         if not was_loaded:
             return
@@ -127,6 +159,8 @@ class TranslationEngine:
         except Exception as e:
             print(f"[Translate] empty_cache failed: {e}")
 
+    @locked
+    @managed(release="release_idle")
     def load_model(self, model_dir_or_repo: str) -> None:
         """Load SeamlessM4T v2 from a local dir OR an `hf://` repo ID.
 
@@ -138,7 +172,8 @@ class TranslationEngine:
         import torch
         from transformers import AutoProcessor, SeamlessM4Tv2Model
 
-        self.unload()
+        self.unload(forget=False)
+        self._source = model_dir_or_repo
         from thundertalk.core import speech
         speech.release_gpu()              # an idle Studio voice model makes room
 
@@ -174,9 +209,12 @@ class TranslationEngine:
         self._model_id = (
             os.path.basename(pretrained.rstrip("/")) or pretrained
         )
+        self._source = model_dir_or_repo
         elapsed = time.perf_counter() - t0
         print(f"[Translate] Loaded in {elapsed:.1f}s")
 
+    @locked
+    @managed(release="release_idle")
     def translate(
         self,
         samples: np.ndarray,
@@ -191,6 +229,7 @@ class TranslationEngine:
           sample_rate: input sample rate (passed through to the processor;
             the model expects 16kHz)
         """
+        self._ensure_loaded()
         if not self.is_loaded:
             raise RuntimeError("No translation model loaded")
         if len(samples) == 0:
@@ -265,6 +304,8 @@ class TranslationEngine:
             tgt_lang=tgt_lang,
         )
 
+    @locked
+    @managed(release="release_idle")
     def translate_text(
         self,
         text: str,
@@ -284,6 +325,7 @@ class TranslationEngine:
         duration_secs set to 0.0 (no audio) and the result.tgt_lang set
         to the target.
         """
+        self._ensure_loaded()
         if not self.is_loaded:
             raise RuntimeError("No translation model loaded")
         stripped = text.strip()

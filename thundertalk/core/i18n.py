@@ -113,6 +113,14 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Translation model ready.",
         "zh": "翻译模型已就绪。",
     },
+    "models.translator.on_demand": {
+        "en": "Loads when needed; frees memory after 3 minutes idle.",
+        "zh": "需要时加载，空闲 3 分钟后释放内存。",
+    },
+    "models.translator.worker_stopped": {
+        "en": "Translation worker stopped; try again",
+        "zh": "翻译工作进程已停止，请重试",
+    },
     "models.translator.error": {
         "en": "Translation model failed to load.",
         "zh": "翻译模型加载失败。",

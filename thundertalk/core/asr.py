@@ -258,6 +258,8 @@ class AsrEngine:
         self._recognizer = None
         self._mlx_model = None
         self._moss_model = None
+        from thundertalk.core import diarize
+        diarize.unpin_model(self)
         self._model_id = None
         if mx is not None:
             mx.clear_cache()
@@ -350,7 +352,7 @@ class AsrEngine:
         # local directory when downloaded, so both resolve identically.
         from thundertalk.core import diarize
 
-        self._moss_model = diarize.load_model()
+        self._moss_model = diarize.load_model(owner=self)
         self._model_id = "MOSS-Transcribe-Diarize"
         print("[ASR] Loaded MOSS-Transcribe-Diarize via MLX (Metal GPU)")
 
@@ -573,6 +575,9 @@ class AsrEngine:
         import mlx.core as mx
         import mlx_qwen3_asr
         from thundertalk.core.itn import normalize_numbers
+        # Keep the measured dictation throughput within a job; the shared
+        # context restores the 512 MiB on-demand budget and clears on exit.
+        mx.set_cache_limit(2048 << 20)
 
         duration_secs = len(samples) / sample_rate
         context = self._hotwords.replace("/", " ") if self._hotwords else ""
