@@ -671,3 +671,210 @@ def test_crash_inside_global_mute_recovers_readonly_new_route(setup, monkeypatch
         replacement.close()
         controller.saved.clear()
         controller.sessions.clear()
+
+
+class DelayedAudio(FakeAudio):
+    """Accepted setters are not visible to getters until later reads."""
+    def __init__(self, delay=6):
+        super().__init__()
+        self.delay = delay
+        self.pending = []
+
+    def write(self, uid, key, value):
+        self.calls.append((uid, key, value))
+        self.pending.append([self.delay, uid, key, value])
+        return True
+
+    def controls(self, uid):
+        for item in list(self.pending):
+            item[0] -= 1
+            if item[0] <= 0:
+                _, device, key, value = item
+                self.state[device][key] = value
+                self.pending.remove(item)
+        return super().controls(uid)
+
+
+def test_delayed_getter_never_overwrites_mute_intent_or_reports_early_ready(tmp_path):
+    backend = DelayedAudio()
+    controller = audio._DuckingController(backend, tmp_path / 'state.json')
+    original = backend.controls('speakers')
+    try:
+        controller.begin(1)
+        assert backend.controls('speakers')['mute:0'] is True
+        assert controller.saved['speakers']['expected']['mute:0'] is True
+        assert not controller.saved['speakers']['user_changed']
+        controller.end(1)
+        assert backend.controls('speakers') == original
+        assert not any(item[2].startswith('mute:') for item in backend.pending)
+        assert not controller.path.exists()
+    finally:
+        controller.close()
+
+
+def test_accepted_but_ignored_mute_fails_ready_and_republishes_restore(setup, monkeypatch):
+    backend, controller = setup
+    write = backend.write
+    def ignored_mute(uid, key, value):
+        if key.startswith('mute:') and value is True:
+            backend.calls.append((uid, key, value))
+            return True
+        return write(uid, key, value)
+    monkeypatch.setattr(backend, 'write', ignored_mute)
+    with pytest.raises(audio.AudioSilenceError):
+        controller.begin(1)
+    assert not controller.sessions
+    assert not controller.saved
+    assert ('speakers', 'mute:0', False) in backend.calls
+    assert not any(key.startswith('volm:') and value == 0 for _, key, value in backend.calls)
+
+
+def test_microphone_open_reset_is_reverified_before_capture(setup):
+    backend, controller = setup
+    controller.begin(1)
+    controller.transition(1, 'open')
+    backend.state['speakers']['mute:0'] = False
+    controller.synchronize(1)
+    assert backend.state['speakers']['mute:0'] is True
+    assert not controller.saved['speakers']['user_changed']
+    # Once graph verification finishes, a real user unmute wins again.
+    backend.state['speakers']['mute:0'] = False
+    controller.poll()
+    assert controller.saved['speakers']['user_changed']
+    controller.end(1)
+    assert backend.state['speakers']['mute:0'] is False
+
+
+@pytest.mark.parametrize('phase', ['open', 'close'])
+def test_microphone_topology_reset_does_not_misclassify_user_change(setup, monkeypatch, phase):
+    backend, controller = setup
+    original = backend.controls('speakers')
+    controller.begin(1)
+    controller.transition(1, phase)
+    read = backend.controls
+    remaining = [6]
+    def transient_controls(uid):
+        if uid == 'speakers' and remaining[0]:
+            remaining[0] -= 1
+            # The real Mac transient: channels disappeared, master gain appeared.
+            backend.state[uid] = {**original, 'mute:0': False,
+                                  'volm:1': 0.4375, 'volm:2': 0.4375}
+            return {'mute:0': False, 'vmvc:0': 0.7333333492279053}
+        return read(uid)
+    monkeypatch.setattr(backend, 'controls', transient_controls)
+    controller.poll()
+    assert not controller.saved['speakers']['user_changed']
+    if phase == 'open':
+        controller.synchronize(1)
+        assert backend.controls('speakers') == {**original, 'mute:0': True}
+        assert not controller.saved['speakers'].get('graph_reset')
+    controller.end(1)
+    assert backend.controls('speakers') == original
+    assert not controller.path.exists()
+
+
+def test_master_and_channel_mutes_all_release_after_mic_close_reset(setup):
+    backend, controller = setup
+    backend.state['speakers'].update({'mute:1': False, 'mute:2': False})
+    original = backend.controls('speakers')
+    controller.begin(1)
+    controller.transition(1, 'close')
+    # Getter says master is already clear; both channel mutes are still set.
+    backend.state['speakers']['mute:0'] = False
+    controller.end(1)
+    assert backend.controls('speakers') == original
+    assert all(('speakers', key, False) in backend.calls
+               for key in ('mute:0', 'mute:1', 'mute:2'))
+
+
+def test_restore_republishes_exact_gain_after_unmute_to_release_driver_latch(setup, monkeypatch):
+    backend, controller = setup
+    original = backend.controls('speakers')
+    latched = [False]
+    write = backend.write
+    def latch_write(uid, key, value):
+        if key == 'mute:0' and value is True:
+            latched[0] = True
+        elif key.startswith('volm:') and not backend.state[uid]['mute:0']:
+            latched[0] = False  # volume-key-like publication releases hidden latch
+        return write(uid, key, value)
+    monkeypatch.setattr(backend, 'write', latch_write)
+    controller.begin(1)
+    controller.end(1)
+    assert backend.controls('speakers') == original
+    assert latched[0] is False
+    unmute = backend.calls.index(('speakers', 'mute:0', False))
+    assert backend.calls[unmute+1:] == [('speakers', 'volm:1', .3125),
+                                       ('speakers', 'volm:2', .3125)]
+
+
+def test_stale_journal_cannot_produce_ready_without_recovery(setup):
+    backend, controller = setup
+    controller.begin(1)
+    backend.failed.add(('speakers', 'mute:0'))
+    controller.end(1)
+    assert controller.path.exists()
+    with pytest.raises(audio.AudioSilenceError, match='restoration is still pending'):
+        controller.begin(2)
+    assert not controller.sessions
+    assert controller.saved['speakers']['original']['volm:1'] == .3125
+    backend.failed.clear()
+    controller.begin(3)
+    controller.end(3)
+    assert backend.state['speakers']['mute:0'] is False
+
+
+def test_stale_lock_file_alone_does_not_prevent_first_recording(setup):
+    backend, controller = setup
+    controller.path.with_suffix('.lock').write_bytes(b'old process')
+    controller.begin(1)
+    assert backend.state['speakers']['mute:0'] is True
+    controller.end(1)
+    assert not controller.path.exists()
+
+
+def test_crash_with_unconfirmed_intent_republishes_even_original_getter(tmp_path):
+    backend = DelayedAudio(delay=100)
+    controller = audio._DuckingController(backend, tmp_path / 'state.json')
+    controller._load()
+    original = backend.controls('speakers')
+    controller.saved['speakers'] = dict(original=original, expected={**original, 'mute:0': True},
+                                       intent={'mute:0': True}, applying=True,
+                                       apple_original=[31, False], apple_expected=[31, False],
+                                       apple_owned=False, user_changed=False)
+    controller._persist()
+    controller._journal_lock.close()
+    # Getter is still original, but an accepted mute was queued before the crash.
+    backend.pending.append([2, 'speakers', 'mute:0', True])
+    backend.delay = 2
+    replacement = audio._DuckingController(backend, controller.path)
+    try:
+        replacement.recover()
+        assert backend.controls('speakers') == original
+        assert ('speakers', 'mute:0', False) in backend.calls
+        assert not replacement.path.exists()
+    finally:
+        replacement.close()
+        controller.saved.clear()
+        controller.close()
+
+
+def test_failed_microphone_mute_reassertion_keeps_previous_restore_ownership(setup, monkeypatch):
+    backend, controller = setup
+    original = backend.controls('speakers')
+    controller.begin(1)
+    controller.transition(1, 'open')
+    backend.state['speakers']['mute:0'] = False
+    write = backend.write
+    def reject_reassertion(uid, key, value):
+        if key == 'mute:0' and value is True:
+            return False
+        return write(uid, key, value)
+    monkeypatch.setattr(backend, 'write', reject_reassertion)
+    with pytest.raises(audio.AudioSilenceError):
+        controller.synchronize(1)
+    assert controller.saved['speakers']['intent']['mute:0'] is True
+    controller.end(1)
+    assert ('speakers', 'mute:0', False) in backend.calls
+    assert backend.controls('speakers') == original
+    assert not controller.path.exists()

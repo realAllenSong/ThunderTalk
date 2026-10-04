@@ -41,6 +41,7 @@ def _muted(text: str = "", size: int = 12) -> QLabel:
 
 class CloneDialog(QDialog):
     audio_ready = Signal(object)
+    capture_ready = Signal(object)
 
     def __init__(self, parent: Optional[QWidget], asr_engine, library: voices.VoiceLibrary,
                  microphone: str = "auto", mute_speakers: bool = True) -> None:
@@ -54,6 +55,7 @@ class CloneDialog(QDialog):
         self._starting = False
         self._mute_speakers = mute_speakers
         self.audio_ready.connect(self._start_capture, Qt.QueuedConnection)
+        self.capture_ready.connect(self._finish_capture, Qt.QueuedConnection)
         self._rec_t0 = 0.0
         self._ref_worker: Optional[RefTranscribeWorker] = None
         self._text_touched = False
@@ -219,6 +221,7 @@ class CloneDialog(QDialog):
         try:
             if session is not None:
                 session.ready.result()
+                session.microphone_transition("open")
             self._recorder = AudioRecorder(sample_rate=SR)
             self._recorder.start(self._mic)
         except Exception as exc:                      # no input device, permission, …
@@ -229,9 +232,29 @@ class CloneDialog(QDialog):
             self._stop_recording(discard=True)
             self._show_error(t("studio.clone.err_mic").format(msg="timeout"))
             return
+        if session is not None:
+            checked = session.synchronize()
+            checked.add_done_callback(lambda future: self.capture_ready.emit((session, future)))
+        else:
+            self._finish_capture((None, None))
+
+    def _finish_capture(self, payload) -> None:
+        session, checked = payload
+        if not self._starting or session is not self._ducking_session:
+            return
+        try:
+            if checked is not None:
+                checked.result()
+            self._recorder.discard_pending()
+        except Exception as exc:
+            self._stop_recording(discard=True)
+            self._show_error(t("overlay.audio_unavailable"))
+            if session is not None:
+                session.diagnostic("capture_check_failed", error=type(exc).__name__)
+            return
         self._starting = False
         if session is not None:
-            session.refresh()
+            session.diagnostic("capture_started", recorder="studio")
         self._msg.setVisible(False)
         self._rec_t0 = time.monotonic()
         self._rec_btn.set_icon("stop")

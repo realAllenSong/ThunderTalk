@@ -1,0 +1,8 @@
+[Audio] Output cannot be silenced with its available controls; skipping
+{"after": {"mute:0": true, "volm:1": 0.0, "volm:2": 0.0}, "case": "delayed_readback", "journal_pending": false, "playback_latch": null, "ready": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "version": "88a124a"}
+[Audio] User changed output controls; preserving their change
+{"after": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "case": "graph_reset", "journal_pending": false, "playback_latch": null, "ready": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "version": "88a124a"}
+{"after": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "case": "publication_latch", "journal_pending": false, "playback_latch": true, "ready": {"mute:0": true, "volm:1": 0.3125, "volm:2": 0.3125}, "version": "88a124a"}
+{"after": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "case": "delayed_readback", "journal_pending": false, "playback_latch": null, "ready": {"mute:0": true, "volm:1": 0.3125, "volm:2": 0.3125}, "version": "fixed"}
+{"after": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "case": "graph_reset", "journal_pending": false, "playback_latch": null, "ready": {"mute:0": true, "volm:1": 0.3125, "volm:2": 0.3125}, "version": "fixed"}
+{"after": {"mute:0": false, "volm:1": 0.3125, "volm:2": 0.3125}, "case": "publication_latch", "journal_pending": false, "playback_latch": false, "ready": {"mute:0": true, "volm:1": 0.3125, "volm:2": 0.3125}, "version": "fixed"}

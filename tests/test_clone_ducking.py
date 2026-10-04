@@ -13,6 +13,9 @@ class FakeSession:
         self.ready = Future()
         self.restores = 0
         self.refreshes = 0
+        self.checked = Future()
+        self.checked.set_result(None)
+        self.transitions = []
 
     def restore(self):
         self.restores += 1
@@ -20,11 +23,22 @@ class FakeSession:
     def refresh(self):
         self.refreshes += 1
 
+    def synchronize(self):
+        self.refreshes += 1
+        return self.checked
+
+    def microphone_transition(self, phase):
+        self.transitions.append(phase)
+
+    def diagnostic(self, *args, **kwargs):
+        pass
+
 
 class FakeRecorder:
     def __init__(self, **kwargs):
         self.is_recording = False
         self.current_rms = 0
+        self.discards = 0
 
     def start(self, mic):
         self.is_recording = True
@@ -32,6 +46,9 @@ class FakeRecorder:
     def stop(self):
         self.is_recording = False
         return np.zeros(10)
+
+    def discard_pending(self):
+        self.discards += 1
 
 
 @pytest.fixture
@@ -135,3 +152,55 @@ def test_close_still_finishes_when_recorder_stop_raises(dialog, qapp, monkeypatc
     dlg.reject()
     assert session.restores == 1
     assert dlg._recorder is None
+
+
+def test_microphone_graph_check_blocks_capture_and_discards_startup_audio(dialog, qapp):
+    dlg, session = dialog
+    session.checked = Future()
+    dlg._toggle_record()
+    session.ready.set_result(None)
+    qapp.processEvents()
+    assert dlg._starting
+    assert dlg._recorder.is_recording
+    assert not dlg._timer.isActive()
+    assert dlg._recorder.discards == 0
+    assert session.transitions == ['open']
+    session.checked.set_result(None)
+    qapp.processEvents()
+    assert not dlg._starting
+    assert dlg._timer.isActive()
+    assert dlg._recorder.discards == 1
+    dlg.reject()
+    assert session.transitions == ['open', 'close']
+    assert session.restores == 1
+
+
+def test_cancel_during_graph_check_closes_microphone_and_ignores_late_ready(dialog, qapp):
+    dlg, session = dialog
+    session.checked = Future()
+    dlg._toggle_record()
+    session.ready.set_result(None)
+    qapp.processEvents()
+    recorder = dlg._recorder
+    assert recorder.is_recording
+    dlg._toggle_record()
+    assert not recorder.is_recording
+    assert session.restores == 1
+    session.checked.set_result(None)
+    qapp.processEvents()
+    assert dlg._recorder is None
+    assert not dlg._timer.isActive()
+
+
+def test_failed_graph_check_closes_microphone_and_restores(dialog, qapp):
+    dlg, session = dialog
+    session.checked = Future()
+    dlg._toggle_record()
+    session.ready.set_result(None)
+    qapp.processEvents()
+    recorder = dlg._recorder
+    session.checked.set_exception(RuntimeError('mute reset'))
+    qapp.processEvents()
+    assert not recorder.is_recording
+    assert not dlg._starting
+    assert session.restores == 1
