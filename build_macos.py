@@ -1,98 +1,78 @@
-"""Build ThunderTalk.app for macOS using PyInstaller.
+"""Build and sign ThunderTalk.app.
 
-Usage (ad-hoc, no Developer ID):
-    python build_macos.py
-
-Usage (Developer ID + notarization):
-    SIGN_IDENTITY="Developer ID Application: Allen Song (XXXXXXXXXX)" \
-    APPLE_ID="your-apple-id@example.com" \
-    APPLE_APP_PASSWORD="xxxx-xxxx-xxxx-xxxx" \
-    TEAM_ID="XXXXXXXXXX" \
-    python build_macos.py
+Defaults to ThunderTalk Local Signing if installed by tools/make_signing_identity.sh,
+otherwise ad-hoc. SIGN_IDENTITY overrides this (use '-' to force ad-hoc).
+Developer ID: set SIGN_IDENTITY, APPLE_ID, APPLE_APP_PASSWORD and TEAM_ID.
+SIGN_REQUIREMENT can override the leaf-pinned requirement for certificate renewal.
 """
 
+from __future__ import annotations
+
 import os
+import re
+from pathlib import Path
 import subprocess
 import sys
 
-CMD = [
-    sys.executable, "-m", "PyInstaller",
-    "ThunderTalk.spec",
-    "--noconfirm",
-    "--clean"
-]
-
-# Set SIGN_IDENTITY env var to your "Developer ID Application: Name (TEAMID)"
-# to enable proper signing + notarization. Defaults to ad-hoc ("-").
-SIGN_IDENTITY = os.environ.get("SIGN_IDENTITY", "-")
-APPLE_ID       = os.environ.get("APPLE_ID", "")
-APP_PASSWORD   = os.environ.get("APPLE_APP_PASSWORD", "")
-TEAM_ID        = os.environ.get("TEAM_ID", "")
-
+LOCAL_IDENTITY = "ThunderTalk Local Signing"
+APP_ID = "com.thundertalk.app"
 APP_PATH = "dist/ThunderTalk.app"
 ENTITLEMENTS = "entitlements.plist"
 
-print("Running:", " ".join(CMD))
-subprocess.run(CMD, check=True)
 
-print(f"\n🔏 Signing {APP_PATH} (identity: {SIGN_IDENTITY}) ...")
+def signing_identities() -> dict[str, str]:
+    keychain = Path.home() / "Library/Keychains/ThunderTalkLocalSigning.keychain-db"
+    password_file = Path.home() / ".thundertalk/signing/keychain-password"
+    if keychain.is_file() and password_file.is_file():
+        # Unlock only our dedicated keychain, never the user's login keychain.
+        subprocess.run(["security", "unlock-keychain", "-p", password_file.read_text().strip(),
+                        str(keychain)], check=True, capture_output=True)
+    result = subprocess.run(["security", "find-identity", "-p", "codesigning"],
+                            capture_output=True, text=True, check=True)
+    return {name: digest for digest, name in re.findall(r'\b([A-Fa-f0-9]{40}) "([^"]+)"', result.stdout)}
 
-if SIGN_IDENTITY == "-":
-    # Ad-hoc sign — works locally, triggers Gatekeeper on other machines.
-    subprocess.run([
-        "codesign", "--force", "--deep", "--sign", SIGN_IDENTITY,
-        APP_PATH,
-    ], check=True)
-    print("✅ Ad-hoc sign complete. Users will see Gatekeeper warning on first launch.")
-else:
-    # Developer ID sign — sign binaries inside-out then the .app bundle.
-    # --options runtime enables Hardened Runtime (required for notarization).
-    # Sign all nested binaries/dylibs first, then the main bundle.
-    print("  Signing nested frameworks and dylibs...")
-    subprocess.run([
-        "codesign", "--force", "--sign", SIGN_IDENTITY,
-        "--options", "runtime",
-        "--entitlements", ENTITLEMENTS,
-        "--deep",
-        APP_PATH,
-    ], check=True)
 
-    # Verify the signature
-    result = subprocess.run(
-        ["codesign", "--verify", "--deep", "--strict", APP_PATH],
-        capture_output=True, text=True
-    )
-    if result.returncode != 0:
-        print("❌ Signature verification failed:", result.stderr)
-        sys.exit(1)
-    print("✅ Signature verified.")
-
-    # Notarize if credentials are provided
-    if APPLE_ID and APP_PASSWORD and TEAM_ID:
-        import zipfile, pathlib
-
-        ZIP_PATH = "dist/ThunderTalk-notarize.zip"
-        print(f"\n📦 Creating zip for notarization: {ZIP_PATH}")
-        subprocess.run([
-            "ditto", "-c", "-k", "--keepParent",
-            APP_PATH, ZIP_PATH,
-        ], check=True)
-
-        print("🚀 Submitting to Apple Notary Service (this takes 1–5 min)...")
-        subprocess.run([
-            "xcrun", "notarytool", "submit", ZIP_PATH,
-            "--apple-id", APPLE_ID,
-            "--password", APP_PASSWORD,
-            "--team-id", TEAM_ID,
-            "--wait",
-        ], check=True)
-
-        print("📎 Stapling notarization ticket to app...")
-        subprocess.run(["xcrun", "stapler", "staple", APP_PATH], check=True)
-
-        os.remove(ZIP_PATH)
-        print("✅ Notarization complete. App is Gatekeeper-clean.")
+def sign_app(app_path: str = APP_PATH) -> str:
+    identities = signing_identities()
+    identity = os.environ.get("SIGN_IDENTITY") or (LOCAL_IDENTITY if LOCAL_IDENTITY in identities else "-")
+    print(f"Signing {app_path} (identity: {identity})")
+    if identity == "-":
+        subprocess.run(["codesign", "--force", "--deep", "--sign", "-", app_path], check=True)
+        print("Ad-hoc fallback: permission grants may need resetting after updates.")
     else:
-        print("ℹ️  APPLE_ID / APPLE_APP_PASSWORD / TEAM_ID not set — skipping notarization.")
+        digest = identities.get(identity)
+        if digest is None:
+            digest = next((h for h in identities.values() if h.lower() == identity.lower()), None)
+        if digest is None:
+            raise RuntimeError(f"Signing identity is unavailable: {identity}")
+        requirement = os.environ.get("SIGN_REQUIREMENT") or (
+            f'designated => identifier "{APP_ID}" and certificate leaf = H"{digest}"')
+        # Nested code retains its own identifier/requirement. Only the outer
+        # app is pinned to APP_ID and our stable leaf certificate.
+        common = ["codesign", "--force", "--sign", identity, "--options", "runtime",
+                  "--entitlements", ENTITLEMENTS]
+        subprocess.run([*common, "--deep", app_path], check=True)
+        subprocess.run([*common, "--identifier", APP_ID, "--requirements", "=" + requirement, app_path], check=True)
+    subprocess.run(["codesign", "--verify", "--deep", "--strict", app_path], check=True)
+    subprocess.run(["codesign", "-dr", "-", app_path], check=True)
+    return identity
 
-print(f"\n✅ Build complete: {APP_PATH}")
+
+def main() -> None:
+    subprocess.run([sys.executable, "-m", "PyInstaller", "ThunderTalk.spec", "--noconfirm", "--clean"], check=True)
+    identity = sign_app()
+    apple_id = os.environ.get("APPLE_ID", "")
+    password = os.environ.get("APPLE_APP_PASSWORD", "")
+    team = os.environ.get("TEAM_ID", "")
+    if identity != "-" and apple_id and password and team:
+        zip_path = "dist/ThunderTalk-notarize.zip"
+        subprocess.run(["ditto", "-c", "-k", "--keepParent", APP_PATH, zip_path], check=True)
+        subprocess.run(["xcrun", "notarytool", "submit", zip_path, "--apple-id", apple_id,
+                        "--password", password, "--team-id", team, "--wait"], check=True)
+        subprocess.run(["xcrun", "stapler", "staple", APP_PATH], check=True)
+        os.remove(zip_path)
+    print(f"Build complete: {APP_PATH}")
+
+
+if __name__ == "__main__":
+    main()
