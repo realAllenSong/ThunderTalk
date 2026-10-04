@@ -297,6 +297,12 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.speed.label": {"en": "Speed", "zh": "语速"},
     "studio.speak.go": {"en": "Generate speech", "zh": "生成语音"},
     "studio.speak.loading": {"en": "Loading the voice engine…", "zh": "正在加载语音引擎…"},
+    "studio.speak.preparing": {"en": "Preparing the voice engine…", "zh": "正在准备语音引擎…"},
+    "studio.speak.ready": {"en": "Voice engine ready", "zh": "语音引擎已就绪"},
+    "studio.speak.ready_tip": {
+        "en": "The voice engine is loaded — speech starts right away.",
+        "zh": "语音引擎已加载，点击后立即开始生成。",
+    },
     "studio.speak.piece": {"en": "Speaking part {i} of {n}…", "zh": "正在生成第 {i} / {n} 段…"},
     "studio.speak.done": {
         "en": "{dur} of speech, made in {took} · {voice}",

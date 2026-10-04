@@ -3,6 +3,7 @@ no models and no audio hardware."""
 
 from __future__ import annotations
 
+import threading
 import time
 import wave
 from pathlib import Path
@@ -750,3 +751,154 @@ def test_done_leaves_pick_mode_and_keeps_voices(speak):
     speak._done_btn.click()
     assert speak._select_btn.isVisibleTo(speak) and not speak._done_btn.isVisibleTo(speak)
     assert len(voices.VoiceLibrary().list()) == 1 and not speak._chips["my:" + vs[0].id].is_picked()
+
+
+# ── preloading the voice engine ──────────────────────────────────────────
+
+class PreloadTts(FakeTts):
+    """A speech engine whose preload blocks on ``gate`` so a test can look at
+    the tab while it's in flight."""
+
+    def __init__(self):
+        super().__init__()
+        self.gate = threading.Event()
+        self.preloads: list[tuple] = []
+        self.loaded: set[str] = set()
+        self.warm: set[tuple] = set()
+        self.unloads = 0
+        self.busy = False
+
+    def preload(self, bid, voice=None, language="chinese", warm=True, cancel=None):
+        from thundertalk.core import speech
+        self.preloads.append((bid, voice, language, cancel))
+        self.gate.wait(5)
+        self.loaded.add(bid)
+        if cancel is not None and cancel.is_set():
+            return False
+        if voice is not None:
+            self.warm.add((bid, speech.voice_key(voice)))
+        return True
+
+    def is_loaded(self, bid):
+        return bid in self.loaded
+
+    def is_warm(self, bid, voice):
+        from thundertalk.core import speech
+        return (bid, speech.voice_key(voice)) in self.warm
+
+    def is_busy(self):
+        return self.busy
+
+    def unload(self):
+        self.unloads += 1
+        self.loaded.clear()
+        self.warm.clear()
+
+
+@pytest.fixture
+def preloading(studio, monkeypatch):
+    from thundertalk.core import speech
+    from thundertalk.ui.studio import speak_tab
+    set_ready(monkeypatch)
+    monkeypatch.setattr(speak_tab, "AUTO_PRELOAD", True)
+    fake = PreloadTts()
+    monkeypatch.setattr(speech, "get_engine", lambda: fake)
+    tab = studio.speak_tab
+    tab._preload_timer.setInterval(10)
+    pick_engine(tab, "voxcpm2")
+    tab._fake = fake
+    yield tab
+    fake.gate.set()
+    wait_for(lambda: tab._pre is None)
+
+
+def test_showing_the_speak_tab_preloads_the_selected_voice(studio, preloading):
+    tab, fake = preloading, preloading._fake
+    assert not fake.preloads                                    # tab not on screen yet
+    studio.show_tab("speak")
+    assert wait_for(lambda: fake.preloads)
+    bid, voice, lang, _ = fake.preloads[0]
+    assert bid == "voxcpm2" and voice == tab._voice_id and lang in ("chinese", "english")
+    assert wait_for(lambda: tab._bar.isVisible())
+    assert "Preparing the voice engine" in tab._status.text()
+    assert tab._go.isEnabled() is False                         # no text yet
+    tab._text.setPlainText("Hello there.")
+    assert tab._go.isEnabled()                                  # clicking now attaches to the load
+    fake.gate.set()
+    assert wait_for(lambda: tab._pre is None)
+    assert tab._status.text() == "Voice engine ready" and not tab._bar.isVisible()
+    assert "right away" in tab._go.toolTip()
+    assert tab._idle.isActive() and tab._idle.interval() == speak_tab_mod().IDLE_UNLOAD_MS
+    tab._schedule_preload()                                     # already warm: nothing new
+    QApplication.processEvents()
+    time.sleep(0.05)
+    QApplication.processEvents()
+    assert len(fake.preloads) == 1 and tab._pre is None
+
+
+def speak_tab_mod():
+    from thundertalk.ui.studio import speak_tab
+    return speak_tab
+
+
+def test_picking_another_voice_while_preloading_switches_target(studio, preloading):
+    tab, fake = preloading, preloading._fake
+    studio.show_tab("speak")
+    assert wait_for(lambda: fake.preloads)
+    other = next(v for v in tab._chips if not v.startswith("my:") and v != tab._voice_id)
+    tab._chips[other].click()
+    assert wait_for(lambda: fake.preloads[0][3].is_set())       # first one cancelled
+    assert len(fake.preloads) == 1                              # never two at once
+    fake.gate.set()
+    assert wait_for(lambda: len(fake.preloads) == 2 and tab._pre is None)
+    assert fake.preloads[1][1] == other
+
+
+def test_generate_while_preloading_cancels_the_warm_up_and_speaks(studio, preloading):
+    tab, fake = preloading, preloading._fake
+    studio.show_tab("speak")
+    assert wait_for(lambda: fake.preloads)
+    tab._text.setPlainText("Say this while the engine is still loading.")
+    tab._go.click()
+    assert fake.preloads[0][3].is_set()                         # warm-up skipped, load shared
+    assert wait_for(lambda: tab._result_card.isVisible())
+    assert len(fake.calls) == 1
+    fake.gate.set()
+    assert wait_for(lambda: tab._pre is None)
+    assert len(fake.preloads) == 1                              # no new preload after speaking
+
+
+def test_no_preload_when_the_engine_is_not_downloaded(studio, preloading, monkeypatch):
+    tab, fake = preloading, preloading._fake
+    set_ready(monkeypatch, voxcpm2=False)
+    studio.show_tab("speak")
+    tab.refresh()
+    time.sleep(0.1)
+    QApplication.processEvents()
+    assert not fake.preloads and not tab._bar.isVisible()
+
+
+def test_hiding_the_tab_cancels_and_shortens_the_idle_unload(studio, preloading):
+    tab, fake = preloading, preloading._fake
+    studio.show_tab("speak")
+    assert wait_for(lambda: fake.preloads)
+    studio.show_tab("transcribe")
+    assert fake.preloads[0][3].is_set()
+    fake.gate.set()
+    assert wait_for(lambda: tab._pre is None)
+    assert tab._idle.isActive() and tab._idle.interval() == speak_tab_mod().HIDDEN_UNLOAD_MS
+    studio.show_tab("speak")
+    assert tab._idle.interval() == speak_tab_mod().IDLE_UNLOAD_MS
+
+
+def test_idle_unload_waits_while_busy_then_frees_the_model(studio, preloading):
+    tab, fake = preloading, preloading._fake
+    fake.gate.set()
+    studio.show_tab("speak")
+    assert wait_for(lambda: fake.loaded and tab._pre is None)
+    fake.busy = True                                            # e.g. a load started elsewhere
+    tab._unload_idle()
+    assert fake.unloads == 0 and tab._idle.isActive()
+    fake.busy = False
+    tab._unload_idle()
+    assert fake.unloads == 1 and tab._status.text() == ""

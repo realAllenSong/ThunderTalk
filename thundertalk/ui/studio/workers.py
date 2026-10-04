@@ -252,6 +252,21 @@ class SynthWorker(_Worker):
                                               clone_backend=clone_backend)
 
 
+class PreloadWorker(_Worker):
+    """Load a speech engine (and warm it up in one voice) before it's asked to
+    speak. Cancelling skips whatever hasn't started; a load in progress finishes."""
+
+    def __init__(self, backend_id: str, voice=None, language: str = "chinese") -> None:
+        super().__init__()
+        self.backend_id, self.voice, self.language = backend_id, voice, language
+
+    def work(self):
+        from thundertalk.core import speech
+        if not speech.get_engine().preload(self.backend_id, self.voice, self.language, cancel=self._cancel):
+            raise tts.TtsCancelled()
+        return self.backend_id
+
+
 class BackendDownloadWorker(_Worker):
     """Fetch everything a speech backend needs (HF repos and/or archives)."""
 

@@ -27,11 +27,14 @@ from thundertalk.core.voices import SavedVoice, VoiceLibrary
 from thundertalk.ui import theme
 from thundertalk.ui.studio.clone_dialog import CloneDialog
 from thundertalk.ui.studio.parts import PlayerBar, VoiceChip, fmt_seconds
-from thundertalk.ui.studio.workers import BackendDownloadWorker, SynthWorker, friendly_error
+from thundertalk.ui.studio.workers import BackendDownloadWorker, PreloadWorker, SynthWorker, friendly_error
 from thundertalk.ui.widgets import FlowLayout, Rule, SegmentedControl, ThinProgress
 
 SPEEDS = [("0.75", 0.75), ("0.9", 0.9), ("1.0", 1.0), ("1.15", 1.15), ("1.3", 1.3), ("1.5", 1.5)]
-IDLE_UNLOAD_MS = 5 * 60 * 1000
+IDLE_UNLOAD_MS = 15 * 60 * 1000         # unused this long while the Speak tab is on screen → free the model
+HIDDEN_UNLOAD_MS = 3 * 60 * 1000        # … or this long after the tab / window went out of view
+PRELOAD_DELAY_MS = 600                  # let a pick settle before loading the engine for it
+AUTO_PRELOAD = True                     # the test suite turns this off unless a test exercises it
 MY_PREFIX = "my:"
 
 
@@ -78,6 +81,9 @@ class SpeakTab(QWidget):
         self._chips: dict[str, VoiceChip] = {}
         self._synth: Optional[SynthWorker] = None
         self._dl: Optional[BackendDownloadWorker] = None
+        self._pre: Optional[PreloadWorker] = None
+        self._pre_again = False                     # target changed while a preload was running
+        self._prep = ""                             # "" | "preparing" | "ready"
         self._result: Optional[tts.SynthResult] = None
         self._t0 = 0.0
         self._phase = ""
@@ -253,6 +259,10 @@ class SpeakTab(QWidget):
         self._idle.setSingleShot(True)
         self._idle.setInterval(IDLE_UNLOAD_MS)
         self._idle.timeout.connect(self._unload_idle)
+        self._preload_timer = QTimer(self)
+        self._preload_timer.setSingleShot(True)
+        self._preload_timer.setInterval(PRELOAD_DELAY_MS)
+        self._preload_timer.timeout.connect(self._start_preload)
         self._preview_timer = QTimer(self)
         self._preview_timer.setInterval(150)
         self._preview_timer.timeout.connect(self._on_preview_tick)
@@ -269,6 +279,7 @@ class SpeakTab(QWidget):
     def refresh(self) -> None:
         self._rebuild_voices()
         self._refresh()
+        self._schedule_preload()
 
     def busy(self) -> bool:
         return self._synth is not None or self._dl is not None
@@ -281,10 +292,25 @@ class SpeakTab(QWidget):
         """App is quitting: stop audio and let any running job wind down."""
         self._player.shutdown()
         self._stop_preview()
-        for w in (self._synth, self._dl):
+        self._preload_timer.stop()
+        for w in (self._synth, self._dl, self._pre):
             if w is not None:
                 w.cancel()
                 w.wait(8000)
+
+    def showEvent(self, ev) -> None:
+        super().showEvent(ev)
+        if self._idle.isActive():
+            self._arm_idle()                     # back on screen: the long grace period again
+        self._schedule_preload()
+
+    def hideEvent(self, ev) -> None:
+        super().hideEvent(ev)
+        self._preload_timer.stop()
+        if self._pre is not None:
+            self._pre.cancel()                   # a load already running finishes; no warm-up
+        if self._idle.isActive() or self._model_loaded():
+            self._arm_idle()
 
     def retranslate(self) -> None:
         self._cap_builtin.setText(t("studio.voices.builtin"))
@@ -307,6 +333,8 @@ class SpeakTab(QWidget):
         self._rebuild_voices()
         self._on_text()
         self._refresh()
+        if self._synth is None:
+            self._show_prep()
 
     # ── voices ────────────────────────────────────────────────────────
     def _rebuild_languages(self, initial: Optional[str] = None) -> None:
@@ -419,6 +447,7 @@ class SpeakTab(QWidget):
         self._save_pref("studio_voice", vid)
         self._mark_selected()
         self._refresh()
+        self._schedule_preload()
 
     # ── remembered choices ────────────────────────────────────────────
     def _pref(self, key: str, default):
@@ -458,6 +487,7 @@ class SpeakTab(QWidget):
             self._save_pref("studio_voice", self._voice_id)
             self._rebuild_voices()
             self._refresh()
+            self._schedule_preload()
             self.toast.emit(t("studio.voices.saved").format(name=dlg.saved.name), "success")
 
     # ── managing my voices ───────────────────────────────────────────
@@ -589,6 +619,7 @@ class SpeakTab(QWidget):
             self._save_pref("studio_voice", self._voice_id)
         self._rebuild_voices()
         self._refresh()
+        self._schedule_preload()
 
     def _engine_ready(self) -> bool:
         from thundertalk.core.runtime import restart_needed
@@ -657,6 +688,7 @@ class SpeakTab(QWidget):
         self._dl_status.setText("")
         self._dl_cancel.setEnabled(True)
         self._refresh()
+        self._schedule_preload()
 
     # ── text ──────────────────────────────────────────────────────────
     def _language(self) -> str:
@@ -674,15 +706,21 @@ class SpeakTab(QWidget):
         self._go.setEnabled(self._engine_ready() and not self.busy() and n > 0)
 
     # ── generate ──────────────────────────────────────────────────────
-    def _voice_ref(self):
+    def _voice_ref(self, quiet: bool = False):
         if self._voice_id.startswith(MY_PREFIX):
             v = self._saved_voice()
             if v is None:
                 return None
             if not v.ref_text.strip():
-                self.toast.emit(t("studio.voices.need_text"), "warn")
+                if not quiet:
+                    self.toast.emit(t("studio.voices.need_text"), "warn")
                 return None
-            return self._lib.prompt(v.id)
+            try:
+                return self._lib.prompt(v.id)
+            except (OSError, KeyError, ValueError):
+                if quiet:
+                    return None
+                raise
         return self._voice_id
 
     def _generate(self) -> None:
@@ -695,6 +733,9 @@ class SpeakTab(QWidget):
         ref = self._voice_ref()
         if ref is None:
             return
+        self._preload_timer.stop()
+        if self._pre is not None:
+            self._pre.cancel()          # the request attaches to a load in flight; no separate warm-up
         self._player.shutdown()
         self._synth = SynthWorker(text, ref, self._lang.currentData() or "auto",
                                   float(self._speed.currentData() or 1.0), self._asr,
@@ -758,13 +799,110 @@ class SpeakTab(QWidget):
         self._bar.set_indeterminate(False)
         self._cancel.setVisible(False)
         self._go.setVisible(True)
-        self._idle.start()
+        self._prep = "ready" if self._model_loaded() else ""
+        self._arm_idle()
         self._refresh()
+
+    def _arm_idle(self) -> None:
+        self._idle.setInterval(IDLE_UNLOAD_MS if self.isVisible() else HIDDEN_UNLOAD_MS)
+        self._idle.start()
 
     def _unload_idle(self) -> None:
         """Free the ~3–4 GB the voice model holds once it's been idle for a while."""
+        eng = speech.get_engine()
+        if self._synth is not None or self._pre is not None or getattr(eng, "is_busy", lambda: False)():
+            self._arm_idle()
+            return
+        eng.unload()
+        self._prep = ""
         if self._synth is None:
-            speech.get_engine().unload()
+            self._show_prep()
+
+    # ── preloading ────────────────────────────────────────────────────
+    def _model_loaded(self) -> bool:
+        is_loaded = getattr(speech.get_engine(), "is_loaded", None)
+        return bool(is_loaded and is_loaded(self._needed_backend().info.id))
+
+    def _warm_language(self, ref) -> str:
+        code = self._lang.currentData() or "auto"
+        if code != "auto":
+            return code
+        text = self._text.toPlainText().strip() or (ref.text if isinstance(ref, tts.ClonePrompt) else "")
+        if text:
+            return tts.detect_language(text)
+        v = next((v for v in speech.all_voices() if v.id == ref), None)
+        return v.language if v is not None and v.language in ("chinese", "english") else "chinese"
+
+    def _schedule_preload(self) -> None:
+        """Load the engine the selected voice needs once the pick settles, so
+        Generate starts speaking right away. Only while the tab is on screen,
+        the engine is downloaded and nothing else is running."""
+        if not AUTO_PRELOAD or not self.isVisible() or self._synth is not None or self._dl is not None:
+            return
+        if not hasattr(speech.get_engine(), "preload") or not self._engine_ready():
+            return
+        self._preload_timer.start()
+
+    def _start_preload(self) -> None:
+        if not self.isVisible() or self._synth is not None or not self._engine_ready():
+            return
+        eng = speech.get_engine()
+        bid = self._needed_backend().info.id
+        ref = self._voice_ref(quiet=True)
+        if eng.is_warm(bid, ref) if ref is not None else eng.is_loaded(bid):
+            self._prep = "ready"
+            self._show_prep()
+            self._arm_idle()
+            return
+        if self._pre is not None:
+            same = self._pre.backend_id == bid and (
+                (self._pre.voice is None and ref is None)
+                or (self._pre.voice is not None and ref is not None
+                    and speech.voice_key(self._pre.voice) == speech.voice_key(ref)))
+            if not same:
+                self._pre.cancel()
+                self._pre_again = True               # picks the new target up when it winds down
+            return
+        w = PreloadWorker(bid, ref, self._warm_language(ref))
+        self._pre = w
+        w.done.connect(self._on_preloaded)
+        w.error.connect(lambda code: print(f"[Speak] preload failed: {code}"))
+        w.finished.connect(self._on_preload_finished)
+        self._prep = "preparing"
+        if self._synth is None:
+            self._t0 = time.monotonic()
+            self._show_prep()
+        w.start()
+
+    def _on_preloaded(self, _bid) -> None:
+        self._prep = "ready"
+
+    def _on_preload_finished(self) -> None:
+        self._pre = None
+        if self._prep == "preparing":
+            self._prep = "ready" if self._model_loaded() else ""
+        if self._model_loaded():
+            self._arm_idle()
+        if self._synth is None:
+            self._show_prep()
+        if self._pre_again:
+            self._pre_again = False
+            self._schedule_preload()
+
+    def _show_prep(self) -> None:
+        """The quiet line next to Generate while no speech is being made."""
+        preparing = self._prep == "preparing"
+        self._bar.setVisible(preparing)
+        self._bar.set_indeterminate(preparing)
+        if preparing:
+            self._phase = t("studio.speak.preparing")
+            if not self._tick.isActive():
+                self._tick.start()
+            self._on_tick()
+        else:
+            self._tick.stop()
+            self._status.setText(t("studio.speak.ready") if self._prep == "ready" else "")
+        self._go.setToolTip(t("studio.speak.ready_tip") if self._prep == "ready" else "")
 
     # ── save ──────────────────────────────────────────────────────────
     def _save(self, fmt: str) -> None:

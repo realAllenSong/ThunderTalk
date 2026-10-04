@@ -20,6 +20,13 @@ def qapp():
     yield app
 
 
+@pytest.fixture(autouse=True)
+def _no_real_preload(monkeypatch):
+    """The Speak tab preloads real speech models when it becomes visible, and
+    real ones may be on this machine; tests that exercise it opt back in with fakes."""
+    monkeypatch.setattr("thundertalk.ui.studio.speak_tab.AUTO_PRELOAD", False)
+
+
 @pytest.fixture
 def isolated_home(tmp_path, monkeypatch):
     """Point every persisted path (settings, history, models, i18n) at tmp_path
