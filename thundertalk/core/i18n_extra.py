@@ -286,8 +286,8 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "约 {size}；以 10 MB/秒下载需约 {minutes}–{upper} 分钟，实际取决于网络。",
     },
     "onb.model.cpu": {
-        "en": "A smaller CPU model leaves room for other apps on low-memory or Intel Macs. 30 languages and 22 Chinese dialects. Switch any time in Models.",
-        "zh": "较小的 CPU 模型为低内存或 Intel Mac 上的其他应用留出空间。支持中英等 30 种语言和 22 种中文方言，可随时在“模型”页更换。",
+        "en": "Runs on the CPU of any Mac: as accurate as the GPU version, faster, and half the download. 30 languages and 22 Chinese dialects. Switch any time in Models.",
+        "zh": "在任何 Mac 的 CPU 上运行：准确率与 GPU 版相当，速度更快，下载量只有一半。支持中英等 30 种语言和 22 种中文方言，可随时在“模型”页更换。",
     },
     "onb.model.gpu": {
         "en": "Your Apple GPU and at least 16 GB of memory suit this fast 0.6B model. 30 languages and 22 Chinese dialects. Switch any time in Models.",
