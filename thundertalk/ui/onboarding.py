@@ -43,19 +43,9 @@ def _fmt_size(mb: int) -> str:
 
 
 def recommended_model(hardware=None):
-    """Prefer a quick, multilingual first dictation with room for other apps.
-
-    Hardware arrives from the Models page's existing background probe. Until
-    it arrives, the smaller CPU build is safe; never probe on the UI thread.
-    """
-    from importlib.util import find_spec
-    from thundertalk.core.asr import _IS_APPLE_SILICON, _MLX_AVAILABLE
-    mlx_installed = (_IS_APPLE_SILICON and _MLX_AVAILABLE is not False
-                     and find_spec("mlx") is not None and find_spec("mlx_qwen3_asr") is not None)
-    use_mlx = (hardware is not None and hardware.platform_tag == "apple-silicon"
-               and hardware.memory_gb >= 16 and mlx_installed)
-    rid = "qwen3-asr-06b-mlx" if use_mlx else "qwen3-asr-06b-int8"
-    return next(m for m in BUILTIN_MODELS if m.id == rid)
+    """Qwen3-ASR-0.6B ONNX int8 on every Mac: as accurate as the MLX build,
+    faster, CPU-only and half the download (879 MB vs 1.9 GB)."""
+    return next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-int8")
 
 
 def _download_failure_key(message: str) -> str:

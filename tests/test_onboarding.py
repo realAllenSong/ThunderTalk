@@ -55,12 +55,12 @@ def wizard(qapp, isolated_home, monkeypatch):
 
 @pytest.mark.parametrize("cpu,ram,platform,mlx,expected", [
     ("M1", 8, "apple-silicon", True, "onnx"),
-    ("M2", 16, "apple-silicon", True, "mlx"),
-    ("M3 Max", 36, "apple-silicon", True, "mlx"),
+    ("M2", 16, "apple-silicon", True, "onnx"),
+    ("M3 Max", 36, "apple-silicon", True, "onnx"),
     ("Intel", 16, "all", False, "onnx"),
     ("M2", 16, "apple-silicon", False, "onnx"),
 ])
-def test_recommendation_uses_memory_and_mlx(monkeypatch, cpu, ram, platform, mlx, expected):
+def test_recommendation_is_onnx_on_every_mac(monkeypatch, cpu, ram, platform, mlx, expected):
     monkeypatch.setattr("thundertalk.core.asr._IS_APPLE_SILICON", mlx)
     assert recommended_model(models.HardwareInfo(cpu, ram, cpu, platform)).backend == expected
     assert recommended_model().backend == "onnx"
@@ -69,10 +69,10 @@ def test_recommendation_uses_memory_and_mlx(monkeypatch, cpu, ram, platform, mlx
 def test_welcome_consent_overlaps_permissions_and_back_does_not_duplicate(wizard):
     overlay, page, _, _, _ = wizard
     assert not page.started
-    assert "1.9 GB" in overlay._next.text()
+    assert "879 MB" in overlay._next.text()
     overlay._next.click()
     assert overlay._step == 1 and page.started == [overlay._rec.id]
-    overlay._on_dl_progress(overlay._rec.id, 40, "752 / 1881 MB")
+    overlay._on_dl_progress(overlay._rec.id, 40, "352 / 879 MB")
     assert "40%" in overlay._p_download.text()
     original = overlay._rec.id
     page.hardware_detected.emit(models.HardwareInfo("M1", 8, "M1", "apple-silicon"))

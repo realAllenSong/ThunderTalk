@@ -277,7 +277,9 @@ def is_variant_compatible(info: ModelInfo) -> bool:
 
 
 _PLATFORM_BACKEND_PRIORITY = {
-    "apple-silicon": ["mlx", "onnx", "onnx-cuda"],
+    # ONNX int8 matches MLX accuracy here, is faster, needs no GPU and is
+    # half the download, so it is recommended first even on Apple Silicon.
+    "apple-silicon": ["onnx", "mlx", "onnx-cuda"],
     "nvidia": ["onnx-cuda", "onnx", "mlx"],
     "all": ["onnx", "onnx-cuda", "mlx"],
 }
