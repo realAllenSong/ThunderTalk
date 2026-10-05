@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light" />
 
   <title>ThunderTalk — Free, open-source voice input for macOS</title>
-  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.8.0: AI Proofread recovers what you meant, full-text change view, lower idle memory, Studio model picker and History with instant timestamp/text switching, exact background-audio restore and permissions that stick." />
+  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.9.0: experimental Fun-ASR-Nano, a 0.8B CPU model for Chinese, English and Japanese; clearer model details; long dictations are never lost; background-audio muting never blocks dictation." />
   <link rel="canonical" href="https://realallensong.github.io/ThunderTalk/" />
   <meta name="robots" content="index, follow" />
 
@@ -17,7 +17,7 @@
   <meta property="og:locale" content="en_US" />
   <meta property="og:locale:alternate" content="zh_CN" />
   <meta property="og:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
-  <meta property="og:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.8.0: AI Proofread recovers what you meant, full-text change view, lower idle memory, Studio model picker and History with instant timestamp/text switching, exact background-audio restore and permissions that stick." />
+  <meta property="og:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.9.0: experimental Fun-ASR-Nano, a 0.8B CPU model for Chinese, English and Japanese; clearer model details; long dictations are never lost; background-audio muting never blocks dictation." />
   <meta property="og:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -40,7 +40,7 @@
     "operatingSystem": "macOS",
     "applicationCategory": "UtilitiesApplication",
     "applicationSubCategory": "Speech-to-Text / Dictation",
-    "description": "ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.8.0: AI Proofread recovers what you meant, full-text change view, lower idle memory, Studio model picker and History with instant timestamp/text switching, exact background-audio restore and permissions that stick.",
+    "description": "ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.9.0: experimental Fun-ASR-Nano, a 0.8B CPU model for Chinese, English and Japanese; clearer model details; long dictations are never lost; background-audio muting never blocks dictation.",
     "url": "https://realallensong.github.io/ThunderTalk/",
     "downloadUrl": "https://github.com/realAllenSong/ThunderTalk/releases/latest",
     "license": "https://opensource.org/licenses/MIT",
@@ -712,9 +712,9 @@
         </div>
       </div>
 
-      <a class="news rv" href="#studio">
-        <span class="tag" data-i18n="hero.newtag">New in v1.8.0</span>
-        <span class="txt" data-i18n="hero.newtxt">AI Proofread, full-text changes, lower memory, a tidier Studio, exact audio restore and lasting permissions</span>
+      <a class="news rv" href="#models">
+        <span class="tag" data-i18n="hero.newtag">New in v1.9.0</span>
+        <span class="txt" data-i18n="hero.newtxt">Experimental Fun-ASR-Nano, clearer Models, long dictations never lost and muting that never blocks dictation</span>
         <svg class="arrow" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
       </a>
 
@@ -806,13 +806,13 @@
         <div class="step rv">
           <span class="n">02</span>
           <h3 data-i18n="s2.h">Speak</h3>
-          <p data-i18n="s2.p">A speech model on your Mac's own chip does the listening. Chinese, English, or both in the same sentence. Live Preview shows provisional words in the recording bar while you speak. It is on by default in Settings; Direct translation mode hides it. Preview may pause or stop if the model cannot keep up. Optional background-audio muting works on the first press and restores the exact previous volume, even after a crash.</p>
+          <p data-i18n="s2.p">A speech model on your Mac's own chip does the listening. Chinese, English, or both in the same sentence. Live Preview shows provisional words in the recording bar while you speak. It is on by default in Settings; Direct translation mode hides it. Preview may pause or stop if the model cannot keep up. Optional background-audio muting never blocks dictation, works on the first press and restores the exact previous volume, even after a crash.</p>
           <div class="sv"><span class="meter sv-wave" id="svWave" aria-hidden="true"></span></div>
         </div>
         <div class="step rv">
           <span class="n">03</span>
           <h3 data-i18n="s3.h">Done</h3>
-          <p data-i18n="s3.p">After you stop, the full recording is recognized for the final pasted text; preview words can change. English terms recognized correctly in a clean, aligned preview can be kept in the final text, and repetition loops are caught and re-decoded. The text goes to your cursor and private, searchable history. Spoken numbers turn into digits, and hotwords stay spelled your way.</p>
+          <p data-i18n="s3.p">Long dictations are never lost: models with a clip-length limit recognize long takes in pieces at your pauses. If recognition still returns empty, Live Preview text is used instead. Every take is saved to History with its recording. After you stop, recognition produces the final pasted text; preview words can change. English terms recognized correctly in a clean, aligned preview can be kept in the final text, and repetition loops are caught and re-decoded. The text goes to your cursor and private, searchable history. Spoken numbers turn into digits, and hotwords stay spelled your way.</p>
           <div class="sv"><span class="sv-text" aria-hidden="true"><span data-i18n="s3.demo">Budget is up 25%</span><span class="caret"></span></span></div>
         </div>
       </div>
@@ -820,7 +820,7 @@
       <div class="bento rise">
         <article class="card b5 rv">
           <h3 data-i18n="hw.h">Hotwords</h3>
-          <p data-i18n="hw.p">Teach it the words it keeps getting wrong: product names, acronyms, colleagues. Available with the Qwen3-ASR models.</p>
+          <p data-i18n="hw.p">Teach it the words it keeps getting wrong: product names, acronyms, colleagues. Available with Qwen3-ASR and Fun-ASR-Nano.</p>
           <div class="mock" aria-hidden="true">
             <div class="chips"><span class="chip">ThunderTalk</span><span class="chip">MLX</span><span class="chip">Qwen3</span><span class="chip">Parakeet</span><span class="chip">onnx</span><span class="chip add">+ <span style="margin-left:6px" data-i18n="hw.add">Add word</span></span></div>
             <div class="hw-pair"><span class="from">thunder talk</span><span class="arr">→</span><span>ThunderTalk</span></div>
@@ -1031,13 +1031,13 @@
       <div class="sec-head rv"><p class="kicker"><b>04</b><span data-i18n="md.kicker">Models</span></p></div>
       <div class="sec-title">
         <h2 id="md-h" class="rv" data-i18n="md.h2">Choose the engine that suits your Mac.</h2>
-        <p class="sec-p rv" data-i18n="md.p">Every speech model runs on-device. The app reads your hardware and marks the ones that fit, then downloads them with real progress. Only the dictation model stays resident; Studio, text-to-speech and translation models release after three idle minutes and reload when needed. Idle memory fell from about 9 GB to under 2 GB. AI Proofread and notes use your existing provider/model selected on the AI Proofread sidebar page; no AI model is bundled or downloaded for them.</p>
+        <p class="sec-p rv" data-i18n="md.p">Every speech model runs on-device. The app reads your hardware and marks the ones that fit, then downloads them with real progress. In v1.9.0, the Models page shows parameter counts, download sizes, CPU or Apple GPU requirements, language tags (including an explicit “No Chinese” where applicable) and features. Only the dictation model stays resident; Studio, text-to-speech and translation models release after three idle minutes and reload when needed. Idle memory fell from about 9 GB to under 2 GB. AI Proofread and notes use your existing provider/model selected on the AI Proofread sidebar page; no AI model is bundled or downloaded for them.</p>
       </div>
 
       <p class="sec-p rv" data-i18n="md.runtime">The v1.7.0 download measured about 592 MiB installed and 224 MB zipped (214 MiB), down from 961 MiB and a 330 MB zip in v1.6.4. Translation and IndexTTS share an optional 90 MB PyTorch component, downloaded by the app when needed into <code>~/.thundertalk/runtime/</code>. Restart once if prompted. Dictation, Studio transcription, VoxCPM2 and Kokoro do not need it. Model weights below are extra.</p>
 
       <div class="mt rv">
-        <div class="mt-head"><span data-i18n="md.c1">Model</span><span data-i18n="md.c2">Runs on</span><span data-i18n="md.c3">Size</span><span data-i18n="md.c4">Languages</span><span data-i18n="md.c5">Good for</span></div>
+        <div class="mt-head"><span data-i18n="md.c1">Model</span><span data-i18n="md.c2">Runs on</span><span data-i18n="md.c3">Download size</span><span data-i18n="md.c4">Languages</span><span data-i18n="md.c5">Good for</span></div>
 
         <div class="mt-group" data-i18n="md.g1">Speech recognition</div>
         <div class="mt-row"><span class="c-name">SenseVoice-Small</span><span class="c-run">CPU · ONNX</span><span class="c-size">241 MB</span><span class="c-lang" data-i18n="md.l5">5 languages</span><span class="c-note" data-i18n="md.n1">Smallest and quickest to start. No hotwords.</span></div>
@@ -1045,8 +1045,10 @@
         <div class="mt-row"><span class="c-name">Qwen3-ASR 0.6B <span class="tag green" data-i18n="md.def">Default</span></span><span class="c-run">GPU · MLX</span><span class="c-size">~1.9 GB</span><span class="c-lang" data-i18n="md.l52b">52 languages</span><span class="c-note" data-i18n="md.n3">The default on Apple Silicon. Supports hotwords.</span></div>
         <div class="mt-row"><span class="c-name">Qwen3-ASR 1.7B</span><span class="c-run">GPU · MLX</span><span class="c-size">~4.7 GB</span><span class="c-lang" data-i18n="md.l52c">52 languages</span><span class="c-note" data-i18n="md.n4">Harder accents and noisy audio. Wants 16 GB of RAM.</span></div>
         <div class="mt-row"><span class="c-name">MOSS-Transcribe-Diarize 0.9B <span class="tag blue">Studio</span></span><span class="c-run">GPU · MLX</span><span class="c-size">~1.8 GB</span><span class="c-lang" data-i18n="md.l50">50+ languages</span><span class="c-note" data-i18n="md.n5">Speaker labels and timestamps. Powers the multi-speaker mode.</span></div>
-        <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v3</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.l25">25 European languages</span><span class="c-note" data-i18n="md.n6">Punctuation and casing built in.</span></div>
-        <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v2</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.len">English</span><span class="c-note" data-i18n="md.n7">Fast English dictation on the CPU (about 50× real time on an M3 Max).</span></div>
+        <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v3</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.l25">25 European languages · No Chinese</span><span class="c-note" data-i18n="md.n6">Punctuation and casing built in.</span></div>
+        <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v2</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.len">English · No Chinese</span><span class="c-note" data-i18n="md.n7">Fast English dictation on the CPU (about 50× real time on an M3 Max).</span></div>
+
+        <div class="mt-row"><span class="c-name">Fun-ASR-Nano-2512 0.8B <span class="tag neutral" data-i18n="md.exp">Experimental</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">842 MB</span><span class="c-lang" data-i18n="md.lfun">Chinese, English, Japanese</span><span class="c-note" data-i18n="md.nfun">Supports hotwords. In our tests, roughly 25% faster on short sentences than Qwen3-ASR-0.6B, with similar accuracy and lower memory. About 20 s per pass; longer dictations are split at pauses. Can invent text on pure noise.</span></div>
 
         <div class="mt-group" data-i18n="md.g2">Studio</div>
         <div class="mt-row"><span class="c-name">VoxCPM2 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">3.2 GB</span><span class="c-lang" data-i18n="md.ltts">Chinese, English and more</span><span class="c-note" data-i18n="md.n8">Studio-quality 48 kHz speech and voice cloning, about real time. Apache-2.0.</span></div>
@@ -1148,7 +1150,7 @@
       "hero.lede": "ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就出现在光标处。识别全部在你自己的电脑上完成：无需账号，无需订阅，没有云端。",
       "hero.cta1": "下载 macOS 版", "hero.cta2": "查看源码",
       "hero.fine": "免费，MIT 协议。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
-      "hero.newtag": "v1.8.0 新增", "hero.newtxt": "AI 校对、完整文字改动、更省内存、更紧凑的工作室、精确恢复音量与持久权限",
+      "hero.newtag": "v1.9.0 新增", "hero.newtxt": "实验性 Fun-ASR-Nano、更清晰的模型页、长听写不再丢失、静音不再阻止听写",
       "scene.cap": "主页界面的交互式复刻，数据为示例。点击按键即可试一次听写。",
       "app.home": "主页", "app.models": "模型", "app.hotwords": "热词", "app.settings": "设置", "app.studio": "工作室", "app.about": "关于",
       "app.todictate": "开始听写", "app.words": "已听写字数", "app.speak": "发声时长", "app.saved": "预计节省时间", "app.sessions": "次数",
@@ -1157,9 +1159,9 @@
       "dic.kicker": "听写", "dic.h2": "一个按键，任意应用。",
       "dic.p": "ThunderTalk 常驻菜单栏。光标在哪里，文字就落在哪里：浏览器、编辑器、Slack、终端都可以。",
       "s1.h": "按下", "s1.p": "按一下快捷键开始，再按一下结束，默认是 Right ⌘。喜欢按住说话？在设置里把按键模式改成“长按”即可。", "s1.toggle": "切换", "s1.hold": "长按",
-      "s2.h": "说话", "s2.p": "语音模型在你的 Mac 芯片上识别，可以说中文、英文，或同一句里中英混说。实时预览在录音条中显示临时文字，在设置中默认开启；直译模式不显示。模型跟不上时，预览可能暂停或停止。可选的背景音频静音在第一次按键就生效，并精确恢复原来的音量，崩溃后也能恢复。",
-      "s3.h": "完成", "s3.p": "结束录音后，整段音频会重新识别并生成最终粘贴文字；预览文字可能变化。准确对齐的干净预览中识别对的英文术语可保留到最终文字，重复循环会被检测并重新识别。文字落在光标处，也存入本机可搜索的历史。口述数字转成阿拉伯数字，热词按你的写法保留。", "s3.demo": "预算涨了 25%",
-      "hw.h": "热词", "hw.p": "把它总是听错的词教给它：产品名、缩写、同事的名字。适用于 Qwen3-ASR 系列模型。", "hw.add": "添加词语",
+      "s2.h": "说话", "s2.p": "语音模型在你的 Mac 芯片上识别，可以说中文、英文，或同一句里中英混说。实时预览在录音条中显示临时文字，在设置中默认开启；直译模式不显示。模型跟不上时，预览可能暂停或停止。可选的背景音频静音不会阻止听写，在第一次按键就生效，并精确恢复原来的音量，崩溃后也能恢复。",
+      "s3.h": "完成", "s3.p": "长听写不再丢失：有单次时长限制的模型会在你的停顿处把长录音分段识别。若识别仍为空，就用实时预览文字兜底。每次录音及文字都会保存到历史记录。结束录音后，识别会生成最终粘贴文字；预览文字可能变化。准确对齐的干净预览中识别对的英文术语可保留到最终文字，重复循环会被检测并重新识别。文字落在光标处，也存入本机可搜索的历史。口述数字转成阿拉伯数字，热词按你的写法保留。", "s3.demo": "预算涨了 25%",
+      "hw.h": "热词", "hw.p": "把它总是听错的词教给它：产品名、缩写、同事的名字。适用于 Qwen3-ASR 和 Fun-ASR-Nano 模型。", "hw.add": "添加词语",
       "itn.h": "数字与 AI 校对", "itn.p": "逆文本规整会把口述的数字转成阿拉伯数字，中英文都支持，并保留《一千零一夜》这类书名不动。可选的 AI 校对理解你想表达的意思，只做最小修改，修正识别错的词，包括不合语境的同音词、名称和术语。不翻译、不改写、不改格式，也不改变语言或风格。", "itn.say": "你说的", "itn.get": "你得到的",
       "itn.cleanup": "在侧边栏打开“AI 校对”，选择已有且登录的 Codex、Claude Code、Gemini、Grok 或 Cursor CLI，已安装模型的 Ollama / LM Studio，Cherry Studio API 服务，或自定义 OpenAI 兼容 API。服务自动检测并显示状态；可选择模型及其支持的推理强度。不内置或下载 AI 模型。仅用于普通听写，不用于翻译。先粘贴原文，仅在没有输入、点击、滚动或切换应用时才替换。临时故障自动重试一次；失败会保留原文并说明原因。终端跳过替换。替换后浮动条显示完整文字，划掉原词并在旁边显示修正，每页三行。悬停可暂停，点击可关闭。",
       "tr.h": "说一种语言，贴出另一种", "tr.p": "“直译”模式结束录音后粘贴译文；以中文（普通话）为目标语言时，现在会输出中文，不再保留英文语音原文。“审阅”模式先转写，再由你选择替换或保留原文。通过 SeamlessM4T v2 支持 100 多种语言，约需 9 GB 磁盘空间，建议 16 GB 及以上内存。", "tr.replace": "替换", "tr.keep": "保留原文",
@@ -1202,12 +1204,13 @@
       "pv.d.a": "你的声音", "pv.d.a2": "麦克风", "pv.d.b": "语音模型", "pv.d.b2": "在你的芯片上运行", "pv.d.c": "光标处的文字", "pv.d.c2": "任意应用",
       "pv.d.cap": "音频进，文字出。没有网络这一跳。",
       "md.kicker": "模型", "md.h2": "选一个适合你 Mac 的引擎。",
-      "md.p": "所有语音模型都在本机运行。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。只有听写模型常驻；工作室、语音合成和翻译模型闲置三分钟后释放，需要时重新加载。闲置内存从约 9 GB 降到 2 GB 以下。AI 校对与纪要使用侧边栏“AI 校对”页面选择的已有服务和模型，不为它们内置或下载 AI 模型。",
+      "md.p": "所有语音模型都在本机运行。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。v1.9.0 的模型页显示参数量、下载大小、使用 CPU 还是需要 Apple GPU、语言标签（不支持中文时明确标注“不支持中文”）及功能。只有听写模型常驻；工作室、语音合成和翻译模型闲置三分钟后释放，需要时重新加载。闲置内存从约 9 GB 降到 2 GB 以下。AI 校对与纪要使用侧边栏“AI 校对”页面选择的已有服务和模型，不为它们内置或下载 AI 模型。",
       "md.runtime": "v1.7.0 下载版实测安装后约 592 MiB，zip 约 224 MB（214 MiB）；v1.6.4 分别为 961 MiB 和 330 MB。翻译与 IndexTTS 共用可选的 90 MB PyTorch 组件，由应用按需下载到 <code>~/.thundertalk/runtime/</code>，出现提示后重启一次。听写、工作室转写、VoxCPM2 和 Kokoro 无需它。下列模型权重另计。",
-      "md.c1": "模型", "md.c2": "运行于", "md.c3": "大小", "md.c4": "语言", "md.c5": "适合",
+      "md.c1": "模型", "md.c2": "运行于", "md.c3": "下载大小", "md.c4": "语言", "md.c5": "适合",
       "md.g1": "语音识别", "md.g2": "工作室", "md.g3": "翻译",
-      "md.l5": "5 种语言", "md.l52": "52 种语言", "md.l52b": "52 种语言", "md.l52c": "52 种语言", "md.l50": "50 多种语言", "md.l25": "25 种欧洲语言", "md.len": "英语", "md.l100": "100 多种语言",
+      "md.l5": "5 种语言", "md.l52": "52 种语言", "md.l52b": "52 种语言", "md.l52c": "52 种语言", "md.l50": "50 多种语言", "md.l25": "25 种欧洲语言 · 不支持中文", "md.len": "英语 · 不支持中文", "md.l100": "100 多种语言",
       "md.ltts": "中文、英文等", "md.lidx": "5 种语言", "md.lkok": "中文、英文", "md.def": "默认",
+      "md.exp": "实验性", "md.lfun": "中文、英文、日文", "md.nfun": "支持热词。我们测试中短句比 Qwen3-ASR-0.6B 快约 25%，准确率相当且更省内存。单次约处理 20 秒，长听写会在停顿处分段识别。在纯噪音上可能凭空输出文字。",
       "md.n1": "最小、启动最快。不支持热词。", "md.n2": "所有 Mac 都能跑，支持热词。", "md.n3": "Apple Silicon 上的默认选择，支持热词。",
       "md.n4": "更难的口音和嘈杂音频，建议 16 GB 内存。", "md.n5": "说话人标签和时间戳，驱动多说话人模式。",
       "md.n6": "自带标点和大小写。", "md.n7": "只用 CPU 的快速英语听写（M3 Max 上约为实时的 50 倍）。",
@@ -1239,7 +1242,7 @@
     };
     var DESC = {
       en: $('meta[name="description"]').getAttribute("content"),
-      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用，语音识别在你的 Mac 上运行。v1.8.0 新增独立的 AI 校对页面，理解原意、修正识别错词并显示完整文字改动；更省闲置内存，工作室可选模型、有历史记录、时间戳与纯文本即时切换，背景音频精确恢复，权限在更新后保留。"
+      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用，语音识别在你的 Mac 上运行。v1.9.0 新增实验性 Fun-ASR-Nano：支持中、英、日语的 0.8B CPU 模型；模型信息更清晰，长听写不再丢失，背景音频静音不会阻止听写。"
     };
 
     var i18nNodes = $$("[data-i18n]");
