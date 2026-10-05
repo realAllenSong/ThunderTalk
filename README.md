@@ -32,6 +32,11 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.9.1
+
+- **Faster, clearer first run:** the recommended model starts downloading from the first setup screen, so it downloads while you grant permissions. Permission steps say exactly what to click in System Settings, download problems (no connection, disk full) explain how to recover, and pressing the hotkey before a model is ready takes you to the Models page instead of doing nothing.
+- **Qwen3-ASR-0.6B ONNX is now recommended on every Mac:** about as accurate as the MLX version in our tests, faster, CPU-only and half the download (879 MB instead of 1.9 GB).
+
 ## New in v1.9.0
 
 - **Fun-ASR-Nano (experimental):** a new 0.8B CPU dictation model for Chinese, English and Japanese. In our tests it was about as accurate as Qwen3-ASR-0.6B, roughly 25% faster on short sentences and lighter on memory, with better English, Japanese and Chinese–English mixed speech.
