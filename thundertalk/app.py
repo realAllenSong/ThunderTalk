@@ -438,6 +438,7 @@ def main() -> None:
     # cloning references / generated speech back to catch mistakes ---
     window.studio_page.set_engine(pipe.asr)
     app.aboutToQuit.connect(window.studio_page.shutdown)
+    app.aboutToQuit.connect(window.models_page.shutdown_downloads)
     app.aboutToQuit.connect(lambda: pipe.translator and pipe.translator.unload())
 
     # --- Live preview: words so far, shown under the indicator while recording.
@@ -554,7 +555,7 @@ def main() -> None:
 
     from thundertalk.core import text_output
     proofread = window.proofread_page
-    QTimer.singleShot(1000, proofread.refresh)
+    QTimer.singleShot(1000, proofread.refresh_for_startup)
     text_output.activity.set_hotkey(settings.hotkey)
     text_output.activity.start()
     pipe._last_paste = None
@@ -667,6 +668,8 @@ def main() -> None:
 
         if text:
             overlay.hide_overlay()
+            if window.accept_onboarding_dictation(text):
+                return
             # Dispatch the recovered/final text after its history entry is durable.
             ticket = text_output.paste_dictation(text, not settings.get("save_to_clipboard"))
             if pipe._last_paste is not None:
@@ -929,9 +932,11 @@ def main() -> None:
             if not pipe.asr.is_loaded:
                 audio_diagnostic("hotkey_skipped", reason="model_unavailable",
                                  loading=state.model_status == st.MODEL_LOADING)
+                if state.model_status != st.MODEL_LOADING:
+                    window.show_model_setup()
                 overlay.show_error(
                     t("status.loading") if state.model_status == st.MODEL_LOADING
-                    else t("overlay.load_model")
+                    else t("onb.model.required")
                 )
                 return
             # A denied microphone doesn't raise — PortAudio just yields silence,
@@ -1261,7 +1266,7 @@ def main() -> None:
         if settings.active_model_id:
             settings.set("onboarding_done", True)
         else:
-            QTimer.singleShot(450, window.show_onboarding)
+            window.show_onboarding()
 
     # Track the last running version in settings (used previously
     # to show a post-update permission hint dialog; the dialog was

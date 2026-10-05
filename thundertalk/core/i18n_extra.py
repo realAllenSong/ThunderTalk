@@ -200,6 +200,7 @@ EXTRA: dict[str, dict[str, str]] = {
     },
 
     # ── Onboarding ──────────────────────────────────────────────────
+    "keys.right": {"en": "Right", "zh": "右侧"},
     "onb.step": {"en": "Step {n} of {total}", "zh": "第 {n} 步，共 {total} 步"},
     "onb.next": {"en": "Continue", "zh": "继续"},
     "onb.back": {"en": "Back", "zh": "返回"},
@@ -253,8 +254,8 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "macOS 无法重置此权限。请在系统设置中移除 ThunderTalk 后重新添加。",
     },
     "onb.perm.hint": {
-        "en": "A toggle can stay on after a grant expires. Ad-hoc builds tie permissions to the app version; stable local signing preserves future grants on this Mac. Developer ID signing is planned. Reset and grant again to repair an old grant; this clears only ThunderTalk’s permission.",
-        "zh": "授权失效后，开关仍可能显示开启。临时签名版本的权限与应用版本绑定；稳定的本地签名可保留此 Mac 上后续版本的授权。Developer ID 签名正在筹备。点击“重置并重新授权”可修复旧授权，仅清除 ThunderTalk 的对应权限。",
+        "en": "System Settings → Privacy & Security → Microphone / Accessibility: turn on ThunderTalk. If it is missing from Accessibility, click + and choose ThunderTalk.app in Applications. If a switch is already on but access is denied, turn it off and on, then quit and reopen ThunderTalk.",
+        "zh": "系统设置 → 隐私与安全性 → 麦克风 / 辅助功能：开启 ThunderTalk。辅助功能中没有此应用时，点击 +，选择“应用程序”中的 ThunderTalk.app。若开关已开启但仍无权限，请关闭后再开启，然后退出并重新打开 ThunderTalk。",
     },
 
     "onb.model.title": {"en": "Pick your voice model", "zh": "选择语音模型"},
@@ -265,18 +266,53 @@ EXTRA: dict[str, dict[str, str]] = {
     "onb.model.download": {"en": "Download {size}", "zh": "下载 {size}"},
     "onb.model.use": {"en": "Use this model", "zh": "使用此模型"},
     "onb.model.other": {"en": "Choose a different model…", "zh": "选择其他模型…"},
+    "onb.model.download_complete": {"en": "Download complete", "zh": "下载完成"},
     "onb.model.ready": {"en": "Model ready", "zh": "模型已就绪"},
     "onb.model.loading": {"en": "Getting it ready…", "zh": "正在准备…"},
     "onb.model.failed": {
-        "en": "Download failed — check your connection and try again.",
-        "zh": "下载失败，请检查网络后重试。",
+        "en": "Download interrupted. Check your connection, then Retry. Hugging Face keeps partial downloads for retry; archive downloads restart. Nothing is downloaded until you choose Retry.",
+        "zh": "下载中断。请检查网络后点击“重试”。Hugging Face 下载会保留部分文件以便继续；压缩包下载会重新开始。只有点击“重试”才会再次下载。",
     },
     "onb.model.retry": {"en": "Retry", "zh": "重试"},
 
+
+    "onb.start_download": {"en": "Download {size} & set up", "zh": "下载 {size} 并设置"},
+    "onb.welcome.download": {
+        "en": "Setup downloads {name} once. {detail} It can download while you grant permissions.",
+        "zh": "设置时将一次性下载 {name}。{detail} 授权期间可同时下载。",
+    },
+    "onb.model.estimate": {
+        "en": "About {size}; roughly {minutes}–{upper} min at 10 MB/s, depending on your connection.",
+        "zh": "约 {size}；以 10 MB/秒下载需约 {minutes}–{upper} 分钟，实际取决于网络。",
+    },
+    "onb.model.cpu": {
+        "en": "A smaller CPU model leaves room for other apps on low-memory or Intel Macs. 30 languages and 22 Chinese dialects. Switch any time in Models.",
+        "zh": "较小的 CPU 模型为低内存或 Intel Mac 上的其他应用留出空间。支持中英等 30 种语言和 22 种中文方言，可随时在“模型”页更换。",
+    },
+    "onb.model.gpu": {
+        "en": "Your Apple GPU and at least 16 GB of memory suit this fast 0.6B model. 30 languages and 22 Chinese dialects. Switch any time in Models.",
+        "zh": "你的 Apple GPU 和至少 16 GB 内存适合这款快速的 0.6B 模型。支持中英等 30 种语言和 22 种中文方言，可随时在“模型”页更换。",
+    },
+    "onb.model.disk_full": {
+        "en": "Not enough disk space. Free space on this Mac, then Retry. Allow extra space for temporary download files and extraction.",
+        "zh": "磁盘空间不足。请释放此 Mac 的空间后重试，并为临时下载文件和解压预留额外空间。",
+    },
+    "onb.model.load_failed": {
+        "en": "The model could not start. Close memory-heavy apps and Retry, or choose a different model. Downloaded files are kept.",
+        "zh": "模型无法启动。请关闭占用大量内存的应用后重试，或选择其他模型。已下载的文件会保留。",
+    },
+    "onb.model.required": {"en": "Choose Download or Activate in Models to start dictating.", "zh": "请在“模型”页选择下载或启用，即可开始听写。"},
+    "onb.perm.review": {"en": "Review permissions", "zh": "检查权限"},
+    "onb.perm.review_hint": {"en": "Go Back to Permissions and enable Microphone and Accessibility before trying the hotkey.", "zh": "请返回“权限”，开启麦克风和辅助功能后再试快捷键。"},
+    "onb.try.hold": {"en": "Hold {key}, say a sentence, then release. This box is already selected.", "zh": "按住 {key} 说一句话，再松开。输入框已选中。"},
+    "onb.try.ready": {"en": "Ready — say a short sentence with your hotkey.", "zh": "已就绪，请按快捷键说一句简短的话。"},
+    "onb.try.right_cmd": {"en": "The default Right ⌘ key is just to the right of Space.", "zh": "默认的右侧 ⌘ 键位于空格键右边。"},
+    "onb.try.later": {"en": "Try later", "zh": "稍后试用"},
+
     "onb.try.title": {"en": "Try it out", "zh": "试一试"},
     "onb.try.sub": {
-        "en": "Click the box, press {key}, say a sentence, then press {key} again.",
-        "zh": "点击输入框，按 {key}，说一句话，再按一次 {key}。",
+        "en": "Press {key}, say a sentence, then press {key} again. This box is already selected.",
+        "zh": "按 {key} 说一句话，再按一次 {key}。输入框已选中。",
     },
     "onb.try.placeholder": {"en": "Your words will appear here…", "zh": "你说的话会出现在这里…"},
     "onb.try.success": {"en": "It works — that's all there is to it.", "zh": "成功了——就是这么简单。"},

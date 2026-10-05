@@ -11,6 +11,7 @@ from typing import Optional
 from PySide6.QtCore import QPoint, QRectF, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
+    QApplication,
     QHBoxLayout,
     QLabel,
     QMainWindow,
@@ -472,6 +473,22 @@ class MainWindow(QMainWindow):
         ov.raise_()
         self._title_strip.raise_()
 
+    def accept_onboarding_dictation(self, text: str) -> bool:
+        if self._onboarding is None or not self._onboarding.isVisible():
+            return False
+        return self._onboarding.accept_dictation(text)
+
+    def show_model_setup(self) -> None:
+        """Give a hotkey press without a model an actionable destination."""
+        if self._onboarding is not None:
+            self._onboarding._go(2)
+        else:
+            self.navigate("models")
+        self.show()
+        self.raise_()
+        self.activateWindow()
+        self.show_toast(t("onb.model.required"), "info", 5000)
+
     # ── macOS frameless title bar ─────────────────────────────────
 
     def resizeEvent(self, ev) -> None:
@@ -495,7 +512,7 @@ class MainWindow(QMainWindow):
         macOS still owns shadow, rounded corners, and window management.
         """
         import sys
-        if sys.platform != "darwin":
+        if sys.platform != "darwin" or QApplication.platformName() != "cocoa":
             return
         try:
             import ctypes

@@ -70,3 +70,7 @@ ThunderTalk-v*-macOS.zip
 
 # Task V verification captures and isolated test data.
 /artifacts/models-v2/
+
+# Task Z first-run captures, benchmarks, and uncommitted final report.
+/artifacts/onboarding/
+/REPORT.md

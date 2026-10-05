@@ -698,12 +698,15 @@ class ModelsPage(QWidget):
     download_translator_requested = Signal()
     model_download_completed = Signal(str)           # model_id
     download_failed = Signal(str, str)               # model_id, message
+    download_cancelled = Signal(str)
+    hardware_detected = Signal(object)
     download_started = Signal(str)                   # model_id
     download_progress = Signal(str, int, str)        # model_id, percent (-1 unknown), message
 
     def __init__(self, settings=None) -> None:
         super().__init__()
         self._settings = settings
+        self.hardware = None
         self._active_model: Optional[str] = None
         self._translator_active: Optional[str] = None
         self._current_mode: str = self._compute_current_mode(settings)
@@ -759,6 +762,8 @@ class ModelsPage(QWidget):
 
     # ── hardware ──
     def _on_hw_detected(self, hw) -> None:
+        self.hardware = hw
+        self.hardware_detected.emit(hw)
         from thundertalk.core.asr import _IS_APPLE_SILICON
         self._hw_card.set_info(hw, bool(_IS_APPLE_SILICON))
 
@@ -857,9 +862,13 @@ class ModelsPage(QWidget):
         worker.error.connect(lambda msg, mid=model_id: self._download_error(mid, msg))
         worker.cancelled.connect(lambda mid=model_id: self._download_cancelled(mid))
         # Only drop our reference once the OS thread has fully exited.
-        worker.finished.connect(lambda mid=model_id: self._workers.pop(mid, None))
+        worker.finished.connect(lambda mid=model_id, w=worker: self._forget_download(mid, w))
         worker.start()
         self.download_started.emit(model_id)
+
+    def _forget_download(self, model_id: str, worker: DownloadWorker) -> None:
+        if self._workers.get(model_id) is worker:
+            self._workers.pop(model_id, None)
 
     # Public API used by the onboarding flow and app-level automation.
     def start_download(self, model_id: str) -> None:
@@ -907,6 +916,11 @@ class ModelsPage(QWidget):
         self.model_download_completed.emit(model_id)
 
     def _download_cancelled(self, model_id: str) -> None:
+        worker = self._workers.get(model_id)
+        if worker is not None:
+            worker.wait()
+            self._workers.pop(model_id, None)
+        self.download_cancelled.emit(model_id)
         row = self._find_row(model_id)
         if row:
             row.download_done(self._active_model, self._translator_active, self._current_mode)
@@ -921,6 +935,13 @@ class ModelsPage(QWidget):
     def cancel_all_downloads(self) -> None:
         for w in list(self._workers.values()):
             w.cancel()
+
+    def shutdown_downloads(self) -> None:
+        """Cancel transfers and keep QThreads alive until they finish on quit."""
+        self.cancel_all_downloads()
+        for worker in list(self._workers.values()):
+            worker.wait()
+        self.wait_background()
 
     def retranslate(self) -> None:
         for card in self._family_cards.values():

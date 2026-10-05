@@ -460,9 +460,12 @@ def hf_snapshot_dir(repo_id: str) -> Optional[Path]:
 def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) -> None:
     """snapshot_download with real byte progress and cancel support."""
     from huggingface_hub import snapshot_download
-    from huggingface_hub.utils import tqdm as hf_tqdm
+    from tqdm import tqdm as byte_tqdm
 
     kwargs: dict = {"repo_id": repo_id}
+    kwargs["max_workers"] = 2
+    if cancel is not None and cancel.is_set():
+        raise DownloadCancelled()
     if allow:
         kwargs["allow_patterns"] = allow
     if ignore:
@@ -477,9 +480,11 @@ def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) ->
     except Exception:
         pass  # unknown size → indeterminate progress
 
+    if cancel is not None and cancel.is_set():
+        raise DownloadCancelled()
     devnull = open(os.devnull, "w")
 
-    class _Progress(hf_tqdm):
+    class _Progress(byte_tqdm):
         """Receives the aggregated *bytes* bar (unit "B", total grows as file
         metadata arrives) plus the outer per-file bar (unit "it").
 
@@ -489,6 +494,9 @@ def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) ->
         """
 
         def __init__(self, *a, **kw):
+            # ASR disables HF console bars globally. Use plain tqdm so that
+            # setting cannot disable byte accounting in our GUI progress hook.
+            kw.pop("name", None)
             kw["disable"] = False
             kw["file"] = devnull
             self._tt_bytes = kw.get("unit") == "B"
@@ -559,6 +567,15 @@ def download_model(
     size is unknown (show an indeterminate bar). ``cancel`` is a
     ``threading.Event``; setting it aborts with ``DownloadCancelled``.
     """
+    if cancel is not None and cancel.is_set():
+        raise DownloadCancelled()
+    if not is_downloaded(info.id):
+        import shutil
+        import errno
+        # HF may retain an incomplete blob; archives also need extraction room.
+        reserve = info.size_mb * 1_000_000 * (3 if ".tar." in info.download_url else 1.2)
+        if shutil.disk_usage(Path.home()).free < reserve:
+            raise OSError(errno.ENOSPC, "Not enough disk space (disk full)")
     if info.backend == "seamless-torch":
         from thundertalk.core.runtime import SIZE_MB, install, needed
         cb = progress_cb

@@ -28,7 +28,7 @@ def permissions(qapp, isolated_home, monkeypatch):
     parent.close()
 
 
-@pytest.mark.parametrize("mic, reset", [("denied", True), ("not_determined", True),
+@pytest.mark.parametrize("mic, reset", [("denied", True), ("not_determined", False),
                                         ("restricted", False), ("unknown", False), ("authorized", False)])
 def test_reset_is_visible_only_for_recoverable_microphone_states(permissions, mic, reset):
     overlay, state, status = permissions
@@ -67,6 +67,9 @@ def test_explicit_reset_actions_and_failure_message(permissions, monkeypatch, ki
     method = "reset_microphone" if kind == "mic" else "reset_accessibility"
     monkeypatch.setattr(pu, method, lambda: calls.append(method) or False)
     row = overlay._mic_row if kind == "mic" else overlay._acc_row
+    if kind == "acc":
+        overlay._acc_prompted = True
+        overlay._refresh_permissions()
     row._reset_btn.click()
     assert calls == [method]
     assert overlay._perm_hint.text() == t("onb.perm.reset_failed")

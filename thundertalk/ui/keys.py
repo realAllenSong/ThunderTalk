@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+from thundertalk.core.i18n import t
+
 _DISPLAY_NAMES: dict[str, str] = {
     "space": "Space", "esc": "Esc", "tab": "Tab",
     "caps_lock": "Caps Lock", "backspace": "⌫", "delete": "⌦",
@@ -17,6 +19,8 @@ _DISPLAY_NAMES: dict[str, str] = {
 
 def display_key(key_name: str) -> str:
     low = key_name.lower().strip()
+    if low in ("cmd_r", "alt_r", "ctrl_r", "shift_r"):
+        return t("keys.right") + " " + _DISPLAY_NAMES[low].split(" ", 1)[1]
     if low in _DISPLAY_NAMES:
         return _DISPLAY_NAMES[low]
     if low.startswith("f") and low[1:].isdigit():

@@ -340,6 +340,11 @@ class ProofreadPage(QWidget):
         self._cli_timer.stop()
         self._server_timer.stop()
 
+    def refresh_for_startup(self) -> None:
+        """First dictation needs no provider CLIs when proofreading is off."""
+        if self.settings.get("llm_rewrite_enabled"):
+            self.refresh()
+
     def refresh(self) -> None:
         self.detect_clis()
         self.detect_servers()
