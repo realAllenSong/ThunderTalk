@@ -32,6 +32,13 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.9.0
+
+- **Fun-ASR-Nano (experimental):** a new 0.8B CPU dictation model for Chinese, English and Japanese. In our tests it was about as accurate as Qwen3-ASR-0.6B, roughly 25% faster on short sentences and lighter on memory, with better English, Japanese and Chinese–English mixed speech.
+- **Clearer Models page:** every model shows its parameter count, download size, whether it runs on the CPU or needs the Apple GPU, its languages as tags (with an explicit "No Chinese" where that applies) and its features.
+- **Long dictations are never lost:** models with a clip-length limit now recognize long takes in pieces at your pauses. If recognition still comes back empty, the live preview text is used instead, and every take is saved to History with its recording.
+- **Fixed:** "Could not mute speakers" could stop dictation from starting. Muting background audio now never blocks dictation.
+
 ## New in v1.8.0
 
 - **AI Proofread page:** pick a provider and model in the sidebar; providers are detected automatically with their status. Proofreading works out what you meant and fixes misrecognized words, including real words that don't fit (homophones, names, jargon), without rewriting you. Changes show over your full text, struck out beside the correction, in readable pages.
@@ -84,7 +91,7 @@ The speech engines are one-time downloads. After that, file transcription and sp
 
 - One global hotkey that works in any app. The default is Right ⌘; choose Toggle (press to start, press to stop) or Hold in Settings, and change the key or combination there too.
 - **Live Preview:** read provisional text in the floating recording bar while you speak. **Settings ▸ Live Preview** is on by default. Words can change as you continue; stopping triggers full-clip recognition for the final pasted text. Repeating preview windows are discarded; a conservative merge can recover Latin terms where a clean preview aligns with a Chinese span in the final text. Preview is hidden in Direct translation mode, and may pause or stop for a recording if the model cannot keep up.
-- Several speech models: Qwen3-ASR 0.6B and 1.7B, SenseVoice-Small, NVIDIA Parakeet-TDT, and MOSS-Transcribe-Diarize. The app reads your hardware and recommends one.
+- Several speech models: Qwen3-ASR 0.6B and 1.7B, Fun-ASR-Nano, SenseVoice-Small, NVIDIA Parakeet-TDT, and MOSS-Transcribe-Diarize. The app reads your hardware and recommends one.
 - Chinese, English and Chinese-English mixed in one sentence. The interface itself is available in English and 中文.
 - Hotwords: teach it product names, acronyms and people it keeps getting wrong (Qwen3-ASR models).
 - Inverse text normalisation: spoken numbers become digits, in English and Chinese ("twenty five" becomes 25, "三百五十二" becomes 352).
@@ -142,8 +149,11 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 | MOSS-Transcribe-Diarize 0.9B | ~1.8 GB | MLX (Metal GPU) | 50+ | ★★★★★ | No |
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25 (European) | ★★★★★ | No |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | English | ★★★★★ | No |
+| Fun-ASR-Nano-2512 (experimental) | 842 MB | ONNX (CPU) | Chinese, English, Japanese | ★★★★★ | Yes |
 
 > **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), first place in the 2nd MLC-SLM Challenge at INTERSPEECH 2026) is a multi-speaker model. In dictation it pastes clean text (there is an optional S01:/S02: speaker-label toggle on its model card), and it powers Studio's Label speakers option, with speaker labels and timestamps for recordings up to about 90 minutes in a single pass.
+>
+> **Fun-ASR-Nano** (Alibaba Tongyi, 0.8B) runs on the CPU. On public test sets on an M3 Max it scored 7.2 % Chinese CER (Qwen3-ASR-0.6B ONNX: 6.8 %), 5.5 % English WER (7.6 %) and 15.4 % on Chinese–English mixed speech (16.4 %), and decoded 2–10 s sentences in about 0.45 s versus 0.61 s. It can invent text on pure noise. It handles about 20 s per pass, so longer dictations are recognized in pieces at your pauses.
 >
 > **Parakeet-TDT** (NVIDIA) runs on the CPU, with punctuation and casing built in. On an M3 Max it transcribes about 50 times faster than real time (RTF 0.019), roughly 4 times faster than Qwen3-ASR ONNX.
 
