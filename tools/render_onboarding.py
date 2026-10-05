@@ -12,6 +12,7 @@ import sys
 import time
 from pathlib import Path
 
+from PySide6.QtCore import QEvent
 from PySide6.QtWidgets import QApplication, QLabel, QPushButton
 
 from thundertalk.core import i18n, platform_utils
@@ -29,6 +30,8 @@ def main():
     parser = argparse.ArgumentParser()
     parser.add_argument("output", type=Path)
     args = parser.parse_args()
+    if not Path.home().name.startswith("fresh-home-"):
+        raise SystemExit("Use a throwaway HOME named fresh-home-*; this tool resets its synthetic history.")
     args.output.mkdir(parents=True, exist_ok=True)
     platform_utils.check_microphone = lambda: "not_determined"
     platform_utils.check_accessibility = lambda: False
@@ -44,7 +47,9 @@ def main():
         i18n.LANG = language
         for width, height in ((1120, 780), (1200, 800)):
             settings, state = Settings(), AppState()
-            window = MainWindow(settings, HistoryStore(), state)
+            history = HistoryStore()
+            history.clear()
+            window = MainWindow(settings, history, state)
             window.resize(width, height)
             window.show()
             window.show_onboarding()
@@ -69,7 +74,10 @@ def main():
                 overlay.accept_dictation("Hello, ThunderTalk. 你好，语音输入。")
                 app.processEvents()
                 window.grab().save(str(args.output / f"{language}-{width}x{height}-success.png"))
+            history.add("Hello, ThunderTalk. 你好，语音输入。", 3.6, 637, overlay._rec.id)
+            window.home_page.refresh()
             overlay._finish(True)
+            app.sendPostedEvents(None, QEvent.Type.DeferredDelete)
             app.processEvents()
             window.grab().save(str(args.output / f"{language}-{width}x{height}-main.png"))
             window.hide()
