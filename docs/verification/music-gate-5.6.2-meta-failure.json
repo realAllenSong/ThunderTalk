@@ -1,0 +1,32 @@
+{
+  "config": {
+    "model": "turbo",
+    "transformers": "5.6.2",
+    "mlx": false,
+    "planner": false,
+    "duration": 10,
+    "steps": 8,
+    "output": "/Users/songallen/Desktop/tt-music/artifacts/music-spike/turbo-5.6.2-mps"
+  },
+  "events": [
+    {
+      "kind": "import",
+      "time": 322106.776436875
+    },
+    {
+      "kind": "load",
+      "time": 322108.507101541,
+      "transformers": "5.6.2",
+      "torch": "2.11.0"
+    },
+    {
+      "kind": "error",
+      "time": 322109.279517,
+      "detail": "Traceback (most recent call last):\n  File \"/Users/songallen/Desktop/tt-music/tools/music-spike/run.py\", line 67, in serve\n    raise RuntimeError(status)\nRuntimeError: Error initializing model: Failed to load model with attention implementations ['sdpa', 'eager']: Tensor.item() cannot be called on meta tensors\n\nTraceback:\nTraceback (most recent call last):\n  File \"/Users/songallen/Desktop/tt-music/third_party/acestep/core/generation/handler/init_service_loader.py\", line 179, in _load_main_model_from_checkpoint\n    self.model = AceStepConditionGenerationModel.from_pretrained(\n                 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/songallen/Desktop/ThunderTalk/.venv/lib/python3.12/site-packages/transformers/modeling_utils.py\", line 4166, in from_pretrained\n    model = cls(config, *model_args, **model_kwargs)\n            ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/songallen/Desktop/tt-music/third_party/acestep/models/turbo/modeling_acestep_v15_turbo.py\", line 1620, in __init__\n    self.tokenizer = AceStepAudioTokenizer(encoder_config)  # Audio tokenizer\n                     ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/songallen/Desktop/tt-music/third_party/acestep/models/turbo/modeling_acestep_v15_turbo.py\", line 1200, in __init__\n    self.quantizer = ResidualFSQ(\n                     ^^^^^^^^^^^^\n  File \"/Users/songallen/Library/Caches/ThunderTalk-bench/venv-music/lib/python3.12/site-packages/vector_quantize_pytorch/residual_fsq.py\", line 84, in __init__\n    assert (levels_tensor > 1).all()\n           ^^^^^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/songallen/Desktop/ThunderTalk/.venv/lib/python3.12/site-packages/torch/utils/_device.py\", line 116, in __torch_function__\n    return func(*args, **kwargs)\n           ^^^^^^^^^^^^^^^^^^^^^\n  File \"/Users/songallen/Desktop/ThunderTalk/.venv/lib/python3.12/site-packages/torch/_meta_registrations.py\", line 8086, in meta_local_scalar_dense\n    raise RuntimeError(\"Tensor.item() cannot be called on meta tensors\")\nRuntimeError: Tensor.item() cannot be called on meta tensors\n\nThe above exception was the direct cause of the following exception:\n\nTraceback (most recent call last):\n  File \"/Users/songallen/Desktop/tt-music/third_party/acestep/core/generation/handler/init_service_orchestrator.py\", line 159, in initialize_service\n    self._load_main_model_from_checkpoint(\n  File \"/Users/songallen/Desktop/tt-music/third_party/acestep/core/generation/handler/init_service_loader.py\", line 192, in _load_main_model_from_checkpoint\n    raise RuntimeError(\nRuntimeError: Failed to load model with attention implementations ['sdpa', 'eager']: Tensor.item() cannot be called on meta tensors\n\n"
+    }
+  ],
+  "wall_seconds": 2.9194311660248786,
+  "peak_worker_footprint_bytes": 311135296,
+  "minimum_free_percent": 84,
+  "exitcode": 0
+}
