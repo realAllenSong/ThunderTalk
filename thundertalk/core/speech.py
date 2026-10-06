@@ -105,10 +105,19 @@ def all_voices() -> list[BackendVoice]:
 def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], None]] = None,
                      cancel: Optional[threading.Event] = None) -> None:
     """Fetch everything ``info`` needs, with byte progress and cancel."""
+    import errno
+    import shutil
     from thundertalk.core import models
     from thundertalk.core.runtime import SIZE_MB, install, needed
-    component_mb = SIZE_MB if info.id == "indextts" and needed() else 0
+    for c in info.components:
+        if c != "torch":
+            raise ValueError(c)
+    component_mb = SIZE_MB if info.components and needed() else 0
     total = max(1, sum(d.size_mb for d in info.downloads) + component_mb)
+    pending_mb = component_mb + sum(d.size_mb for d in info.downloads if not download_ready(d))
+    # HF may retain an incomplete blob next to the finished file.
+    if pending_mb and shutil.disk_usage(Path.home()).free < pending_mb * 1_000_000 * 1.2:
+        raise OSError(errno.ENOSPC, "Not enough disk space (disk full)")
     done = 0
 
     def sub(d: Download):
@@ -122,7 +131,7 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
                     progress(int((base + d.size_mb * pct / 100) * 100 / total), msg)
         return cb
 
-    if info.id == "indextts":
+    if info.components:
         install(sub(Download(kind="component", source="", size_mb=component_mb)), cancel)
         done += component_mb
     for d in info.downloads:
@@ -130,6 +139,8 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
             raise models.DownloadCancelled()
         if d.kind == "hf":
             models.download_repo(d.source, None, sub(d), cancel)
+        elif d.kind == "hf-dir":
+            _download_hf_dir(d, sub(d), cancel)
         elif d.kind in ("tar", "file"):
             _download_archive(d, sub(d), cancel)
         else:
@@ -171,6 +182,37 @@ def _download_archive(d: Download, cb, cancel) -> None:
     finally:
         shutil.rmtree(staging, ignore_errors=True)
         tmp.unlink(missing_ok=True)
+
+
+_HF_DIR_DONE = ".complete"
+
+
+def download_ready(d: Download) -> bool:
+    from thundertalk.core import models
+    target = models.get_models_dir() / d.dest
+    if d.kind == "hf":
+        return models._hf_cache_has(d.source)
+    if d.kind == "hf-dir":
+        return (target / _HF_DIR_DONE).is_file()
+    if d.kind == "file":
+        return target.is_file()
+    return target.is_dir() and any(target.iterdir())
+
+
+def _download_hf_dir(d: Download, cb, cancel) -> None:
+    """Copy the allowed files of a repo into ~/.thundertalk/models/<dest>.
+
+    An explicit allow-list keeps repo code (``*.py``) off the disk; the marker
+    is written only after every file arrived, so an interrupted copy resumes."""
+    from thundertalk.core import models
+    if not d.dest or not d.allow or any(g.endswith(".py") or g in ("*", "**") for g in d.allow):
+        raise ValueError(f"hf-dir needs a dest and a code-free allow list: {d.source}")
+    if download_ready(d):
+        return
+    target = models.get_models_dir() / d.dest
+    target.mkdir(parents=True, exist_ok=True)
+    models._hf_snapshot(d.source, target, list(d.allow), None, cb, cancel)
+    (target / _HF_DIR_DONE).write_text(d.source)
 
 
 # ── engine ───────────────────────────────────────────────────────────────

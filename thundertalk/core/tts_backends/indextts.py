@@ -56,6 +56,7 @@ class IndexTTSBackend(TtsBackend):
         needs_gpu=True,
         downloads=(Download(kind="hf", source=REPO, size_mb=1720),
                    Download(kind="hf", source=W2V_REPO, size_mb=2320)),
+        components=("torch",),
     )
     sample_rate = SR
 

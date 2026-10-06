@@ -12,6 +12,11 @@ MOSS_LANGUAGES = tuple("zh en ja ko fr de it pt es ru th vi fil ur tr".split())
 VOXCPM_LANGUAGES = tuple(
     "zh en ja ko ar my da nl fi fr de el he hi id it km lo ms no pl pt ru es sw sv fil th tr vi".split()
 )
+# ACE-Step 1.5 ``constants.VALID_LANGUAGES`` (vocal language), without "unknown".
+ACESTEP_LANGUAGES = tuple(
+    "zh en ja ko yue ar az bg bn ca cs da de el es fa fi fr he hi hr ht hu id is it la lt ms ne nl no"
+    " pa pl pt ro ru sa sk sr sv sw ta te th tl tr uk ur vi".split()
+)
 
 # Source speech languages (text targets have different coverage).
 SEAMLESS_LANGUAGES = (

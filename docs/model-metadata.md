@@ -20,6 +20,7 @@ performance claim. The default dictation and cloning engines are unchanged.
 | [Kokoro](https://huggingface.co/hexgrad/Kokoro-82M), [shipped v1.1 export](https://github.com/k2-fsa/sherpa-onnx/releases/tag/tts-models) | 82M; this v1.1 multi-lang archive exposes Chinese and English speakers. Other Kokoro checkpoints have different coverage. |
 | [VoxCPM2](https://huggingface.co/openbmb/VoxCPM2) | 2B; 30 named languages. MLX port; cloning supported. |
 | [IndexTTS-2.5](https://huggingface.co/IndexTeam/IndexTTS-2.5) | Approximately 0.8B **GPT backbone**, explicitly labeled as such rather than a whole-engine count; Chinese, English, Japanese, Spanish, Arabic. |
+| [ACE-Step 1.5](https://github.com/ace-step/ACE-Step-1.5) (commit `ca1e85f`) | Music, not speech. XL SFT 4B / turbo 2B DiT plus an optional 1.7B planner LM. Vocal-language tags are the 50 codes of `acestep/constants.py` `VALID_LANGUAGES` (its `unknown` entry dropped); singing quality per language is not published. |
 
 Parakeet raw token start timestamps are preserved in `AsrResult`
 and counted in the ASR selftest; Studio continues to use sentence spans.

@@ -15,11 +15,13 @@ class Download:
     ``kind`` is "hf" (a HuggingFace repo fetched into the shared HF cache with
     ``models.download_repo``) or "tar" (an archive extracted under
     ``~/.thundertalk/models/<dest>``) or "file" (a single file saved to
-    ``~/.thundertalk/models/<dest>``)."""
+    ``~/.thundertalk/models/<dest>``) or "hf-dir" (the files of a HuggingFace
+    repo matching ``allow`` copied into ``~/.thundertalk/models/<dest>``)."""
     kind: str
     source: str                 # repo id or URL
-    dest: str = ""              # folder / file name under ~/.thundertalk/models for tar/file
+    dest: str = ""              # folder / file name under ~/.thundertalk/models for tar/file/hf-dir
     size_mb: int = 0
+    allow: tuple[str, ...] = () # hf-dir globs; required, and never code (*.py)
 
 
 @dataclass(frozen=True)
@@ -48,6 +50,7 @@ class BackendInfo:
     speed: str = "unmeasured"
     backbone_params: bool = False
     downloads: tuple[Download, ...] = field(default_factory=tuple)
+    components: tuple[str, ...] = ()    # optional runtime components installed first, e.g. ("torch",)
 
     @property
     def size_mb(self) -> int:
