@@ -51,6 +51,8 @@ def serve(connection, config):
         sys.path.insert(0, str(WORKTREE / 'third_party'))
         if config['transformers'] == '4.57.6':
             sys.path.insert(0, str(BENCH / 'venv-music/transformers457'))
+        if config['vae_fp16']:
+            os.environ['ACESTEP_MLX_VAE_FP16'] = '1'
 
         def event(kind, **data):
             connection.send({'kind': kind, 'time': time.monotonic(), **data})
@@ -85,6 +87,19 @@ def serve(connection, config):
             device='mps', dtype=torch.bfloat16, use_mlx_dit=config['mlx'], compile_model=False)
         if not ok:
             raise RuntimeError(status)
+        if config['vae_chunk']:
+            handler.mlx_vae_chunk_size = config['vae_chunk']
+        decode = handler._decode_generate_music_pred_latents
+
+        def traced_decode(*args, **kwargs):
+            event('vae_decode')
+            result = decode(*args, **kwargs)
+            event('vae_done')
+            return result
+
+        handler._decode_generate_music_pred_latents = traced_decode
+        event('loaded', mlx_dit=bool(handler.use_mlx_dit), mlx_vae=bool(handler.use_mlx_vae),
+              vae_chunk=handler.mlx_vae_chunk_size, dtype=str(handler.dtype))
         if config['mlx'] and not handler.use_mlx_dit:
             raise RuntimeError('MLX initialization fell back to torch')
         rotary_buffers = {}
@@ -142,8 +157,14 @@ def main():
     parser.add_argument('--vocal', action='store_true')
     parser.add_argument('--duration', type=int, default=10)
     parser.add_argument('--steps', type=int, default=8)
+    parser.add_argument('--vae-chunk', type=int, default=0, help='MLX VAE tile size in latent frames (min 192)')
+    parser.add_argument('--vae-fp16', action='store_true')
     args = vars(parser.parse_args())
     label = f"{args['model']}-{args['transformers']}-{'mlx' if args['mlx'] else 'mps'}-{'vocal' if args['vocal'] else 'instrumental'}"
+    if args['vae_chunk']:
+        label += f"-vae{args['vae_chunk']}"
+    if args['vae_fp16']:
+        label += '-vaefp16'
     output = WORKTREE / 'artifacts/music-spike' / label
     output.mkdir(parents=True, exist_ok=True)
     args['output'] = str(output)
@@ -160,6 +181,8 @@ def main():
     peak = 0
     minimum = 100
     low = 0
+    phase = 'spawn'
+    phase_peaks = {}
     process.start()
     child.close()
     try:
@@ -170,9 +193,18 @@ def main():
                 except EOFError:
                     break
                 last_event = time.monotonic()
+                event['footprint_gb'] = round(footprint(process.pid) / 1e9, 2)
+                if event['kind'] not in ('step', 'tokens'):
+                    phase = event['kind']
+                elif event['kind'] == 'step':
+                    phase = 'diffusion'
+                else:
+                    phase = 'planning'
                 events.append(event)
                 print(json.dumps(event), flush=True)
-            peak = max(peak, footprint(process.pid))
+            sample = footprint(process.pid)
+            peak = max(peak, sample)
+            phase_peaks[phase] = max(phase_peaks.get(phase, 0), round(sample / 1e9, 2))
             free = free_percent()
             minimum = min(minimum, free)
             low = low + 1 if free < 15 else 0
@@ -189,7 +221,8 @@ def main():
             process.join(3)
         parent.close()
     report = {'config': args, 'events': events, 'wall_seconds': time.monotonic() - start,
-              'peak_worker_footprint_bytes': peak, 'minimum_free_percent': minimum, 'exitcode': process.exitcode}
+              'peak_worker_footprint_bytes': peak, 'phase_peak_gb': phase_peaks,
+              'minimum_free_percent': minimum, 'exitcode': process.exitcode}
     process.close()
     if events and events[-1]['kind'] == 'done':
         loudness = subprocess.run(['ffmpeg', '-hide_banner', '-i', events[-1]['path'], '-af', 'ebur128=peak=true',
