@@ -44,9 +44,37 @@ def test_explicit_missing_identity_fails_instead_of_silently_changing_signer(sig
     assert signing == []
 
 
-def test_developer_identity_and_renewal_requirement_override(signing, monkeypatch):
-    monkeypatch.setattr(build, "signing_identities", lambda: {"Developer ID Application: Example": "B" * 40})
-    monkeypatch.setenv("SIGN_IDENTITY", "Developer ID Application: Example")
-    monkeypatch.setenv("SIGN_REQUIREMENT", 'designated => identifier "com.thundertalk.app" and anchor apple generic')
-    build.sign_app()
-    assert signing[1][signing[1].index("--requirements") + 1].endswith("anchor apple generic")
+def _fake_app(tmp_path):
+    app = tmp_path / "Test.app"
+    (app / "Contents/MacOS").mkdir(parents=True)
+    (app / "Contents/MacOS/ThunderTalk").write_bytes(b"\xcf\xfa\xed\xfe main")
+    lib = app / "Contents/Frameworks/lib/libx.dylib"
+    lib.parent.mkdir(parents=True)
+    lib.write_bytes(b"\xcf\xfa\xed\xfe lib")
+    (app / "Contents/Frameworks/Qt.framework").mkdir()
+    (app / "Contents/Resources").mkdir()
+    (app / "Contents/Resources/data.txt").write_text("not code")
+    return app
+
+
+def test_developer_id_is_preferred_and_signs_inside_out_with_timestamps(signing, monkeypatch, tmp_path):
+    app = _fake_app(tmp_path)
+    dev = "Developer ID Application: Example (TEAM123456)"
+    monkeypatch.setattr(build, "signing_identities", lambda: {dev: "B" * 40, build.LOCAL_IDENTITY: "A" * 40})
+    assert build.sign_app(str(app)) == dev
+    signs = [c for c in signing if c[:2] == ["codesign", "--force"]]
+    targets = [c[-1] for c in signs]
+    assert targets == [str(app / "Contents/Frameworks/lib/libx.dylib"),
+                       str(app / "Contents/Frameworks/Qt.framework"), str(app)]
+    assert all("--timestamp" in c and "runtime" in c and "--deep" not in c for c in signs)
+    assert all("--requirements" not in c for c in signs)  # Apple's team-based requirement
+    assert "--entitlements" in signs[-1] and "--entitlements" not in signs[0]
+    assert ["codesign", "--verify", "--deep", "--strict", str(app)] in signing
+
+
+def test_notarize_uses_keychain_profile_then_staples(signing, monkeypatch, tmp_path):
+    monkeypatch.setattr(build.os, "remove", lambda path: None)
+    build.notarize("Test.app")
+    submit = next(c for c in signing if c[:3] == ["xcrun", "notarytool", "submit"])
+    assert submit[submit.index("--keychain-profile") + 1] == build.NOTARY_PROFILE and "--wait" in submit
+    assert ["xcrun", "stapler", "staple", "Test.app"] in signing

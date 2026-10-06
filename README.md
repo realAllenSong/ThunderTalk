@@ -32,6 +32,11 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.9.2
+
+- **Signed with an Apple Developer ID and notarized by Apple:** macOS opens ThunderTalk without the "unidentified developer" warning, with no right-click → Open or System Settings exception needed.
+- **One last permission prompt:** because the signature changed, macOS asks for Microphone and Accessibility once more after this update. From now on they stay granted across updates, including future certificate renewals.
+
 ## New in v1.9.1
 
 - **Faster, clearer first run:** the recommended model starts downloading from the first setup screen, so it downloads while you grant permissions. Permission steps say exactly what to click in System Settings, download problems (no connection, disk full) explain how to recover, and pressing the hotkey before a model is ready takes you to the Models page instead of doing nothing.
@@ -131,7 +136,7 @@ brew install --cask realallensong/tap/thundertalk
 
 Or download the latest **ThunderTalk.app** from [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), move it to your Applications folder and open it. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
 
-ThunderTalk is not yet notarised with an Apple Developer ID, so macOS shows a warning the first time you open a browser download. See [First launch: "ThunderTalk can't be opened"](#first-launch-thundertalk-cant-be-opened) below; it takes about ten seconds.
+ThunderTalk is signed with an Apple Developer ID and notarised by Apple, so it opens like any other downloaded app.
 
 ## Using ThunderTalk
 
@@ -293,27 +298,11 @@ ThunderTalk needs **Accessibility** permission to read global key events. Choose
 
 ### First launch: "ThunderTalk can't be opened"
 
-Because the app is not notarised, Gatekeeper warns about browser downloads. To allow it:
-
-1. Drag `ThunderTalk.app` into `/Applications`.
-2. Try to open it once; macOS refuses and shows the warning.
-3. Open **System Settings, Privacy & Security**, scroll near the bottom and click **Open Anyway** next to the "ThunderTalk was blocked" line.
-4. Confirm in the next dialog.
-
-Or in one command:
-
-```bash
-xattr -dr com.apple.quarantine /Applications/ThunderTalk.app
-open /Applications/ThunderTalk.app
-```
-
-macOS remembers the choice. Updates that arrive through the in-app updater strip the quarantine attribute automatically, so only the first browser download needs this.
+Releases from v1.9.2 on are notarised, so this warning should not appear. If you still see it (for example with an older download), install the latest release, or open **System Settings, Privacy & Security** and click **Open Anyway** next to the "ThunderTalk was blocked" line.
 
 ### After an update, the hotkey or microphone stops working
 
-Ad-hoc signing gives every build a different code-directory hash. macOS can retain an “on” toggle for the old hash while denying the updated app. In onboarding or Home, choose **Reset and grant again**, then grant the microphone prompt or enable Accessibility in the settings pane. This clears only the selected ThunderTalk permission; no other app’s grants are affected. Status is polled about once per second while the permission page is visible.
-
-Local builds now reuse a signing certificate when available, preserving future grants across builds made with that certificate. Switching from an old ad-hoc build requires granting access once to the new identity. Developer ID signing and notarization are still pending; a self-signed local identity does not remove Gatekeeper warnings.
+macOS ties these permissions to the app's signature. From v1.9.2 on, releases are signed with a Developer ID, so grants survive updates and certificate renewals; updating from v1.9.1 or earlier asks once more. If the hotkey or microphone still stops working after an update, choose **Reset and grant again** in onboarding or Home, then grant the microphone prompt or enable Accessibility in the settings pane. This clears only the selected ThunderTalk permission; no other app's grants are affected. Status is polled about once per second while the permission page is visible.
 
 ### What is the minimum machine?
 
@@ -345,7 +334,7 @@ Run `tools/make_signing_identity.sh` once on the build Mac. It creates **Thunder
 
 The encrypted keychain and its random password in `~/.thundertalk/signing/keychain-password` are private, local files; never commit or distribute either. The script preserves existing keychain search entries, grants `/usr/bin/codesign` access only to the dedicated keychain, deletes scratch keys on exit, and reuses the identity rather than replacing it. Keep a secure backup of the keychain/password: replacing the certificate invalidates existing permission grants. `build_macos.py` unlocks only this dedicated keychain and automatically uses the local identity when present, with an explicit requirement for `com.thundertalk.app` and the certificate leaf. It verifies the whole bundle after signing. When the identity is absent it retains ad-hoc signing; `SIGN_IDENTITY=-` forces that fallback.
 
-For Developer ID, set `SIGN_IDENTITY` to your certificate name/hash and supply the existing `APPLE_ID`, `APPLE_APP_PASSWORD`, and `TEAM_ID` notarization variables. `SIGN_REQUIREMENT` can supply a reviewed team-based requirement when migrating/renewing that certificate. Do not share the local private key with end users.
+`build_macos.py` prefers a **Developer ID Application** certificate when one is in the keychain: it signs every nested binary with the hardened runtime and a secure timestamp and keeps Apple's team-based designated requirement, so permissions survive certificate renewals. With `NOTARIZE=1` it submits the app using the notarytool keychain profile `ThunderTalk-notary` (override with `NOTARY_PROFILE`; create it once with `xcrun notarytool store-credentials`), staples the ticket and checks Gatekeeper. `SIGN_IDENTITY` picks a specific identity. Do not share any private key with end users.
 
 Thread regression checks (no permission changes):
 

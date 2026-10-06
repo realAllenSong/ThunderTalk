@@ -32,6 +32,11 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
+## v1.9.2 新功能
+
+- **使用 Apple 开发者 ID 签名并经过 Apple 公证：**macOS 打开 ThunderTalk 时不再提示“无法验证开发者”，无需右键打开或在系统设置中放行。
+- **最后一次权限请求：**由于签名更换，本次更新后 macOS 会再请求一次麦克风和辅助功能权限。之后的更新（包括以后证书续期）都会保留权限。
+
 ## v1.9.1 新功能
 
 - **首次设置更快更清楚：**在第一个设置页就开始下载推荐模型，你授权权限的同时在后台下载。权限步骤写明要在系统设置里点哪里；下载出问题（没网、硬盘满）会说明怎么解决；模型还没准备好时按快捷键，会直接打开“模型”页，而不是没反应。
@@ -131,7 +136,7 @@ brew install --cask realallensong/tap/thundertalk
 
 或者从 [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest) 下载最新的 **ThunderTalk.app**，移到“应用程序”文件夹后打开。首次启动时按提示授予“麦克风”和“辅助功能”权限（“辅助功能”让 ThunderTalk 能替你把文字输入到光标处）。
 
-ThunderTalk 尚未使用 Apple Developer ID 进行公证，所以从浏览器下载后首次打开时 macOS 会给出警告。请看下文 [首次打开提示“无法打开 / 无法验证开发者”](#首次打开提示无法打开--无法验证开发者)，大约十秒就能搞定。
+ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后可以像其他应用一样直接打开。
 
 ## 使用方法
 
@@ -282,27 +287,11 @@ ThunderTalk 需要“辅助功能”权限来读取全局键盘事件。在首�
 
 ### 首次打开提示“无法打开 / 无法验证开发者”
 
-因为尚未公证，Gatekeeper 会对浏览器下载的应用给出警告。允许打开的方式：
-
-1. 把 `ThunderTalk.app` 拖进 `/Applications`。
-2. 双击打开一次，macOS 会拒绝并弹出警告。
-3. 打开“系统设置 → 隐私与安全性”，往下翻到底部，点“ThunderTalk 已被阻止使用”那一行旁边的“仍要打开”。
-4. 在二次确认弹窗里再点“打开”。
-
-或者用一条命令：
-
-```bash
-xattr -dr com.apple.quarantine /Applications/ThunderTalk.app
-open /Applications/ThunderTalk.app
-```
-
-macOS 会记住你的选择。通过应用内更新升级会自动移除 quarantine 属性，所以只有最初那一次浏览器下载需要这个步骤。
+从 v1.9.2 起的版本都经过公证，正常不会出现这个提示。如果仍然看到（例如用的是旧版下载），请安装最新版，或打开“系统设置 → 隐私与安全性”，点“ThunderTalk 已被阻止使用”旁边的“仍要打开”。
 
 ### 自动更新后快捷键 / 麦克风失灵
 
-临时签名的每次构建都有不同的代码目录哈希。macOS 可能保留旧哈希的开启状态，却拒绝新版本。请在首次引导或首页点击“重置并重新授权”，允许麦克风请求或在打开的系统设置中开启辅助功能。仅重置 ThunderTalk 的对应权限，不影响其他应用；权限页面可见时约每秒自动检查一次。
-
-本地构建现可复用稳定签名证书，同一证书签名的后续版本可以保留授权。从旧临时签名切换到新证书时仍需授权一次。Developer ID 签名与公证尚在筹备；本地自签名不会消除 Gatekeeper 提示。
+macOS 把这些权限和应用的签名绑定。从 v1.9.2 起，正式版使用开发者 ID 签名，更新和证书续期后权限都会保留；从 v1.9.1 或更早版本更新时会再请求一次。如果更新后快捷键或麦克风仍然失灵，请在首次引导或首页点击“重置并重新授权”，允许麦克风请求或在打开的系统设置中开启辅助功能。仅重置 ThunderTalk 的对应权限，不影响其他应用；权限页面可见时约每秒自动检查一次。
 
 ### 最低能跑什么配置？
 
@@ -360,7 +349,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 
 钥匙串与随机密码文件 `~/.thundertalk/signing/keychain-password` 仅存于本机，严禁提交或分发。脚本保留现有钥匙串搜索列表，仅配置专用钥匙串的签名工具访问权，退出时删除临时私钥，并复用已有身份。请安全备份这两个文件，替换证书会使旧授权失效。构建脚本自动解锁此专用钥匙串，签名要求明确绑定 `com.thundertalk.app` 与证书；身份缺失时保留临时签名回退。`SIGN_IDENTITY=-` 可强制临时签名。
 
-未来可通过 `SIGN_IDENTITY`、`APPLE_ID`、`APPLE_APP_PASSWORD` 与 `TEAM_ID` 切换 Developer ID 与公证；证书续期/迁移时可用 `SIGN_REQUIREMENT` 配置经审核的团队签名要求。不要把本地私钥交给用户。
+`build_macos.py` 在钥匙串中有 **Developer ID Application** 证书时优先使用它：为每个内嵌二进制文件加上强化运行时与安全时间戳签名，并保留 Apple 基于团队的签名要求，证书续期后权限不会丢失。设置 `NOTARIZE=1` 时，会用 notarytool 钥匙串配置 `ThunderTalk-notary`（可用 `NOTARY_PROFILE` 覆盖；先用 `xcrun notarytool store-credentials` 创建一次）提交公证、附加公证票据并检查 Gatekeeper。`SIGN_IDENTITY` 可指定签名身份。不要把任何私钥交给用户。
 
 线程回归工具 `tools/check_threaded_studio.py` 使用公开哔哩哔哩音频，经过 Studio 的真实链接工作线程路径，测试听写模型、模型选择器、MOSS 说话人标注，以及推理期间的另线程听写和 TTS 预加载。共享 Mac 上须通过 `lock.py gpu` 执行，并设置 `PYTHONPATH=$PWD`、`HF_HUB_OFFLINE=1` 与 `TRANSFORMERS_OFFLINE=1`。`--preload` 测试预加载，`--case picker` 单独验证另一模型，`--streams-only` 验证惰性 CPU 数组跨线程转换。内存保护可能回退到听写模型，输出会记录实际模型。`--streams-only --baseline-streams` 会故意重现旧版原生崩溃，仅用于诊断。
 
