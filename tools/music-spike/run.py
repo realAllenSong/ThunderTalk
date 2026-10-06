@@ -14,7 +14,8 @@ import time
 import traceback
 
 WORKTREE = Path(__file__).resolve().parents[2]
-BENCH = Path.home() / "Library/Caches/ThunderTalk-bench"
+# gate.sh points HOME at a throwaway directory, so the bench root must not derive from it.
+BENCH = Path(os.environ.get('TT_BENCH') or Path.home() / "Library/Caches/ThunderTalk-bench")
 LYRICS = """[Verse]
 Morning light upon the water
 Footsteps on an empty road
@@ -50,7 +51,10 @@ def serve(connection, config):
         os.chdir(config['output'])
         sys.path.insert(0, str(WORKTREE / 'third_party'))
         if config['transformers'] == '4.57.6':
-            sys.path.insert(0, str(BENCH / 'venv-music/transformers457'))
+            fallback = BENCH / 'venv-music/transformers457'
+            if not fallback.is_dir():
+                raise RuntimeError(f'Missing transformers fallback: {fallback}')
+            sys.path.insert(0, str(fallback))
         if config['vae_fp16']:
             os.environ['ACESTEP_MLX_VAE_FP16'] = '1'
 
