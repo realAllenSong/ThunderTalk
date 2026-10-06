@@ -580,3 +580,16 @@ Total ≈ 10–12 working days.
    action), or save takes straight into `~/Music/ThunderTalk`?
 9. **Lyric check:** automatic after every job (planned), or only on request?
 10. **Linux:** confirm music is out of scope for v1.
+
+## Decisions (approved by the user, 2026-10-06)
+
+1. **Artist names:** warn and offer *Remove*; never block Generate.
+2. **Memory thresholds:** start only at ≥ 40 % free, warn below 25 %, abort cleanly below 15 % (with the reason shown).
+3. **XL checkpoint:** convert the F32 checkpoint to bf16 once after download and keep only the bf16 copy.
+4. **Planner model:** v1 offers only the 1.7B LM.
+5. **Song length on XL:** default cap 300 s; up to 600 s selectable, with the time estimate shown before Generate.
+6. **Default takes:** 2.
+7. **16 GB Macs:** offer the 2B turbo, labelled experimental; hide Compose below 16 GB.
+8. **Takes location:** `~/Music/ThunderTalk`.
+9. **Lyric check:** runs automatically after every job with vocals.
+10. **Linux:** out of scope for v1 (macOS only).
