@@ -660,3 +660,18 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
   This avoids transient pressure without changing precision, inference
   configuration, or memory thresholds. A fresh 60 s XL/planner/50-step run
   completes; final numbers and remaining runs belong in the Phase 6 report.
+
+- Dictation benchmark correction: the earlier probe raised priority only at
+  recognition, whereas main's instant-capture path raises it at key press and
+  holds it during recording. The final synthetic five-second probe reproduces
+  that capture window and measures release-to-text plus press-to-text latency.
+  Immediate-recognition stress results are retained, not substituted for final
+  measurements: step hooks +54.9%, SIGSTOP +46.4%, layer hooks +48.3%, smaller
+  block hooks +32.8%. SIGSTOP safely resumed Metal but did not meet the limit;
+  omit this fallback and use opt-in attention/MLP and VAE-tile checkpoints.
+  This extends the original hook granularity without changing precision or
+  memory safeguards. Final evidence: docs/verification/2026-10-music-perf.md.
+
+- The corrected first-release stress check still measured 0.448 s idle versus 0.706 s concurrent (+57.6%), despite the worker yielding during recording. Native-process pause and finer GPU boundaries do not guarantee the +30% release-latency criterion on this shared 36 GiB M3 Max. Complete A–D with this miss explicitly reported; keep dictation-first yielding, preserve all memory guards, and do not alter ASR settings or slow the idle baseline to manufacture a pass. This is a recorded acceptance deviation, not a claim that the limit passed.
+
+- A fresh long XL attempt with finer hooks aborted on native critical pressure at decode (29% free; minimum 25%; no WAV). Retaining the planner throughout diffusion/decode is no longer justified. Release the completed planner at step 0 and reload it before planning each subsequent take. This keeps the already-generated codes and 1.7B-only decision, but reduces the live heap during diffusion/VAE. The initial model-load peak still counts for admission; no smaller memory claim until measured. This supersedes the Phase-0 integrated-residency choice in response to real long-run pressure. A two-take lifecycle regression verifies that every take is actually planned before the planner is released.

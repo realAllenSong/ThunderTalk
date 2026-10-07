@@ -226,11 +226,15 @@ def _load(request: MusicRequest, send, gate):
     handler._decode_generate_music_pred_latents = gated_decode
     lm = LLMHandler()
     if request.planner:
-        status, ok = lm.initialize(str(Path(request.project_root) / "checkpoints"), PLANNER_FOLDER,
-                                   backend="mlx", device="mps")
-        if not ok:
-            raise _LoadError(status)
+        _initialize_planner(request, lm)
     return handler, lm
+
+
+def _initialize_planner(request, lm):
+    status, ok = lm.initialize(str(Path(request.project_root) / "checkpoints"), PLANNER_FOLDER,
+                               backend="mlx", device="mps")
+    if not ok:
+        raise _LoadError(status)
 
 
 class _LoadError(RuntimeError):
@@ -257,7 +261,14 @@ def _run(request: MusicRequest, send, go, cancel) -> None:
     _hooks.TIMEOUT_S = timeout_s(request.estimate_s)
 
     def on_step(done, total):
+        nonlocal planner_loaded
         gate()
+        if done == 0 and planner_loaded:
+            # Codes are complete before diffusion; the planner is no longer used.
+            # Release its heap before the DiT/VAE working set grows.
+            lm.unload()
+            mx.clear_cache()
+            planner_loaded = False
         send(("step", done, total))
 
     def on_tokens(done, total):
@@ -266,11 +277,16 @@ def _run(request: MusicRequest, send, go, cancel) -> None:
 
     _hooks.on_step = on_step
     _hooks.on_tokens = on_tokens
+    _hooks.on_gpu_unit = gate
     handler, lm = _load(request, send, gate)
+    planner_loaded = request.planner
     from acestep.inference import GenerationConfig, generate_music
     for index, seed in enumerate(request.seeds):
         gate()
         send(("phase", "plan" if request.planner else "compose", index))
+        if request.planner and not planner_loaded:
+            _initialize_planner(request, lm)
+            planner_loaded = True
         start = time.monotonic()
         result = generate_music(handler, lm, _params(request, seed),
                                 GenerationConfig(batch_size=1, use_random_seed=False, seeds=[seed],

@@ -9,6 +9,7 @@ from __future__ import annotations
 import argparse
 import json
 import os
+import signal
 import subprocess
 import threading
 import time
@@ -97,6 +98,7 @@ def main():
     ap.add_argument('--model', choices=['xl', 'turbo'], required=True)
     ap.add_argument('--song', action='store_true')
     ap.add_argument('--dictation', action='store_true')
+    ap.add_argument('--max-dictation-ratio', type=float, help='cancel early if the concurrent probe exceeds this ratio')
     ap.add_argument('--models-root', type=Path, default=Path.home() / 'Library/Caches/ThunderTalk-bench/music-models')
     ap.add_argument('--output', type=Path, required=True)
     a = ap.parse_args()
@@ -112,6 +114,9 @@ def main():
                            vocal_language='zh' if a.song else 'unknown', duration=170 if a.song else 60,
                            steps=m.steps, planner=True, seeds=[42], estimate_s=music.estimate_take_s(m, 170 if a.song else 60, True))
     process = MusicProcess()
+    cancel = threading.Event()
+    signal.signal(signal.SIGINT, lambda *args: cancel.set())
+    signal.signal(signal.SIGTERM, lambda *args: cancel.set())
     stop = threading.Event()
     first_step = threading.Event()
     peak, minimum, events, latencies = [0], [100.0], [], []
@@ -144,11 +149,23 @@ def main():
         engine.set_language('en')
 
         def recognise(label):
-            t0 = time.monotonic()
+            press = time.monotonic()
             with _dictation():
+                # app._start_capture raises priority at key press, before recording.
+                # Simulate the five-second synthetic capture, then time release-to-text.
+                capture_s = len(x) / 16000
+                time.sleep(capture_s)
+                t0 = time.monotonic()
                 result = engine.recognize(x, 16000)
             latencies.append({'when': label, 'wall_s': time.monotonic() - t0,
+                              'capture_s': capture_s, 'press_to_text_s': time.monotonic() - press,
                               'inference_ms': result.inference_ms, 'text': result.text})
+            (a.output / 'dictation.json').write_text(json.dumps(latencies, indent=2) + '\n')
+            print(f"Dictation {label}: {latencies[-1]['wall_s']:.3f}s", flush=True)
+            if label == 'during_generation' and a.max_dictation_ratio is not None:
+                if latencies[-1]['wall_s'] > a.max_dictation_ratio * latencies[0]['wall_s']:
+                    print('Concurrent dictation exceeded the acceptance ratio; cancelling this attempt', flush=True)
+                    cancel.set()
 
         recognise('idle')
 
@@ -166,7 +183,7 @@ def main():
     outcome = 'error'
     error = ''
     try:
-        outcome = process.run(request, on_event, threading.Event(), ram_need_mb=music.ram_need_mb(m, True))
+        outcome = process.run(request, on_event, cancel, ram_need_mb=music.ram_need_mb(m, True))
     except Exception as exc:
         error = str(exc)
         print(error, flush=True)

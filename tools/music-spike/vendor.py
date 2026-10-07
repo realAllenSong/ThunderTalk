@@ -139,7 +139,8 @@ def main():
     (TARGET / "_hooks.py").write_text('"""ThunderTalk worker hooks; default callbacks do nothing."""\n'
                                      'TIMEOUT_S = 1800\n\n'
                                      'def on_step(done, total):\n    pass\n\n'
-                                     'def on_tokens(done, total):\n    pass\n')
+                                     'def on_tokens(done, total):\n    pass\n'
+                                     '\n# Opt-in materialization at small GPU boundaries; inference outside the worker stays unchanged.\non_gpu_unit = None\n\ndef gpu_unit(value, evaluate):\n    if on_gpu_unit is not None:\n        evaluate(value)\n        on_gpu_unit()\n')
     path = TARGET / "core/generation/handler/generate_music_execute.py"
     replace(path, 'import os\n', 'from acestep import _hooks\n')
     replace(path, '_DEFAULT_GENERATION_TIMEOUT = int(os.environ.get("ACESTEP_GENERATION_TIMEOUT", "600"))',
@@ -167,6 +168,16 @@ def main():
             raise ValueError(f'Expected one FSQ constructor in {path}, found {count}')
         path.write_text(text)
         replace(path, INIT_WEIGHTS_UPSTREAM, INIT_WEIGHTS_PATCHED)
+    for line in ['        hidden_states = hidden_states + attn_out * gate_msa\n',
+                 '        hidden_states = hidden_states + cross_out\n',
+                 '        hidden_states = hidden_states + ff_out * c_gate_msa\n']:
+        replace(TARGET / "models/mlx/dit_model.py", line,
+                line + '        from acestep import _hooks\n        _hooks.gpu_unit(hidden_states, mx.eval)\n')
+    replace(TARGET / "core/generation/handler/generate_music_execute.py",
+            '            except Exception as exc:\n', '            except BaseException as exc:\n')
+    replace(TARGET / "core/generation/handler/mlx_vae_decode_native.py", '            mx.eval(audio_chunk)\n',
+            '            mx.eval(audio_chunk)\n            from acestep import _hooks\n'
+            '            _hooks.gpu_unit(audio_chunk, mx.eval)\n')
     for path in TARGET.rglob('*.py'):
         path.write_text('# ruff: noqa  # Pinned upstream source; local integration is linted separately.\n' + path.read_text())
     print(f"Vendored {len(files)} files from {revision}")

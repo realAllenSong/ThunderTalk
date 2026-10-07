@@ -185,3 +185,47 @@ def test_mlx_load_defers_only_temporary_decoder_placement(monkeypatch, tmp_path,
                                              use_flash_attention=False, compile_model=False, quantization=None)
     assert model.moves == [expected, 'bf16']
     assert silence.moves == ['mps', 'bf16']
+
+
+def test_gpu_unit_completes_before_yielding_and_is_opt_in():
+    hooks = load_file('_hooks.py')
+    events = []
+    value = object()
+    def evaluate(tensor):
+        events.append(('completed', tensor))
+    hooks.gpu_unit(value, evaluate)
+    assert not events
+    hooks.on_gpu_unit = lambda: events.append('checkpoint')
+    hooks.gpu_unit(value, evaluate)
+    assert events == [('completed', value), 'checkpoint']
+
+
+@pytest.mark.parametrize('error', [KeyboardInterrupt('cancelled'), ValueError('failed')])
+def test_service_thread_propagates_cancellation_and_errors(monkeypatch, error):
+    # Cancellation inherits BaseException so upstream wrappers cannot turn it
+    # into an ordinary failure. The service thread must carry it to its caller.
+    import inspect
+    import sys
+    import threading
+    from collections import defaultdict
+    from types import SimpleNamespace
+
+    monkeypatch.setitem(sys.modules, 'acestep', SimpleNamespace(_hooks=SimpleNamespace(TIMEOUT_S=1)))
+    monkeypatch.setitem(sys.modules, 'loguru', SimpleNamespace(logger=SimpleNamespace()))
+    module = load_file('core/generation/handler/generate_music_execute.py')
+
+    class Handler(module.GenerateMusicExecuteMixin):
+        def service_generate(self, **kwargs):
+            raise error
+
+        def _start_diffusion_progress_estimator(self, **kwargs):
+            return threading.Event(), None
+
+    run = Handler()._run_generate_music_service_with_progress
+    arguments = {name: None for name, p in inspect.signature(run).parameters.items()
+                 if p.default is inspect.Parameter.empty}
+    arguments.update(progress=lambda *args, **kwargs: None, actual_batch_size=1, inference_steps=1,
+                     service_inputs=defaultdict(list))
+    with pytest.raises(type(error)) as caught:
+        run(**arguments)
+    assert caught.value is error

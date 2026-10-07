@@ -52,7 +52,7 @@ class Connection:
 def fake(monkeypatch, tmp_path):
     state = types.SimpleNamespace(init=None, lm_init=None, calls=[], cache_limit=None, cwd=None,
                                   timeout_at_import=None, fail_load=None, during_step=None,
-                                  align_calls=[], align_result="ok")
+                                  align_calls=[], align_result="ok", lm_lifecycle=[])
     hooks = types.ModuleType("acestep._hooks")
     hooks.TIMEOUT_S = 1800
     hooks.on_step = lambda done, total: None
@@ -84,9 +84,17 @@ def fake(monkeypatch, tmp_path):
                 stamp(text="hello", start=1.25, end=3.5, confidence=0.9)]}
 
     class LLM:
+        llm_initialized = False
+
         def initialize(self, *args, **kwargs):
             state.lm_init = (args, kwargs)
+            state.lm_lifecycle.append("load")
+            self.llm_initialized = True
             return "ok", True
+
+        def unload(self):
+            state.lm_lifecycle.append("unload")
+            self.llm_initialized = False
 
     class Config:
         def __init__(self, **kwargs):
@@ -100,11 +108,15 @@ def fake(monkeypatch, tmp_path):
         state.cwd = os.getcwd()
         state.calls.append((params, config, save_dir))
         if params.thinking:
+            assert lm.llm_initialized
+            state.lm_lifecycle.append("plan")
             hooks.on_tokens(16, 160)
         for k in range(params.inference_steps):
             if state.during_step:
                 state.during_step(k)
             hooks.on_step(k, params.inference_steps)
+            if params.thinking:
+                assert not lm.llm_initialized
         handler._decode_generate_music_pred_latents(None)
         frames = int(params.duration * 48000)
         audio = np.stack([np.full(frames, 0.25), np.full(frames, -0.25)])
@@ -129,6 +141,7 @@ def fake(monkeypatch, tmp_path):
     mlx = types.ModuleType("mlx")
     core = types.ModuleType("mlx.core")
     core.set_cache_limit = lambda n: setattr(state, "cache_limit", n)
+    core.clear_cache = lambda: None
     mlx.core = core
     for name, mod in {"acestep": pkg, "acestep._hooks": hooks, "acestep.handler": handler_mod,
                       "acestep.llm_inference": llm_mod, "acestep.inference": inference,
@@ -341,3 +354,10 @@ def test_repaint_params_and_source_metadata(fake, tmp_path):
     assert params.task_type == 'repaint' and params.src_audio == '/original/take.wav'
     assert params.repainting_start == 2.0 and params.repainting_end == 5.0
     assert params.repaint_mode == 'balanced' and not params.thinking
+
+
+def test_planner_is_released_before_diffusion_and_reloaded_for_every_take(fake, tmp_path):
+    events = _serve(_request(tmp_path, planner=True))
+    assert events[-1] == ("done",)
+    assert fake.lm_lifecycle == ["load", "plan", "unload", "load", "plan", "unload"]
+    assert len([e for e in events if e[0] == "take"]) == 2

@@ -26,6 +26,11 @@ Local inference patches:
 - Offline checkpoint precheck and path resolver; missing weights cannot trigger
   upstream downloads. The LM uses `trust_remote_code=False`.
 - Diffusion-step and MLX token-block hooks; a worker-controlled timeout budget.
+- Opt-in completion/checkpoints after MLX attention/MLP blocks and VAE tiles,
+  so dictation priority can stop dispatch before a whole diffusion step finishes.
+  Outside the music worker these hooks do not materialize arrays.
+- The timeout service thread hands BaseException cancellations back to its caller
+  instead of losing them and returning a missing-output error.
 - MLX initialization keeps the temporary torch decoder on CPU until conversion
   removes it, then places the remaining torch components on MPS. A failed MLX
   initialization preserves the complete torch fallback.

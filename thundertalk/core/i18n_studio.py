@@ -509,7 +509,7 @@ STUDIO: dict[str, dict[str, str]] = {
     'studio.compose.check.finished': {"en": 'Lyric check ready', "zh": '歌词检查已完成'},
     'studio.compose.check.retry': {"en": 'Retry lyric check', "zh": '重新检查歌词'},
     'studio.compose.check.download': {"en": 'Download Qwen3-ASR · 879 MB', "zh": '下载 Qwen3-ASR · 879 MB'},
-    'studio.compose.check.range_advice': {"en": 'Choose the range in seconds. The rest of this take uses its saved latents.', "zh": '请以秒为单位选择范围，其余部分使用这一版保存的潜变量。'},
+    'studio.compose.check.range_advice': {"en": 'Choose the range in seconds. The transitions at the edges are blended.', "zh": '请以秒为单位选择范围，边缘会平滑衔接。'},
     'studio.compose.check.start': {"en": 'Start (s)', "zh": '开始（秒）'},
     'studio.compose.check.end': {"en": 'End (s)', "zh": '结束（秒）'},
 

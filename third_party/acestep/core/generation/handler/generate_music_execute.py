@@ -123,7 +123,7 @@ class GenerateMusicExecuteMixin:
                     flow_edit_n_max=flow_edit_n_max,
                     flow_edit_n_avg=flow_edit_n_avg,
                 )
-            except Exception as exc:
+            except BaseException as exc:
                 _error["exc"] = exc
 
         try:

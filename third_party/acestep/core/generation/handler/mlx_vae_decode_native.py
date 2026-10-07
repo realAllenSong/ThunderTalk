@@ -108,6 +108,8 @@ class MlxVaeDecodeNativeMixin:
             chunk = z_nlc[:, win_start:win_end, :]
             audio_chunk = decode_fn(chunk)
             mx.eval(audio_chunk)
+            from acestep import _hooks
+            _hooks.gpu_unit(audio_chunk, mx.eval)
             if upsample_factor is None:
                 upsample_factor = audio_chunk.shape[1] / chunk.shape[1]
 

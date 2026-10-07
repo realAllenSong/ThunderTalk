@@ -336,6 +336,8 @@ class MLXDiTLayer(nn.Module):
             attention_mask=self_attn_mask,
         )
         hidden_states = hidden_states + attn_out * gate_msa
+        from acestep import _hooks
+        _hooks.gpu_unit(hidden_states, mx.eval)
 
         # Step 2: Cross-attention
         normed = self.cross_attn_norm(hidden_states)
@@ -347,12 +349,16 @@ class MLXDiTLayer(nn.Module):
             use_cache=use_cache,
         )
         hidden_states = hidden_states + cross_out
+        from acestep import _hooks
+        _hooks.gpu_unit(hidden_states, mx.eval)
 
         # Step 3: MLP with AdaLN
         normed = self.mlp_norm(hidden_states)
         normed = normed * (1.0 + c_scale_msa) + c_shift_msa
         ff_out = self.mlp(normed)
         hidden_states = hidden_states + ff_out * c_gate_msa
+        from acestep import _hooks
+        _hooks.gpu_unit(hidden_states, mx.eval)
 
         return hidden_states
 
