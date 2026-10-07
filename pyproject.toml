@@ -16,6 +16,8 @@ dependencies = [
     "pyqtdarktheme>=0.1.7",
     # Studio ▸ Transcribe from a link. Sites change often: keep this recent.
     "yt-dlp>=2026.8.19",
+    # Studio ▸ Compose lyric check: tone-less pinyin so homophones count as sung.
+    "pypinyin>=0.55",
 ]
 
 [project.optional-dependencies]
