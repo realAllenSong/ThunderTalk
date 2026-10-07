@@ -1,9 +1,11 @@
 # Studio ▸ Compose: songs and background music with ACE-Step 1.5 (plan)
 
-Status: **plan only** (phase 1). Nothing below is implemented yet. Every number
-is labelled as *verified* (measured by the user on this Mac on 2026-10-05),
-*checked* (read from the upstream source or the Hugging Face API while writing
-this plan) or *estimate* (to be replaced by a measurement before release).
+Status: **implemented through Phase 6, with a recorded acceptance deviation**.
+Concurrent dictation release-to-text exceeded the +30% limit; see
+[the measured performance report](../verification/2026-10-music-perf.md).
+The original planning sections below retain their dated *verified*, *checked*
+and *estimate* labels. Final measurements and implementation deviations are
+recorded in the verification report and the continuation notes below.
 
 ## Why
 

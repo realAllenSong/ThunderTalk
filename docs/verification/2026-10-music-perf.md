@@ -1,9 +1,10 @@
 # Music Phase 6 — M3 Max verification (2026-10-07)
 
 This report uses completed fresh runs, not overwritten retry files. Hardware:
-Apple M3 Max, 14 CPU cores, 36 GiB unified memory, macOS arm64. All model runs
-and heavy downloads in this continuation use `lock.py gpu`; builds and the
-full macOS pytest use `lock.py build`. No concurrent own model/build
+Apple M3 Max, 14 CPU cores, 36 GiB unified memory, macOS arm64. All final model runs
+and heavy downloads use `lock.py gpu`; builds use `lock.py build` and the
+final isolated full macOS pytest uses `lock.py gpu`. Earlier lock deviations
+are documented below. No concurrent own model/build
 jobs, no memory-guard bypass. Main 4fe46b2 was merged before the final build;
 `app.py` retains main's immediate capture before audio muting.
 
@@ -235,27 +236,31 @@ was used in any check.
 
 ## Final frozen app
 
-Built from **d7cc203** with `lock.py build -- env -u NOTARIZE PYTHONPATH=$PWD`
-`HF_HOME=<isolated build cache> HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`
-`<shared python> build_macos.py`. Developer ID signing and deep/strict codesign
-verification passed. No notarization, push, tag or release.
-`dist/ThunderTalk.app` contains the vendored data-tree code and pypinyin;
-weights remain outside the bundle.
+Final code build: **7c652a6**. Command: `lock.py build -- env -u NOTARIZE`
+`PYTHONPATH=$PWD HF_HOME=<isolated build cache> HF_HUB_OFFLINE=1`
+`TRANSFORMERS_OFFLINE=1 <shared python> build_macos.py`. Developer ID signing
+and deep/strict codesign verification passed. No notarization, push, tag or
+release. `dist/ThunderTalk.app` includes vendored ACE-Step source and pypinyin;
+weights remain outside the bundle. Later delivery commit changes docs only.
 
-`lock.py gpu -- bash tools/music-spike/package-check.sh base turbo xl`:
-**runtime/music closure, runtime/torch, audio, Qwen ASR, turbo music, XL music
-all passed**, using isolated HOME and the bench model root. ASR returned the
-exact original Samantha probe (402 ms). Music selftests: 10 s instrumental,
-no planner, turbo 8 steps / XL 12; both 48 kHz stereo, finite/non-silent,
-peak ≤1, children exited. These smoke tests do not replace the full A–D runs.
+`lock.py gpu -- bash tools/music-spike/package-check.sh base turbo xl mps`:
+**runtime/music closure, runtime/torch, audio, Qwen ASR, turbo MLX, XL MLX,
+turbo MPS all passed**, using isolated HOME and the bench model root. ASR
+returned the exact original Samantha probe (412 ms). Music selftests: 10 s
+instrumental, no planner, turbo 8 steps / XL 12; all stereo 48 kHz,
+finite/non-silent, sample peak ≤1, children exited. These smoke tests do not
+replace the full A–D runs.
 
 | Frozen selftest | Wall s | Load s | Generation s | Peak worker bytes |
 |---|---:|---:|---:|---:|
-| turbo | 10.20 | 6.52 | 3.67 | 12,734,869,824 |
-| XL | 22.43 | 12.84 | 9.60 | 18,210,546,816 |
+| turbo / MLX | 13.05 | 8.96 | 4.09 | 12,783,497,600 |
+| XL / MLX | 23.14 | 13.80 | 9.34 | 17,831,208,320 |
+| turbo / MPS | 12.97 | 8.85 | 4.12 | 10,986,759,168 |
 
-Logs: `artifacts/build-music-final.log`, `artifacts/package-music-final.log`.
-Unrelated packaged translation/TTS/MOSS model paths were not rerun.
+Logs: `artifacts/build-music-final-profile.log`,
+`artifacts/package-music-final-profile.log`. The earlier d7cc203 build/check
+logs remain as historical evidence. Unrelated packaged translation/TTS/MOSS
+model paths were not rerun.
 
 ## Listening samples
 
@@ -270,8 +275,8 @@ hashes to our own prior generated artifacts. No listening-by-ear claim.
 
 `lock.py gpu -- env HOME=<isolated pytest HOME> HF_HOME=<isolated HF cache>`
 `PYTHONPATH=$PWD HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 <shared python>`
-`-m pytest -q -rs`: **1230 passed, 9 skipped, 73.36 s**.
-Log: `artifacts/pytest-music-mps-profile.log`. Skips: non-macOS autostart
+`-m pytest -q -rs`: **1230 passed, 9 skipped, 74.33 s**.
+Log: `artifacts/pytest-music-final-delivery.log`. Skips: non-macOS autostart
 path (1); optional private music dependencies (2, covered by the 11-pass
 private vendor run); uncached unrelated Kokoro tests (4), opt-in VoxCPM2 model
 run (1), absent VoxCPM2 tokenizer cache (1). Earlier normal-HOME suite was
@@ -284,8 +289,11 @@ media, preserving their failure/measurement JSON and logs. Kept canonical
 A–D, current repaint, calibration/reference audio, final app, isolated runtime,
 model weights and developer listening samples. No other agent files or user's
 model cache were deleted. Final storage sizes are in
-`artifacts/music-spike/phase6/storage-inventory.json`; managed total is below
-60 GB. Build/HF scratch and pytest data remain isolated under artifacts.
+`artifacts/music-spike/phase6/storage-inventory.json`: **22,797,664,256 bytes
+(22.80 GB / 21.232 GiB)**, below 60 GB. Models: 19.656 GiB; private venv:
+119 MiB; app: 600 MiB; all worktree artifacts: 822 MiB; samples: 73 MiB.
+Free disk at inventory time: 34.08 GiB. The redundant build/COLLECT outputs
+were removed again after the 7c652a6 package tests; signing still verifies. Build/HF scratch and pytest data remain isolated under artifacts.
 
 ## Experimental MPS profile and capacity correction
 
