@@ -22,6 +22,7 @@ class Download:
     dest: str = ""              # folder / file name under ~/.thundertalk/models for tar/file/hf-dir
     size_mb: int = 0
     allow: tuple[str, ...] = () # hf-dir globs; required, and never code (*.py)
+    convert_bf16: bool = False  # convert downloaded safetensors once, before publishing readiness
 
 
 @dataclass(frozen=True)

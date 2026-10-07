@@ -116,7 +116,7 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
     kw = {"component": "music"} if "music" in info.components else {}
     component_mb = size_mb(**kw) if info.components and needed(**kw) else 0
     total = max(1, sum(d.size_mb for d in info.downloads) + component_mb)
-    pending_mb = component_mb + sum(d.size_mb for d in info.downloads if not download_ready(d))
+    pending_mb = component_mb + sum(_pending_size_mb(d) for d in info.downloads if not download_ready(d))
     # HF may retain an incomplete blob next to the finished file.
     if pending_mb and shutil.disk_usage(Path.home()).free < pending_mb * 1_000_000 * 1.2:
         raise OSError(errno.ENOSPC, "Not enough disk space (disk full)")
@@ -206,6 +206,15 @@ def download_ready(d: Download) -> bool:
     return target.is_dir() and any(target.iterdir())
 
 
+def _pending_size_mb(d: Download) -> int:
+    from thundertalk.core import models
+    target = models.get_models_dir() / d.dest
+    if d.convert_bf16 and (target / (_hf_dir_marker(d) + ".fetched")).is_file():
+        # The F32 download exists; only one bf16 staging shard needs disk space.
+        return max((p.stat().st_size for p in target.glob("*.safetensors")), default=0) // 2_000_000
+    return d.size_mb
+
+
 def _download_hf_dir(d: Download, cb, cancel) -> None:
     """Copy the allowed files of a repo into ~/.thundertalk/models/<dest>.
 
@@ -218,7 +227,15 @@ def _download_hf_dir(d: Download, cb, cancel) -> None:
         return
     target = models.get_models_dir() / d.dest
     target.mkdir(parents=True, exist_ok=True)
-    models._hf_snapshot(d.source, target, list(d.allow), None, cb, cancel)
+    fetched = target / (_hf_dir_marker(d) + ".fetched")
+    if not d.convert_bf16 or not fetched.is_file():
+        models._hf_snapshot(d.source, target, list(d.allow), None, cb, cancel)
+        if d.convert_bf16:
+            fetched.write_text(d.source)
+    if d.convert_bf16:
+        from thundertalk.core.i18n import t
+        from thundertalk.core.music_checkpoint import convert_process
+        convert_process(target, lambda pct: cb(-1, t("studio.compose.converting").format(pct=pct)), cancel)
     (target / _hf_dir_marker(d)).write_text(d.source)
 
 

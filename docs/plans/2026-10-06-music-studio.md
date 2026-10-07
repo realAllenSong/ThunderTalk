@@ -629,3 +629,12 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
   variants (CC0). `wbgetentities` language fallback supplies simplified and
   traditional Chinese; a larger multi-label SPARQL query timed out. This is a
   build-time tool only; the app makes no artist-list network requests.
+
+- Phase 6 preparation converts XL one safetensors shard at a time in a disposable
+  CPU process, verifies the bf16 tensors before atomic replacement, and resumes
+  interrupted conversion without refetching converted shards. Readiness is
+  published only after conversion finishes. The frozen bundle includes ACE-Step
+  as source data and pypinyin data; `--selftest music` validates generated audio
+  and process exit. `tools/bench_music.py` records A–D and a synthetic five-second
+  dictation probe. These are implementation and unit-test results; the XL
+  download, packaged build and performance runs still need real verification.

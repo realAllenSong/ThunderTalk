@@ -55,3 +55,38 @@ def test_translation_selftest_uses_apps_downloaded_weights(monkeypatch, tmp_path
     eng.translate_text.assert_called_once()
     eng.translate.assert_called_once()
     eng.unload.assert_called_once()
+
+
+def test_music_selftest_routes_model_and_isolated_root(monkeypatch):
+    seen = []
+    monkeypatch.setattr(selftest, 'check_music', lambda model, root: seen.append((model, root)) or True)
+    assert selftest.run(['music', '--model', 'xl', '--model-dir', '/isolated/music']) == 0
+    assert seen == [('xl', '/isolated/music')]
+
+
+def test_music_selftest_checks_audio_and_child_exit(monkeypatch, tmp_path, capsys):
+    import numpy as np
+    import soundfile as sf
+    from thundertalk.core import music_process, runtime
+    (tmp_path / 'checkpoints/acestep-v15-turbo').mkdir(parents=True)
+    monkeypatch.setattr(runtime, 'require', lambda component: None)
+
+    class Process:
+        pid = None
+
+        def run(self, req, event, cancel, **kw):
+            event(('phase', 'load', None))
+            event(('phase', 'compose', 0))
+            wav = tmp_path / 'take.wav'
+            t = np.arange(480000) / 48000
+            x = np.repeat((0.1 * np.sin(2 * np.pi * 440 * t))[:, None], 2, axis=1)
+            sf.write(wav, x, 48000)
+            event(('take', 0, str(wav), {}))
+            return 'done'
+
+    monkeypatch.setattr(music_process, 'MusicProcess', Process)
+    assert selftest.run(['music', '--model-dir', str(tmp_path)]) == 0
+    out = capsys.readouterr().out
+    assert '"child_exited": true' in out and 'SELFTEST PASS' in out
+    Process.pid = 123
+    assert selftest.run(['music', '--model-dir', str(tmp_path)]) == 1

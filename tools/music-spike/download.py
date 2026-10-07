@@ -32,42 +32,27 @@ def main():
     for f in files:
         print(f.rfilename, f.size, flush=True)
         hf_hub_download(repo, f.rfilename, revision=info.sha, local_dir=ROOT / "checkpoints")
-    if '--xl' in sys.argv:
+    from thundertalk.core.music_checkpoint import converted, convert_process
+    if '--xl' in sys.argv and not converted(ROOT / 'checkpoints/acestep-v15-xl-sft'):
         repo = 'ACE-Step/acestep-v15-xl-sft'
         info = api.model_info(repo, files_metadata=True)
         files = [f for f in info.siblings if any(fnmatch(f.rfilename, glob) for glob in ALLOW)]
         folder = ROOT / 'checkpoints/acestep-v15-xl-sft'
         total = sum(f.size for f in files)
-        if shutil.disk_usage(ROOT).free < 1.2 * total:
+        fetched = folder / '.thundertalk-fetched-xl'
+        scratch = max((p.stat().st_size for p in folder.glob('*.safetensors')), default=0) / 2
+        needed = scratch if fetched.is_file() else total
+        if shutil.disk_usage(ROOT).free < 1.2 * needed:
             raise RuntimeError('Insufficient disk for XL download and conversion')
         (ROOT / 'download-xl-receipt.json').write_text(json.dumps(
             {'repo': repo, 'revision': info.sha, 'files': [{'path': f.rfilename, 'size': f.size} for f in files]},
             indent=2) + '\n')
-        for f in files:
-            print(f.rfilename, f.size, flush=True)
-            hf_hub_download(repo, f.rfilename, revision=info.sha, local_dir=folder)
-        # Convert one shard at a time, publish atomically, then release its FP32 file.
-        import torch
-        from safetensors.torch import load_file, save_file
-        for path in folder.glob('*.safetensors'):
-            state = load_file(path)
-            if all(not value.is_floating_point() or value.dtype == torch.bfloat16 for value in state.values()):
-                continue
-            converted = {key: value.to(torch.bfloat16) if value.is_floating_point() else value
-                         for key, value in state.items()}
-            stage = path.with_suffix('.bf16-stage')
-            save_file(converted, stage, metadata={'format': 'pt'})
-            # Verify every tensor before discarding the original shard.
-            restored = load_file(stage)
-            if any(not torch.equal(restored[key], value) for key, value in converted.items()):
-                raise RuntimeError(f'BF16 conversion verification failed: {path}')
-            del restored, converted, state
-            stage.replace(path)
-        index = folder / 'model.safetensors.index.json'
-        if index.exists():
-            metadata = json.loads(index.read_text())
-            metadata.setdefault('metadata', {})['total_size'] = sum(p.stat().st_size for p in folder.glob('*.safetensors'))
-            index.write_text(json.dumps(metadata, indent=2) + '\n')
+        if not fetched.is_file():
+            for f in files:
+                print(f.rfilename, f.size, flush=True)
+                hf_hub_download(repo, f.rfilename, revision=info.sha, local_dir=folder)
+            fetched.write_text(info.sha)
+        convert_process(folder, lambda pct: print(f"XL bf16 {pct}%", flush=True))
     print("Download complete", flush=True)
 
 

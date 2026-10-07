@@ -87,3 +87,23 @@ def test_acestep_languages_match_vendored_constants():
     assert set(model_metadata.ACESTEP_LANGUAGES) == vendored
     assert len(model_metadata.ACESTEP_LANGUAGES) == 50 == len(set(model_metadata.ACESTEP_LANGUAGES))
     assert model_metadata.ACESTEP_LANGUAGES[:2] == ("zh", "en")
+
+
+def test_bf16_conversion_publishes_readiness_only_after_success(isolated_home, monkeypatch):
+    from dataclasses import replace
+    from thundertalk.core import music_checkpoint
+    d = replace(ACE, convert_bf16=True)
+    seen = []
+    monkeypatch.setattr(models, '_hf_snapshot', lambda *a: seen.append('download'))
+
+    def interrupted(*args):
+        seen.append('convert')
+        raise models.DownloadCancelled()
+
+    monkeypatch.setattr(music_checkpoint, 'convert_process', interrupted)
+    with pytest.raises(models.DownloadCancelled):
+        speech.download_backend(_info(d))
+    assert not speech.download_ready(d)
+    monkeypatch.setattr(music_checkpoint, 'convert_process', lambda *a: seen.append('converted'))
+    speech.download_backend(_info(d))
+    assert seen == ['download', 'convert', 'converted'] and speech.download_ready(d)

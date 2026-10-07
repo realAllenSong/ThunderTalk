@@ -205,6 +205,7 @@ def _load(request: MusicRequest, send, gate):
     from acestep.handler import AceStepHandler
     from acestep.llm_inference import LLMHandler
 
+    send(("phase", "load", None))
     handler = AceStepHandler()
     status, ok = handler.initialize_service(
         project_root=request.project_root, config_path=request.model_folder, device="mps",
@@ -245,7 +246,7 @@ def _run(request: MusicRequest, send, go, cancel) -> None:
     mx.set_cache_limit(MLX_CACHE_LIMIT)
     # Upstream's repaint lookup globs os.getcwd()/gradio_outputs.
     os.chdir(request.job_dir)
-    send(("phase", "load", None))
+    send(("phase", "import", None))
     gate = make_gate(send, go, cancel)
     from acestep import _hooks
     # generate_music_execute copies TIMEOUT_S at import time: set it before the handler import.

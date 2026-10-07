@@ -519,4 +519,6 @@ STUDIO: dict[str, dict[str, str]] = {
 
     "studio.compose.check.flagged_one": {"en": "Check {n} line", "zh": "有 {n} 行需检查"},
 
+    "studio.compose.converting": {"en": "Preparing XL bf16 checkpoint · {pct}%", "zh": "正在准备 XL bf16 模型 · {pct}%"},
+
 }

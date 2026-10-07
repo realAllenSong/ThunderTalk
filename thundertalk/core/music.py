@@ -73,7 +73,7 @@ XL = _model(
     "Best quality. Songs with vocals or instrumentals, 50 languages. Needs a Mac with 32 GB or more.",
     "音质最好。可生成带人声的歌曲或纯音乐，支持 50 种语言。需要 32 GB 及以上内存的 Mac。",
     Download("hf-dir", XL_REPO, dest=f"{CHECKPOINTS}/acestep-v15-xl-sft", size_mb=19950,
-             allow=("*.json", "*.safetensors", "*.pt")),
+             allow=("*.json", "*.safetensors", "*.pt"), convert_bf16=True),
     "acestep-v15-xl-sft", steps=50, ram_mb=18000, min_memory_gb=XL_MEMORY_GB, rate=1.5, convert_bf16=True)
 
 TURBO = _model(

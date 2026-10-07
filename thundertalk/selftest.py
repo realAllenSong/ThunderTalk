@@ -208,22 +208,74 @@ def check_translate() -> bool:
 
 def check_runtime() -> bool:
     from thundertalk.core import runtime
-    runtime.install(lambda pct, msg: _say(True, "runtime-progress", percent=pct, message=msg))
-    runtime.require()
+    runtime.install(lambda pct, msg: _say(True, "runtime-progress", percent=pct, message=msg), component="music")
+    runtime.require("music")
     import torch
     import torchaudio
     value = torchaudio.functional.melscale_fbanks(201, 0, 8000, 80, 16000)
+    if runtime.installed("music"):
+        runtime.activate("music")
+        import loguru  # noqa: F401
+        from diffusers import AutoencoderOobleck  # noqa: F401
+        import vector_quantize_pytorch  # noqa: F401
+        import pypinyin
+        if pypinyin.lazy_pinyin("宋") != ["song"]:
+            return _say(False, "runtime:music", error="pypinyin check failed")
+        _say(True, "runtime:music", component=runtime._MUSIC_MANIFEST["id"])
+    else:
+        _say(True, "runtime:music", skipped="not installed (selftest installs nothing for music)")
     return _say(value.shape == (201, 80), "runtime", torch=torch.__version__,
                 path=torch.__file__)
 
 
+def check_music(model: str = "turbo", project: str = "") -> bool:
+    import threading
+    import soundfile as sf
+    from thundertalk.core import music, runtime
+    from thundertalk.core.music_metrics import PeakFootprint
+    from thundertalk.core.music_process import MusicProcess
+    from thundertalk.core.music_worker import MusicRequest
+    runtime.require("music")
+    m = music.XL if model == "xl" else music.TURBO
+    if model not in ("turbo", "xl"):
+        return _say(False, "music", error=f"Unknown music model: {model}")
+    project_root = Path(project) if project else music.project_root()
+    if not (project_root / "checkpoints" / m.folder).is_dir():
+        return _say(False, "music", error=f"Model not downloaded: {m.folder}")
+    process = MusicProcess()
+    events = []
+    start = time.monotonic()
+    with tempfile.TemporaryDirectory(prefix="thundertalk-music-selftest-") as folder:
+        request = MusicRequest(project_root=str(project_root), model_folder=m.folder, job_dir=folder,
+                               caption="Gentle ambient instrumental, soft piano, warm pads.", instrumental=True,
+                               duration=10, steps=12 if model == "xl" else 8, seeds=[42])
+        with PeakFootprint(process) as peak:
+            outcome = process.run(request, lambda event: events.append((time.monotonic() - start, event)),
+                                  threading.Event(), ram_need_mb=music.ram_need_mb(m, False))
+        wall = time.monotonic() - start
+        takes = [event for _, event in events if event[0] == "take"]
+        if not takes:
+            return _say(False, "music", error="No take produced", outcome=outcome)
+        x, sr = sf.read(takes[0][2], dtype="float32", always_2d=True)
+        rms = float(np.sqrt(np.mean(x ** 2)))
+        audio_peak = float(np.max(np.abs(x)))
+        duration = len(x) / sr
+        phase = next((t for t, event in events if event[:2] in (("phase", "plan"), ("phase", "compose"))), wall)
+        ok = (outcome == "done" and process.pid is None and sr == 48000 and x.shape[1] == 2
+              and 9 <= duration <= 11 and np.isfinite(x).all() and rms > 0.003 and 0 < audio_peak <= 1)
+        return _say(bool(ok), "music", model=model, wall_s=round(wall, 2), load_s=round(phase, 2),
+                    generation_s=round(wall - phase, 2), peak_footprint_bytes=peak.peak,
+                    duration=duration, sample_rate=sr, channels=x.shape[1], rms=rms,
+                    audio_peak=audio_peak, child_exited=process.pid is None)
+
+
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "music", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
-    ap.add_argument("--model", default="", help="ASR model id from the Models page")
-    ap.add_argument("--model-dir", default="", help="Optional ASR model directory (read-only)")
+    ap.add_argument("--model", default="", help="ASR model id, or turbo | xl for music")
+    ap.add_argument("--model-dir", default="", help="ASR directory, or ACE-Step project root (read-only)")
     ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
     ok = True
@@ -236,6 +288,8 @@ def run(argv: list[str]) -> int:
             ok &= check_asr(a.file, a.model, a.model_dir)
         if a.what == "moss":
             ok &= check_moss(a.file)
+        if a.what == "music":
+            ok &= check_music(a.model or "turbo", a.model_dir)
         if a.what == "runtime":
             ok &= check_runtime()
         if a.what == "translate":

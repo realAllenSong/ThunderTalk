@@ -49,6 +49,7 @@ hidden_imports += ["scipy._external.array_api_compat.numpy.fft", "scipy._externa
 # networking extras; extractors are listed here too so none can go missing.
 hidden_imports += collect_submodules("yt_dlp")
 hidden_imports += ["certifi"]
+hidden_imports += collect_submodules("pypinyin")
 
 
 # Optional wheels import stdlib modules PyInstaller can no longer discover
@@ -62,7 +63,8 @@ for _name in sorted(_sys.stdlib_module_names - _skip_stdlib):
     if importlib.util.find_spec(_name) is not None:
         hidden_imports += collect_submodules(_name)
 custom_datas = [('assets', 'assets'), ('thundertalk/core/runtime_manifest.json', 'thundertalk/core'),
-                ('thundertalk/core/runtime_music_manifest.json', 'thundertalk/core')]
+                ('thundertalk/core/runtime_music_manifest.json', 'thundertalk/core'),
+                ('third_party/acestep', 'third_party/acestep')]
 for _file in _stdlib.rglob("*.py"):
     _rel = _file.relative_to(_stdlib)
     if not any(p in _skip_stdlib for p in _rel.parts):
@@ -80,6 +82,7 @@ custom_datas += collect_data_files("mlx_lm")
 custom_datas += collect_data_files("huggingface_hub")
 custom_datas += collect_data_files("sherpa_onnx")
 custom_datas += collect_data_files("transformers")
+custom_datas += collect_data_files("pypinyin")
 
 custom_binaries = []
 custom_binaries += collect_dynamic_libs("mlx")
@@ -97,7 +100,7 @@ a = Analysis(
     hooksconfig={},
     runtime_hooks=['tools/runtime_hook.py'],
     # scipy is needed by VoxCPM2 (reference resampling in mlx-audio) and IndexTTS.
-    excludes=['tensorflow', 'keras', 'matplotlib', 'pandas',
+    excludes=['acestep', 'tensorflow', 'keras', 'matplotlib', 'pandas',
               'torch', 'torchaudio', 'sympy', 'mpmath', 'networkx',
               'tkinter', '_tkinter', 'test', 'idlelib'],
     noarchive=False,

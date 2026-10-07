@@ -164,7 +164,7 @@ def _serve(request, go=None, cancel=None):
 def test_job_loads_bf16_and_writes_every_take(fake, tmp_path):
     request = _request(tmp_path, estimate_s=1000)
     events = _serve(request)
-    assert events[0] == ("phase", "load", None)
+    assert events[:2] == [("phase", "import", None), ("phase", "load", None)]
     assert events[-1] == ("done",)
     assert fake.init["dtype"] == "bf16" and fake.init["device"] == "mps"
     assert fake.init["use_mlx_dit"] is True and fake.init["config_path"] == "acestep-v15-turbo"
