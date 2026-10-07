@@ -108,11 +108,13 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
     import errno
     import shutil
     from thundertalk.core import models
-    from thundertalk.core.runtime import SIZE_MB, install, needed
+    from thundertalk.core.runtime import COMPONENTS, install, needed, size_mb
     for c in info.components:
-        if c != "torch":
+        if c not in COMPONENTS:
             raise ValueError(c)
-    component_mb = SIZE_MB if info.components and needed() else 0
+    # Installing the music component also installs torch; plain torch keeps the old call shape.
+    kw = {"component": "music"} if "music" in info.components else {}
+    component_mb = size_mb(**kw) if info.components and needed(**kw) else 0
     total = max(1, sum(d.size_mb for d in info.downloads) + component_mb)
     pending_mb = component_mb + sum(d.size_mb for d in info.downloads if not download_ready(d))
     # HF may retain an incomplete blob next to the finished file.
@@ -132,7 +134,7 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
         return cb
 
     if info.components:
-        install(sub(Download(kind="component", source="", size_mb=component_mb)), cancel)
+        install(sub(Download(kind="component", source="", size_mb=component_mb)), cancel, **kw)
         done += component_mb
     for d in info.downloads:
         if cancel is not None and cancel.is_set():

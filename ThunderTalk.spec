@@ -61,7 +61,8 @@ _skip_stdlib = {"tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "test"
 for _name in sorted(_sys.stdlib_module_names - _skip_stdlib):
     if importlib.util.find_spec(_name) is not None:
         hidden_imports += collect_submodules(_name)
-custom_datas = [('assets', 'assets'), ('thundertalk/core/runtime_manifest.json', 'thundertalk/core')]
+custom_datas = [('assets', 'assets'), ('thundertalk/core/runtime_manifest.json', 'thundertalk/core'),
+                ('thundertalk/core/runtime_music_manifest.json', 'thundertalk/core')]
 for _file in _stdlib.rglob("*.py"):
     _rel = _file.relative_to(_stdlib)
     if not any(p in _skip_stdlib for p in _rel.parts):

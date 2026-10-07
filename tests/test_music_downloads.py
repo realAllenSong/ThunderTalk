@@ -66,7 +66,7 @@ def test_download_refused_without_disk_room(isolated_home, monkeypatch):
 
 def test_components_install_before_files(isolated_home, monkeypatch):
     seen = []
-    monkeypatch.setattr(runtime, "needed", lambda: True)
+    monkeypatch.setattr(runtime, "needed", lambda *_: True)
     monkeypatch.setattr(runtime, "install", lambda *a: seen.append("torch"))
     monkeypatch.setattr(models, "_hf_snapshot", lambda *a: seen.append("files"))
     speech.download_backend(_info(ACE, components=("torch",)))

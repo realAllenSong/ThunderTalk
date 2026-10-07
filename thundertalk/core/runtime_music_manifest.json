@@ -1,0 +1,64 @@
+{
+  "id": "acestep-1.5-ca1e85f-cp312-macos-arm64-v1",
+  "requires": ["torch"],
+  "wheels": [
+    {
+      "name": "vector-quantize-pytorch",
+      "package": "vector_quantize_pytorch",
+      "version": "1.27.15",
+      "url": "https://files.pythonhosted.org/packages/50/5f/efccf2a420d060fef5bccb80ae36b5b5b5442da1b4ca2e46016b0e250699/vector_quantize_pytorch-1.27.15-py3-none-any.whl",
+      "sha256": "ef6dee2e12356e04f84555bc9fa95c837c363d1f465310fe58560a4378af3a4a",
+      "size": 52698
+    },
+    {
+      "name": "einx",
+      "version": "0.4.3",
+      "url": "https://files.pythonhosted.org/packages/d0/28/6768d342b2b888f9facdddbd430daf015cab936e2598281ab436b1be1b4a/einx-0.4.3-py3-none-any.whl",
+      "sha256": "47ce54a0144f6dffcfacdd8fe2cc9e2e5e6485dda2471330ab75ee747dd22f39",
+      "size": 163766
+    },
+    {
+      "name": "frozendict",
+      "version": "2.4.7",
+      "url": "https://files.pythonhosted.org/packages/38/74/f94141b38a51a553efef7f510fc213894161ae49b88bffd037f8d2a7cb2f/frozendict-2.4.7-py3-none-any.whl",
+      "sha256": "972af65924ea25cf5b4d9326d549e69a9a4918d8a76a9d3a7cd174d98b237550",
+      "size": 16264
+    },
+    {
+      "name": "loguru",
+      "version": "0.7.3",
+      "url": "https://files.pythonhosted.org/packages/0c/29/0348de65b8cc732daa3e33e67806420b2ae89bdce2b04af740289c5c6c8c/loguru-0.7.3-py3-none-any.whl",
+      "sha256": "31a33c10c8e1e10422bfd431aeb5d351c7cf7fa671e3c4df004162264b28220c",
+      "size": 61595
+    },
+    {
+      "name": "diffusers",
+      "version": "0.37.0",
+      "url": "https://files.pythonhosted.org/packages/f7/55/586a3a2b9c95f371c9c3cb048c3cac15aedcce8d6d53ebd6bbc46860722d/diffusers-0.37.0-py3-none-any.whl",
+      "sha256": "7eab74bf896974250b5e1027cae813aba1004f02d97c9b44891b83713386aa08",
+      "size": 5000449
+    },
+    {
+      "name": "importlib-metadata",
+      "package": "importlib_metadata",
+      "version": "8.7.1",
+      "url": "https://files.pythonhosted.org/packages/fa/5e/f8e9a1d23b9c20a551a8a02ea3637b4642e22c2626e3a13a9a29cdea99eb/importlib_metadata-8.7.1-py3-none-any.whl",
+      "sha256": "5a1f80bf1daa489495071efbb095d75a634cf28a8bc299581244063b53176151",
+      "size": 27865
+    },
+    {
+      "name": "zipp",
+      "version": "3.23.0",
+      "url": "https://files.pythonhosted.org/packages/2e/54/647ade08bf0db230bfea292f893923872fd20be6ac6f53b2b936ba839d75/zipp-3.23.0-py3-none-any.whl",
+      "sha256": "071652d6115ed432f5ce1d34c336c0adfd6a884660d1e9712a256d3d3bd4b14e",
+      "size": 10276
+    },
+    {
+      "name": "pypinyin",
+      "version": "0.55.0",
+      "url": "https://files.pythonhosted.org/packages/b9/7b/4cabc76fcc21c3c7d5c671d8783984d30ac9d3bb387c4ba784fca3cdfa3a/pypinyin-0.55.0-py2.py3-none-any.whl",
+      "sha256": "d53b1e8ad2cdb815fb2cb604ed3123372f5a28c6f447571244aca36fc62a286f",
+      "size": 840203
+    }
+  ]
+}

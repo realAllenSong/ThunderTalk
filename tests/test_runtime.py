@@ -12,6 +12,8 @@ import pytest
 
 from thundertalk.core import models, runtime
 
+_REAL_ACTIVATE = runtime.activate
+
 
 def test_manifest_matches_lock():
     packages = tomllib.loads(Path("uv.lock").read_text())["package"]
@@ -35,7 +37,7 @@ def component(tmp_path, monkeypatch):
     monkeypatch.setattr(sys, "frozen", True, raising=False)
     monkeypatch.setattr(runtime.platform, "system", lambda: "Darwin")
     monkeypatch.setattr(runtime.platform, "machine", lambda: "arm64")
-    monkeypatch.setattr(runtime, "activate", lambda: None)
+    monkeypatch.setattr(runtime, "activate", lambda *_: None)
     calls = []
 
     def fetch(url, dest, cb, cancel, lo, hi, **kw):
@@ -96,7 +98,7 @@ def test_reject_unsafe_or_unsupported_wheel(tmp_path, path):
 
 def test_source_environment_never_downloads(monkeypatch):
     monkeypatch.setattr(sys, "frozen", False, raising=False)
-    monkeypatch.setattr(runtime, "installed", lambda: False)
+    monkeypatch.setattr(runtime, "installed", lambda *_: False)
     runtime.install()
     runtime.require()
     assert not runtime.needed()
@@ -131,7 +133,7 @@ def test_index_download_installs_runtime_first(monkeypatch):
 def test_translation_card_and_model_explain_component(qtbot, monkeypatch):
     from thundertalk.core.settings import Settings
     from thundertalk.ui.pages.models_page import TranslationModeCard, _blurb
-    monkeypatch.setattr(runtime, "status", lambda: "Component: 90 MB")
+    monkeypatch.setattr(runtime, "status", lambda *_: "Component: 90 MB")
     card = TranslationModeCard(Settings())
     qtbot.addWidget(card)
     assert "90 MB" in card._subtitle_lbl.text() and card._subtitle_lbl.wordWrap()
@@ -139,14 +141,14 @@ def test_translation_card_and_model_explain_component(qtbot, monkeypatch):
     assert "90 MB" in card._subtitle_lbl.text()
     info = next(i for i in models.BUILTIN_MODELS if i.backend == "seamless-torch")
     assert "90 MB" in _blurb(info)
-    monkeypatch.setattr(runtime, "status", lambda: "")
+    monkeypatch.setattr(runtime, "status", lambda *_: "")
     card.set_translator_status("ready")
     assert "90 MB" not in card._subtitle_lbl.text()
 
 
 def test_combined_index_progress_never_finishes_before_models(monkeypatch):
     from thundertalk.core import speech
-    monkeypatch.setattr(runtime, "needed", lambda: True)
+    monkeypatch.setattr(runtime, "needed", lambda *_: True)
     def install(progress, cancel):
         progress(0, "component")
         progress(100, "component")
@@ -166,8 +168,8 @@ def test_index_card_shows_component_and_blocks_until_restart(qtbot, isolated_hom
     from thundertalk.core import i18n, speech
     from thundertalk.ui.studio.speak_tab import SpeakTab
     monkeypatch.setattr(i18n, "LANG", lang)
-    monkeypatch.setattr(runtime, "needed", lambda: True)
-    monkeypatch.setattr(runtime, "restart_needed", lambda: False)
+    monkeypatch.setattr(runtime, "needed", lambda *_: True)
+    monkeypatch.setattr(runtime, "restart_needed", lambda *_: False)
     for b in speech.backends():
         monkeypatch.setattr(b, "is_ready", lambda: False)
     tab = SpeakTab()
@@ -177,8 +179,8 @@ def test_index_card_shows_component_and_blocks_until_restart(qtbot, isolated_hom
     tab._refresh()
     assert "PyTorch" in tab._engine_body.text() and "90 MB" in tab._engine_body.text()
     assert not tab._go.isEnabled()
-    monkeypatch.setattr(runtime, "needed", lambda: False)
-    monkeypatch.setattr(runtime, "restart_needed", lambda: True)
+    monkeypatch.setattr(runtime, "needed", lambda *_: False)
+    monkeypatch.setattr(runtime, "restart_needed", lambda *_: True)
     monkeypatch.setattr(speech.backend("indextts"), "is_ready", lambda: True)
     tab._refresh()
     assert i18n.t("runtime.restart") in tab._engine_body.text()
@@ -242,3 +244,59 @@ def test_cached_translation_component_does_not_prompt_for_model_gigabytes(monkey
     fake = SimpleNamespace(_on_download=seen.append)
     page.ModelsPage._on_download_requested(fake, "seamless-m4t-v2-large")
     assert seen == ["seamless-m4t-v2-large"]
+
+
+def test_music_manifest_is_pinned():
+    manifest = runtime._MUSIC_MANIFEST
+    assert manifest["requires"] == ["torch"] and runtime.closure("music") == ("torch", "music")
+    names = [w["name"] for w in manifest["wheels"]]
+    assert len(names) == len(set(names))
+    for w in manifest["wheels"]:
+        filename = w["url"].rsplit("/", 1)[-1]
+        assert w["url"].startswith("https://files.pythonhosted.org/")
+        assert filename.startswith(f"{w['name'].replace('-', '_')}-{w['version']}-") and filename.endswith(".whl")
+        assert len(w["sha256"]) == 64 and int(w["sha256"], 16) >= 0 and w["size"] > 0
+
+
+def test_music_install_adds_torch_first_and_needs_no_restart(component, monkeypatch, tmp_path):
+    wheel = tmp_path / "music.whl"
+    with zipfile.ZipFile(wheel, "w") as z:
+        z.writestr("musicpkg.py", "VALUE = 1\n")
+    item = dict(name="music-pkg", package="musicpkg", version="1", url="https://example.invalid/music.whl",
+                sha256=hashlib.sha256(wheel.read_bytes()).hexdigest(), size=wheel.stat().st_size)
+    monkeypatch.setattr(runtime, "_MUSIC_MANIFEST", dict(id="music-test", requires=["torch"], wheels=[item]))
+    urls = []
+
+    def fetch(url, dest, cb, cancel, lo, hi, **kw):
+        urls.append(url)
+        dest.write_bytes((wheel if url == item["url"] else tmp_path / "component.whl").read_bytes())
+    monkeypatch.setattr(models, "_curl_download", fetch)
+    monkeypatch.setitem(sys.modules, "transformers", object())
+    assert runtime.needed("music") and runtime.size_mb("music") == 0
+    seen = []
+    runtime.install(lambda pct, msg: seen.append(pct), component="music")
+    assert urls == [component[0]["url"], item["url"]]
+    assert runtime.installed("music") and runtime.installed() and not runtime.needed("music")
+    assert seen == sorted(seen) and seen[-1] == 100
+    assert not runtime.restart_needed("music") and runtime.status("music") == ""
+
+
+def test_music_activation_puts_both_components_on_path(component, monkeypatch):
+    monkeypatch.setattr(runtime, "_MUSIC_MANIFEST", dict(id="music-test", requires=["torch"], wheels=[]))
+    runtime.install(component="music")
+    monkeypatch.setattr(sys, "path", list(sys.path))
+    _REAL_ACTIVATE("music")
+    assert str(runtime.path("torch")) in sys.path and str(runtime.path("music")) in sys.path
+
+
+def test_music_download_uses_music_component(monkeypatch):
+    from thundertalk.core import speech
+    from thundertalk.core.tts_backends.base import BackendInfo
+    seen = []
+    monkeypatch.setattr(runtime, "needed", lambda component="torch": seen.append(("needed", component)) or True)
+    monkeypatch.setattr(runtime, "size_mb", lambda component="torch": 6)
+    monkeypatch.setattr(runtime, "install", lambda cb, cancel, component="torch": seen.append(("install", component)))
+    info = BackendInfo(id="m", name="m", blurb_en="", blurb_zh="", languages=(), supports_presets=False,
+                       supports_clone=False, needs_gpu=True, components=("torch", "music"))
+    speech.download_backend(info)
+    assert seen == [("needed", "music"), ("install", "music")]
