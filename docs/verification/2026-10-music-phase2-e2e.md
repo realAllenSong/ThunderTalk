@@ -13,3 +13,18 @@ run under `lock.py gpu` with the venv-music python (transformers 5.6.2 + vendore
 | Child after `run()` returned | gone (`pid is None`) |
 | Events seen | `phase` load → plan → render → write per take, `tokens`, `step`, `take` ×2 |
 | Files | `take-{1,2}.wav` 48 kHz stereo PCM_16 20.0 s, WAV comment "AI-generated with ACE-Step 1.5 in ThunderTalk"; `take-N.json`; `take-N.latents.npy` ([500, 64] f32) |
+
+## Phase 4 — Chinese take with sentence timestamps
+
+`tools/music-spike/gate-stamps.sh`: same pipeline, `--lang zh` (sung lyrics from the pronunciation helper,
+欧拉SONG → 欧拉宋), 30 s, 2 takes, planner, MLX DiT.
+
+| | |
+|---|---|
+| Outcome | `done`, 43.5 s wall; takes 12.4 s / 10.1 s; child peak 17.78 GB |
+| `lyric_timestamps` | `null` on both takes: `handler.get_lyric_timestamp` calls `model.decoder`, which the MLX DiT init sets to `None` after converting the weights (`TypeError: 'NoneType' object is not callable`) |
+
+Decision: the worker now skips alignment when the torch decoder is gone (no traceback, no wasted pass);
+MLX-DiT takes are checked with the lyric check's scan-and-assign fallback. Keeping a second (torch) copy of
+the DiT only for alignment would add several GB to an already 17.8 GB job. The MPS DiT path (16 GB tier)
+keeps sentence timestamps — `tools/music-spike/gate-stamps-mps.sh` checks it.

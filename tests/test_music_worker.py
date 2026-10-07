@@ -238,6 +238,15 @@ def test_failed_alignment_keeps_the_take_without_timestamps(fake, tmp_path, outc
     assert next(e[3] for e in events if e[0] == "take")["lyric_timestamps"] is None
 
 
+def test_mlx_dit_without_torch_decoder_skips_alignment(fake, tmp_path, monkeypatch):
+    handler = sys.modules["acestep.handler"].AceStepHandler
+    monkeypatch.setattr(handler, "model", types.SimpleNamespace(decoder=None), raising=False)
+    events = _serve(_request(tmp_path, seeds=[5]))
+    assert fake.align_calls == []
+    assert events[-1] == ("done",)
+    assert next(e[3] for e in events if e[0] == "take")["lyric_timestamps"] is None
+
+
 def test_instrumental_takes_skip_alignment(fake, tmp_path):
     events = _serve(_request(tmp_path, instrumental=True, seeds=[1]))
     assert fake.align_calls == []

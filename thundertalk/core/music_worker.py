@@ -118,6 +118,10 @@ def lyric_timestamps(handler, request: MusicRequest, seed: int, result, duration
     extra = result.extra_outputs
     if request.instrumental or not request.lyrics.strip() or any(extra.get(k) is None for k in _ALIGN_INPUTS):
         return None
+    model = getattr(handler, "model", None)
+    if model is not None and getattr(model, "decoder", None) is None:
+        # The MLX DiT path frees the torch decoder whose cross-attention this needs.
+        return None
     try:
         out = handler.get_lyric_timestamp(
             pred_latent=extra["pred_latents"], encoder_hidden_states=extra["encoder_hidden_states"],
