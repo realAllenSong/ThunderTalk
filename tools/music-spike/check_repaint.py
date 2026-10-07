@@ -71,7 +71,7 @@ def main():
     start = time.monotonic()
     with PeakFootprint(process) as peak:
         outcome = process.run(req, lambda event: print(event[:3], flush=True), threading.Event(),
-                              ram_need_mb=music.ram_need_mb(m, False))
+                              ram_need_mb=music.ram_need_mb(m, False, dit_backend=req.dit_backend, repaint=True))
     result = {'outcome': outcome, 'wall_s': time.monotonic() - start,
               'peak_worker_bytes': peak.peak, 'child_exited': process.pid is None,
               'source_unchanged': before == hashlib.sha256(source.read_bytes()).hexdigest()}

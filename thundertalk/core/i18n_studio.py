@@ -438,6 +438,10 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.compose.check.clear": {"en": "{clear} / {total} lines clear", "zh": "{clear} / {total} 行清晰"},
     "studio.compose.check.flagged": {"en": "Check {n} lines", "zh": "有 {n} 行需检查"},
     "studio.compose.model": {"en": "Model", "zh": "模型"},
+    "studio.compose.repaint_memory": {
+        "en": "Repainting needs more memory on this Mac. Use New take instead.",
+        "zh": "这台 Mac 的内存不足以重绘片段，请改用“再生成一版”。",
+    },
     "studio.compose.memory": {
         "en": "Uses about {gb} GiB of memory while composing; it is freed when the job ends.",
         "zh": "作曲时约占用 {gb} GiB 内存，任务结束后立即释放。",

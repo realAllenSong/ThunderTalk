@@ -136,7 +136,12 @@ def test_small_mac_tier(make):
     assert "32 GB" in tab._needs.text()
     _song(tab)
     tab._generate()
-    assert FakeWorker.made[-1].request.dit_backend == "mps"
+    worker = FakeWorker.made[-1]
+    assert worker.request.dit_backend == "mps"
+    assert worker.ram_need_mb == music.TURBO.mps_ram_mb
+    assert "11.6 GiB" in tab._needs.text()
+    assert t("studio.compose.repaint_memory") in tab._needs.text()
+    assert not tab._repaint_fits(music.TURBO, "mps")
 
 
 def test_xl_caps_the_default_length_and_turbo_allows_ten_minutes(make):

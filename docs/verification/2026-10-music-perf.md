@@ -3,7 +3,7 @@
 This report uses completed fresh runs, not overwritten retry files. Hardware:
 Apple M3 Max, 14 CPU cores, 36 GiB unified memory, macOS arm64. All model runs
 and heavy downloads in this continuation use `lock.py gpu`; builds and the
-full fake-based macOS pytest use `lock.py build`. No concurrent own model/build
+full macOS pytest use `lock.py build`. No concurrent own model/build
 jobs, no memory-guard bypass. Main 4fe46b2 was merged before the final build;
 `app.py` retains main's immediate capture before audio muting.
 
@@ -134,8 +134,9 @@ or latency guarantees. Planner sampling is not proven bitwise reproducible.
 Measured upper peaks rounded up to 100 MiB: XL 18,500 MiB, turbo 14,100 MiB (also covers current repaint).
 The generation peaks include the planner; use the same conservative bound without it and do
 not add it twice. Admission keeps the additional 20% system-memory reserve.
-The 16 GiB experimental MPS tier remains offered, but its distinct no-planner
-peak has not been remeasured; these conservative MLX bounds can refuse it.
+The distinct experimental MPS profile is measured below; actual 16 GiB
+hardware remains unverified. Its operation-specific bound avoids using the
+larger MLX bound for MPS generation.
 No actual 16/24 GiB device or 300/600 s XL song was verified.
 
 Upper observed diffusion/decode/write rates: XL 1.95, turbo 0.21 s per audio
@@ -205,7 +206,7 @@ unverified on real weights; matching-model/range guards are covered with fakes.
 
 ## Source validation before final build
 
-Full macOS fake-based suite: **1233 passed, 4 skipped, 80.46 s**
+Full macOS suite: **1233 passed, 4 skipped, 80.46 s**
 (`artifacts/pytest-phase6-measured-facts.log`), through build lock with
 `PYTHONPATH=$PWD` and the shared interpreter. Changed-file ruff and diff check
 clean. Real vendored turbo/XL weight-reload/buffer regressions in private
@@ -219,3 +220,104 @@ or upgraded in this continuation; pypinyin >=0.55 was added in inherited Phase 4
 Final EN/ZH setup and expanded lyric-check layout captures were reviewed in
 `artifacts/compose-layout-final/`; measured facts wrap within the existing
 scrolling Paper & Ink form, and range advice stays in both languages.
+
+## Lock audit correction
+
+Earlier full suites used only the build lock to serialize CPU tests. Inspection
+found that the optional cached Kokoro integration tests also ran real models
+from the existing app cache. Those runs should have used the GPU lock; this
+was a deviation, and the cache was not modified/deleted. The final full suite
+runs through the GPU lock with an isolated HOME, so optional unrelated cached
+model tests are skipped instead of accessing the user's model directory.
+Private music model/buffer regressions and all final music checks already ran
+through the GPU lock with isolated testing weights. No user voice/recording
+was used in any check.
+
+## Final frozen app
+
+Built from **d7cc203** with `lock.py build -- env -u NOTARIZE PYTHONPATH=$PWD`
+`HF_HOME=<isolated build cache> HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1`
+`<shared python> build_macos.py`. Developer ID signing and deep/strict codesign
+verification passed. No notarization, push, tag or release.
+`dist/ThunderTalk.app` contains the vendored data-tree code and pypinyin;
+weights remain outside the bundle.
+
+`lock.py gpu -- bash tools/music-spike/package-check.sh base turbo xl`:
+**runtime/music closure, runtime/torch, audio, Qwen ASR, turbo music, XL music
+all passed**, using isolated HOME and the bench model root. ASR returned the
+exact original Samantha probe (402 ms). Music selftests: 10 s instrumental,
+no planner, turbo 8 steps / XL 12; both 48 kHz stereo, finite/non-silent,
+peak ≤1, children exited. These smoke tests do not replace the full A–D runs.
+
+| Frozen selftest | Wall s | Load s | Generation s | Peak worker bytes |
+|---|---:|---:|---:|---:|
+| turbo | 10.20 | 6.52 | 3.67 | 12,734,869,824 |
+| XL | 22.43 | 12.84 | 9.60 | 18,210,546,816 |
+
+Logs: `artifacts/build-music-final.log`, `artifacts/package-music-final.log`.
+Unrelated packaged translation/TTS/MOSS model paths were not rerun.
+
+## Listening samples
+
+Exactly three generated WAVs in `~/Music/ThunderTalk-dev-samples/`:
+`xl-instrumental-60.wav`, `xl-vocal-170.wav`, `turbo-vocal-170.wav`.
+WAV comments identify AI generation; sidecars accompany all, original shown
+lyrics and raw lyric checks accompany the vocals. Sample hashes match the
+verified canonical takes. Older copies were removed only after matching their
+hashes to our own prior generated artifacts. No listening-by-ear claim.
+
+## Final isolated full-suite check and retained storage
+
+`lock.py gpu -- env HOME=<isolated pytest HOME> HF_HOME=<isolated HF cache>`
+`PYTHONPATH=$PWD HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 <shared python>`
+`-m pytest -q -rs`: **1230 passed, 9 skipped, 73.36 s**.
+Log: `artifacts/pytest-music-mps-profile.log`. Skips: non-macOS autostart
+path (1); optional private music dependencies (2, covered by the 11-pass
+private vendor run); uncached unrelated Kokoro tests (4), opt-in VoxCPM2 model
+run (1), absent VoxCPM2 tokenizer cache (1). Earlier normal-HOME suite was
+1233/4, including the optional cached Kokoro and tokenizer tests.
+
+Removed our build directory and redundant standalone COLLECT output after
+checking the app had no symlink dependency on it; deep/strict signing still
+verifies. Removed 80,321,098 bytes of obsolete own benchmark WAV/latents/probe
+media, preserving their failure/measurement JSON and logs. Kept canonical
+A–D, current repaint, calibration/reference audio, final app, isolated runtime,
+model weights and developer listening samples. No other agent files or user's
+model cache were deleted. Final storage sizes are in
+`artifacts/music-spike/phase6/storage-inventory.json`; managed total is below
+60 GB. Build/HF scratch and pytest data remain isolated under artifacts.
+
+## Experimental MPS profile and capacity correction
+
+The generic turbo MLX bound (14,100 MiB) plus the unchanged 20% reserve exceeds
+16 GiB even at 100% free, so using it for the approved MPS tier would make
+Generate impossible. Measured MPS / no-planner profile on this **36 GiB** Mac:
+
+| Operation | Duration | Wall s | Peak worker bytes | Peak GiB |
+|---|---:|---:|---:|---:|
+| Generation | 60 s instrumental | 20.195 | 12,470,969,280 | 11.614 |
+| Cached repaint 3–6 s | same 60 s source | 18.348 | 13,811,806,592 | 12.863 |
+
+Generation: exactly 60 s, finite/non-silent stereo 48 kHz, −16.68 LUFS,
+−0.99 dBTP, child gone, minimum system free 58%. Repaint: source unchanged,
+finite/same shape/sample rate, child gone, outside guarded SNR 73.401 dB /
+one PCM16 step max change, inside −1.611 dB SNR. Raw results:
+`artifacts/music-spike/phase6-mps16/{instrumental-60,repaint}/`.
+
+Separate rounded bounds: MPS/no-planner generation **11,900 MiB**, repaint
+**13,200 MiB**. The form, new take, repaint and benchmark pass the actual
+backend/operation to admission; planner-enabled requests retain the larger
+measured bound. No reserve or watchdog is weakened. A regression admits the
+MPS generation bound at 95% free on a fake 16 GiB Mac, and still rejects its
+repaint bound. About 92.7% native free memory is needed to start the 16 GiB
+profile, so it remains experimental and can be refused on real hardware.
+The repaint bound plus reserve cannot fit 16 GiB: those controls are disabled
+with EN/ZH advice to use New take. The MPS-specific facts show the measured
+60 s instrumental reference, not the MLX song time. Actual 16 GiB pressure,
+longer MPS lengths and MPS vocal quality were not validated here.
+
+Final 16 GiB-tier and 36 GiB-tier offscreen layouts were checked in English
+and Chinese, including expanded lyric checks. Screenshots are retained under
+`artifacts/compose-layout-final/`; the 16 GiB form shows MPS facts and the
+repaint memory limitation without clipped text. This is layout verification,
+not a real 16 GiB hardware run.

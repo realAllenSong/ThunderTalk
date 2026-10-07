@@ -228,7 +228,7 @@ def check_runtime() -> bool:
                 path=torch.__file__)
 
 
-def check_music(model: str = "turbo", project: str = "") -> bool:
+def check_music(model: str = "turbo", project: str = "", dit: str = "mlx") -> bool:
     import threading
     import soundfile as sf
     from thundertalk.core import music, runtime
@@ -248,10 +248,10 @@ def check_music(model: str = "turbo", project: str = "") -> bool:
     with tempfile.TemporaryDirectory(prefix="thundertalk-music-selftest-") as folder:
         request = MusicRequest(project_root=str(project_root), model_folder=m.folder, job_dir=folder,
                                caption="Gentle ambient instrumental, soft piano, warm pads.", instrumental=True,
-                               duration=10, steps=12 if model == "xl" else 8, seeds=[42])
+                               duration=10, steps=12 if model == "xl" else 8, seeds=[42], dit_backend=dit)
         with PeakFootprint(process) as peak:
             outcome = process.run(request, lambda event: events.append((time.monotonic() - start, event)),
-                                  threading.Event(), ram_need_mb=music.ram_need_mb(m, False))
+                                  threading.Event(), ram_need_mb=music.ram_need_mb(m, False, dit_backend=dit))
         wall = time.monotonic() - start
         takes = [event for _, event in events if event[0] == "take"]
         if not takes:
@@ -263,7 +263,7 @@ def check_music(model: str = "turbo", project: str = "") -> bool:
         phase = next((t for t, event in events if event[:2] in (("phase", "plan"), ("phase", "compose"))), wall)
         ok = (outcome == "done" and process.pid is None and sr == 48000 and x.shape[1] == 2
               and 9 <= duration <= 11 and np.isfinite(x).all() and rms > 0.003 and 0 < audio_peak <= 1)
-        return _say(bool(ok), "music", model=model, wall_s=round(wall, 2), load_s=round(phase, 2),
+        return _say(bool(ok), "music", model=model, dit_backend=dit, wall_s=round(wall, 2), load_s=round(phase, 2),
                     generation_s=round(wall - phase, 2), peak_footprint_bytes=peak.peak,
                     duration=duration, sample_rate=sr, channels=x.shape[1], rms=rms,
                     audio_peak=audio_peak, child_exited=process.pid is None)
@@ -275,6 +275,7 @@ def run(argv: list[str]) -> int:
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
     ap.add_argument("--model", default="", help="ASR model id, or turbo | xl for music")
+    ap.add_argument("--dit", choices=["mlx", "mps"], default="mlx", help="Music diffusion backend")
     ap.add_argument("--model-dir", default="", help="ASR directory, or ACE-Step project root (read-only)")
     ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
@@ -289,7 +290,7 @@ def run(argv: list[str]) -> int:
         if a.what == "moss":
             ok &= check_moss(a.file)
         if a.what == "music":
-            ok &= check_music(a.model or "turbo", a.model_dir)
+            ok &= check_music(a.model or "turbo", a.model_dir, a.dit)
         if a.what == "runtime":
             ok &= check_runtime()
         if a.what == "translate":

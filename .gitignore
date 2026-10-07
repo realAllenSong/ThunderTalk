@@ -65,6 +65,7 @@ ThunderTalk-v*-macOS.zip
 # Local Studio layout captures and benchmark output.
 /artifacts/studio-layout/
 /artifacts/compose-layout/
+/artifacts/compose-layout-final/
 
 # Vendored source that happens to live in "models/" folders (not model weights).
 !third_party/**/models/

@@ -18,6 +18,7 @@ from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QLine
 
 from thundertalk.core import audio_io, i18n, music, music_lyrics, music_rules
 from thundertalk.core.i18n import t
+from thundertalk.core.music_process import ADMIT_LEFT_FRACTION
 from thundertalk.core.music_worker import MusicRequest, take_seeds
 from thundertalk.ui import theme
 from thundertalk.ui.model_facts import facts_text
@@ -474,14 +475,17 @@ class ComposeTab(QWidget):
         m = music.model(self._model_id)
         zh = i18n.LANG == "zh"
         size = sum(d.size_mb for d in m.info.downloads)
+        speed = "music_turbo_mps" if self._tier.dit_backend == "mps" else m.info.speed
         self._facts.setText((m.info.blurb_zh if zh else m.info.blurb_en) + "  "
-                            + facts_text(m.info.params, size, False, m.info.speed))
-        need = music.ram_need_mb(m, self._planner_on())
+                            + facts_text(m.info.params, size, False, speed))
+        need = music.ram_need_mb(m, self._planner_on(), dit_backend=self._tier.dit_backend)
         lines = [t("studio.compose.memory").format(gb=f"{need / 1024:.1f}")]
         lines += [t("studio.compose.needs").format(name=music.model(d).info.name, gb=music.model(d).min_memory_gb)
                   for d in self._tier.disabled]
         if self._tier.experimental:
             lines.append(t("studio.compose.experimental"))
+        if not self._repaint_fits(m, self._tier.dit_backend):
+            lines.append(t("studio.compose.repaint_memory"))
         self._needs.setText("\n".join(lines))
         self._planner.setText(t("studio.compose.planner").format(size=_gb(music.PLANNER.size_mb)))
 
@@ -573,7 +577,7 @@ class ComposeTab(QWidget):
             planner=planner, dit_backend=self._tier.dit_backend,
             artist_warnings=sorted(self._warnings_shown),
             estimate_s=music.estimate_take_s(m, seconds, planner))
-        return req, music.ram_need_mb(m, planner)
+        return req, music.ram_need_mb(m, planner, dit_backend=req.dit_backend)
 
     def _generate(self) -> None:
         if self.busy() or self._blocked or not self._ready() or not self._texts_ok():
@@ -779,13 +783,19 @@ class ComposeTab(QWidget):
         elif action == "delete":
             self._delete_take(row)
 
+    def _repaint_fits(self, model, backend):
+        total = self._memory_gb * 1024
+        need = music.ram_need_mb(model, False, dit_backend=backend, repaint=True)
+        return need <= total * (1 - ADMIT_LEFT_FRACTION)
+
     def _repaint_ready(self, row) -> bool:
         wav = Path(row.path)
         filename = row.meta.get("repaint_source_latents_file")
         folder = row.meta.get("model")
         model = next((m for m in music.MUSIC_MODELS if m.folder == folder), None)
         return bool(filename and wav.with_suffix(".json").is_file() and (wav.parent / filename).is_file()
-                    and model and not music.missing(model, False))
+                    and model and not music.missing(model, False)
+                    and self._repaint_fits(model, row.request.dit_backend if row.request else self._tier.dit_backend))
 
     def _check_action(self, row, index, action) -> None:
         result = row.check_result
@@ -811,7 +821,7 @@ class ComposeTab(QWidget):
                       seeds=take_seeds(None, 1), task_type="text2music", src_audio=None)
         req.lyrics = music_lyrics.sung_lyrics(req.shown_lyrics or req.lyrics, req.vocal_language, self._sung.overrides)
         m = next(m for m in music.MUSIC_MODELS if m.folder == req.model_folder)
-        self._start_request(req, music.ram_need_mb(m, req.planner))
+        self._start_request(req, music.ram_need_mb(m, req.planner, dit_backend=req.dit_backend))
 
     def repaint_range(self, row, window):
         dialog = StyledDialog(self, title=t("studio.compose.take.repaint"),
@@ -849,7 +859,7 @@ class ComposeTab(QWidget):
         shown = row.meta.get("shown_lyrics") or row.meta.get("lyrics") or ""
         req.lyrics = music_lyrics.sung_lyrics(shown, req.vocal_language, self._sung.overrides)
         m = next(m for m in music.MUSIC_MODELS if m.folder == req.model_folder)
-        self._start_request(req, music.ram_need_mb(m, False))
+        self._start_request(req, music.ram_need_mb(m, False, dit_backend=req.dit_backend, repaint=True))
 
     def _play_take(self, row: TakeRow, window=None) -> None:
         if self._playing is not row or window != self._playing_window:

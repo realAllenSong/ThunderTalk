@@ -105,3 +105,17 @@ def test_measured_peak_includes_planner_without_double_counting(model, peak):
         bound = music.ram_need_mb(model, planner)
         assert peak / 2**20 <= bound < peak / 2**20 + 100
     assert model.info.speed in {"music_xl", "music_turbo"}
+
+
+def test_mps_no_planner_profile_can_admit_on_16_gib_without_weakening_reserve(monkeypatch):
+    from thundertalk.core import music_process
+    monkeypatch.setattr(music_process, "_release_gpu", lambda: True)
+    monkeypatch.setattr(music_process.memory_policy, "free_percent", lambda: 95)
+    need = music.ram_need_mb(music.TURBO, False, dit_backend="mps")
+    assert 12_470_969_280 / 2**20 <= need < 12_470_969_280 / 2**20 + 100
+    music_process.admit(need, 16 * 1024)
+    repaint = music.ram_need_mb(music.TURBO, False, dit_backend="mps", repaint=True)
+    assert 13_811_806_592 / 2**20 <= repaint < 13_811_806_592 / 2**20 + 100
+    with pytest.raises(music_process.MusicError, match="music:memory"):
+        music_process.admit(repaint, 16 * 1024)
+    assert music.ram_need_mb(music.TURBO, True, dit_backend="mps") == music.TURBO.ram_mb

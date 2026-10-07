@@ -55,15 +55,17 @@ class MusicModel:
     min_memory_gb: int
     rate: float = 0.3           # measured diffusion/decode/write seconds per audio second
     convert_bf16: bool = False  # F32 checkpoint converted once after download (decision 3)
+    mps_ram_mb: Optional[int] = None  # measured no-planner MPS generation
+    mps_repaint_ram_mb: Optional[int] = None
 
 
 def _model(id_, name, params, blurb_en, blurb_zh, dit: Download, folder, steps, ram_mb, min_memory_gb,
-           rate, convert_bf16=False, speed="unmeasured") -> MusicModel:
+           rate, convert_bf16=False, speed="unmeasured", mps_ram_mb=None, mps_repaint_ram_mb=None) -> MusicModel:
     info = BackendInfo(id=id_, name=name, blurb_en=blurb_en, blurb_zh=blurb_zh, languages=(),
                        supports_presets=False, supports_clone=False, needs_gpu=True, params=params,
                        language_codes=ACESTEP_LANGUAGES, downloads=(dit, VAE, TEXT_ENCODER),
                        components=COMPONENTS, speed=speed)
-    return MusicModel(info, folder, steps, ram_mb, min_memory_gb, rate, convert_bf16)
+    return MusicModel(info, folder, steps, ram_mb, min_memory_gb, rate, convert_bf16, mps_ram_mb, mps_repaint_ram_mb)
 
 
 XL = _model(
@@ -80,7 +82,8 @@ TURBO = _model(
     "轻量、快速（8 步）。可生成带人声的歌曲或纯音乐，支持 50 种语言。",
     Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=4792,
              allow=_sub("acestep-v15-turbo", "*.json", "*.safetensors", "*.pt")),
-    "acestep-v15-turbo", steps=8, ram_mb=14100, min_memory_gb=MIN_MEMORY_GB, rate=0.21, speed="music_turbo")
+    "acestep-v15-turbo", steps=8, ram_mb=14100, min_memory_gb=MIN_MEMORY_GB, rate=0.21, speed="music_turbo",
+    mps_ram_mb=11900, mps_repaint_ram_mb=13200)
 
 MUSIC_MODELS: tuple[MusicModel, ...] = (XL, TURBO)
 
@@ -142,11 +145,15 @@ def planner_pre_ticked(memory_gb: float, disk_free_mb: int, pending_mb: int) -> 
     return memory_gb + 0.5 >= XL_MEMORY_GB and disk_free_mb - pending_mb >= PLANNER_DISK_LEFT_GB * 1000
 
 
-def ram_need_mb(m: MusicModel, planner: bool) -> int:
+def ram_need_mb(m: MusicModel, planner: bool, *, dit_backend: str = "mlx", repaint: bool = False) -> int:
     """Measured full peak, including planner; do not add its memory twice.
 
     Use the same conservative bound without planning until separately measured.
     """
+    if dit_backend == "mps" and not planner:
+        measured = m.mps_repaint_ram_mb if repaint else m.mps_ram_mb
+        if measured is not None:
+            return measured
     return m.ram_mb
 
 

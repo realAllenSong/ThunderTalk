@@ -331,8 +331,9 @@ five-second capture-priority dictation pause. Full phase/audio/latency evidence:
 and include the planner without double counting; use the same conservative
 bound with planning off. Time predictions use measured M3 Max upper rates,
 not claims that every Mac or 600 s run has been measured. The experimental
-16 GiB MPS tier remains offered; its distinct working set is unverified and
-conservative admission may refuse it.
+16 GiB MPS tier uses a separately measured no-planner generation bound; actual
+16 GiB hardware remains unverified. Its repaint cannot fit the unchanged
+reserve and is disabled with New take advice; see the Phase 6 profile.
 
 Shown **before** any download: the facts line, "Needs about N GB of memory",
 the download size and "M GB free on this Mac" (from `shutil.disk_usage`).
@@ -680,3 +681,11 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
 - The corrected first-release stress check still measured 0.448 s idle versus 0.706 s concurrent (+57.6%), despite the worker yielding during recording. Native-process pause and finer GPU boundaries do not guarantee the +30% release-latency criterion on this shared 36 GiB M3 Max. Complete A–D with this miss explicitly reported; keep dictation-first yielding, preserve all memory guards, and do not alter ASR settings or slow the idle baseline to manufacture a pass. This is a recorded acceptance deviation, not a claim that the limit passed.
 
 - A fresh long XL attempt with finer hooks aborted on native critical pressure at decode (29% free; minimum 25%; no WAV). Retaining the planner throughout diffusion/decode is no longer justified. Release the completed planner at step 0 and reload it before planning each subsequent take. This keeps the already-generated codes and 1.7B-only decision, but reduces the live heap during diffusion/VAE. The initial model-load peak still counts for admission; no smaller memory claim until measured. This supersedes the Phase-0 integrated-residency choice in response to real long-run pressure. A two-take lifecycle regression verifies that every take is actually planned before the planner is released.
+
+- Capacity audit: the generic measured turbo MLX bound would always refuse
+  16 GiB. A real MPS/no-planner 60 s generation and cached repaint provide
+  distinct 11,900 / 13,200 MiB bounds. Pass backend and operation for admission;
+  do not weaken the reserve. 16 GiB generation is still experimental (needs
+  about 92.7% native free at launch); repaint cannot fit that tier and offers
+  New take instead. This is a recorded capability limit, not a claim of testing
+  on an actual 16 GiB Mac. Add packaged MPS selftest to close the backend path.

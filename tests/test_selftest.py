@@ -57,11 +57,12 @@ def test_translation_selftest_uses_apps_downloaded_weights(monkeypatch, tmp_path
     eng.unload.assert_called_once()
 
 
-def test_music_selftest_routes_model_and_isolated_root(monkeypatch):
+@pytest.mark.parametrize("dit", ["mlx", "mps"])
+def test_music_selftest_routes_model_and_isolated_root(monkeypatch, dit):
     seen = []
-    monkeypatch.setattr(selftest, 'check_music', lambda model, root: seen.append((model, root)) or True)
-    assert selftest.run(['music', '--model', 'xl', '--model-dir', '/isolated/music']) == 0
-    assert seen == [('xl', '/isolated/music')]
+    monkeypatch.setattr(selftest, 'check_music', lambda model, root, backend: seen.append((model, root, backend)) or True)
+    assert selftest.run(['music', '--model', 'xl', '--model-dir', '/isolated/music', '--dit', dit]) == 0
+    assert seen == [('xl', '/isolated/music', dit)]
 
 
 def test_music_selftest_checks_audio_and_child_exit(monkeypatch, tmp_path, capsys):

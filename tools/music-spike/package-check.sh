@@ -1,6 +1,6 @@
 #!/bin/bash
 # Run this entire script through lock.py gpu. Models and HOME stay isolated.
-# Usage: package-check.sh [turbo] [xl]  (default: turbo xl); "base" runs the runtime/audio/asr checks.
+# Usage: package-check.sh [turbo] [xl] [mps]  (default: turbo xl); "base" runs the runtime/audio/asr checks.
 set -euo pipefail
 ROOT="${MUSIC_MODELS_ROOT:-$HOME/Library/Caches/ThunderTalk-bench/music-models}"
 PACKAGE_HOME="$PWD/artifacts/music-spike/package-home"
@@ -18,6 +18,8 @@ for step in "${@:-base turbo xl}"; do
         say -v Samantha -o "$PACKAGE_HOME/dictation-probe.aiff" 'Morning lanterns light the river. We walk toward a quiet garden.'
         "$APP" --selftest asr --model qwen3-asr-06b-int8 --model-dir "$ROOT/lyric-asr" \
           --file "$PACKAGE_HOME/dictation-probe.aiff" ;;
+      mps)
+        /usr/bin/time -l "$APP" --selftest music --model turbo --dit mps --model-dir "$ROOT" ;;
       turbo|xl)
         /usr/bin/time -l "$APP" --selftest music --model "$s" --model-dir "$ROOT" ;;
       *) echo "unknown step $s" >&2; exit 2 ;;

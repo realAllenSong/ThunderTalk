@@ -27,6 +27,10 @@ MODELS = {
         "en": "170 s song: ~6 min 14 s · M3 Max · planner on",
         "zh": "170 秒歌曲：约 6 分 14 秒 · M3 Max · 启用规划",
     },
+    "models.speed.music_turbo_mps": {
+        "en": "60 s instrumental: ~20 s · M3 Max · MPS, no planner",
+        "zh": "60 秒纯音乐：约 20 秒 · M3 Max · MPS，未启用规划",
+    },
     "models.speed.music_turbo": {
         "en": "170 s song: ~1 min 11 s · M3 Max · planner on",
         "zh": "170 秒歌曲：约 1 分 11 秒 · M3 Max · 启用规划",

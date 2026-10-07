@@ -97,6 +97,8 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument('--model', choices=['xl', 'turbo'], required=True)
     ap.add_argument('--song', action='store_true')
+    ap.add_argument('--dit', choices=['mlx', 'mps'], default='mlx')
+    ap.add_argument('--no-planner', action='store_true')
     ap.add_argument('--dictation', action='store_true')
     ap.add_argument('--probe-only', action='store_true', help='cancel after the concurrent probe; no WAV expected')
     ap.add_argument('--max-dictation-ratio', type=float, help='cancel early if the concurrent probe exceeds this ratio')
@@ -115,7 +117,7 @@ def main():
                            lyrics=sung_lyrics(LYRICS, 'zh', user={}) if a.song else '',
                            shown_lyrics=LYRICS if a.song else '', instrumental=not a.song,
                            vocal_language='zh' if a.song else 'unknown', duration=170 if a.song else 60,
-                           steps=m.steps, planner=True, seeds=[42], estimate_s=music.estimate_take_s(m, 170 if a.song else 60, True))
+                           steps=m.steps, planner=not a.no_planner, dit_backend=a.dit, seeds=[42], estimate_s=music.estimate_take_s(m, 170 if a.song else 60, not a.no_planner))
     process = MusicProcess()
     cancel = threading.Event()
     signal.signal(signal.SIGINT, lambda *args: cancel.set())
@@ -197,7 +199,7 @@ def main():
     outcome = 'error'
     error = ''
     try:
-        outcome = process.run(request, on_event, cancel, ram_need_mb=music.ram_need_mb(m, True))
+        outcome = process.run(request, on_event, cancel, ram_need_mb=music.ram_need_mb(m, not a.no_planner, dit_backend=a.dit))
     except Exception as exc:
         error = str(exc)
         print(error, flush=True)
@@ -231,7 +233,7 @@ def main():
              'steady_step_s': (steps[-1] - steps[1]) / (len(steps) - 2) if len(steps) > 2 else None,
              'planner_tokens_reported': tokens,
              'planner_tokens_per_second': tokens / planning if planning and tokens else None}
-    result = {'model': a.model, 'song': a.song, 'outcome': outcome, 'error': error,
+    result = {'model': a.model, 'song': a.song, 'dit_backend': a.dit, 'planner': not a.no_planner, 'outcome': outcome, 'error': error,
               'wall_s': wall, 'phase_costs': costs, 'peak_worker_bytes': peak[0], 'peak_worker_gib': peak[0] / 2**30,
               'minimum_system_free_percent': minimum[0], 'child_alive_after': process.pid is not None,
               'events': events, 'dictation': latencies,
