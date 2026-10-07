@@ -593,3 +593,18 @@ Total ≈ 10–12 working days.
 8. **Takes location:** `~/Music/ThunderTalk`.
 9. **Lyric check:** runs automatically after every job with vocals.
 10. **Linux:** out of scope for v1 (macOS only).
+
+## Phase 0 results (2026-10-07)
+
+Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turbo, 30 s English song,
+1.7B planner, 8 steps, seed 42, MLX VAE (tile 192), MLX buffer cache capped at 1 GB.
+
+| Question | Result | Decision |
+|---|---|---|
+| transformers 5.6.2 | Two v5 behaviour changes broke the vendored DiT silently: non-persistent rotary buffers stayed zero, and the post-load `_init_weights` pass re-randomised 644/677 loaded weights (the vendored override wrote through `.data`). Both fixed as vendored patches with a regression test; after the fix every DiT tensor matches 4.57.6. | **Go on the bundled 5.6.2.** No private 4.57.6 copy, no `sys.path` shadowing. |
+| Vocals (ASR read-back, word recall) | MLX DiT 0.97, PyTorch MPS DiT 0.71, 4.57.6 control 0.83; mixed-in spoken control 0.94–1.00 on every take. | Lyrics are sung intelligibly. |
+| Memory | The blocker was MLX's unbounded buffer cache during VAE decode (+13–17 GB). With `mx.set_cache_limit(1 GB)`: peak 15.6 GB (MLX DiT) / 14.5 GB (MPS DiT); PyTorch VAE 13.8 GB but ~1.5× slower. | Worker caps the MLX cache first thing. |
+| DiT path | MLX DiT: +1.1 GB peak, best read-back. MPS DiT: lower peak. | Default MLX DiT; MPS DiT on the 16 GB tier. |
+| Precision | bf16 DiT on both paths; VAE kept fp32 (fp16 saves ~2 GB, not re-validated on the fixed weights). | bf16 DiT, fp32 VAE. |
+| Planner placement | Integrated (`thinking=True`) works within the measured peaks; sequential placement not measured. | Integrated; revisit only for the 24 GB tier if Phase 6 shows pressure. |
+| Not yet measured | XL (not downloaded; 115 GB disk free), `diffusers` import closure inside the frozen app, data-tree import in a packaged build. | Moved to Phase 6 (packaged build + selftest). |

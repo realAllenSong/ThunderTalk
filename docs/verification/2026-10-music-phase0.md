@@ -1,6 +1,6 @@
 # Music Phase 0 gate — ACE-Step 1.5 turbo on Apple Silicon
 
-Status: memory resolved; vocal intelligibility check in progress (see "Vocals").
+Status: passed — memory resolved, vocals intelligible on transformers 5.6.2 (see "Vocals").
 
 Machine: Apple Silicon Mac (shared, other work running), macOS 15 (darwin 24.6). torch 2.11.0, MLX,
 transformers 5.6.2 (bundled) and 4.57.6 (private fallback copy). Model: `acestep-v15-turbo` (bf16),
@@ -85,5 +85,22 @@ After the fix (`tools/music-spike/gate-weights.sh`, 5.6.2 dump diffed against th
 (a buffer only transformers 5 registers) and the FSQ `implicit_codebook`, which differs only by bf16
 rounding (|x| sum 224 887 vs 224 700: built in fp32 and cast, vs built under the bf16 default dtype).
 
-Next in the same chain: two 30 s vocal takes (MPS DiT, MLX DiT) and ASR
-(→ `docs/verification/music-asr-weights.log`, gitignored; numbers to be copied here).
+Vocal takes after the fix (same chain, 30 s, planner on, MLX VAE tile 192, MLX cache 1 GB):
+
+| 5.6.2 fixed | raw recall | control | peak GB | wall s | LUFS | LRA LU |
+|---|---|---|---|---|---|---|
+| PyTorch MPS DiT | 0.71 | 0.97 | 14.5 | 24.6 | −14.0 | 6.2 |
+| MLX DiT | **0.97** | 1.00 | 15.6 | 30.5 | −15.2 | 7.6 |
+| (4.57.6 MPS DiT, earlier) | 0.83 | 0.94 | 21.0 | 84 | | 12.6 |
+
+MLX DiT read-back: "Morning light upon the water. Footsteps on an empty boat. We can build a little
+shelter from the kindness that we sow. … Carry light across the river. Let the quiet garden grow.
+Every day a new beginning. Every seed a place to go." Wall times here are lower than the earlier
+rows because the machine was less loaded (same code path otherwise); compare within a row group.
+
+Decisions after the gate:
+- Ship the bundled transformers 5.6.2 with the vendored patches; no private 4.57.6 copy.
+- Default DiT backend: MLX when available (best read-back, +1.1 GB peak), PyTorch MPS DiT as the
+  fallback / low-memory path (14.5 GB peak). Both keep `mx.set_cache_limit(1 GB)`.
+- bf16 weights throughout (turbo checkpoint is bf16); the fp16 VAE observation above was made on
+  the broken weights and is not re-tested — keep the VAE in fp32.
