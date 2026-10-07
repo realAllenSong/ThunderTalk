@@ -356,7 +356,7 @@ def test_auto_checks_sequentially_only_after_music_exits(make, tmp_path, monkeyp
     first = FakeCheck.made[-1]
     first.done.emit(result)
     first.finished.emit()
-    assert len(FakeCheck.made) == 2 and tab._rows[0].badge_text() == "Check 1 lines"
+    assert len(FakeCheck.made) == 2 and tab._rows[0].badge_text() == "Check 1 line"
     row = tab._rows[0]
     row.check_button.click()
     assert not row.check_view.isHidden() and row.check_view.line_labels[0].text() == "hello there"
@@ -389,3 +389,25 @@ def test_xl_extended_length_requires_explicit_choice(make):
     assert "9:30" in tab._length.text()
     tab._long.setChecked(False)
     assert tab._length.value() == 300
+
+
+def test_artist_warning_is_advisory_and_remove_is_available(make):
+    tab = make()
+    _song(tab)
+    tab._style.setPlainText('warm folk pop, Taylor Swift')
+    tab._check_rules()
+    assert 'Taylor Swift' in tab._artist_warning.text() and not tab._remove_artist.isHidden()
+    assert tab._go.isEnabled()
+    req, _ = tab.build_request()
+    assert 'Taylor Swift' in req.artist_warnings
+    tab._remove_artist.click()
+    assert 'Taylor Swift' not in tab._style.toPlainText() and tab._artist_warning.isHidden()
+    assert tab._go.isEnabled()
+
+
+def test_pronunciation_acceptance_keeps_matching_chinese_characters(make):
+    tab = make()
+    tab._lang.setCurrentIndex(tab._lang.findData("zh"))
+    _song(tab, "宋朝唱SONG")
+    tab._sung.accept_word("宋朝唱SONG", "SONG", "颂")
+    assert tab._sung.overrides["宋朝唱SONG"] == "宋朝唱颂"

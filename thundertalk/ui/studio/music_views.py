@@ -111,7 +111,13 @@ class SungLyrics(QWidget):
             music_lyrics.remember(word, sung)
         except OSError:
             pass
-        self.overrides[text] = current.replace(word, sung).replace(old, sung)
+        before = text.split(word, 1)[0]
+        pos = len(music_lyrics.sung_line(before, self._lang))
+        if current[pos:pos + len(old)] == old:
+            current = current[:pos] + sung + current[pos + len(old):]
+        elif word in current:
+            current = current.replace(word, sung)
+        self.overrides[text] = current
         self._rebuild()
         self.changed.emit()
 

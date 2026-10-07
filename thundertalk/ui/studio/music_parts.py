@@ -239,6 +239,7 @@ class TakeRow(QWidget):
         self.check_button.hide()
         col.addWidget(self.check_button)
         self._repaint_ok = False
+        self._check_counts = (0, 0)
         self.retranslate()
 
     def label_text(self) -> str:
@@ -252,12 +253,13 @@ class TakeRow(QWidget):
 
     def set_check(self, clear: int, total: int) -> None:
         """Lyric-check result; total 0 hides the badge (instrumental)."""
+        self._check_counts = clear, total
         if total <= 0:
             self._badge.setVisible(False)
             return
         bad = total - clear
         if bad:
-            self._badge.setText(t("studio.compose.check.flagged").format(n=bad))
+            self._badge.setText(t("studio.compose.check.flagged_one" if bad == 1 else "studio.compose.check.flagged").format(n=bad))
             self._badge.set_colors(*theme.PASTELS["amber"])
         else:
             self._badge.setText(t("studio.compose.check.clear").format(clear=clear, total=total))
@@ -282,3 +284,4 @@ class TakeRow(QWidget):
             i=self.index, seed=self.seed, dur=fmt_mmss(round(self.seconds))))
         self._export.setText(t("studio.compose.take.export"))
         self._play.setToolTip(t("studio.compose.take.play"))
+        self.set_check(*self._check_counts)

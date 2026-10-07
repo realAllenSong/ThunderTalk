@@ -12,10 +12,11 @@ from dataclasses import replace
 from typing import Callable, Optional
 
 from PySide6.QtCore import QLocale, QTimer, Signal
-from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QDoubleSpinBox, QFileDialog, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout,
+from PySide6.QtGui import QDoubleValidator
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QDialog, QFileDialog, QLineEdit, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout,
                                QWidget)
 
-from thundertalk.core import audio_io, i18n, music, music_lyrics
+from thundertalk.core import audio_io, i18n, music, music_lyrics, music_rules
 from thundertalk.core.i18n import t
 from thundertalk.core.music_worker import MusicRequest, take_seeds
 from thundertalk.ui import theme
@@ -74,6 +75,11 @@ class ComposeTab(QWidget):
         self._check_queue = []
         self._job_rows = []
         self._shutting_down = False
+        self._warnings_shown = set()
+        self._rule_timer = QTimer(self)
+        self._rule_timer.setSingleShot(True)
+        self._rule_timer.setInterval(300)
+        self._rule_timer.timeout.connect(self._check_rules)
         self._job: Optional[MusicWorker] = None
         self._dl: Optional[BackendDownloadWorker] = None
         self._blocked = False                       # Speak or Transcribe is running
@@ -180,6 +186,14 @@ class ComposeTab(QWidget):
         self._sung.changed.connect(self._refresh)
         lly.addWidget(self._sung)
         sly.addWidget(self._lyrics_host)
+        warn = QHBoxLayout()
+        self._artist_warning = _muted()
+        warn.addWidget(self._artist_warning, 1)
+        self._remove_artist = theme.make_button("", "secondary", 28, font_px=12)
+        self._remove_artist.clicked.connect(self._remove_artists)
+        warn.addWidget(self._remove_artist)
+        sly.addLayout(warn)
+
         sly.addWidget(Rule())
         opts = QHBoxLayout()
         opts.setSpacing(10)
@@ -314,6 +328,8 @@ class ComposeTab(QWidget):
         self._lyrics.setPlaceholderText(t("studio.compose.lyrics_ph"))
         self._sung.retranslate()
         self._long.setText(t("studio.compose.long"))
+        self._remove_artist.setText(t("studio.compose.rules.remove"))
+        self._check_rules()
         self._insert.setText(t("studio.compose.insert"))
         self._len_lbl.setText(t("studio.compose.length"))
         self._bpm_lbl.setText(t("studio.compose.bpm"))
@@ -330,6 +346,8 @@ class ComposeTab(QWidget):
         self._footer.setText(t("studio.compose.footer"))
         for row in self._rows:
             row.retranslate()
+            if row.check_result is not None:
+                self._checked(row, row.check_result, update_status=False)
         self._on_mode(self._mode.current(), save=False)
 
     # ── remembered choices ────────────────────────────────────────────
@@ -424,7 +442,22 @@ class ComposeTab(QWidget):
         hint = t("studio.compose.odd_tags").format(tags=", ".join(f"[{s}]" for s in dict.fromkeys(odd))) if odd else ""
         count(self._lyrics_count, len(self._lyrics.toPlainText()), music.LYRICS_MAX_CHARS, hint)
         self._sung.set_lyrics(self._lyrics.toPlainText(), self._lang.currentData())
+        self._rule_timer.start()
         self._refresh()
+
+    def _check_rules(self) -> None:
+        fields = [self._style.toPlainText()] + ([self._lyrics.toPlainText()] if self._song() else [])
+        names = list(dict.fromkeys(span.text for text in fields for span in music_rules.find_artist_mentions(text)))
+        self._warnings_shown.update(names)
+        self._artist_warning.setText(t("studio.compose.rules.warning").format(names=", ".join(names)))
+        self._artist_warning.setVisible(bool(names))
+        self._remove_artist.setVisible(bool(names))
+
+    def _remove_artists(self) -> None:
+        for field in (self._style, self._lyrics):
+            text = field.toPlainText()
+            field.setPlainText(music_rules.remove_mentions(text, music_rules.find_artist_mentions(text)))
+        self._check_rules()
 
     # ── readiness ─────────────────────────────────────────────────────
     def _pending(self) -> list:
@@ -529,6 +562,7 @@ class ComposeTab(QWidget):
         lyrics = self._lyrics.toPlainText().strip() if song else ""
         seconds = self._length.value()
         title = style or next((ln for ln in lyrics.splitlines() if ln.strip() and not ln.strip().startswith("[")), "")
+        self._check_rules()
         req = MusicRequest(
             project_root=str(music.project_root()), model_folder=m.folder,
             job_dir=str(music.new_job_dir(title or "song")), caption=style,
@@ -537,6 +571,7 @@ class ComposeTab(QWidget):
             duration=seconds, bpm=self._bpm.value(), steps=m.steps,
             seeds=take_seeds(self._seed.value(), int(self._takes.currentData() or 1)),
             planner=planner, dit_backend=self._tier.dit_backend,
+            artist_warnings=sorted(self._warnings_shown),
             estimate_s=music.estimate_take_s(m, seconds, planner))
         return req, music.ram_need_mb(m, planner)
 
@@ -712,7 +747,7 @@ class ComposeTab(QWidget):
         self._on_dl_finished()
         self._next_check()
 
-    def _checked(self, row, result) -> None:
+    def _checked(self, row, result, update_status=True) -> None:
         row.check_button.setEnabled(True)
         if result is None:
             row.check_button.hide()
@@ -720,16 +755,18 @@ class ComposeTab(QWidget):
         row.check_result = result
         row.check_button.show()
         row.set_check(*result.summary)
+        expanded = row.check_view is not None and not row.check_view.isHidden()
         if row.check_view is not None:
             row.check_view.deleteLater()
         row.check_view = LyricCheckView(result, self._repaint_ready(row))
         row.check_view.action.connect(lambda i, a, r=row: self._check_action(r, i, a))
         row.layout().addWidget(row.check_view)
-        row.check_view.hide()
+        row.check_view.setVisible(expanded)
         row.check_button.setText(t("studio.compose.check.details"))
         row.check_button.clicked.disconnect()
         row.check_button.clicked.connect(lambda: row.check_view.setVisible(row.check_view.isHidden()))
-        self._status.setText(t("studio.compose.check.finished"))
+        if update_status:
+            self._status.setText(t("studio.compose.check.finished"))
 
     # ── take actions ──────────────────────────────────────────────────
     def _on_take_action(self, row: TakeRow, action: str) -> None:
@@ -777,32 +814,27 @@ class ComposeTab(QWidget):
         self._start_request(req, music.ram_need_mb(m, req.planner))
 
     def repaint_range(self, row, window):
-        dialog = QDialog(self)
-        dialog.setWindowTitle(t("studio.compose.take.repaint"))
-        dialog.setStyleSheet(f"background: {theme.BG_CARD}; color: {theme.TEXT_PRIMARY};")
-        col = QVBoxLayout(dialog)
-        col.addWidget(_muted(t("studio.compose.check.range_advice")))
+        dialog = StyledDialog(self, title=t("studio.compose.take.repaint"),
+                              body=t("studio.compose.check.range_advice"),
+                              accept_label=t("studio.compose.take.repaint"), cancel_label=t("common.cancel"))
+        panel = dialog.findChild(QWidget, "styledDialogPanel")
         controls = QHBoxLayout()
         fields = []
         for key, value in zip(("start", "end"), window or (0, min(row.seconds, 15))):
             controls.addWidget(_muted(t(f"studio.compose.check.{key}")))
-            f = QDoubleSpinBox()
-            f.setRange(0, row.seconds)
-            f.setDecimals(1)
-            f.setValue(value)
+            f = QLineEdit(f"{value:.1f}")
+            f.setStyleSheet(theme.INPUT_QSS)
+            f.setValidator(QDoubleValidator(0, row.seconds, 1, f))
             fields.append(f)
             controls.addWidget(f)
-        col.addLayout(controls)
-        buttons = QHBoxLayout()
-        cancel = theme.make_button(t("common.cancel"), "secondary", 32)
-        cancel.clicked.connect(dialog.reject)
-        buttons.addWidget(cancel)
-        go = theme.accent_button(t("studio.compose.take.repaint"), 32)
-        go.clicked.connect(dialog.accept)
-        buttons.addWidget(go)
-        col.addLayout(buttons)
-        if dialog.exec() == QDialog.DialogCode.Accepted and fields[1].value() > fields[0].value():
-            return fields[0].value(), fields[1].value()
+        panel.layout().insertLayout(2, controls)
+        if dialog.exec() == QDialog.DialogCode.Accepted:
+            try:
+                a, b = (float(f.text()) for f in fields)
+            except ValueError:
+                return None
+            if 0 <= a < b <= row.seconds:
+                return a, b
         return None
 
     def _repaint(self, row, window=None) -> None:

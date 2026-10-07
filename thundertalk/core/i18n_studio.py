@@ -487,9 +487,9 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.compose.takes_title": {"en": "Takes", "zh": "生成的版本"},
     "studio.compose.footer": {
         "en": "Describe style by genre, mood and instruments. Don't name real artists or reuse existing lyrics"
-              " or melodies. Streaming platforms such as Spotify ask you to disclose AI-generated music.",
+              " or melodies. When sharing, disclose AI-generated music through your platform or distributor.",
         "zh": "请用流派、情绪和乐器来描述风格。不要写真实歌手的名字，也不要使用现有的歌词或旋律。"
-              "Spotify 等流媒体平台要求标注 AI 生成的音乐。",
+              "发布时，请通过平台或发行商标注 AI 生成的音乐。",
     },
     'studio.music.err.no_asr': {"en": 'Install Qwen3-ASR to check the sung lyrics.', "zh": '请下载 Qwen3-ASR 来检查演唱的歌词。'},
     'studio.compose.long': {"en": 'Allow up to 10 minutes (see the time estimate)', "zh": '允许最长 10 分钟（请查看预计耗时）'},
@@ -513,6 +513,10 @@ STUDIO: dict[str, dict[str, str]] = {
     'studio.compose.check.start': {"en": 'Start (s)', "zh": '开始（秒）'},
     'studio.compose.check.end': {"en": 'End (s)', "zh": '结束（秒）'},
 
+    "studio.compose.rules.warning": {"en": "Artist reference: {names}. Describe genre, mood and instruments instead.", "zh": "艺人相关描述：{names}。建议改用流派、情绪和乐器。"},
+    "studio.compose.rules.remove": {"en": "Remove", "zh": "移除"},
 
+
+    "studio.compose.check.flagged_one": {"en": "Check {n} line", "zh": "有 {n} 行需检查"},
 
 }

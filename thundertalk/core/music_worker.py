@@ -50,6 +50,7 @@ class MusicRequest:
     planner: bool = False
     dit_backend: str = "mlx"            # "mlx" | "mps"
     estimate_s: float = 0.0             # per take, for the upstream timeout
+    artist_warnings: list[str] = field(default_factory=list)
     task_type: str = "text2music"
     src_audio: Optional[str] = None
     repainting_start: float = 0.0
@@ -178,6 +179,7 @@ def _save_take(request: MusicRequest, index: int, seed: int, audio: dict, result
         "steps": request.steps,
         "planner": request.planner,
         "dit_backend": request.dit_backend,
+        "artist_warnings": request.artist_warnings,
         "task_type": request.task_type,
         "src_audio": request.src_audio,
         "repainting_start": request.repainting_start,

@@ -551,6 +551,12 @@ _STRINGS: dict[str, dict[str, str]] = {
     "about.website": {"en": "Website", "zh": "官网"},
     "about.report_issue": {"en": "Report Issue", "zh": "反馈问题"},
     "about.license": {"en": "License", "zh": "许可证"},
+    "about.music_credits": {
+        "en": "Music: ACE-Step 1.5 (MIT). Text encoder: Qwen3-Embedding (Apache-2.0). "
+              "Lyric pronunciation: pypinyin (MIT). Artist names: Wikidata (CC0).",
+        "zh": "音乐：ACE-Step 1.5（MIT）。文本编码器：Qwen3-Embedding（Apache-2.0）。"
+              "歌词读音：pypinyin（MIT）。艺人名称：Wikidata（CC0）。",
+    },
     "about.copyright": {
         "en": "© 2024–2026 realAllenSong · MIT License",
         "zh": "© 2024–2026 realAllenSong · MIT License",

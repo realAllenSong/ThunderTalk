@@ -186,6 +186,11 @@ class AboutPage(QWidget):
         tagline.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 14px; font-style: italic;")
         tagline.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(tagline)
+        credits = QLabel(t("about.music_credits"))
+        credits.setWordWrap(True)
+        credits.setAlignment(Qt.AlignmentFlag.AlignCenter)
+        credits.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
+        ly.addWidget(credits)
 
         ly.addStretch()
 

@@ -620,3 +620,12 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
   line actions use the contributing recognition windows, labelled approximate;
   repaint opens a range review rather than silently treating them as exact.
   The 300 s XL default now has an explicit opt-in to 600 s with the estimate.
+
+- The disclosure footer now asks users to disclose through their platform or
+  distributor, rather than claiming Spotify universally mandates a binary
+  AI-music label. Spotify supports artist/distributor-supplied AI credits:
+  https://newsroom.spotify.com/2025-09-25/spotify-strengthens-ai-protections/ .
+- The artist asset is 5,000 Wikidata entities and 12,917 English/Chinese label
+  variants (CC0). `wbgetentities` language fallback supplies simplified and
+  traditional Chinese; a larger multi-label SPARQL query timed out. This is a
+  build-time tool only; the app makes no artist-list network requests.
