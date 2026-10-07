@@ -186,7 +186,12 @@ def _download_archive(d: Download, cb, cancel) -> None:
         tmp.unlink(missing_ok=True)
 
 
-_HF_DIR_DONE = ".complete"
+def _hf_dir_marker(d: Download) -> str:
+    """Several hf-dir downloads may share one folder (ACE-Step's checkpoints/),
+    so each gets its own completion marker."""
+    import hashlib
+    key = "\n".join((d.source, *d.allow)).encode()
+    return f".complete-{hashlib.sha1(key).hexdigest()[:12]}"
 
 
 def download_ready(d: Download) -> bool:
@@ -195,7 +200,7 @@ def download_ready(d: Download) -> bool:
     if d.kind == "hf":
         return models._hf_cache_has(d.source)
     if d.kind == "hf-dir":
-        return (target / _HF_DIR_DONE).is_file()
+        return (target / _hf_dir_marker(d)).is_file()
     if d.kind == "file":
         return target.is_file()
     return target.is_dir() and any(target.iterdir())
@@ -214,7 +219,7 @@ def _download_hf_dir(d: Download, cb, cancel) -> None:
     target = models.get_models_dir() / d.dest
     target.mkdir(parents=True, exist_ok=True)
     models._hf_snapshot(d.source, target, list(d.allow), None, cb, cancel)
-    (target / _HF_DIR_DONE).write_text(d.source)
+    (target / _hf_dir_marker(d)).write_text(d.source)
 
 
 # ── engine ───────────────────────────────────────────────────────────────
