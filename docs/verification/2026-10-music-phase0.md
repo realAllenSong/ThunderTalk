@@ -56,5 +56,9 @@ patch: 7/8 frequencies wrong; passes with it, turbo and XL).
 PyTorch MPS VAE instead of MLX (unfixed 5.6.2, same settings): peak 13.8 GB vs 15.9 GB, wall
 103 s vs 67 s.
 
-Pending: 4.57.6 take (correct rotary) and the fixed 5.6.2 takes (MPS DiT and MLX DiT) with
-read-back — `tools/music-spike/gate-fixed.sh`.
+Positive control — transformers 4.57.6 (correct rotary), same settings: raw read-back "Morning light
+upon the water. Footsteps on an empty road. We can build a little shelter, kind of like we show.
+Carry light across the river. … let the quiet garden grow. Every …", word recall 0.83 (control 0.94).
+Unfixed 5.6.2 in the same chain: 0.00. Peak 21.0 GB, 84 s wall.
+
+Pending: the fixed 5.6.2 takes (MPS DiT and MLX DiT) with read-back — `tools/music-spike/gate-fixed.sh`.
