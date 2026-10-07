@@ -198,7 +198,10 @@ class InitServiceLoaderMixin(InitServiceLoaderComponentsMixin):
         self._sync_alignment_config()
         self._apply_cuda_bool_argsort_workaround()
 
-        if not self.offload_to_cpu:
+        if getattr(self, "_defer_mps_decoder", False):
+            # Convert the temporary CPU decoder directly to MLX before MPS placement.
+            self.model = self.model.to("cpu").to(self.dtype)
+        elif not self.offload_to_cpu:
             self.model = self.model.to(device).to(self.dtype)
         elif not self.offload_dit_to_cpu:
             logger.info(f"[initialize_service] Keeping main model on {device} (persistent)")

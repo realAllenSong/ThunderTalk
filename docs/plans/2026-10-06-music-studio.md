@@ -653,3 +653,10 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
 - Cursor's network-only XL fetch outside the GPU lock deviated from the task
   rule. Retain the downloaded data, but the continuation corrects the chain so
   all future heavy fetches are locked. No guard thresholds were weakened.
+
+- XL initialization now defers MPS placement of the temporary torch decoder
+  until its direct CPU-to-MLX conversion removes it. Remaining torch encoders
+  still run on MPS; failed MLX initialization retains the full torch fallback.
+  This avoids transient pressure without changing precision, inference
+  configuration, or memory thresholds. A fresh 60 s XL/planner/50-step run
+  completes; final numbers and remaining runs belong in the Phase 6 report.

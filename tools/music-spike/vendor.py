@@ -85,6 +85,24 @@ def main():
             '        else:\n'
             '            from acestep.models.turbo.modeling_acestep_v15_turbo import AceStepConditionGenerationModel')
     replace(TARGET / "core/generation/handler/init_service_loader.py", 'AutoModel.from_pretrained(', 'AceStepConditionGenerationModel.from_pretrained(')
+    replace(TARGET / "core/generation/handler/init_service_loader.py",
+            '        if not self.offload_to_cpu:\n            self.model = self.model.to(device).to(self.dtype)',
+            '        if getattr(self, "_defer_mps_decoder", False):\n'
+            '            # Convert the temporary CPU decoder directly to MLX before MPS placement.\n'
+            '            self.model = self.model.to("cpu").to(self.dtype)\n'
+            '        elif not self.offload_to_cpu:\n            self.model = self.model.to(device).to(self.dtype)')
+    replace(TARGET / "core/generation/handler/init_service_orchestrator.py",
+            '            model_path = os.path.join(checkpoint_dir, config_path)',
+            '            # ThunderTalk: avoid a complete temporary MPS decoder alongside MLX weights.\n'
+            '            self._defer_mps_decoder = resolved_device == "mps" and use_mlx_dit\n'
+            '            model_path = os.path.join(checkpoint_dir, config_path)')
+    replace(TARGET / "core/generation/handler/init_service_orchestrator.py",
+            '            status_msg = self._build_initialize_status_message(',
+            '            if self._defer_mps_decoder:\n'
+            '                # Successful MLX conversion removed the decoder. A failed conversion\n'
+            '                # keeps it here for the normal torch fallback.\n'
+            '                self.model = self.model.to(resolved_device).to(self.dtype)\n\n'
+            '            status_msg = self._build_initialize_status_message(')
     replace(TARGET / "core/generation/handler/init_service_loader.py", '                    trust_remote_code=True,', '                    local_files_only=True,')
     replace(TARGET / "llm_inference.py", 'trust_remote_code=True', 'trust_remote_code=False')
     (TARGET / "core/generation/handler/init_service_downloads.py").write_text(

@@ -143,3 +143,45 @@ def test_mlx_conversion_materializes_each_tensor_and_preserves_layout(monkeypatc
     np.testing.assert_array_equal(result['proj_in.weight'].array, values['proj_in.1.weight'].swapaxes(1, 2))
     np.testing.assert_array_equal(result['proj_out.weight'].array, values['proj_out.1.weight'].transpose(1, 2, 0))
     np.testing.assert_array_equal(result['norm.weight'].array, values['norm.weight'])
+
+
+@pytest.mark.parametrize('defer, expected', [(True, 'cpu'), (False, 'mps')])
+def test_mlx_load_defers_only_temporary_decoder_placement(monkeypatch, tmp_path, defer, expected):
+    import os
+    import sys
+    from types import ModuleType, SimpleNamespace
+    from typing import Optional
+
+    class Tensor:
+        def __init__(self):
+            self.moves = []
+            self.config = SimpleNamespace()
+
+        def to(self, target):
+            self.moves.append(target)
+            return self
+
+        def eval(self):
+            return self
+
+        def transpose(self, *args):
+            return self
+
+    model, silence = Tensor(), Tensor()
+    fake = ModuleType('acestep.models.turbo.modeling_acestep_v15_turbo')
+    fake.AceStepConditionGenerationModel = SimpleNamespace(from_pretrained=lambda *a, **k: model)
+    monkeypatch.setitem(sys.modules, fake.__name__, fake)
+    torch = SimpleNamespace(cuda=SimpleNamespace(is_available=lambda: False), load=lambda *a, **k: silence)
+    tree = ast.parse((ROOT / 'core/generation/handler/init_service_loader.py').read_text())
+    cls = next(n for n in tree.body if isinstance(n, ast.ClassDef))
+    method = next(n for n in cls.body if isinstance(n, ast.FunctionDef) and n.name == '_load_main_model_from_checkpoint')
+    scope = dict(torch=torch, os=os, Optional=Optional, logger=SimpleNamespace(info=lambda *a: None))
+    exec(compile(ast.Module(body=[method], type_ignores=[]), '<loader>', 'exec'), scope)
+    (tmp_path / 'silence_latent.pt').touch()
+    host = SimpleNamespace(dtype='bf16', _defer_mps_decoder=defer, offload_to_cpu=False,
+                           offload_dit_to_cpu=False, _sync_alignment_config=lambda: None,
+                           _apply_cuda_bool_argsort_workaround=lambda: None, _apply_dit_quantization=lambda q: None)
+    scope['_load_main_model_from_checkpoint'](host, model_checkpoint_path=str(tmp_path), device='mps',
+                                             use_flash_attention=False, compile_model=False, quantization=None)
+    assert model.moves == [expected, 'bf16']
+    assert silence.moves == ['mps', 'bf16']

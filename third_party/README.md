@@ -26,6 +26,9 @@ Local inference patches:
 - Offline checkpoint precheck and path resolver; missing weights cannot trigger
   upstream downloads. The LM uses `trust_remote_code=False`.
 - Diffusion-step and MLX token-block hooks; a worker-controlled timeout budget.
+- MLX initialization keeps the temporary torch decoder on CPU until conversion
+  removes it, then places the remaining torch components on MPS. A failed MLX
+  initialization preserves the complete torch fallback.
 - MLX decoder weights materialized as bf16 one tensor at a time (a lazy cast
   kept the whole fp32 decoder alive until the end: XL load peaked above
   24 GiB), with the duplicate torch decoder freed only after successful

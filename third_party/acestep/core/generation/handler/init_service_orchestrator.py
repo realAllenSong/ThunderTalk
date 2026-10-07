@@ -155,6 +155,8 @@ class InitServiceOrchestratorMixin:
                 return precheck_failure
 
 
+            # ThunderTalk: avoid a complete temporary MPS decoder alongside MLX weights.
+            self._defer_mps_decoder = resolved_device == "mps" and use_mlx_dit
             model_path = os.path.join(checkpoint_dir, config_path)
             self._load_main_model_from_checkpoint(
                 model_checkpoint_path=model_path,
@@ -179,6 +181,11 @@ class InitServiceOrchestratorMixin:
                 use_mlx_dit=use_mlx_dit,
                 mlx_compile_requested=mlx_compile_requested,
             )
+
+            if self._defer_mps_decoder:
+                # Successful MLX conversion removed the decoder. A failed conversion
+                # keeps it here for the normal torch fallback.
+                self.model = self.model.to(resolved_device).to(self.dtype)
 
             status_msg = self._build_initialize_status_message(
                 device=resolved_device,
