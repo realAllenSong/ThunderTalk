@@ -98,6 +98,8 @@ def serve(connection, config):
             handler.mlx_vae_chunk_size = config['vae_chunk']
         if config['vae_nocompile']:
             handler._mlx_compiled_decode = None
+        if config['torch_vae']:
+            handler.use_mlx_vae = False
         resolve = handler._resolve_mlx_decode_fn
 
         def traced_resolve():
@@ -165,6 +167,12 @@ def serve(connection, config):
             raise RuntimeError(f'Invalid audio: duration={duration}, peak={peak}, rms={rms}')
         path = str(Path(config['output']) / 'gate.wav')
         sf.write(path, samples, 48000, subtype='PCM_16')
+        latents = result.extra_outputs.get('pred_latents')
+        if latents is not None:
+            latents = latents.detach().cpu().float()
+            torch.save(latents, Path(config['output']) / 'latents.pt')
+            event('latents', shape=list(latents.shape), mean=float(latents.mean()), std=float(latents.std()),
+                  abs_max=float(latents.abs().max()))
         event('done', path=path, duration=duration, sample_rate=48000, channels=2,
               peak_dbfs=20 * float(np.log10(peak)), rms=rms,
               time_costs=result.extra_outputs.get('time_costs', {}))
@@ -187,6 +195,8 @@ def main():
     parser.add_argument('--vae-fp16', action='store_true')
     parser.add_argument('--vae-nocompile', action='store_true', help='decode without mx.compile')
     parser.add_argument('--mx-cache-gb', type=float, default=0, help='cap the MLX buffer cache')
+    parser.add_argument('--torch-vae', action='store_true', help='decode with the PyTorch MPS VAE')
+    parser.add_argument('--tag', default='', help='suffix for the output directory')
     args = vars(parser.parse_args())
     label = f"{args['model']}-{args['transformers']}-{'mlx' if args['mlx'] else 'mps'}-{'vocal' if args['vocal'] else 'instrumental'}"
     if args['vae_chunk']:
@@ -197,6 +207,10 @@ def main():
         label += '-nocompile'
     if args['mx_cache_gb']:
         label += f"-mxcache{args['mx_cache_gb']:g}"
+    if args['torch_vae']:
+        label += '-torchvae'
+    if args['tag']:
+        label += f"-{args['tag']}"
     output = WORKTREE / 'artifacts/music-spike' / label
     output.mkdir(parents=True, exist_ok=True)
     args['output'] = str(output)
