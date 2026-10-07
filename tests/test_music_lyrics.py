@@ -126,3 +126,12 @@ def test_shown_and_sung_round_trip_keeps_tags_and_line_order():
     assert sung == "[verse]\n欧拉宋\n\n普通的一行\n[chorus]\n哈罗世界"
     assert [ln.section for ln in ml.lyric_lines(sung)] == [ln.section for ln, _ in pairs]
     assert [ln.index for ln in ml.lyric_lines(sung)] == [0, 1, 2]
+
+
+def test_sentence_timestamps_map_to_lines_only_one_to_one():
+    stamps = [{"text": "[verse]", "start": 0, "end": 0.3}, {"text": "第一行", "start": 1, "end": 3},
+              {"text": "第二行", "start": 3.2, "end": 5}]
+    assert ml.line_spans(stamps, 2) == [(1.0, 3.0), (3.2, 5.0)]
+    assert ml.line_spans(stamps, 3) is None
+    assert ml.line_spans(None, 2) is None
+    assert ml.line_spans([{"text": "x", "start": 4, "end": 2}], 1) is None

@@ -99,6 +99,18 @@ def judge(index: int, heard: str, got: Sequence[str], targets: Sequence[Sequence
     return LineCheck(index, heard, CLEAR if err <= PASS_ERROR else UNCLEAR, round(err, 3))
 
 
+def line_spans(sentences: Optional[Sequence[dict]], n_lines: int) -> Optional[list[tuple[float, float]]]:
+    """(start, end) per lyric line from the worker's sentence timestamps,
+    skipping section-tag sentences; None unless they match the lines one to one."""
+    if not sentences:
+        return None
+    spans = [(float(s["start"]), float(s["end"])) for s in sentences
+             if str(s.get("text", "")).strip() and not SECTION_RE.match(str(s["text"]))]
+    if len(spans) != n_lines or any(b < a for a, b in spans):
+        return None
+    return spans
+
+
 def line_windows(spans: Sequence[tuple[float, float]], duration: float,
                  pad: float = PAD_S) -> list[tuple[float, float]]:
     """Sentence timestamps padded on both sides and clamped to the take."""

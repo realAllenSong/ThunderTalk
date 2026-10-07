@@ -39,7 +39,8 @@ class MusicRequest:
     model_folder: str                   # e.g. "acestep-v15-turbo"
     job_dir: str
     caption: str
-    lyrics: str = ""
+    lyrics: str = ""                    # the sung lyrics (what the model gets)
+    shown_lyrics: str = ""              # what the user wrote, kept in the sidecar
     instrumental: bool = False
     vocal_language: str = "unknown"
     duration: int = 30
@@ -106,7 +107,35 @@ def _params(request: MusicRequest, seed: int):
         use_cot_caption=False, use_cot_language=False, dcw_enabled=False)
 
 
-def _save_take(request: MusicRequest, index: int, seed: int, audio: dict, result, wall_s: float):
+_ALIGN_INPUTS = ("pred_latents", "encoder_hidden_states", "encoder_attention_mask",
+                 "context_latents", "lyric_token_idss")
+
+
+def lyric_timestamps(handler, request: MusicRequest, seed: int, result, duration: float):
+    """Sentence timestamps of the sung lyrics from the DiT's cross-attention
+    (one extra decoder pass), as [{text, start, end, confidence}]; None when
+    there are no lyrics or alignment fails — the lyric check then scans."""
+    extra = result.extra_outputs
+    if request.instrumental or not request.lyrics.strip() or any(extra.get(k) is None for k in _ALIGN_INPUTS):
+        return None
+    try:
+        out = handler.get_lyric_timestamp(
+            pred_latent=extra["pred_latents"], encoder_hidden_states=extra["encoder_hidden_states"],
+            encoder_attention_mask=extra["encoder_attention_mask"],
+            context_latents=extra["context_latents"], lyric_token_ids=extra["lyric_token_idss"],
+            total_duration_seconds=duration, vocal_language=request.vocal_language,
+            inference_steps=request.steps, seed=seed)
+    except Exception:
+        traceback.print_exc()
+        return None
+    if not out or not out.get("success"):
+        return None
+    return [{"text": s.text, "start": float(s.start), "end": float(s.end),
+             "confidence": float(s.confidence)} for s in out.get("sentence_timestamps") or []]
+
+
+def _save_take(request: MusicRequest, index: int, seed: int, audio: dict, result, wall_s: float,
+               timestamps=None):
     import numpy as np
     job = Path(request.job_dir)
     name = f"take-{index + 1}"
@@ -129,6 +158,8 @@ def _save_take(request: MusicRequest, index: int, seed: int, audio: dict, result
         "model": request.model_folder,
         "caption": request.caption,
         "lyrics": "" if request.instrumental else request.lyrics,
+        "shown_lyrics": "" if request.instrumental else (request.shown_lyrics or request.lyrics),
+        "lyric_timestamps": timestamps,
         "instrumental": request.instrumental,
         "vocal_language": request.vocal_language,
         "duration": len(samples) / SAMPLE_RATE,
@@ -224,8 +255,12 @@ def _run(request: MusicRequest, send, go, cancel) -> None:
                                                  audio_format="wav"))
         if not result.success or not result.audios:
             raise RuntimeError(result.error or result.status_message)
+        gate()
+        audio = result.audios[0]
+        stamps = lyric_timestamps(handler, request, seed, result,
+                                  audio["tensor"].shape[-1] / audio["sample_rate"])
         send(("phase", "write", index))
-        wav, meta = _save_take(request, index, seed, result.audios[0], result, time.monotonic() - start)
+        wav, meta = _save_take(request, index, seed, audio, result, time.monotonic() - start, stamps)
         send(("take", index, str(wav), meta))
         del result
 

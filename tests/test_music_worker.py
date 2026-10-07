@@ -31,6 +31,10 @@ class Tensor:
     def numpy(self):
         return self.array
 
+    @property
+    def shape(self):
+        return self.array.shape
+
 
 class Connection:
     def __init__(self):
@@ -47,7 +51,8 @@ class Connection:
 @pytest.fixture
 def fake(monkeypatch, tmp_path):
     state = types.SimpleNamespace(init=None, lm_init=None, calls=[], cache_limit=None, cwd=None,
-                                  timeout_at_import=None, fail_load=None, during_step=None)
+                                  timeout_at_import=None, fail_load=None, during_step=None,
+                                  align_calls=[], align_result="ok")
     hooks = types.ModuleType("acestep._hooks")
     hooks.TIMEOUT_S = 1800
     hooks.on_step = lambda done, total: None
@@ -65,6 +70,17 @@ def fake(monkeypatch, tmp_path):
 
         def _decode_generate_music_pred_latents(self, latents):
             return latents
+
+        def get_lyric_timestamp(self, **kwargs):
+            state.align_calls.append(kwargs)
+            if state.align_result == "raise":
+                raise RuntimeError("attention failed")
+            if state.align_result == "fail":
+                return {"success": False, "error": "no attentions", "sentence_timestamps": []}
+            stamp = types.SimpleNamespace
+            return {"success": True, "error": None, "sentence_timestamps": [
+                stamp(text="[Verse]", start=0.0, end=0.4, confidence=0.1),
+                stamp(text="hello", start=1.25, end=3.5, confidence=0.9)]}
 
     class LLM:
         def initialize(self, *args, **kwargs):
@@ -95,6 +111,8 @@ def fake(monkeypatch, tmp_path):
             success=True, error=None, status_message="",
             audios=[{"tensor": Tensor(audio), "sample_rate": 48000}],
             extra_outputs={"pred_latents": Tensor(np.ones((1, 25 * params.duration, 64))),
+                           "encoder_hidden_states": "ehs", "encoder_attention_mask": "eam",
+                           "context_latents": "ctx", "lyric_token_idss": "ids",
                            "lm_metadata": {"bpm": 90}, "time_costs": {"dit_total_time_cost": 1.5}})
 
     handler_mod = types.ModuleType("acestep.handler")
@@ -198,6 +216,32 @@ def test_instrumental_ignores_lyrics(fake, tmp_path):
     _serve(_request(tmp_path, instrumental=True, seeds=[1]))
     params = fake.calls[0][0]
     assert params.lyrics == "[Instrumental]" and params.vocal_language == "unknown"
+
+
+def test_sentence_timestamps_are_saved_with_the_shown_lyrics(fake, tmp_path):
+    events = _serve(_request(tmp_path, seeds=[5], lyrics="[Verse]\nhallo", shown_lyrics="[Verse]\nhello"))
+    meta = next(e[3] for e in events if e[0] == "take")
+    assert meta["lyrics"] == "[Verse]\nhallo" and meta["shown_lyrics"] == "[Verse]\nhello"
+    assert meta["lyric_timestamps"] == [
+        {"text": "[Verse]", "start": 0.0, "end": 0.4, "confidence": 0.1},
+        {"text": "hello", "start": 1.25, "end": 3.5, "confidence": 0.9}]
+    call = fake.align_calls[0]
+    assert (call["seed"], call["inference_steps"], call["vocal_language"]) == (5, 3, "en")
+    assert call["total_duration_seconds"] == 10 and call["lyric_token_ids"] == "ids"
+
+
+@pytest.mark.parametrize("outcome", ["fail", "raise"])
+def test_failed_alignment_keeps_the_take_without_timestamps(fake, tmp_path, outcome):
+    fake.align_result = outcome
+    events = _serve(_request(tmp_path, seeds=[5]))
+    assert events[-1] == ("done",)
+    assert next(e[3] for e in events if e[0] == "take")["lyric_timestamps"] is None
+
+
+def test_instrumental_takes_skip_alignment(fake, tmp_path):
+    events = _serve(_request(tmp_path, instrumental=True, seeds=[1]))
+    assert fake.align_calls == []
+    assert next(e[3] for e in events if e[0] == "take")["lyric_timestamps"] is None
 
 
 def test_load_failure_is_reported(fake, tmp_path):
