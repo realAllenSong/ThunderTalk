@@ -1,0 +1,47 @@
+# Latin words common in Chinese lyrics and tech, and how to spell them so a
+# Chinese-singing model pronounces them. word<TAB>sung form; keys are matched
+# case-insensitively. Users override any entry from the Compose tab.
+song	宋
+hello	哈喽
+hi	嗨
+bye	拜
+ok	欧克
+okay	欧克
+ai	诶艾
+yeah	耶
+oh	哦
+wow	哇哦
+baby	贝比
+love	拉夫
+happy	嗨皮
+party	派对
+sorry	搜瑞
+cool	酷
+fun	饭
+style	斯戴尔
+rock	洛克
+rap	锐普
+show	秀
+go	够
+my	麦
+day	得
+night	耐特
+star	斯达
+dream	卓目
+hey	嘿
+yo	哟
+code	扣得
+bug	巴格
+data	达塔
+cloud	克劳德
+token	托肯
+model	猫斗
+chat	恰特
+gpt	吉屁替
+python	派森
+mac	麦克
+app	艾普
+wifi	歪法艾
+online	昂兰
+open	欧喷
+euler	欧拉

@@ -76,3 +76,53 @@ def test_alignment_fallback_marks_a_skipped_line_not_heard():
     got = ml.assign(ml.units("walking home tonight we keep it slow", "en"), lines)
     assert got[1] == [] and ml.judge(1, "", got[1], [lines[1]]).status == ml.NOT_HEARD
     assert ml.assign([], lines) == [[], [], []] and ml.assign(["x"], []) == []
+
+
+# ---- sung lyrics and the pronunciation helper ------------------------------
+
+def test_shown_euler_song_is_sung_as_euler_song_in_characters():
+    assert ml.sung_line("欧拉SONG", "zh", user={}) == "欧拉宋"
+    # the check later accepts the homophone the model actually sang
+    assert ml.check_line(0, "欧拉颂", [ml.sung_line("欧拉SONG", "zh", user={}), "欧拉SONG"],
+                         "zh").status == ml.CLEAR
+
+
+def test_builtin_table_then_letters_then_syllables():
+    assert ml.suggest("AI", "zh", user={}) == ml.Suggestion("诶艾", ml.BUILTIN)
+    assert ml.suggest("hello", "zh", user={}).text == "哈喽"
+    assert ml.suggest("GPU", "zh", user={}) == ml.Suggestion("吉屁优", ml.RULE)
+    assert ml.transliterate("sola") == "索拉"
+    assert ml.transliterate("song") == "宋"
+    assert ml.transliterate("world") == "沃尔德"
+    assert ml.transliterate("string") == "斯特林"
+
+
+def test_user_dictionary_wins_and_is_saved(tmp_path):
+    path = tmp_path / "music" / "pronunciations.json"
+    ml.remember("Song", "颂", path)
+    user = ml.load_user_dict(path)
+    assert user == {"song": "颂"}
+    assert ml.suggest("SONG", "zh", user) == ml.Suggestion("颂", ml.USER)
+    ml.remember("song", "", path)
+    assert ml.load_user_dict(path) == {}
+    path.write_text("not json", "utf-8")
+    assert ml.load_user_dict(path) == {}
+
+
+def test_lines_without_chinese_and_non_chinese_songs_are_kept():
+    assert ml.sung_line("Hello my love", "zh", user={}) == "Hello my love"
+    assert ml.sung_line("欧拉SONG", "en", user={}) == "欧拉SONG"
+    assert ml.suggest_sung("song", "en", user={}) == "song"
+    assert ml.latin_words("我爱 Python 和 AI") == ["Python", "AI"]
+    assert ml.latin_words("all latin") == []
+
+
+def test_shown_and_sung_round_trip_keeps_tags_and_line_order():
+    lyrics = "[verse]\n欧拉SONG\n\n普通的一行\n[chorus]\nHello 世界\n"
+    pairs = ml.sung_pairs(lyrics, "zh", overrides={"Hello 世界": "哈罗世界"}, user={})
+    assert [(ln.index, ln.text, sung) for ln, sung in pairs] == [
+        (0, "欧拉SONG", "欧拉宋"), (1, "普通的一行", "普通的一行"), (2, "Hello 世界", "哈罗世界")]
+    sung = ml.sung_lyrics(lyrics, "zh", overrides={"Hello 世界": "哈罗世界"}, user={})
+    assert sung == "[verse]\n欧拉宋\n\n普通的一行\n[chorus]\n哈罗世界"
+    assert [ln.section for ln in ml.lyric_lines(sung)] == [ln.section for ln, _ in pairs]
+    assert [ln.index for ln in ml.lyric_lines(sung)] == [0, 1, 2]
