@@ -10,11 +10,16 @@ STUDIO: dict[str, dict[str, str]] = {
     # ── page ─────────────────────────────────────────────────────────
     "studio.title": {"en": "Studio", "zh": "工作室"},
     "studio.subtitle": {
-        "en": "Turn recordings into text, and text into natural speech — all on this Mac.",
-        "zh": "把录音变成文字，把文字读成自然的语音——全部在这台 Mac 上完成。",
+        "en": "Turn recordings into text, text into natural speech, and ideas into music — all on this Mac.",
+        "zh": "把录音变成文字，把文字读成自然的语音，把想法写成音乐——全部在这台 Mac 上完成。",
     },
     "studio.tab.transcribe": {"en": "Transcribe", "zh": "转写"},
     "studio.tab.speak": {"en": "Speak", "zh": "朗读"},
+    "studio.tab.compose": {"en": "Compose", "zh": "作曲"},
+    "studio.busy_elsewhere": {
+        "en": "Wait until Compose finishes — one heavy model runs at a time.",
+        "zh": "请等「作曲」完成——同一时间只运行一个大模型。",
+    },
     "studio.cancelling": {"en": "Cancelling…", "zh": "正在取消…"},
     "studio.cancelling_hint": {"en": "Cancelling — finishing the current step…", "zh": "正在取消——等当前这一步结束…"},
     "studio.cancelled": {"en": "Cancelled.", "zh": "已取消。"},
@@ -425,6 +430,11 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.compose.take.export": {"en": "Export WAV…", "zh": "导出 WAV…"},
     "studio.compose.take.repaint": {"en": "Repaint a range…", "zh": "重新生成一段…"},
     "studio.compose.take.delete": {"en": "Delete", "zh": "删除"},
+    "studio.compose.take.delete_title": {"en": "Delete take {i}?", "zh": "删除第 {i} 版？"},
+    "studio.compose.take.delete_body": {
+        "en": "The audio file and its settings are removed from this Mac. Exported copies are kept.",
+        "zh": "这一版的音频文件和设置会从这台 Mac 上删除，已导出的副本不受影响。",
+    },
     "studio.compose.check.clear": {"en": "{clear} / {total} lines clear", "zh": "{clear} / {total} 行清晰"},
     "studio.compose.check.flagged": {"en": "Check {n} lines", "zh": "有 {n} 行需检查"},
     "studio.compose.model": {"en": "Model", "zh": "模型"},

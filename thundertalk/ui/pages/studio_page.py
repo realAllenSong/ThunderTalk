@@ -1,11 +1,13 @@
-"""Studio — turn recordings into text, and text into natural speech.
+"""Studio — turn recordings into text, text into natural speech, and ideas into music.
 
 Replaces the old experimental Lab: no external server, no ffmpeg, no scipy —
 everything it needs ships inside the app or is a one-click model download."""
 
 from __future__ import annotations
 
-from PySide6.QtCore import Signal
+from typing import Optional
+
+from PySide6.QtCore import QTimer, Signal
 from PySide6.QtWidgets import QSizePolicy, QVBoxLayout, QWidget
 
 from thundertalk.core.i18n import t
@@ -38,11 +40,17 @@ class _StudioStack(QWidget):
             page.setVisible(i == index)
 
 
+def _compose_supported() -> bool:
+    from thundertalk.core import music
+    from thundertalk.core.music_process import total_memory_mb
+    return music.supported(total_memory_mb() / 1024)
+
+
 class StudioPage(QWidget):
     navigate_requested = Signal(str)
     toast_requested = Signal(str, str)
 
-    def __init__(self, settings=None) -> None:
+    def __init__(self, settings=None, compose: Optional[bool] = None, make_compose=None) -> None:
         super().__init__()
         self.setAcceptDrops(True)
         root = QVBoxLayout(self)
@@ -53,22 +61,39 @@ class StudioPage(QWidget):
         self._header = PageHeader(t("studio.title"), t("studio.subtitle"))
         layout.addWidget(self._header)
 
-        self._tabs = SegmentedControl(self._tab_options(), "transcribe")
-        self._tabs.changed.connect(self._on_tab)
-        layout.addWidget(self._tabs)
-
         self._stack = _StudioStack()
         self._stack.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Fixed)
         self._transcribe = TranscribeTab()
         self._speak = SpeakTab(settings)
-        self._stack.addWidget(self._transcribe)
-        self._stack.addWidget(self._speak)
+        self._compose = None
+        if compose if compose is not None else _compose_supported():
+            if make_compose is None:
+                from thundertalk.ui.studio.compose_tab import ComposeTab
+                make_compose = ComposeTab
+            self._compose = make_compose(settings)
+        self._keys = ["transcribe", "speak"] + (["compose"] if self._compose is not None else [])
+
+        self._tabs = SegmentedControl(self._tab_options(), "transcribe")
+        self._tabs.changed.connect(self._on_tab)
+        layout.addWidget(self._tabs)
+
+        for tab in self._all_tabs():
+            self._stack.addWidget(tab)
         layout.addWidget(self._stack)
         layout.addStretch()
 
-        for tab in (self._transcribe, self._speak):
+        for tab in self._all_tabs():
             tab.navigate.connect(self.navigate_requested)
             tab.toast.connect(self.toast_requested)
+
+        # Speak and Transcribe have no busy signal; a cheap poll keeps Compose's
+        # Generate in step with them while the page is on screen.
+        self._busy_poll = QTimer(self)
+        self._busy_poll.setInterval(500)
+        self._busy_poll.timeout.connect(self._sync_blocked)
+        self._compose_blocked = False
+        if self._compose is not None:
+            self._compose.busy_changed.connect(self._on_compose_busy)
 
     # ── API ───────────────────────────────────────────────────────────
     def set_engine(self, engine) -> None:
@@ -76,6 +101,8 @@ class StudioPage(QWidget):
         self._speak.set_engine(engine)
 
     def show_tab(self, key: str) -> None:
+        if key not in self._keys:
+            return
         self._tabs.set_current(key)
         self._on_tab(key)
 
@@ -87,23 +114,44 @@ class StudioPage(QWidget):
     def speak_tab(self) -> SpeakTab:
         return self._speak
 
+    @property
+    def compose_tab(self):
+        """The Compose tab, or None where music is not offered."""
+        return self._compose
+
     def retranslate(self) -> None:
         self._header.set_title(t("studio.title"))
         self._header.set_subtitle(t("studio.subtitle"))
         self._tabs.set_options(self._tab_options())
-        self._transcribe.retranslate()
-        self._speak.retranslate()
+        for tab in self._all_tabs():
+            tab.retranslate()
 
     # ── internals ─────────────────────────────────────────────────────
-    @staticmethod
-    def _tab_options() -> list[tuple[str, str]]:
-        return [("transcribe", t("studio.tab.transcribe")), ("speak", t("studio.tab.speak"))]
+    def _all_tabs(self) -> list:
+        return [self._transcribe, self._speak] + ([self._compose] if self._compose is not None else [])
+
+    def _tab_options(self) -> list[tuple[str, str]]:
+        return [(k, t(f"studio.tab.{k}")) for k in self._keys]
 
     def _on_tab(self, key: str) -> None:
-        self._stack.setCurrentIndex(0 if key == "transcribe" else 1)
+        self._stack.setCurrentIndex(self._keys.index(key) if key in self._keys else 0)
         self._stack.updateGeometry()
         if key != "speak":
             self._speak.stop_playback()
+        if key != "compose" and self._compose is not None:
+            self._compose.stop_playback()
+
+    def _on_compose_busy(self, on: bool) -> None:
+        self._speak.set_blocked(on)
+        self._transcribe.set_blocked(on)
+
+    def _sync_blocked(self) -> None:
+        if self._compose is None:
+            return
+        other = self._speak.busy() or self._transcribe.busy()
+        if other != self._compose_blocked:
+            self._compose_blocked = other
+            self._compose.set_blocked(other)
 
     def resizeEvent(self, ev) -> None:
         super().resizeEvent(ev)
@@ -111,17 +159,24 @@ class StudioPage(QWidget):
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)
-        self._transcribe.refresh()
-        self._speak.refresh()
+        for tab in self._all_tabs():
+            tab.refresh()
+        if self._compose is not None:
+            self._sync_blocked()
+            self._busy_poll.start()
 
     def hideEvent(self, ev) -> None:
         super().hideEvent(ev)
+        self._busy_poll.stop()
         self._speak.stop_playback()
+        if self._compose is not None:
+            self._compose.stop_playback()
 
     def shutdown(self) -> None:
         """Called when the app quits."""
-        self._transcribe.shutdown()
-        self._speak.shutdown()
+        self._busy_poll.stop()
+        for tab in self._all_tabs():
+            tab.shutdown()
 
     # Drop recordings (or a link dragged from the browser) anywhere on the page to transcribe them.
     def dragEnterEvent(self, ev) -> None:

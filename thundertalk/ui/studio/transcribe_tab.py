@@ -107,6 +107,7 @@ class TranscribeTab(QWidget):
         self._transcript: Optional[Transcript] = None
         self._path = ""
         self._url = ""                    # single input that is a web link
+        self._blocked = False             # Compose is running a music job
         self._result_src = ""             # local file the shown transcript came from
         self._rows: list[QueueRow] = []   # non-empty = queue mode
         self._run_rows: list[QueueRow] = []
@@ -381,6 +382,11 @@ class TranscribeTab(QWidget):
         return any(w is not None for w in (self._worker, self._dl_worker, self._batch,
                                           self._burn_worker, self._notes_worker))
 
+    def set_blocked(self, on: bool) -> None:
+        """Compose is running a music job: Transcribe waits for it."""
+        self._blocked = on
+        self._refresh()
+
     def shutdown(self) -> None:
         """App is quitting: cancel and wait for any running job."""
         for w in (self._worker, self._dl_worker, self._batch, self._burn_worker, self._notes_worker):
@@ -505,7 +511,8 @@ class TranscribeTab(QWidget):
         else:
             self._go.setText(t("studio.transcribe.go"))
             ready = bool(self._path or self._url) and model_ok
-        self._go.setEnabled(ready and not busy)
+        self._go.setEnabled(ready and not busy and not self._blocked)
+        self._go.setToolTip(t("studio.busy_elsewhere") if self._blocked else "")
         self._summary_btn.setEnabled(not busy and self._transcript is not None)
         self._burn_btn.setEnabled(not busy)
         self._queue_notes.setEnabled(not busy)
@@ -705,7 +712,7 @@ class TranscribeTab(QWidget):
         self._refresh()
 
     def _start(self) -> None:
-        if self.busy():
+        if self.busy() or self._blocked:
             return
         if self.queue_mode():
             self._start_batch()

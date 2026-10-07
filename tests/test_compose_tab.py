@@ -239,3 +239,58 @@ def test_chinese_labels(make):
         assert tab._footer.text() == t("studio.compose.footer")
     finally:
         i18n.set_language("en")
+
+
+def _finished_take(tab, tmp_path, seed=7):
+    import numpy as np
+
+    from thundertalk.core import audio_io
+    wav = tmp_path / f"take-{seed}.wav"
+    audio_io.write_wav(str(wav), np.zeros((4800, 2), np.float32), 48000)
+    wav.with_suffix(".json").write_text("{}")
+    wav.with_suffix(".latents.npy").write_bytes(b"x")
+    _song(tab)
+    tab._generate()
+    w = FakeWorker.made[-1]
+    w.take.emit(0, str(wav), {"seed": seed})
+    w.finished.emit()
+    return tab._rows[-1], wav
+
+
+def test_play_a_take_through_the_shared_player(make, tmp_path, monkeypatch):
+    tab = make()
+    toggles = []
+    monkeypatch.setattr(tab._player, "toggle", lambda: toggles.append(1))
+    row, _ = _finished_take(tab, tmp_path)
+    assert tab._player.isHidden()
+    row.action.emit("play")
+    assert not tab._player.isHidden() and toggles == [1]
+    assert tab._player.player.duration == 0.1                 # stereo take downmixed for the mono player
+    row.action.emit("play")                                   # same take: toggles, no reload
+    assert toggles == [1, 1]
+
+
+def test_export_copies_the_take(make, tmp_path, monkeypatch):
+    tab = make()
+    row, wav = _finished_take(tab, tmp_path)
+    dest = tmp_path / "out" / "my song"
+    dest.parent.mkdir()
+    monkeypatch.setattr(tab, "export_path", lambda r: str(dest))
+    toasts = []
+    tab.toast.connect(lambda msg, kind: toasts.append(kind))
+    row.action.emit("export")
+    out = dest.with_name("my song.wav")
+    assert out.read_bytes() == wav.read_bytes() and toasts == ["success"]
+
+
+def test_delete_removes_the_take_and_its_sidecars(make, tmp_path, monkeypatch):
+    tab = make()
+    row, wav = _finished_take(tab, tmp_path)
+    monkeypatch.setattr(tab, "confirm_delete", lambda r: False)
+    row.action.emit("delete")
+    assert wav.exists() and tab._rows == [row]
+    monkeypatch.setattr(tab, "confirm_delete", lambda r: True)
+    row.action.emit("delete")
+    assert not wav.exists() and not wav.with_suffix(".json").exists()
+    assert not wav.with_suffix(".latents.npy").exists()
+    assert tab._rows == [] and tab._takes_card.isHidden()

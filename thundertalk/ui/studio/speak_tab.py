@@ -86,6 +86,7 @@ class SpeakTab(QWidget):
         self._pre: Optional[PreloadWorker] = None
         self._pre_again = False                     # target changed while a preload was running
         self._prep = ""                             # "" | "preparing" | "ready"
+        self._blocked = False                       # Compose is running a music job
         self._result: Optional[tts.SynthResult] = None
         self._t0 = 0.0
         self._phase = ""
@@ -289,6 +290,15 @@ class SpeakTab(QWidget):
 
     def busy(self) -> bool:
         return self._synth is not None or self._dl is not None
+
+    def set_blocked(self, on: bool) -> None:
+        """Compose is running a music job: Generate and preloading wait for it."""
+        self._blocked = on
+        if on:
+            self._preload_timer.stop()
+        self._refresh()
+        if not on:
+            self._schedule_preload()
 
     def stop_playback(self) -> None:
         self._player.shutdown()
@@ -660,7 +670,8 @@ class SpeakTab(QWidget):
         self._dl_cancel.setVisible(downloading)
         self._dl_bar.setVisible(downloading)
         busy = self.busy()
-        self._go.setEnabled(ready and not busy and bool(self._text.toPlainText().strip()))
+        self._go.setEnabled(ready and not busy and not self._blocked and bool(self._text.toPlainText().strip()))
+        self._go.setToolTip(t("studio.busy_elsewhere") if self._blocked else "")
         for chip in self._chips.values():
             chip.setEnabled(not busy)
         self._text.setReadOnly(self._synth is not None)
@@ -717,7 +728,7 @@ class SpeakTab(QWidget):
             self._count.setText(t("studio.text.count").format(n=n, est=fmt_seconds(secs)))
         else:
             self._count.setText("")
-        self._go.setEnabled(self._engine_ready() and not self.busy() and n > 0)
+        self._go.setEnabled(self._engine_ready() and not self.busy() and not self._blocked and n > 0)
 
     # ── generate ──────────────────────────────────────────────────────
     def _voice_ref(self, quiet: bool = False):
@@ -738,7 +749,7 @@ class SpeakTab(QWidget):
         return self._voice_id
 
     def _generate(self) -> None:
-        if self.busy():
+        if self.busy() or self._blocked:
             return
         self._stop_preview()
         text = self._text.toPlainText().strip()
@@ -858,14 +869,15 @@ class SpeakTab(QWidget):
         """Load the engine the selected voice needs once the pick settles, so
         Generate starts speaking right away. Only while the tab is on screen,
         the engine is downloaded and nothing else is running."""
-        if not AUTO_PRELOAD or not self.isVisible() or self._synth is not None or self._dl is not None:
+        if (not AUTO_PRELOAD or not self.isVisible() or self._synth is not None or self._dl is not None
+                or self._blocked):
             return
         if not hasattr(speech.get_engine(), "preload") or not self._engine_ready():
             return
         self._preload_timer.start()
 
     def _start_preload(self) -> None:
-        if not self.isVisible() or self._synth is not None or not self._engine_ready():
+        if not self.isVisible() or self._synth is not None or self._blocked or not self._engine_ready():
             return
         eng = speech.get_engine()
         bid = self._needed_backend().info.id

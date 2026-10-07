@@ -5,19 +5,24 @@ Each Generate runs one job (every take) in a disposable process through
 
 from __future__ import annotations
 
+import shutil
 import time
+from pathlib import Path
 from typing import Callable, Optional
 
 from PySide6.QtCore import QLocale, QTimer, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout, QWidget
+from PySide6.QtWidgets import (QCheckBox, QComboBox, QFileDialog, QHBoxLayout, QLabel, QPlainTextEdit, QVBoxLayout,
+                               QWidget)
 
-from thundertalk.core import i18n, music
+from thundertalk.core import audio_io, i18n, music
 from thundertalk.core.i18n import t
 from thundertalk.core.music_worker import MusicRequest, take_seeds
 from thundertalk.ui import theme
 from thundertalk.ui.model_facts import facts_text
 from thundertalk.ui.studio.music_parts import LengthField, LyricsEdit, OptionalIntField, TakeRow, fmt_mmss, unknown_sections
+from thundertalk.ui.studio.parts import PlayerBar
 from thundertalk.ui.studio.workers import BackendDownloadWorker, MusicWorker, friendly_error, music_status
+from thundertalk.ui.styled_dialog import StyledDialog
 from thundertalk.ui.widgets import Rule, SegmentedControl, ThinProgress
 
 MODES = ("song", "bgm")
@@ -232,6 +237,11 @@ class ComposeTab(QWidget):
         tly.setSpacing(4)
         self._cap_takes = _caption()
         tly.addWidget(self._cap_takes)
+        self._player = PlayerBar(with_save=False)
+        self._player.started.connect(self._sync_play_icons)
+        self._player.setVisible(False)
+        tly.addWidget(self._player)
+        self._playing: Optional[TakeRow] = None
         self._rows_layout = QVBoxLayout()
         self._rows_layout.setSpacing(0)
         tly.addLayout(self._rows_layout)
@@ -260,9 +270,11 @@ class ComposeTab(QWidget):
         self._refresh()
 
     def stop_playback(self) -> None:
-        pass
+        self._player.shutdown()
+        self._sync_play_icons()
 
     def shutdown(self) -> None:
+        self.stop_playback()
         for w in (self._job, self._dl):
             if w is not None:
                 w.cancel()
@@ -287,6 +299,7 @@ class ComposeTab(QWidget):
         self._cancel.setText(t("common.cancel"))
         self._dl_cancel.setText(t("common.cancel"))
         self._cap_takes.setText(t("studio.compose.takes_title"))
+        self._player.retranslate()
         self._footer.setText(t("studio.compose.footer"))
         for row in self._rows:
             row.retranslate()
@@ -539,6 +552,7 @@ class ComposeTab(QWidget):
         params = meta.get("params") or {}
         seconds = float(meta.get("duration") or params.get("duration") or self._length.value())
         row = TakeRow(len(self._rows) + 1, int(meta.get("seed", 0)), seconds, path)
+        row.action.connect(lambda a, r=row: self._on_take_action(r, a))
         self._rows.append(row)
         self._rows_layout.addWidget(row)
         self._takes_card.setVisible(True)
@@ -570,3 +584,72 @@ class ComposeTab(QWidget):
         self._go.setVisible(True)
         self._refresh()
         self.busy_changed.emit(self.busy())
+
+    # ── take actions ──────────────────────────────────────────────────
+    def _on_take_action(self, row: TakeRow, action: str) -> None:
+        if action == "play":
+            self._play_take(row)
+        elif action == "export":
+            self._export_take(row)
+        elif action == "delete":
+            self._delete_take(row)
+
+    def _play_take(self, row: TakeRow) -> None:
+        if self._playing is not row:
+            try:
+                x, sr = audio_io.read_wav(row.path)
+            except (OSError, ValueError) as exc:
+                self.toast.emit(t("studio.err.other").format(msg=exc), "error")
+                return
+            self._player.set_audio(x.mean(axis=1) if x.ndim > 1 else x, sr)   # Player is mono
+            self._player.setVisible(True)
+            self._playing = row
+        self._player.toggle()
+        self._sync_play_icons()
+
+    def _sync_play_icons(self) -> None:
+        on = self._player.player.is_playing
+        for r in self._rows:
+            r.set_playing(on and r is self._playing)
+
+    def export_path(self, row: TakeRow) -> str:
+        path, _ = QFileDialog.getSaveFileName(
+            self, t("studio.compose.take.export"), str(Path.home() / Path(row.path).name), "*.wav")
+        return path
+
+    def _export_take(self, row: TakeRow) -> None:
+        path = self.export_path(row)
+        if not path:
+            return
+        if not path.lower().endswith(".wav"):
+            path += ".wav"
+        try:
+            shutil.copyfile(row.path, path)
+            self.toast.emit(t("studio.saved").format(name=Path(path).name), "success")
+        except OSError as exc:
+            self.toast.emit(t("studio.err.other").format(msg=exc), "error")
+
+    def confirm_delete(self, row: TakeRow) -> bool:
+        return StyledDialog.confirm(
+            self.window(), title=t("studio.compose.take.delete_title").format(i=row.index),
+            body=t("studio.compose.take.delete_body"), accept_label=t("studio.compose.take.delete"),
+            cancel_label=t("common.cancel"), destructive=True)
+
+    def _delete_take(self, row: TakeRow) -> None:
+        if not self.confirm_delete(row):
+            return
+        if self._playing is row:
+            self._player.shutdown()
+            self._player.clear()
+            self._player.setVisible(False)
+            self._playing = None
+        wav = Path(row.path)
+        for p in (wav, wav.with_suffix(".json"), wav.with_suffix(".latents.npy")):
+            try:
+                p.unlink(missing_ok=True)
+            except OSError:
+                pass
+        self._rows.remove(row)
+        row.setParent(None)
+        row.deleteLater()
+        self._takes_card.setVisible(bool(self._rows))

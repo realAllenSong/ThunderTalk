@@ -7,6 +7,7 @@ replaced by the Phase 6 measurements."""
 
 from __future__ import annotations
 
+import platform
 import re
 import time
 from dataclasses import dataclass, replace
@@ -128,6 +129,13 @@ def tier(memory_gb: float) -> Optional[Tier]:
                     takes=2, max_seconds=MAX_SECONDS)
     return Tier(models=(XL.info.id, TURBO.info.id), disabled=(), recommended=XL.info.id, planner=True,
                 takes=2, max_seconds=MAX_SECONDS)
+
+
+def supported(memory_gb: float, apple_silicon: Optional[bool] = None) -> bool:
+    """Show Compose at all: Apple Silicon (MLX / MPS only) with a tier for this memory."""
+    if apple_silicon is None:
+        apple_silicon = platform.system() == "Darwin" and platform.machine() == "arm64"
+    return apple_silicon and tier(memory_gb) is not None
 
 
 def planner_pre_ticked(memory_gb: float, disk_free_mb: int, pending_mb: int) -> bool:

@@ -1274,3 +1274,81 @@ def test_switching_studio_tabs_does_not_reserve_hidden_content(studio):
     assert studio.transcribe_tab.isVisible()
     assert studio.speak_tab.isHidden()
     assert studio._stack.y() - studio._tabs.geometry().bottom() <= 21
+
+
+# ── compose tab wiring ───────────────────────────────────────────────────
+
+def _page(compose):
+    from thundertalk.ui.pages.studio_page import StudioPage
+    from thundertalk.ui.studio.compose_tab import ComposeTab
+    page = StudioPage(SimpleNamespace(microphone="auto"), compose=compose,
+                      make_compose=lambda s: ComposeTab(s, memory_gb=36))
+    page.resize(900, 900)
+    page.show()
+    QApplication.processEvents()
+    return page
+
+
+def test_compose_tab_is_offered_only_where_music_runs(qapp, isolated_home):
+    from thundertalk.core import music
+    page = _page(compose=False)
+    try:
+        assert page.compose_tab is None
+        assert [k for k, _ in page._tab_options()] == ["transcribe", "speak"]
+        page.show_tab("compose")                                      # ignored, no crash
+    finally:
+        page.shutdown()
+        page.close()
+    assert not music.supported(64, apple_silicon=False)
+    assert not music.supported(8, apple_silicon=True)
+    assert music.supported(16, apple_silicon=True)
+
+
+def test_compose_tab_switching_and_labels(qapp, isolated_home):
+    from thundertalk.core import i18n
+    page = _page(compose=True)
+    try:
+        assert [k for k, _ in page._tab_options()] == ["transcribe", "speak", "compose"]
+        page.show_tab("compose")
+        assert page.compose_tab.isVisible() and not page.speak_tab.isVisible()
+        page.show_tab("speak")
+        assert page.speak_tab.isVisible() and not page.compose_tab.isVisible()
+        i18n.set_language("zh")
+        try:
+            page.retranslate()
+            assert dict(page._tab_options())["compose"] == "作曲"
+            assert "音乐" in t_("studio.subtitle")
+        finally:
+            i18n.set_language("en")
+            page.retranslate()
+    finally:
+        page.shutdown()
+        page.close()
+
+
+def t_(key):
+    from thundertalk.core.i18n import t
+    return t(key)
+
+
+def test_compose_and_the_other_tabs_block_each_other(qapp, isolated_home, monkeypatch):
+    page = _page(compose=True)
+    try:
+        compose, speak, tr_tab = page.compose_tab, page.speak_tab, page.transcribe_tab
+        compose.busy_changed.emit(True)
+        assert speak._blocked and tr_tab._blocked
+        assert not speak._go.isEnabled() and not tr_tab._go.isEnabled()
+        assert speak._go.toolTip() == t_("studio.busy_elsewhere")
+        compose.busy_changed.emit(False)
+        assert not speak._blocked and not tr_tab._blocked
+
+        monkeypatch.setattr(speak, "busy", lambda: True)
+        page._sync_blocked()
+        assert compose._blocked and not compose._go.isEnabled()
+        assert compose._go.toolTip() == t_("studio.compose.blocked")
+        monkeypatch.setattr(speak, "busy", lambda: False)
+        page._sync_blocked()
+        assert not compose._blocked
+    finally:
+        page.shutdown()
+        page.close()
