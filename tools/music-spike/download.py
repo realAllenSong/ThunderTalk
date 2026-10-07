@@ -8,11 +8,35 @@ import sys
 
 ROOT = Path.home() / "Library/Caches/ThunderTalk-bench/music-models"
 ALLOW = ("*.json", "*.safetensors", "*.pt", "*.txt", "*.model", "*.tiktoken", "*.jinja")
+ATTEMPTS = 8
+
+
+def fetch(repo, name, revision, local_dir):
+    """hf_hub_download with retries; the partial ``.incomplete`` file is resumed each time."""
+    import time
+    from huggingface_hub import hf_hub_download
+    for attempt in range(1, ATTEMPTS + 1):
+        try:
+            return hf_hub_download(repo, name, revision=revision, local_dir=local_dir,
+                                   etag_timeout=60)
+        except Exception as e:      # noqa: BLE001 - network errors come from httpx/hf in many types
+            if attempt == ATTEMPTS:
+                raise
+            print(f"retry {attempt}/{ATTEMPTS - 1} for {name}: {type(e).__name__}: {e}", flush=True)
+            time.sleep(min(300, 15 * 2 ** attempt))
 
 
 def main():
-    from huggingface_hub import HfApi, hf_hub_download
+    from huggingface_hub import HfApi
 
+    if '--convert-only' in sys.argv:
+        from thundertalk.core.music_checkpoint import convert_process
+        folder = ROOT / 'checkpoints/acestep-v15-xl-sft'
+        if not (folder / '.thundertalk-fetched-xl').is_file():
+            raise RuntimeError('XL is not fully fetched yet')
+        convert_process(folder, lambda pct: print(f"XL bf16 {pct}%", flush=True))
+        print("Download complete", flush=True)
+        return
     ROOT.mkdir(parents=True, exist_ok=True)
     api = HfApi()
     repo = "ACE-Step/Ace-Step1.5"
@@ -31,7 +55,7 @@ def main():
     print(f"Downloading {len(files)} data files, {total / 1e9:.3f} GB, revision {info.sha}", flush=True)
     for f in files:
         print(f.rfilename, f.size, flush=True)
-        hf_hub_download(repo, f.rfilename, revision=info.sha, local_dir=ROOT / "checkpoints")
+        fetch(repo, f.rfilename, info.sha, ROOT / "checkpoints")
     from thundertalk.core.music_checkpoint import converted, convert_process
     if '--xl' in sys.argv and not converted(ROOT / 'checkpoints/acestep-v15-xl-sft'):
         repo = 'ACE-Step/acestep-v15-xl-sft'
@@ -50,8 +74,11 @@ def main():
         if not fetched.is_file():
             for f in files:
                 print(f.rfilename, f.size, flush=True)
-                hf_hub_download(repo, f.rfilename, revision=info.sha, local_dir=folder)
+                fetch(repo, f.rfilename, info.sha, folder)
             fetched.write_text(info.sha)
+        if '--fetch-only' in sys.argv:
+            print("Fetch complete", flush=True)
+            return
         convert_process(folder, lambda pct: print(f"XL bf16 {pct}%", flush=True))
     print("Download complete", flush=True)
 

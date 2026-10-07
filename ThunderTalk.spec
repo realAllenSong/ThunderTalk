@@ -5,7 +5,7 @@ import sys
 if sys.version_info[:2] != (3, 12) or sys.platform != "darwin" or platform.machine() != "arm64":
     raise RuntimeError("The optional runtime release build requires Python 3.12 on Apple Silicon macOS")
 
-from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs
+from PyInstaller.utils.hooks import collect_submodules, collect_data_files, collect_dynamic_libs, copy_metadata
 
 hidden_imports = []
 hidden_imports += collect_submodules("pynput")
@@ -83,6 +83,10 @@ custom_datas += collect_data_files("huggingface_hub")
 custom_datas += collect_data_files("sherpa_onnx")
 custom_datas += collect_data_files("transformers")
 custom_datas += collect_data_files("pypinyin")
+# The music runtime's diffusers checks these distributions' metadata at import.
+custom_datas += copy_metadata("requests")
+custom_datas += copy_metadata("filelock")
+custom_datas += copy_metadata("numpy")
 
 custom_binaries = []
 custom_binaries += collect_dynamic_libs("mlx")
