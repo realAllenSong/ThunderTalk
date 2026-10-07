@@ -61,4 +61,11 @@ upon the water. Footsteps on an empty road. We can build a little shelter, kind 
 Carry light across the river. … let the quiet garden grow. Every …", word recall 0.83 (control 0.94).
 Unfixed 5.6.2 in the same chain: 0.00. Peak 21.0 GB, 84 s wall.
 
-Pending: the fixed 5.6.2 takes (MPS DiT and MLX DiT) with read-back — `tools/music-spike/gate-fixed.sh`.
+Fixed 5.6.2 (`tools/music-spike/gate-fixed.sh`): the rotary buffers now log the correct
+frequencies, but both takes still read back **empty** (MPS DiT: peak 14.9 GB, 65 s wall, −15.0 LUFS,
+loudness range 1.2 LU; MLX DiT likewise empty) while the control reads back at 0.97 / 0.94. The 4.57.6
+take has a loudness range of 12.6 LU, the fixed 5.6.2 take 1.2 LU — a flat bed. So the zero rotary was
+a real bug but not the only 5.x difference.
+
+Next: `tools/music-spike/gate-statediff.sh` dumps tokenizer ids, text-encoder output and every DiT
+parameter/buffer (plus loading info) under both versions and diffs them → `docs/verification/music-statediff.log`.
