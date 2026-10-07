@@ -57,6 +57,9 @@ def serve(connection, config):
             sys.path.insert(0, str(fallback))
         if config['vae_fp16']:
             os.environ['ACESTEP_MLX_VAE_FP16'] = '1'
+        if config['mx_cache_gb']:
+            import mlx.core as mx
+            mx.set_cache_limit(int(config['mx_cache_gb'] * 1e9))
 
         def event(kind, **data):
             connection.send({'kind': kind, 'time': time.monotonic(), **data})
@@ -93,10 +96,29 @@ def serve(connection, config):
             raise RuntimeError(status)
         if config['vae_chunk']:
             handler.mlx_vae_chunk_size = config['vae_chunk']
+        if config['vae_nocompile']:
+            handler._mlx_compiled_decode = None
+        resolve = handler._resolve_mlx_decode_fn
+
+        def traced_resolve():
+            import mlx.core as mx
+            fn = resolve()
+
+            def tile(z):
+                out = fn(z)
+                mx.eval(out)
+                event('vae_tile', frames=int(z.shape[1]), active_gb=round(mx.get_active_memory() / 1e9, 2),
+                      cache_gb=round(mx.get_cache_memory() / 1e9, 2), mlx_peak_gb=round(mx.get_peak_memory() / 1e9, 2))
+                return out
+            return tile
+
+        handler._resolve_mlx_decode_fn = traced_resolve
         decode = handler._decode_generate_music_pred_latents
 
         def traced_decode(*args, **kwargs):
-            event('vae_decode')
+            import mlx.core as mx
+            event('vae_decode', torch_mps_gb=round(torch.mps.driver_allocated_memory() / 1e9, 2),
+                  mlx_active_gb=round(mx.get_active_memory() / 1e9, 2), mlx_cache_gb=round(mx.get_cache_memory() / 1e9, 2))
             result = decode(*args, **kwargs)
             event('vae_done')
             return result
@@ -163,12 +185,18 @@ def main():
     parser.add_argument('--steps', type=int, default=8)
     parser.add_argument('--vae-chunk', type=int, default=0, help='MLX VAE tile size in latent frames (min 192)')
     parser.add_argument('--vae-fp16', action='store_true')
+    parser.add_argument('--vae-nocompile', action='store_true', help='decode without mx.compile')
+    parser.add_argument('--mx-cache-gb', type=float, default=0, help='cap the MLX buffer cache')
     args = vars(parser.parse_args())
     label = f"{args['model']}-{args['transformers']}-{'mlx' if args['mlx'] else 'mps'}-{'vocal' if args['vocal'] else 'instrumental'}"
     if args['vae_chunk']:
         label += f"-vae{args['vae_chunk']}"
     if args['vae_fp16']:
         label += '-vaefp16'
+    if args['vae_nocompile']:
+        label += '-nocompile'
+    if args['mx_cache_gb']:
+        label += f"-mxcache{args['mx_cache_gb']:g}"
     output = WORKTREE / 'artifacts/music-spike' / label
     output.mkdir(parents=True, exist_ok=True)
     args['output'] = str(output)
