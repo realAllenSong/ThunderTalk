@@ -83,7 +83,7 @@ def audio_metrics(path):
 def probe_clip(folder):
     import numpy as np
     source = folder / 'dictation-probe.aiff'
-    subprocess.run(['say', '-o', str(source), 'Morning lanterns light the river. We walk toward a quiet garden.'], check=True)
+    subprocess.run(['say', '-v', 'Samantha', '-o', str(source), 'Morning lanterns light the river. We walk toward a quiet garden.'], check=True)
     x = audio_io.decode_audio(str(source), 16000)
     x = np.pad(x, (0, max(0, 80000 - len(x))))[:80000]
     audio_io.write_wav(str(folder / 'dictation-probe.wav'), x, 16000)
@@ -101,6 +101,8 @@ def main():
     ap.add_argument('--output', type=Path, required=True)
     a = ap.parse_args()
     a.output.mkdir(parents=True, exist_ok=True)
+    if list(a.output.glob("take-*.wav")):
+        raise ValueError("Choose a fresh benchmark output directory; an earlier take already exists")
     m = music.XL if a.model == 'xl' else music.TURBO
     request = MusicRequest(project_root=str(a.models_root.resolve()), model_folder=m.folder,
                            job_dir=str(a.output.resolve()), caption='Warm folk pop, acoustic guitar, soft piano, '
@@ -206,7 +208,11 @@ def main():
     (a.output / 'benchmark.json').write_text(json.dumps(result, ensure_ascii=False, indent=2) + '\n')
     print(json.dumps({k: v for k, v in result.items() if k != 'events'}, ensure_ascii=False, indent=2))
     probes_ok = not a.dictation or (len(latencies) == 2 and all(p['text'].strip() for p in latencies))
-    return 0 if outcome == 'done' and len(takes) == 1 and probes_ok else 1
+    audio_ok = len(result['audio']) == 1 and all(
+        p['finite'] and p['sample_rate'] == 48000 and p['channels'] == 2
+        and abs(p['duration'] - request.duration) <= 1 and p['rms'] > 0.003
+        and 0 < p['peak'] <= 1 for p in result['audio'])
+    return 0 if outcome == 'done' and audio_ok and probes_ok and process.pid is None else 1
 
 
 class _dictation:

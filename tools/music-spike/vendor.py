@@ -106,7 +106,12 @@ def main():
         '    if vae_variant not in (None, "", "official"):\n'
         '        raise ValueError("Only the official VAE is supported")\n'
         '    return Path(checkpoint_dir) / "vae"\n')
-    replace(TARGET / "models/mlx/dit_convert.py", 'mx.array(np_val)', 'mx.array(np_val).astype(mx.bfloat16)')
+    replace(TARGET / "models/mlx/dit_convert.py", '        weights.append((new_key, mx.array(np_val)))',
+            '        converted = mx.array(np_val).astype(mx.bfloat16)\n'
+            '        # ThunderTalk patch: evaluate now so each fp32 copy is freed per tensor;\n'
+            '        # a lazy astype kept the whole fp32 decoder alive (XL load peaked > 24 GiB).\n'
+            '        mx.eval(converted)\n'
+            '        weights.append((new_key, converted))')
     replace(TARGET / "core/generation/handler/mlx_dit_init.py", '            self.mlx_decoder = mlx_decoder',
             '            # The torch encoder/tokenizer remain; only the duplicate decoder is freed.\n'
             '            self.model.decoder = None\n'

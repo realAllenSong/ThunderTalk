@@ -83,3 +83,63 @@ def test_no_remote_code_or_network_imports_in_inference_copy():
     assert not (ROOT / "cli.py").exists()
     assert not (ROOT / "ui").exists()
     assert not (ROOT / "core/generation/handler/lora").exists()
+
+
+def test_mlx_conversion_materializes_each_tensor_and_preserves_layout(monkeypatch):
+    import sys
+    from types import ModuleType, SimpleNamespace
+    import numpy as np
+
+    class Value:
+        def __init__(self, array):
+            self.array = array
+
+        def detach(self):
+            return self
+
+        def cpu(self):
+            return self
+
+        def float(self):
+            return self
+
+        def numpy(self):
+            return self.array
+
+    pending = []
+
+    class Array:
+        def __init__(self, array):
+            # A second fp32 source must not stay live across tensor conversions.
+            assert not pending
+            self.array = array.copy()
+            self.dtype = None
+            pending.append(self)
+
+        def astype(self, dtype):
+            self.dtype = dtype
+            return self
+
+    core = ModuleType('mlx.core')
+    core.bfloat16 = 'bf16'
+    core.array = Array
+
+    def evaluate(value):
+        assert pending == [value]
+        pending.clear()
+
+    core.eval = evaluate
+    package = ModuleType('mlx')
+    package.core = core
+    monkeypatch.setitem(sys.modules, 'mlx', package)
+    monkeypatch.setitem(sys.modules, 'mlx.core', core)
+    values = {'proj_in.1.weight': np.arange(24).reshape(2, 3, 4),
+              'proj_out.1.weight': np.arange(24).reshape(2, 3, 4),
+              'norm.weight': np.arange(3), 'rotary_emb.inv_freq': np.arange(2)}
+    model = SimpleNamespace(decoder=SimpleNamespace(state_dict=lambda: {k: Value(v) for k, v in values.items()}))
+    result = dict(load_file('models/mlx/dit_convert.py').convert_decoder_weights(model))
+    assert not pending and all(v.dtype == 'bf16' for v in result.values())
+    assert set(result) == {'proj_in.weight', 'proj_out.weight', 'norm.weight'}
+    np.testing.assert_array_equal(result['proj_in.weight'].array, values['proj_in.1.weight'].swapaxes(1, 2))
+    np.testing.assert_array_equal(result['proj_out.weight'].array, values['proj_out.1.weight'].transpose(1, 2, 0))
+    np.testing.assert_array_equal(result['norm.weight'].array, values['norm.weight'])

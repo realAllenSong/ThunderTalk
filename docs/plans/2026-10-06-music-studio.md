@@ -644,3 +644,12 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
   headroom. Only our waiting lock processes are stopped; no model or other
   agent's process is interrupted. Requeue model work after the build finishes.
   This does not substitute for the required real XL/turbo packaged checks.
+
+- Long-run memory verification restored the Phase 0 192-frame VAE tile size
+  in the production worker (upstream had selected 512). XL MLX conversion now
+  materializes each bf16 tensor immediately so its fp32 temporary cannot stay
+  live through the complete decoder conversion. The short source XL selftest
+  passes; A–D and frozen checks remain the acceptance evidence.
+- Cursor's network-only XL fetch outside the GPU lock deviated from the task
+  rule. Retain the downloaded data, but the continuation corrects the chain so
+  all future heavy fetches are locked. No guard thresholds were weakened.

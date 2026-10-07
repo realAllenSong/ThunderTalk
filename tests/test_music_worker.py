@@ -63,6 +63,7 @@ def fake(monkeypatch, tmp_path):
     class Handler:
         def initialize_service(self, **kwargs):
             state.init = kwargs
+            state.vae_chunk = self.mlx_vae_chunk_size
             state.timeout_at_import = hooks.TIMEOUT_S
             if state.fail_load:
                 return state.fail_load, False
@@ -167,6 +168,7 @@ def test_job_loads_bf16_and_writes_every_take(fake, tmp_path):
     assert events[:2] == [("phase", "import", None), ("phase", "load", None)]
     assert events[-1] == ("done",)
     assert fake.init["dtype"] == "bf16" and fake.init["device"] == "mps"
+    assert fake.vae_chunk == 192
     assert fake.init["use_mlx_dit"] is True and fake.init["config_path"] == "acestep-v15-turbo"
     assert fake.init["project_root"] == request.project_root
     assert fake.cache_limit == 1 << 30

@@ -59,7 +59,11 @@ def convert_decoder_weights(
         elif "rotary_emb" in key:
             continue
 
-        weights.append((new_key, mx.array(np_val).astype(mx.bfloat16)))
+        converted = mx.array(np_val).astype(mx.bfloat16)
+        # ThunderTalk patch: evaluate now so each fp32 copy is freed per tensor;
+        # a lazy astype kept the whole fp32 decoder alive (XL load peaked > 24 GiB).
+        mx.eval(converted)
+        weights.append((new_key, converted))
 
     logger.info(
         "[MLX-DiT] Converted %d decoder parameters to MLX format.", len(weights)

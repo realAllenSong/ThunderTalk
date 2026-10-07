@@ -80,7 +80,7 @@ def main():
             print("Fetch complete", flush=True)
             return
         convert_process(folder, lambda pct: print(f"XL bf16 {pct}%", flush=True))
-    print("Download complete", flush=True)
+    print("Fetch complete" if "--fetch-only" in sys.argv else "Download complete", flush=True)
 
 
 if __name__ == "__main__":

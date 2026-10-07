@@ -23,6 +23,7 @@ from typing import Optional
 
 SAMPLE_RATE = 48000
 MLX_CACHE_LIMIT = 1 << 30           # Phase 0: an uncapped MLX buffer cache adds 13–17 GB during decode
+MLX_VAE_CHUNK = 192
 MIN_TIMEOUT_S = 1800
 COMMENT = "AI-generated with ACE-Step 1.5 in ThunderTalk"
 PLANNER_FOLDER = "acestep-5Hz-lm-1.7B"
@@ -207,6 +208,9 @@ def _load(request: MusicRequest, send, gate):
 
     send(("phase", "load", None))
     handler = AceStepHandler()
+    # Use the tile size verified in Phase 0; upstream's 512-frame default
+    # exceeds the safe working set during longer songs.
+    handler.mlx_vae_chunk_size = MLX_VAE_CHUNK
     status, ok = handler.initialize_service(
         project_root=request.project_root, config_path=request.model_folder, device="mps",
         dtype=torch.bfloat16, use_mlx_dit=request.dit_backend == "mlx", compile_model=False)

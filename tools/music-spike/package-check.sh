@@ -15,7 +15,7 @@ for step in "${@:-base turbo xl}"; do
       base)
         "$APP" --selftest runtime
         "$APP" --selftest audio
-        say -o "$PACKAGE_HOME/dictation-probe.aiff" 'Morning lanterns light the river. We walk toward a quiet garden.'
+        say -v Samantha -o "$PACKAGE_HOME/dictation-probe.aiff" 'Morning lanterns light the river. We walk toward a quiet garden.'
         "$APP" --selftest asr --model qwen3-asr-06b-int8 --model-dir "$ROOT/lyric-asr" \
           --file "$PACKAGE_HOME/dictation-probe.aiff" ;;
       turbo|xl)

@@ -26,8 +26,10 @@ Local inference patches:
 - Offline checkpoint precheck and path resolver; missing weights cannot trigger
   upstream downloads. The LM uses `trust_remote_code=False`.
 - Diffusion-step and MLX token-block hooks; a worker-controlled timeout budget.
-- MLX decoder weights materialized as bf16, with the duplicate torch decoder
-  freed only after successful conversion.
+- MLX decoder weights materialized as bf16 one tensor at a time (a lazy cast
+  kept the whole fp32 decoder alive until the end: XL load peaked above
+  24 GiB), with the duplicate torch decoder freed only after successful
+  conversion.
 - Removed UI, servers, CLI, training, LoRA and scoring; kept lyric alignment
   and its DTW helper, without the optional numba dependency.
 - Upstream Python files carry `ruff: noqa`; the authored integration tools and
