@@ -420,4 +420,11 @@ STUDIO: dict[str, dict[str, str]] = {
     },
     "studio.music.err.load_failed": {"en": "Couldn't load the music model: {msg}", "zh": "无法加载作曲模型：{msg}"},
     "studio.music.err.failed": {"en": "Composing failed: {msg}", "zh": "作曲失败：{msg}"},
+    "studio.compose.take.line": {"en": "Take {i} · seed {seed} · {dur}", "zh": "第 {i} 版 · 种子 {seed} · {dur}"},
+    "studio.compose.take.play": {"en": "Play this take", "zh": "播放这一版"},
+    "studio.compose.take.export": {"en": "Export WAV…", "zh": "导出 WAV…"},
+    "studio.compose.take.repaint": {"en": "Repaint a range…", "zh": "重新生成一段…"},
+    "studio.compose.take.delete": {"en": "Delete", "zh": "删除"},
+    "studio.compose.check.clear": {"en": "{clear} / {total} lines clear", "zh": "{clear} / {total} 行清晰"},
+    "studio.compose.check.flagged": {"en": "Check {n} lines", "zh": "有 {n} 行需检查"},
 }
