@@ -638,3 +638,9 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
   and process exit. `tools/bench_music.py` records A–D and a synthetic five-second
   dictation probe. These are implementation and unit-test results; the XL
   download, packaged build and performance runs still need real verification.
+
+- Phase 6 ordering adjustment: after merging main and running the full suite,
+  build the weight-free app bundle while the XL download waits for machine
+  headroom. Only our waiting lock processes are stopped; no model or other
+  agent's process is interrupted. Requeue model work after the build finishes.
+  This does not substitute for the required real XL/turbo packaged checks.
