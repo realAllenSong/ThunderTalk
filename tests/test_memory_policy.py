@@ -146,3 +146,48 @@ def test_moss_dictation_pins_shared_model_and_studio_never_loads_a_copy(policy, 
     monkeypatch.setattr(diarize, "unload_model", diarize.unload_model.__wrapped__)
     policy.sweep()
     assert diarize._MODEL is None
+
+
+def _darwin(monkeypatch, sysctl, stdout="", fail=False):
+    from types import SimpleNamespace
+    monkeypatch.setattr(memory.platform, "system", lambda: "Darwin")
+    monkeypatch.setattr(memory, "_sysctl_int", lambda name: sysctl.get(name))
+
+    def run(*args, **kwargs):
+        if fail:
+            raise OSError("no memory_pressure")
+        return SimpleNamespace(stdout=stdout)
+    monkeypatch.setattr(memory.subprocess, "run", run)
+
+
+def test_free_percent_prefers_sysctl(monkeypatch):
+    _darwin(monkeypatch, {"kern.memorystatus_level": 63}, fail=True)
+    assert memory.free_percent() == 63
+
+
+@pytest.mark.parametrize("stdout,expected", [
+    ("System-wide memory free percentage: 18%", 18),
+    ("System-wide memory free percentage: 101%", None),
+    ("System-wide memory free percentage: n/a", None),
+    ("unavailable", None),
+])
+def test_free_percent_falls_back_to_memory_pressure(monkeypatch, stdout, expected):
+    _darwin(monkeypatch, {}, stdout=stdout)
+    assert memory.free_percent() == expected
+
+
+def test_free_percent_unknown_when_memory_pressure_fails(monkeypatch):
+    _darwin(monkeypatch, {}, fail=True)
+    assert memory.free_percent() is None
+
+
+def test_gauges_unknown_off_mac(monkeypatch):
+    monkeypatch.setattr(memory.platform, "system", lambda: "Linux")
+    assert memory.free_percent() is None and memory.pressure_level() is None
+
+
+def test_real_sysctl_reads_an_int_on_mac():
+    if memory.platform.system() != "Darwin":
+        pytest.skip("macOS only")
+    assert 0 <= memory._sysctl_int("kern.memorystatus_level") <= 100
+    assert memory._sysctl_int("kern.no_such_name") is None

@@ -32,8 +32,8 @@ def test_memory_guard_falls_back_without_constructing_engine(monkeypatch, instal
         with pytest.raises(RuntimeError, match="memory"):
             with transcribe.selected_engine(engine, "qwen3-asr-06b-mlx"):
                 pytest.fail("No usable fallback")
-    assert transcribe._EXTRA_MODEL_LOCK.acquire(blocking=False)
-    transcribe._EXTRA_MODEL_LOCK.release()
+    assert transcribe.EXTRA_MODEL.acquire(blocking=False)
+    transcribe.EXTRA_MODEL.release()
 
 
 def test_only_one_extra_model_and_cleanup(monkeypatch, installed):
@@ -59,15 +59,14 @@ def test_only_one_extra_model_and_cleanup(monkeypatch, installed):
 
 
 @pytest.mark.parametrize("total,pressure,expected", [
-    (32, 60, True), (8, 60, False), (32, 39, False), (32, None, False), (32, 101, False),
+    (32, 60, True), (8, 60, False), (32, 39, False), (32, None, False),
 ])
 def test_headroom_requires_bytes_and_mac_pressure(monkeypatch, total, pressure, expected):
     import psutil
     monkeypatch.setattr(psutil, "virtual_memory", lambda: SimpleNamespace(
         available=3 * 1024**3, total=total * 1024**3))
     monkeypatch.setattr(transcribe.platform, "system", lambda: "Darwin")
-    monkeypatch.setattr(transcribe.subprocess, "run", lambda *a, **k: SimpleNamespace(
-        stdout=f"System-wide memory free percentage: {pressure}%" if pressure is not None else "unavailable"))
+    monkeypatch.setattr(transcribe.memory_policy, "free_percent", lambda: pressure)
     assert transcribe._has_model_headroom(SimpleNamespace(size_mb=1881)) is expected
 
 

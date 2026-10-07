@@ -10,8 +10,11 @@ from __future__ import annotations
 from contextlib import contextmanager
 from dataclasses import dataclass
 from functools import wraps
+import ctypes
 import gc
 import logging
+import platform
+import subprocess
 import sys
 import threading
 import time
@@ -21,7 +24,46 @@ from thundertalk.core.gpu_lock import GPU_LOCK
 
 IDLE_SECONDS = 180.0
 MLX_CACHE_BYTES = 512 << 20
+PRESSURE_CRITICAL = 4
 log = logging.getLogger(__name__)
+
+
+def _sysctl_int(name: str) -> int | None:
+    try:
+        libc = ctypes.CDLL(None, use_errno=True)
+        value, size = ctypes.c_int(0), ctypes.c_size_t(ctypes.sizeof(ctypes.c_int))
+        if libc.sysctlbyname(name.encode(), ctypes.byref(value), ctypes.byref(size), None, 0):
+            return None
+        return value.value
+    except (OSError, AttributeError):
+        return None
+
+
+def free_percent() -> int | None:
+    """macOS's "system-wide memory free percentage" (reclaimable pages count as
+    free), read without spawning a process; ``None`` when unknown or off macOS."""
+    if platform.system() != "Darwin":
+        return None
+    pct = _sysctl_int("kern.memorystatus_level")
+    if pct is None:
+        try:
+            out = subprocess.run(["memory_pressure"], capture_output=True,
+                                 text=True, timeout=2, check=True).stdout
+        except (OSError, subprocess.SubprocessError):
+            return None
+        for line in out.splitlines():
+            if "free percentage" in line:
+                try:
+                    pct = int(line.rsplit(":", 1)[1].strip().rstrip("%"))
+                except ValueError:
+                    return None
+                break
+    return pct if pct is not None and 0 <= pct <= 100 else None
+
+
+def pressure_level() -> int | None:
+    """``kern.memorystatus_vm_pressure_level``: 1 normal, 2 warning, 4 critical."""
+    return _sysctl_int("kern.memorystatus_vm_pressure_level") if platform.system() == "Darwin" else None
 
 
 def trim_caches() -> None:

@@ -92,3 +92,8 @@ class StudioActivity:
 
 
 STUDIO = StudioActivity()
+
+# One alternate heavy model at a time across Studio jobs (an extra ASR model
+# for a transcription, or a music job). Independent of GPU_LOCK: dictation can
+# still use Metal between units of work.
+EXTRA_MODEL = threading.Lock()

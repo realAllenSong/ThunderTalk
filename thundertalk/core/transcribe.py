@@ -19,7 +19,6 @@ from __future__ import annotations
 import json
 import platform
 import shutil
-import subprocess
 import threading
 import time
 from dataclasses import dataclass, field
@@ -29,9 +28,9 @@ from typing import Callable, Optional
 
 import numpy as np
 
-from thundertalk.core import audio_io, repetition
+from thundertalk.core import audio_io, memory_policy, repetition
 from thundertalk.core.gpu_lock import GPU_LOCK
-from thundertalk.core.priority import DICTATION, STUDIO
+from thundertalk.core.priority import DICTATION, EXTRA_MODEL, STUDIO
 
 SR = 16000
 ProgressCB = Callable[[int, str], None]
@@ -43,10 +42,6 @@ FAST_TARGET_S = 12.0
 FAST_MAX_SPAN_S = 18.0
 REDECODE_TARGET_S = 5.0
 REDECODE_MAX_S = 8.0
-
-# Reserve one slot for an alternate ASR model across simultaneous Studio jobs.
-# This is independent of GPU_LOCK: dictation can use Metal between spans.
-_EXTRA_MODEL_LOCK = threading.Lock()
 
 
 def _has_model_headroom(info) -> bool:
@@ -60,15 +55,10 @@ def _has_model_headroom(info) -> bool:
         mem = psutil.virtual_memory()
         needed = 4 * 1024**3 + info.size_mb * 1024**2 * 3
         if platform.system() == "Darwin":
-            out = subprocess.run(["memory_pressure"], capture_output=True,
-                                 text=True, timeout=2, check=True).stdout
-            for line in out.splitlines():
-                if "free percentage" in line:
-                    pct = int(line.rsplit(":", 1)[1].strip().rstrip("%"))
-                    return 40 <= pct <= 100 and mem.total * pct / 100 >= needed
-            return False
+            pct = memory_policy.free_percent()
+            return pct is not None and pct >= 40 and mem.total * pct / 100 >= needed
         return mem.available >= needed and mem.available / mem.total >= 0.4
-    except (OSError, ValueError, subprocess.SubprocessError):
+    except (OSError, ValueError):
         return False
 
 
@@ -410,7 +400,7 @@ def selected_engine(engine, model_id: str, progress=None):
     info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
     if info is None or not is_downloaded(model_id):
         raise RuntimeError("no_model")
-    slot = _EXTRA_MODEL_LOCK.acquire(blocking=False)
+    slot = EXTRA_MODEL.acquire(blocking=False)
     temporary = None
     try:
         reason = "model_busy" if not slot else "memory"
@@ -436,7 +426,7 @@ def selected_engine(engine, model_id: str, progress=None):
                 temporary.unload()
         finally:
             if slot:
-                _EXTRA_MODEL_LOCK.release()
+                EXTRA_MODEL.release()
 
 
 def transcribe_file(path: str, engine, speakers: bool = False,
