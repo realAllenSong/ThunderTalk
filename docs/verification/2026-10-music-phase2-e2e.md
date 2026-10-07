@@ -62,8 +62,9 @@ regression tests cover those exact full-line cases. Homophones still pass;
 a one-word error in six English words (0.167) still passes. The 20 s English
 takes cannot fit all eight requested lines: the four absent closing lines
 correctly show not heard. These six takes show real seed/ASR variance and
-were not approved by ear. A separate check of the intelligible Phase-0
-30 s reference is queued at `artifacts/music-spike/e2e/check-reference.log`.
+were not approved by ear. The final Phase-0 reference check completed: 7/8 clear at 0.20; raw
+`artifacts/music-spike/phase6/check-reference-final.json`. These are scored
+lines, not a by-ear approval.
 
 The remaining Phase 4 UI is implemented and fake-tested: sequential
 LyricCheckWorker jobs begin only after MusicWorker.finished (the child has
@@ -83,4 +84,5 @@ reviewed at `artifacts/compose-layout/*-lyric-check-*-tab.png`.
 The first full fake-based macOS suite under `lock.py build` passed **1215 passed,
 4 skipped** in 169.44 s. An earlier unlocked targeted run had one unrelated
 50 ms transcript-toggle timing assertion at 59.7 ms under high system load;
-the full run passed it unchanged. A real repaint remains pending the GPU lock; UI verification is not an audio-quality claim.
+the full run passed it unchanged. A real repaint passed its guarded SNR check; see the Phase 6 performance
+report. UI verification is not an audio-quality claim.

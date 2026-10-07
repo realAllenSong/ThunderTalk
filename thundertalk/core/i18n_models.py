@@ -23,6 +23,14 @@ MODELS = {
         "en": "30 languages + 22 Chinese dialects (not 52 separate languages).",
         "zh": "30 种语言及 22 种中文方言（并非 52 种语言）。",
     },
+    "models.speed.music_xl": {
+        "en": "170 s song: ~6 min 14 s · M3 Max · planner on",
+        "zh": "170 秒歌曲：约 6 分 14 秒 · M3 Max · 启用规划",
+    },
+    "models.speed.music_turbo": {
+        "en": "170 s song: ~1 min 11 s · M3 Max · planner on",
+        "zh": "170 秒歌曲：约 1 分 11 秒 · M3 Max · 启用规划",
+    },
     "models.speed.unmeasured": {"en": "Speed not measured", "zh": "速度未测量"},
     "models.speed.qwen_mlx": {
         "en": "~11× real time · M3 Max",

@@ -68,7 +68,7 @@ def test_planner_pre_ticked_needs_32_gb_and_20_gb_disk_left():
     assert music.planner_pre_ticked(36, disk_free_mb=60_000, pending_mb=30_000)
     assert not music.planner_pre_ticked(36, disk_free_mb=45_000, pending_mb=30_000)
     assert not music.planner_pre_ticked(24, disk_free_mb=500_000, pending_mb=10_000)
-    assert music.ram_need_mb(music.TURBO, True) == music.TURBO.ram_mb + music.PLANNER_RAM_MB
+    assert music.ram_need_mb(music.TURBO, True) == music.ram_need_mb(music.TURBO, False)
 
 
 def test_job_dirs_live_in_music_folder_and_never_collide(isolated_home):
@@ -91,6 +91,17 @@ def test_missing_lists_only_what_is_not_on_disk_and_adds_the_planner(isolated_ho
 
 def test_take_estimate_grows_with_length_planner_and_model():
     base = music.estimate_take_s(music.TURBO, 60, False)
-    assert base == pytest.approx(18.0)
+    assert base > 0
+    # Measured warm per-take costs (full wall minus spawn/load), rounded up.
+    assert music.estimate_take_s(music.TURBO, 60, True) >= 20.7
+    assert music.estimate_take_s(music.XL, 60, True) >= 118.6
     assert music.estimate_take_s(music.TURBO, 60, True) > base
     assert music.estimate_take_s(music.XL, 60, False) > base
+
+
+@pytest.mark.parametrize("model, peak", [(music.XL, 19_377_112_320), (music.TURBO, 14_773_039_936)])
+def test_measured_peak_includes_planner_without_double_counting(model, peak):
+    for planner in [False, True]:
+        bound = music.ram_need_mb(model, planner)
+        assert peak / 2**20 <= bound < peak / 2**20 + 100
+    assert model.info.speed in {"music_xl", "music_turbo"}

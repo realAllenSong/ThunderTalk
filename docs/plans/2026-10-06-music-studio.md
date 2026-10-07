@@ -318,16 +318,21 @@ tooltip while Speak or a Transcribe job is busy, and vice versa.
 `core/music.py` holds the catalog (`MUSIC_MODELS`), each entry a `BackendInfo`
 plus music facts:
 
-| Model | Params (publisher / tensors) | Download | RAM needed (estimate) | Speed (170 s song) | Steps |
-|---|---|---:|---|---|---:|
-| **XL SFT** — best quality | 4B / 4.99 B | 19.95 + 1.21 + 0.34 = 21.5 GB | ~12–15 GB in bf16 (10.0 GB weights) | verified ~8 min incl. planner | 50 |
-| **Turbo** — light | 2B / 2.39 B | 4.79 + 1.21 + 0.34 = 6.3 GB | ~7–8 GB | estimate 1–2 min (8 steps) | 8 |
-| + Planner LM 1.7B | 1.7B | + 3.76 GB | + ~4 GB while planning | verified 25–60 s | — |
+| Model | Params (publisher / tensors) | Download / retained | Measured peak, planner on | Measured 170 s song | Steps |
+|---|---|---:|---:|---:|---:|
+| **XL SFT** | 4B / 4.99 B | 21.5 / 11.5 GB, excluding planner | 18.05 GiB | 374.32 s | 50 |
+| **Turbo** | 2B / 2.39 B | 6.3 GB, excluding planner | 13.26 GiB | 70.99 s | 8 |
+| + Planner LM 1.7B | 1.7B | +3.76 GB | Included above; released before diffusion | 9.52–25.45 s planning/conditioning | — |
 
-60 s instrumental on XL: estimate 3–4 min (diffusion cost scales with latent
-length: 1,500 frames at 25 Hz vs 4,250 for 170 s; planning ~300 code tokens).
-Both are replaced by Phase 6 measurements, which also fill `ram_mb` and the
-speed keys (`models.speed.music_xl`, `music_turbo`).
+60 s instrumental, planner on: XL 134.55 s / 17.96 GiB, turbo 31.66 s /
+13.02 GiB. Cold wall includes worker loading and exit; vocal runs include a
+five-second capture-priority dictation pause. Full phase/audio/latency evidence:
+`docs/verification/2026-10-music-perf.md`. Catalog peaks round up to 100 MiB
+and include the planner without double counting; use the same conservative
+bound with planning off. Time predictions use measured M3 Max upper rates,
+not claims that every Mac or 600 s run has been measured. The experimental
+16 GiB MPS tier remains offered; its distinct working set is unverified and
+conservative admission may refuse it.
 
 Shown **before** any download: the facts line, "Needs about N GB of memory",
 the download size and "M GB free on this Mac" (from `shutil.disk_usage`).

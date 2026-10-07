@@ -439,8 +439,8 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.compose.check.flagged": {"en": "Check {n} lines", "zh": "有 {n} 行需检查"},
     "studio.compose.model": {"en": "Model", "zh": "模型"},
     "studio.compose.memory": {
-        "en": "Uses about {gb} GB of memory while composing; it is freed when the job ends.",
-        "zh": "作曲时约占用 {gb} GB 内存，任务结束后立即释放。",
+        "en": "Uses about {gb} GiB of memory while composing; it is freed when the job ends.",
+        "zh": "作曲时约占用 {gb} GiB 内存，任务结束后立即释放。",
     },
     "studio.compose.needs": {"en": "{name} needs a Mac with {gb} GB or more.", "zh": "{name} 需要 {gb} GB 及以上内存的 Mac。"},
     "studio.compose.experimental": {
@@ -476,8 +476,8 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.compose.seed": {"en": "Seed", "zh": "种子"},
     "studio.compose.random": {"en": "Random", "zh": "随机"},
     "studio.compose.estimate": {
-        "en": "About {each} per take on this Mac ({total} in all), plus loading the model.",
-        "zh": "在这台 Mac 上每版约 {each}（共约 {total}），另需加载模型的时间。",
+        "en": "M3 Max reference: about {each} per take ({total} in all), plus model loading.",
+        "zh": "M3 Max 参考：每版约 {each}（共约 {total}），另需加载模型的时间。",
     },
     "studio.compose.go": {"en": "Compose", "zh": "开始作曲"},
     "studio.compose.blocked": {

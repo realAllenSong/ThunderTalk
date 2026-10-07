@@ -1,9 +1,8 @@
 """Studio ▸ Compose: ACE-Step 1.5 model catalog, hardware tiers and job folders.
 
 Pure data and rules, no torch: the generation itself runs in a spawned worker
-(``core/music_worker.py``). Sizes are the repo file sizes; memory figures come
-from the Phase 0 gate (``docs/verification/2026-10-music-phase0.md``) and are
-replaced by the Phase 6 measurements."""
+(``core/music_worker.py``). Sizes are the repo file sizes; memory and timing figures are measured on the
+36 GiB M3 Max (``docs/verification/2026-10-music-perf.md``)."""
 
 from __future__ import annotations
 
@@ -44,8 +43,7 @@ TEXT_ENCODER = Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=1208,
                         allow=_sub("Qwen3-Embedding-0.6B", "*.json", "*.safetensors", "*.txt", "*.jinja"))
 PLANNER = Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=3756,
                    allow=_sub("acestep-5Hz-lm-1.7B", "*.json", "*.safetensors", "*.txt", "*.jinja"))
-PLANNER_RAM_MB = 3000
-PLANNER_RATE = 0.12
+PLANNER_RATE = 0.17  # measured upper planning/conditioning seconds per audio second
 
 
 @dataclass(frozen=True)
@@ -53,18 +51,18 @@ class MusicModel:
     info: BackendInfo
     folder: str                 # config_path for initialize_service
     steps: int
-    ram_mb: int                 # worker peak without the planner (estimate until Phase 6)
+    ram_mb: int                 # measured MiB peak, including planner/repaint; conservative when off
     min_memory_gb: int
-    rate: float = 0.3           # compute seconds per second of audio, one take, warm model
+    rate: float = 0.3           # measured diffusion/decode/write seconds per audio second
     convert_bf16: bool = False  # F32 checkpoint converted once after download (decision 3)
 
 
 def _model(id_, name, params, blurb_en, blurb_zh, dit: Download, folder, steps, ram_mb, min_memory_gb,
-           rate, convert_bf16=False) -> MusicModel:
+           rate, convert_bf16=False, speed="unmeasured") -> MusicModel:
     info = BackendInfo(id=id_, name=name, blurb_en=blurb_en, blurb_zh=blurb_zh, languages=(),
                        supports_presets=False, supports_clone=False, needs_gpu=True, params=params,
                        language_codes=ACESTEP_LANGUAGES, downloads=(dit, VAE, TEXT_ENCODER),
-                       components=COMPONENTS)
+                       components=COMPONENTS, speed=speed)
     return MusicModel(info, folder, steps, ram_mb, min_memory_gb, rate, convert_bf16)
 
 
@@ -74,7 +72,7 @@ XL = _model(
     "音质最好。可生成带人声的歌曲或纯音乐，支持 50 种语言。需要 32 GB 及以上内存的 Mac。",
     Download("hf-dir", XL_REPO, dest=f"{CHECKPOINTS}/acestep-v15-xl-sft", size_mb=19950,
              allow=("*.json", "*.safetensors", "*.pt"), convert_bf16=True),
-    "acestep-v15-xl-sft", steps=50, ram_mb=18000, min_memory_gb=XL_MEMORY_GB, rate=1.5, convert_bf16=True)
+    "acestep-v15-xl-sft", steps=50, ram_mb=18500, min_memory_gb=XL_MEMORY_GB, rate=1.95, convert_bf16=True, speed="music_xl")
 
 TURBO = _model(
     "acestep-turbo", "ACE-Step 1.5 Turbo", "2B",
@@ -82,7 +80,7 @@ TURBO = _model(
     "轻量、快速（8 步）。可生成带人声的歌曲或纯音乐，支持 50 种语言。",
     Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=4792,
              allow=_sub("acestep-v15-turbo", "*.json", "*.safetensors", "*.pt")),
-    "acestep-v15-turbo", steps=8, ram_mb=12700, min_memory_gb=MIN_MEMORY_GB, rate=0.3)
+    "acestep-v15-turbo", steps=8, ram_mb=14100, min_memory_gb=MIN_MEMORY_GB, rate=0.21, speed="music_turbo")
 
 MUSIC_MODELS: tuple[MusicModel, ...] = (XL, TURBO)
 
@@ -145,13 +143,18 @@ def planner_pre_ticked(memory_gb: float, disk_free_mb: int, pending_mb: int) -> 
 
 
 def ram_need_mb(m: MusicModel, planner: bool) -> int:
-    return m.ram_mb + (PLANNER_RAM_MB if planner else 0)
+    """Measured full peak, including planner; do not add its memory twice.
+
+    Use the same conservative bound without planning until separately measured.
+    """
+    return m.ram_mb
 
 
 def estimate_take_s(m: MusicModel, seconds: int, planner: bool) -> float:
-    """Seconds to compose one take once the model is loaded. Turbo from the
-    Phase 2 run (20 s takes in 7.8–10.2 s with the planner); XL is a guess
-    until Phase 6 measures it."""
+    """M3 Max reference after loading, from measured 60/170 s upper rates.
+
+    Other hardware and lengths are predictions, not additional measurements.
+    """
     return seconds * (m.rate + (PLANNER_RATE if planner else 0.0))
 
 

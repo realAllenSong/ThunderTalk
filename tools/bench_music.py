@@ -98,10 +98,13 @@ def main():
     ap.add_argument('--model', choices=['xl', 'turbo'], required=True)
     ap.add_argument('--song', action='store_true')
     ap.add_argument('--dictation', action='store_true')
+    ap.add_argument('--probe-only', action='store_true', help='cancel after the concurrent probe; no WAV expected')
     ap.add_argument('--max-dictation-ratio', type=float, help='cancel early if the concurrent probe exceeds this ratio')
     ap.add_argument('--models-root', type=Path, default=Path.home() / 'Library/Caches/ThunderTalk-bench/music-models')
     ap.add_argument('--output', type=Path, required=True)
     a = ap.parse_args()
+    if a.probe_only and not a.dictation:
+        ap.error('--probe-only requires --dictation')
     a.output.mkdir(parents=True, exist_ok=True)
     if list(a.output.glob("take-*.wav")):
         raise ValueError("Choose a fresh benchmark output directory; an earlier take already exists")
@@ -159,6 +162,7 @@ def main():
                 result = engine.recognize(x, 16000)
             latencies.append({'when': label, 'wall_s': time.monotonic() - t0,
                               'capture_s': capture_s, 'press_to_text_s': time.monotonic() - press,
+                              'thread_id': threading.get_ident(),
                               'inference_ms': result.inference_ms, 'text': result.text})
             (a.output / 'dictation.json').write_text(json.dumps(latencies, indent=2) + '\n')
             print(f"Dictation {label}: {latencies[-1]['wall_s']:.3f}s", flush=True)
@@ -167,17 +171,27 @@ def main():
                     print('Concurrent dictation exceeded the acceptance ratio; cancelling this attempt', flush=True)
                     cancel.set()
 
-        recognise('idle')
+        idle_ready = threading.Event()
 
         def during():
+            try:
+                recognise('idle')
+            finally:
+                idle_ready.set()
             while not first_step.wait(0.1):
                 if stop.is_set():
                     return
             time.sleep(0.2)
             recognise('during_generation')
+            if a.probe_only:
+                cancel.set()
 
         probe_thread = threading.Thread(target=during, daemon=True)
         probe_thread.start()
+        if not idle_ready.wait(30) or not latencies:
+            stop.set()
+            engine.unload()
+            raise RuntimeError('Idle dictation probe failed')
     start = time.monotonic()
     minimum[0] = 100.0
     outcome = 'error'
@@ -229,6 +243,8 @@ def main():
         p['finite'] and p['sample_rate'] == 48000 and p['channels'] == 2
         and abs(p['duration'] - request.duration) <= 1 and p['rms'] > 0.003
         and 0 < p['peak'] <= 1 for p in result['audio'])
+    if a.probe_only:
+        return 0 if outcome == 'cancelled' and probes_ok and process.pid is None else 1
     return 0 if outcome == 'done' and audio_ok and probes_ok and process.pid is None else 1
 
 

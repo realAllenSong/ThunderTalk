@@ -475,9 +475,9 @@ class ComposeTab(QWidget):
         zh = i18n.LANG == "zh"
         size = sum(d.size_mb for d in m.info.downloads)
         self._facts.setText((m.info.blurb_zh if zh else m.info.blurb_en) + "  "
-                            + facts_text(m.info.params, size, False))
+                            + facts_text(m.info.params, size, False, m.info.speed))
         need = music.ram_need_mb(m, self._planner_on())
-        lines = [t("studio.compose.memory").format(gb=f"{need / 1000:.0f}")]
+        lines = [t("studio.compose.memory").format(gb=f"{need / 1024:.1f}")]
         lines += [t("studio.compose.needs").format(name=music.model(d).info.name, gb=music.model(d).min_memory_gb)
                   for d in self._tier.disabled]
         if self._tier.experimental:
