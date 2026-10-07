@@ -50,8 +50,8 @@ lyric encoder, timbre encoder, tokenizer pooler, detokenizer) were **all zeros**
 match `1 / 1e6^(2i/128)` (the config's `rope_theta`). transformers 5 builds non-persistent buffers
 on the meta device and refills them in the base `_init_weights`; the vendored ACE-Step override did
 not call it. Fixed in the vendored models (and `vendor.py`), regression test
-`tests/test_music_vendor.py::test_reloaded_model_has_real_rotary_frequencies` (fails without the
-patch: 7/8 frequencies wrong; passes with it, turbo and XL).
+`tests/test_music_vendor.py` (fails without the patch: 7/8 frequencies wrong; passes with it, turbo
+and XL; since folded into `test_reloaded_model_keeps_weights_and_rebuilt_buffers`).
 
 PyTorch MPS VAE instead of MLX (unfixed 5.6.2, same settings): peak 13.8 GB vs 15.9 GB, wall
 103 s vs 67 s.
@@ -67,5 +67,19 @@ loudness range 1.2 LU; MLX DiT likewise empty) while the control reads back at 0
 take has a loudness range of 12.6 LU, the fixed 5.6.2 take 1.2 LU — a flat bed. So the zero rotary was
 a real bug but not the only 5.x difference.
 
-Next: `tools/music-spike/gate-statediff.sh` dumps tokenizer ids, text-encoder output and every DiT
-parameter/buffer (plus loading info) under both versions and diffs them → `docs/verification/music-statediff.log`.
+State diff (`tools/music-spike/gate-statediff.sh`: tokenizer ids, Qwen3-Embedding output and every
+DiT parameter/buffer under both versions, CPU): tokenizer ids and all 310 text-encoder tensors are
+identical. But **644 of 677 DiT parameters differ**: on 5.6.2 every RMSNorm weight sums to exactly its
+width (all ones) and every projection has the statistics of N(0, 0.02) — the checkpoint is loaded
+("677/677") and then re-randomised. The FSQ quantizer buffers (`_levels`, `_basis`, `scales`,
+`soft_clamp_input_value`, `implicit_codebook`) are zero too. Cause: transformers 5 calls
+`_init_weights` on every module after loading and relies on its guarded `init.*` helpers to skip
+loaded tensors; the vendored override wrote through `.data`, bypassing the guard. Fix: the override
+now delegates to the base initializer (same scheme as upstream) and rebuilds the FSQ constants from a
+fresh CPU `ResidualFSQ` (commit da760f1). Regression test
+`test_reloaded_model_keeps_weights_and_rebuilt_buffers` save/reloads a lyric encoder and audio
+tokenizer (turbo + XL) and checks every parameter and buffer: red on the old patch, green now.
+
+Next: `tools/music-spike/gate-weights.sh` re-dumps 5.6.2 and diffs against the 4.57.6 dump
+(→ `docs/verification/music-statediff-weights.log`, gitignored), then two 30 s vocal takes (MPS DiT,
+MLX DiT) and ASR (→ `docs/verification/music-asr-weights.log`).
