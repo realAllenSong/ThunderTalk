@@ -44,6 +44,7 @@ TEXT_ENCODER = Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=1208,
 PLANNER = Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=3756,
                    allow=_sub("acestep-5Hz-lm-1.7B", "*.json", "*.safetensors", "*.txt", "*.jinja"))
 PLANNER_RAM_MB = 3000
+PLANNER_RATE = 0.12
 
 
 @dataclass(frozen=True)
@@ -53,16 +54,17 @@ class MusicModel:
     steps: int
     ram_mb: int                 # worker peak without the planner (estimate until Phase 6)
     min_memory_gb: int
+    rate: float = 0.3           # compute seconds per second of audio, one take, warm model
     convert_bf16: bool = False  # F32 checkpoint converted once after download (decision 3)
 
 
 def _model(id_, name, params, blurb_en, blurb_zh, dit: Download, folder, steps, ram_mb, min_memory_gb,
-           convert_bf16=False) -> MusicModel:
+           rate, convert_bf16=False) -> MusicModel:
     info = BackendInfo(id=id_, name=name, blurb_en=blurb_en, blurb_zh=blurb_zh, languages=(),
                        supports_presets=False, supports_clone=False, needs_gpu=True, params=params,
                        language_codes=ACESTEP_LANGUAGES, downloads=(dit, VAE, TEXT_ENCODER),
                        components=COMPONENTS)
-    return MusicModel(info, folder, steps, ram_mb, min_memory_gb, convert_bf16)
+    return MusicModel(info, folder, steps, ram_mb, min_memory_gb, rate, convert_bf16)
 
 
 XL = _model(
@@ -71,7 +73,7 @@ XL = _model(
     "音质最好。可生成带人声的歌曲或纯音乐，支持 50 种语言。需要 32 GB 及以上内存的 Mac。",
     Download("hf-dir", XL_REPO, dest=f"{CHECKPOINTS}/acestep-v15-xl-sft", size_mb=19950,
              allow=("*.json", "*.safetensors", "*.pt")),
-    "acestep-v15-xl-sft", steps=50, ram_mb=18000, min_memory_gb=XL_MEMORY_GB, convert_bf16=True)
+    "acestep-v15-xl-sft", steps=50, ram_mb=18000, min_memory_gb=XL_MEMORY_GB, rate=1.5, convert_bf16=True)
 
 TURBO = _model(
     "acestep-turbo", "ACE-Step 1.5 Turbo", "2B",
@@ -79,7 +81,7 @@ TURBO = _model(
     "轻量、快速（8 步）。可生成带人声的歌曲或纯音乐，支持 50 种语言。",
     Download("hf-dir", REPO, dest=CHECKPOINTS, size_mb=4792,
              allow=_sub("acestep-v15-turbo", "*.json", "*.safetensors", "*.pt")),
-    "acestep-v15-turbo", steps=8, ram_mb=12700, min_memory_gb=MIN_MEMORY_GB)
+    "acestep-v15-turbo", steps=8, ram_mb=12700, min_memory_gb=MIN_MEMORY_GB, rate=0.3)
 
 MUSIC_MODELS: tuple[MusicModel, ...] = (XL, TURBO)
 
@@ -136,6 +138,25 @@ def planner_pre_ticked(memory_gb: float, disk_free_mb: int, pending_mb: int) -> 
 
 def ram_need_mb(m: MusicModel, planner: bool) -> int:
     return m.ram_mb + (PLANNER_RAM_MB if planner else 0)
+
+
+def estimate_take_s(m: MusicModel, seconds: int, planner: bool) -> float:
+    """Seconds to compose one take once the model is loaded. Turbo from the
+    Phase 2 run (20 s takes in 7.8–10.2 s with the planner); XL is a guess
+    until Phase 6 measures it."""
+    return seconds * (m.rate + (PLANNER_RATE if planner else 0.0))
+
+
+def project_root() -> Path:
+    """``initialize_service``'s project root: the folder holding ``checkpoints/``."""
+    from thundertalk.core import models
+    return models.get_models_dir() / Path(CHECKPOINTS).parent
+
+
+def missing(m: MusicModel, planner: bool) -> list[Download]:
+    """The downloads ``m`` (and the planner, if wanted) still needs."""
+    from thundertalk.core.speech import download_ready
+    return [d for d in m.info.downloads + ((PLANNER,) if planner else ()) if not download_ready(d)]
 
 
 def clamp_seconds(seconds: float, t: Tier) -> int:

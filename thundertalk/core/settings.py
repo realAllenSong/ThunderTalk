@@ -63,6 +63,13 @@ DEFAULTS: dict[str, Any] = {
     "studio_language": "auto",
     "studio_speed": 1.0,
     "studio_engine": "",            # Speak engine: voxcpm2 | indextts | kokoro ("" = from the voice)
+    # Studio ▸ Compose: last model ("" = the tier's recommendation), mode, length, takes, language.
+    "compose_model": "",
+    "compose_mode": "song",         # song | bgm
+    "compose_seconds": 120,
+    "compose_takes": 0,             # 0 = the tier's default
+    "compose_language": "",         # "" = the UI language
+    "compose_planner": None,        # None = pre-ticked by memory and disk space
 }
 
 _PATH = Path.home() / ".thundertalk" / "settings.json"

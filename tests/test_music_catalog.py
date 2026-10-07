@@ -77,3 +77,20 @@ def test_job_dirs_live_in_music_folder_and_never_collide(isolated_home):
     assert a.parent == isolated_home / "Music" / "ThunderTalk"
     assert a.name.endswith("-warm-indie-pop-acoustic-guitar") and b.name == a.name + "-2"
     assert music.slug("夏夜 晚风") == "夏夜-晚风" and music.slug("!!!") == "song"
+
+
+def test_missing_lists_only_what_is_not_on_disk_and_adds_the_planner(isolated_home):
+    assert music.missing(music.TURBO, False) == list(music.TURBO.info.downloads)
+    assert music.missing(music.TURBO, True)[-1] is music.PLANNER
+    target = models.get_models_dir() / music.VAE.dest
+    target.mkdir(parents=True, exist_ok=True)
+    (target / speech._hf_dir_marker(music.VAE)).write_text("x")
+    assert music.VAE not in music.missing(music.TURBO, True)
+    assert music.project_root() == isolated_home / ".thundertalk" / "models" / "ace-step"
+
+
+def test_take_estimate_grows_with_length_planner_and_model():
+    base = music.estimate_take_s(music.TURBO, 60, False)
+    assert base == pytest.approx(18.0)
+    assert music.estimate_take_s(music.TURBO, 60, True) > base
+    assert music.estimate_take_s(music.XL, 60, False) > base

@@ -427,4 +427,58 @@ STUDIO: dict[str, dict[str, str]] = {
     "studio.compose.take.delete": {"en": "Delete", "zh": "删除"},
     "studio.compose.check.clear": {"en": "{clear} / {total} lines clear", "zh": "{clear} / {total} 行清晰"},
     "studio.compose.check.flagged": {"en": "Check {n} lines", "zh": "有 {n} 行需检查"},
+    "studio.compose.model": {"en": "Model", "zh": "模型"},
+    "studio.compose.memory": {
+        "en": "Uses about {gb} GB of memory while composing; it is freed when the job ends.",
+        "zh": "作曲时约占用 {gb} GB 内存，任务结束后立即释放。",
+    },
+    "studio.compose.needs": {"en": "{name} needs a Mac with {gb} GB or more.", "zh": "{name} 需要 {gb} GB 及以上内存的 Mac。"},
+    "studio.compose.experimental": {
+        "en": "Experimental on this Mac: one take at a time, up to 4 minutes.",
+        "zh": "在这台 Mac 上为实验功能：每次一版，最长 4 分钟。",
+    },
+    "studio.compose.planner": {
+        "en": "Plan the song first — better structure (+{size})",
+        "zh": "先构思整首歌——结构更好（+{size}）",
+    },
+    "studio.compose.installed": {"en": "Installed", "zh": "已安装"},
+    "studio.compose.mode.song": {"en": "Song with vocals", "zh": "带人声的歌曲"},
+    "studio.compose.mode.bgm": {"en": "Background music", "zh": "背景音乐"},
+    "studio.compose.style": {"en": "Style", "zh": "风格"},
+    "studio.compose.style_ph": {
+        "en": "e.g. warm indie pop, acoustic guitar, soft female vocal, 90s feel",
+        "zh": "例如：温暖的独立流行，木吉他，柔和女声，90 年代感觉",
+    },
+    "studio.compose.lyrics": {"en": "Lyrics", "zh": "歌词"},
+    "studio.compose.lyrics_ph": {
+        "en": "[verse]\nYour own words, one line per sung line\n\n[chorus]\n…",
+        "zh": "[verse]\n你自己写的歌词，每行一句\n\n[chorus]\n…",
+    },
+    "studio.compose.insert": {"en": "Insert section", "zh": "插入段落"},
+    "studio.compose.odd_tags": {
+        "en": "{tags}: not a usual section name", "zh": "{tags}：不是常见的段落名",
+    },
+    "studio.compose.length": {"en": "Length", "zh": "时长"},
+    "studio.compose.bpm": {"en": "BPM", "zh": "速度 BPM"},
+    "studio.compose.auto": {"en": "Auto", "zh": "自动"},
+    "studio.compose.language": {"en": "Sung in", "zh": "演唱语言"},
+    "studio.compose.takes": {"en": "Takes", "zh": "版本数"},
+    "studio.compose.seed": {"en": "Seed", "zh": "种子"},
+    "studio.compose.random": {"en": "Random", "zh": "随机"},
+    "studio.compose.estimate": {
+        "en": "About {each} per take on this Mac ({total} in all), plus loading the model.",
+        "zh": "在这台 Mac 上每版约 {each}（共约 {total}），另需加载模型的时间。",
+    },
+    "studio.compose.go": {"en": "Compose", "zh": "开始作曲"},
+    "studio.compose.blocked": {
+        "en": "Waiting for the other Studio job to finish.", "zh": "请等工作室里的另一项任务完成。",
+    },
+    "studio.compose.done": {"en": "{n} takes ready · took {took}", "zh": "已生成 {n} 版 · 用时 {took}"},
+    "studio.compose.takes_title": {"en": "Takes", "zh": "生成的版本"},
+    "studio.compose.footer": {
+        "en": "Describe style by genre, mood and instruments. Don't name real artists or reuse existing lyrics"
+              " or melodies. Streaming platforms such as Spotify ask you to disclose AI-generated music.",
+        "zh": "请用流派、情绪和乐器来描述风格。不要写真实歌手的名字，也不要使用现有的歌词或旋律。"
+              "Spotify 等流媒体平台要求标注 AI 生成的音乐。",
+    },
 }
