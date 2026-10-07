@@ -23,7 +23,7 @@ from thundertalk import asset_path
 from thundertalk.core import tts_verify
 
 SECTION_RE = re.compile(r"^\s*\[([^\]\n]+)\]\s*$")
-PASS_ERROR = 0.35
+PASS_ERROR = 0.20  # Real calibration: 0.35 hid garbled phrases inside otherwise correct long lines.
 PAD_S = 0.4
 WINDOW_S = 15.0
 OVERLAP_S = 2.0

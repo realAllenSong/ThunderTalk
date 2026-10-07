@@ -66,7 +66,7 @@ def friendly_error(code: str) -> str:
             return t(f"studio.{kind}.err.{sub}")
     if code.startswith("music:"):
         sub, _, detail = code[6:].partition(":")
-        if sub in ("memory", "memory_low", "stalled", "worker_stopped", "load_failed", "failed"):
+        if sub in ("memory", "memory_low", "stalled", "worker_stopped", "load_failed", "failed", "no_asr"):
             return t(f"studio.music.err.{sub}").format(pct=detail or "?", msg=detail or "?")
     if code.startswith("decode:"):
         return t("studio.err.decode").format(msg=code[7:])
@@ -384,3 +384,52 @@ class MusicWorker(_Worker):
         if outcome == "cancelled":
             raise MusicCancelled
         return list(self.takes)
+
+
+class LyricCheckWorker(_Worker):
+    """Read a finished take after its generation process has exited."""
+
+    def __init__(self, path: str, engine=None, meta=None) -> None:
+        super().__init__()
+        self._path, self._engine, self._meta = path, engine, meta
+
+    def work(self):
+        import json
+        from contextlib import nullcontext
+
+        from thundertalk.core import music_check, models
+        from thundertalk.core.memory_policy import using
+        from thundertalk.core.priority import DICTATION, STUDIO
+
+        meta = self._meta if self._meta is not None else json.loads(Path(self._path).with_suffix(".json").read_text())
+        if meta.get("instrumental") or not (meta.get("shown_lyrics") or meta.get("lyrics")):
+            return None
+        active = transcribe.active_model_id(self._engine)
+        qwen = [m.id for m in models.BUILTIN_MODELS if m.family.startswith("Qwen3-ASR")]
+        if active in qwen and getattr(self._engine, "is_loaded", False):
+            context = nullcontext(self._engine)
+        else:
+            # Prefer CPU: it can coexist with dictation without a second Metal model.
+            ordered = sorted(qwen, key=lambda m: m != "qwen3-asr-06b-int8")
+            chosen = next((m for m in ordered if models.is_downloaded(m)), None)
+            if chosen is None:
+                raise MusicError("music:no_asr")
+            context = transcribe.selected_engine(self._engine, chosen, self.progress.emit)
+
+        def between():
+            DICTATION.wait_clear(self._cancel)
+            if self._cancel.is_set():
+                raise MusicCancelled
+
+        between()
+        with STUDIO.running(), context as engine:
+            # selected_engine may fall back under pressure. Do not check with an
+            # unrelated recogniser, or change the resident dictation language.
+            if transcribe.active_model_id(engine) not in qwen:
+                raise RuntimeError("memory")
+            if engine is not self._engine:
+                engine.set_language(meta.get("vocal_language") or "auto")
+            with using(engine):
+                return music_check.check_take(Path(self._path),
+                                             lambda x: engine.recognize(x, 16000).text,
+                                             meta=meta, between=between)

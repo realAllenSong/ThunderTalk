@@ -97,3 +97,71 @@ def test_music_status_lines():
     assert music_status(("paused", "dictation")) == "Paused while you dictate…"
     assert music_status(("memory_low_warn", 22)) == "Memory is getting low (22 % free)"
     assert music_status(("unknown",)) is None
+
+
+class FakeAsr:
+    is_loaded = True
+    current_model = "qwen3-asr-06b-int8"
+    active_backend = "onnx"
+    _model_dir = ""
+
+    def __init__(self):
+        self.languages = []
+
+    def set_language(self, lang):
+        self.languages.append(lang)
+
+    def recognize(self, x, sr):
+        from types import SimpleNamespace
+        assert sr == 16000
+        return SimpleNamespace(text="hello")
+
+
+def test_lyric_check_reuses_qwen_without_changing_dictation(qapp, monkeypatch):
+    from thundertalk.core import music_check
+    from thundertalk.ui.studio.workers import LyricCheckWorker
+    engine = FakeAsr()
+    meta = {"lyrics": "hello", "vocal_language": "zh"}
+    monkeypatch.setattr(music_check, "check_take", lambda p, recognise, **kw: recognise([],))
+    worker = LyricCheckWorker("fake.wav", engine, meta)
+    assert worker.work() == "hello"
+    assert not engine.languages
+
+
+def test_lyric_check_temporary_language_and_release(qapp, monkeypatch):
+    from contextlib import contextmanager
+    from thundertalk.core import models, music_check, transcribe
+    from thundertalk.ui.studio.workers import LyricCheckWorker
+    engine = FakeAsr()
+    seen = []
+
+    @contextmanager
+    def selected(active, model, progress):
+        seen.append(model)
+        yield engine
+        seen.append("released")
+
+    monkeypatch.setattr(models, "is_downloaded", lambda m: m == "qwen3-asr-06b-int8")
+    monkeypatch.setattr(transcribe, "selected_engine", selected)
+    monkeypatch.setattr(music_check, "check_take", lambda p, recognise, **kw: recognise([]))
+    assert LyricCheckWorker("fake.wav", None, {"lyrics": "hello", "vocal_language": "zh"}).work() == "hello"
+    assert engine.languages == ["zh"] and seen == ["qwen3-asr-06b-int8", "released"]
+
+
+def test_lyric_check_missing_and_cancel(qapp, monkeypatch):
+    from thundertalk.core import models, music_check
+    from thundertalk.core.music_worker import MusicCancelled
+    from thundertalk.ui.studio.workers import LyricCheckWorker
+    monkeypatch.setattr(models, "is_downloaded", lambda m: False)
+    with pytest.raises(MusicError, match="no_asr"):
+        LyricCheckWorker("fake.wav", None, {"lyrics": "hello"}).work()
+    w = LyricCheckWorker("fake.wav", FakeAsr(), {"lyrics": "hello"})
+    w.cancel()
+    with pytest.raises(MusicCancelled):
+        w.work()
+    monkeypatch.setattr(music_check, "check_take", lambda *a, **kw: kw["between"]())
+    w = LyricCheckWorker("fake.wav", FakeAsr(), {"lyrics": "hello"})
+    w.cancel()
+    with pytest.raises(MusicCancelled):
+        w.work()
+    assert LyricCheckWorker("fake.wav", None, {"instrumental": True}).work() is None

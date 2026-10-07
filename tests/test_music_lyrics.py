@@ -144,3 +144,10 @@ def test_collapsed_alignment_is_not_trusted():
     assert ml.line_spans(stamps, 3) is None
     assert ml.line_spans([{"text": "第一行", "start": 0.0, "end": 0.0},
                           {"text": "第二行", "start": 0.0, "end": 7.9}], 2) is None
+
+
+@pytest.mark.parametrize("heard, shown", [("遗憾故事藏着星光", "一行公式藏着星光"),
+                                         ("眼眼里有你的名字", "原文里有你的名字")])
+def test_calibration_flags_garbled_phrases_inside_longer_lines(heard, shown):
+    check = ml.check_line(0, heard, [shown], "zh")
+    assert check.status == ml.UNCLEAR and check.error == pytest.approx(0.25)

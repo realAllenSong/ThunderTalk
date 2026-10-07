@@ -328,3 +328,13 @@ def test_worker_never_imports_upstream_cli_and_downloads_no_code():
     for m in music.MUSIC_MODELS:
         for d in music.with_planner(m).downloads:
             assert not any(g.endswith(".py") for g in d.allow)
+
+
+def test_repaint_params_and_source_metadata(fake, tmp_path):
+    request = MusicRequest(project_root=str(tmp_path), model_folder='acestep-v15-turbo',
+                           job_dir=str(tmp_path), caption='gentle folk', task_type='repaint',
+                           src_audio='/original/take.wav', repainting_start=2.0, repainting_end=5.0)
+    params = music_worker._params(request, 7)
+    assert params.task_type == 'repaint' and params.src_audio == '/original/take.wav'
+    assert params.repainting_start == 2.0 and params.repainting_end == 5.0
+    assert params.repaint_mode == 'balanced' and not params.thinking

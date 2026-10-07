@@ -22,6 +22,8 @@ from PySide6.QtGui import QColor, QPixmap  # noqa: E402
 from PySide6.QtWidgets import QApplication  # noqa: E402
 
 from thundertalk.core import audio_io, i18n, music  # noqa: E402
+from thundertalk.core.music_check import TakeCheck  # noqa: E402
+from thundertalk.core.music_lyrics import check_line, lyric_lines  # noqa: E402
 from thundertalk.ui import theme  # noqa: E402
 from thundertalk.ui.pages.studio_page import StudioPage  # noqa: E402
 from thundertalk.ui.studio.compose_tab import ComposeTab  # noqa: E402
@@ -111,6 +113,15 @@ def main():
             w.finished.emit()
             shots.append(capture(page, out / f"{lang}-done-1200x900.png", (1200, 900)))
             shots.append(capture(page, out / f"{lang}-done-1600x1000.png", (1600, 1000)))
+            lines = lyric_lines(LYRICS)
+            result = TakeCheck(lines, [check_line(i, "different words" if i == 1 else ln.text, [ln.text], "en")
+                                       for i, ln in enumerate(lines)], [(0, 1)], False, [(0, 1)] * len(lines))
+            tab._checked(tab._rows[0], result)
+            tab._rows[0].check_button.click()
+            tab._lang.setCurrentIndex(tab._lang.findData("zh"))
+            tab._lyrics.setPlainText("[verse]\n我们唱欧拉SONG\n一行公式藏着星光")
+            tab._sung.toggle.setChecked(True)
+            shots.append(capture(page, out / f"{lang}-lyric-check-1200x900.png", (1200, 900)))
             tab._mode.set_current("bgm")
             tab._on_mode("bgm")
             shots.append(capture(page, out / f"{lang}-bgm-1200x900.png", (1200, 900)))

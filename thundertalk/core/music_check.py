@@ -8,7 +8,8 @@ engine in the Studio worker. Call it only after the music job has exited.
 from __future__ import annotations
 
 import json
-from dataclasses import dataclass
+import re
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
@@ -28,6 +29,7 @@ class TakeCheck:
     checks: list[LineCheck]
     windows: list[tuple[float, float]]   # per line when timed, else the scan windows
     timed: bool                      # True when the take's sentence timestamps were used
+    line_ranges: list[Optional[tuple[float, float]]] = field(default_factory=list)
 
     @property
     def summary(self) -> tuple[int, int]:
@@ -78,13 +80,34 @@ def check_take(wav: Path, recognise: Recognise, meta: Optional[dict] = None,
     if spans is not None:
         windows = music_lyrics.line_windows(spans, duration)
         checks = [music_lyrics.check_line(i, heard(w), targets[i], lang) for i, w in enumerate(windows)]
-        return TakeCheck(shown, checks, windows, True)
+        return TakeCheck(shown, checks, windows, True, list(windows))
 
     windows = music_lyrics.scan_windows(duration)
-    got = music_lyrics.overlap_merge([heard(w) for w in windows], lang)
+    got, raw, provenance = [], [], []
+    for w in windows:
+        text = heard(w)
+        cur = music_lyrics.units(text, lang)
+        if lang in ("zh", "yue"):
+            atoms = [a for run in re.findall(r"[\u3400-\u9fff]+|[a-zA-Z]+", text)
+                     for a in (list(run) if '\u3400' <= run[0] <= '\u9fff' else [run])]
+        else:
+            atoms = list(text.replace(" ", "")) if lang in ("ja", "ko") else re.findall(r"\w+", text)
+        if len(atoms) != len(cur):
+            atoms = cur
+        overlap = next((n for n in range(min(12, len(got), len(cur)), 0, -1)
+                        if got[-n:] == cur[:n]), 0)
+        got.extend(cur[overlap:])
+        raw.extend(atoms[overlap:])
+        provenance.extend([w] * (len(cur) - overlap))
     target_units = [[music_lyrics.units(t, lang) for t in pair if t] for pair in targets]
     # Align against the sung text: that is what the model was asked to sing.
     per_line = music_lyrics.assign(got, [units[0] if units else [] for units in target_units])
-    joiner = "" if lang in ("ja", "ko") else " "
-    checks = [music_lyrics.judge(i, joiner.join(u), u, target_units[i]) for i, u in enumerate(per_line)]
-    return TakeCheck(shown, checks, windows, False)
+    joiner = "" if lang in ("zh", "yue", "ja", "ko") else " "
+    checks, ranges, offset = [], [], 0
+    for i, u in enumerate(per_line):
+        end = offset + len(u)
+        checks.append(music_lyrics.judge(i, joiner.join(raw[offset:end]), u, target_units[i]))
+        spans = provenance[offset:end]
+        ranges.append((min(s[0] for s in spans), max(s[1] for s in spans)) if spans else None)
+        offset = end
+    return TakeCheck(shown, checks, windows, False, ranges)

@@ -50,6 +50,10 @@ class MusicRequest:
     planner: bool = False
     dit_backend: str = "mlx"            # "mlx" | "mps"
     estimate_s: float = 0.0             # per take, for the upstream timeout
+    task_type: str = "text2music"
+    src_audio: Optional[str] = None
+    repainting_start: float = 0.0
+    repainting_end: float = -1.0
 
 
 def take_seeds(seed: Optional[int], takes: int) -> list[int]:
@@ -98,6 +102,9 @@ def write_wav(path: Path, samples) -> None:
 def _params(request: MusicRequest, seed: int):
     from acestep.inference import GenerationParams
     return GenerationParams(
+        task_type=request.task_type, src_audio=request.src_audio,
+        repainting_start=request.repainting_start, repainting_end=request.repainting_end,
+        repaint_mode="balanced", chunk_mask_mode="explicit" if request.task_type == "repaint" else "auto",
         caption=request.caption,
         lyrics="[Instrumental]" if request.instrumental else request.lyrics,
         instrumental=request.instrumental,
@@ -171,6 +178,10 @@ def _save_take(request: MusicRequest, index: int, seed: int, audio: dict, result
         "steps": request.steps,
         "planner": request.planner,
         "dit_backend": request.dit_backend,
+        "task_type": request.task_type,
+        "src_audio": request.src_audio,
+        "repainting_start": request.repainting_start,
+        "repainting_end": request.repainting_end,
         "lm_metadata": _jsonable(result.extra_outputs.get("lm_metadata")),
         "time_costs": _jsonable(result.extra_outputs.get("time_costs")),
         "wall_seconds": round(wall_s, 2),

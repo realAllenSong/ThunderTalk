@@ -99,6 +99,8 @@ class StudioPage(QWidget):
     def set_engine(self, engine) -> None:
         self._transcribe.set_engine(engine)
         self._speak.set_engine(engine)
+        if self._compose is not None:
+            self._compose.set_engine(engine)
 
     def show_tab(self, key: str) -> None:
         if key not in self._keys:

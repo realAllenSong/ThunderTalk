@@ -71,7 +71,7 @@ def test_untimed_take_scans_windows_and_aligns_to_lines(tmp_path):
     # 原文 → 圆圆 is flagged; homophone pinyin (yuan yuan vs yuan wen) is half wrong
     assert [c.status for c in result.checks] == [music_lyrics.CLEAR, music_lyrics.CLEAR,
                                                  music_lyrics.UNCLEAR]
-    assert result.checks[2].heard == "yuan yuan"
+    assert result.checks[2].heard == "圆圆"
 
 
 def test_untimed_take_with_nothing_heard(tmp_path):

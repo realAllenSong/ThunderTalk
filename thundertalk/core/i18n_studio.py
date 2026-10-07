@@ -491,4 +491,28 @@ STUDIO: dict[str, dict[str, str]] = {
         "zh": "请用流派、情绪和乐器来描述风格。不要写真实歌手的名字，也不要使用现有的歌词或旋律。"
               "Spotify 等流媒体平台要求标注 AI 生成的音乐。",
     },
+    'studio.music.err.no_asr': {"en": 'Install Qwen3-ASR to check the sung lyrics.', "zh": '请下载 Qwen3-ASR 来检查演唱的歌词。'},
+    'studio.compose.long': {"en": 'Allow up to 10 minutes (see the time estimate)', "zh": '允许最长 10 分钟（请查看预计耗时）'},
+    'studio.compose.sung.title': {"en": 'Sung lyrics ▾', "zh": '演唱歌词 ▾'},
+    'studio.compose.sung.advice': {"en": 'Suggestions — listen and adjust. Only the sung text goes to the model.', "zh": '建议读音，请试听后调整。模型只使用右侧的演唱歌词。'},
+    'studio.compose.sung.reset': {"en": 'Reset', "zh": '重置'},
+    'studio.compose.check.advice': {"en": 'Lyric check is advice: words may be unclear over the music. Listen before changing a take.', "zh": '歌词检查仅供参考：伴奏可能影响识别。请先试听再修改。'},
+    'studio.compose.check.approximate': {"en": 'Line timing is approximate; review the range before repainting.', "zh": '行时间为粗略范围；重绘前请确认起止时间。'},
+    'studio.compose.check.heard': {"en": 'Heard: {text}', "zh": '听到：{text}'},
+    'studio.compose.check.not_heard': {"en": 'not heard', "zh": '未听到'},
+    'studio.compose.check.play_line': {"en": 'Play line', "zh": '试听这一行'},
+    'studio.compose.check.edit_sung': {"en": 'Edit sung lyrics', "zh": '编辑演唱歌词'},
+    'studio.compose.check.repaint_line': {"en": 'Repaint this line…', "zh": '重绘这一行…'},
+    'studio.compose.check.new_take': {"en": 'New take', "zh": '再生成一版'},
+    'studio.compose.check.details': {"en": 'Lyric check ▾', "zh": '歌词检查 ▾'},
+    'studio.compose.check.running': {"en": 'Checking sung lyrics…', "zh": '正在检查演唱歌词…'},
+    'studio.compose.check.finished': {"en": 'Lyric check ready', "zh": '歌词检查已完成'},
+    'studio.compose.check.retry': {"en": 'Retry lyric check', "zh": '重新检查歌词'},
+    'studio.compose.check.download': {"en": 'Download Qwen3-ASR · 879 MB', "zh": '下载 Qwen3-ASR · 879 MB'},
+    'studio.compose.check.range_advice': {"en": 'Choose the range in seconds. The rest of this take uses its saved latents.', "zh": '请以秒为单位选择范围，其余部分使用这一版保存的潜变量。'},
+    'studio.compose.check.start': {"en": 'Start (s)', "zh": '开始（秒）'},
+    'studio.compose.check.end': {"en": 'End (s)', "zh": '结束（秒）'},
+
+
+
 }

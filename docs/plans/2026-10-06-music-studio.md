@@ -426,7 +426,7 @@ per take; skipped in BGM mode.
 3. **Score per line.** Chinese: syllable error rate on **tone-less pinyin**
    (`pypinyin.lazy_pinyin`), so 宋/颂 count as correct; English and other
    space-separated languages: `tts_verify.tokens` + `edit_distance`. A line
-   passes if its error against the *sung* or the *shown* text is ≤ 0.35, so
+   passes if its error against the *sung* or the *shown* text is ≤ 0.20 (calibrated from 0.35; see Phase 4 verification), so
    "song" heard for 宋 is fine. Empty recognition = "not heard". The threshold
    is calibrated in Phase 4 on the user's known failures (一行公式 → 遗憾,
    原文 → 圆圆) and on takes the user approved.
@@ -608,3 +608,15 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
 | Precision | bf16 DiT on both paths; VAE kept fp32 (fp16 saves ~2 GB, not re-validated on the fixed weights). | bf16 DiT, fp32 VAE. |
 | Planner placement | Integrated (`thinking=True`) works within the measured peaks; sequential placement not measured. | Integrated; revisit only for the 24 GB tier if Phase 6 shows pressure. |
 | Not yet measured | XL (not downloaded; 115 GB disk free), `diffusers` import closure inside the frozen app, data-tree import in a packaged build. | Moved to Phase 6 (packaged build + selftest). |
+
+## Handoff implementation notes (Codex, 2026-10-07)
+
+- Phase 4's remaining UI can be developed with fakes while the predecessor's
+  calibration job waits for machine-wide headroom. That job has now completed.
+  Its recorded 0.25 errors hid the user's known corruption inside longer lines
+  at 0.35, so calibration lowers PASS_ERROR to 0.20 with full-line regressions.
+  Homophones still pass. No lock bypass.
+- Neither measured DiT backend supplied trustworthy line timestamps. Scan-based
+  line actions use the contributing recognition windows, labelled approximate;
+  repaint opens a range review rather than silently treating them as exact.
+  The 300 s XL default now has an explicit opt-in to 600 s with the estimate.

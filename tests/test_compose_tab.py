@@ -294,3 +294,98 @@ def test_delete_removes_the_take_and_its_sidecars(make, tmp_path, monkeypatch):
     assert not wav.exists() and not wav.with_suffix(".json").exists()
     assert not wav.with_suffix(".latents.npy").exists()
     assert tab._rows == [] and tab._takes_card.isHidden()
+
+
+class FakeCheck(QObject):
+    done = Signal(object)
+    error = Signal(str)
+    cancelled = Signal()
+    finished = Signal()
+    made = []
+
+    def __init__(self, path, engine, meta):
+        super().__init__()
+        self.path, self.engine, self.meta = path, engine, meta
+        self.started = self.was_cancelled = False
+        self.made.append(self)
+
+    def start(self):
+        self.started = True
+
+    def cancel(self):
+        self.was_cancelled = True
+
+    def wait(self, _ms):
+        return True
+
+
+def test_sung_lyrics_request_and_reset(make, isolated_home):
+    from thundertalk.core import music_lyrics
+    tab = make()
+    tab._lang.setCurrentIndex(tab._lang.findData("zh"))
+    _song(tab, "[verse]\n我们唱欧拉SONG")
+    tab._sung.toggle.setChecked(True)
+    edit = tab._sung._fields["我们唱欧拉SONG"]
+    assert edit.text() == "我们唱欧拉宋"
+    edit.setText("我们唱欧拉颂")
+    edit.editingFinished.emit()
+    req, _ = tab.build_request()
+    assert req.lyrics == "[verse]\n我们唱欧拉颂" and req.shown_lyrics.endswith("SONG")
+    assert music_lyrics.load_user_dict()["song"] == "颂"
+    tab._sung._reset("我们唱欧拉SONG")
+    assert not tab._sung.overrides and "song" not in music_lyrics.load_user_dict()
+
+
+def test_auto_checks_sequentially_only_after_music_exits(make, tmp_path, monkeypatch):
+    from thundertalk.core.music_check import TakeCheck
+    from thundertalk.core.music_lyrics import check_line, lyric_lines
+    tab = make()
+    tab._make_check = FakeCheck
+    FakeCheck.made.clear()
+    _song(tab, "hello there")
+    tab._generate()
+    w = FakeWorker.made[-1]
+    meta = {"lyrics": "hello there", "shown_lyrics": "hello there", "vocal_language": "en", "seed": 1}
+    for i in range(2):
+        w.take.emit(i, str(tmp_path / f"take-{i}.wav"), meta)
+    assert not FakeCheck.made
+    w.finished.emit()
+    assert tab.busy() and len(FakeCheck.made) == 1
+    result = TakeCheck(lyric_lines("hello there"), [check_line(0, "hello bear", ["hello there"], "en")],
+                       [(0, 5)], False, [(0, 5)])
+    first = FakeCheck.made[-1]
+    first.done.emit(result)
+    first.finished.emit()
+    assert len(FakeCheck.made) == 2 and tab._rows[0].badge_text() == "Check 1 lines"
+    row = tab._rows[0]
+    row.check_button.click()
+    assert not row.check_view.isHidden() and row.check_view.line_labels[0].text() == "hello there"
+    FakeCheck.made[-1].error.emit("music:no_asr")
+    FakeCheck.made[-1].finished.emit()
+    assert not tab.busy() and tab._rows[1].check_button.text() == t("studio.compose.check.download")
+    tab.deleteLater()
+
+
+def test_repaint_uses_saved_source_and_keeps_original(make, tmp_path, monkeypatch):
+    tab = make()
+    row, wav = _finished_take(tab, tmp_path)
+    row.meta.update({"model": music.XL.folder, "repaint_source_latents_file": wav.with_suffix(".latents.npy").name,
+                     "shown_lyrics": "walking home", "vocal_language": "en"})
+    monkeypatch.setattr(tab, "repaint_range", lambda r, w: (1.2, 4.5))
+    row.action.emit("repaint")
+    request = FakeWorker.made[-1].request
+    assert request.task_type == "repaint" and request.src_audio == str(wav.resolve())
+    assert request.repainting_start == 1.2 and request.repainting_end == 4.5
+    assert not request.planner and request.seeds == [7] and wav.exists()
+    assert request.job_dir != row.request.job_dir
+    FakeWorker.made[-1].finished.emit()
+
+
+def test_xl_extended_length_requires_explicit_choice(make):
+    tab = make()
+    tab._long.setChecked(True)
+    assert tab._length.bounds()[1] == 600
+    tab._length.set_value(570)
+    assert "9:30" in tab._length.text()
+    tab._long.setChecked(False)
+    assert tab._length.value() == 300

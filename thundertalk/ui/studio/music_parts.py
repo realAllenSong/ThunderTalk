@@ -10,6 +10,7 @@ from PySide6.QtCore import QRegularExpression, Qt, Signal
 from PySide6.QtGui import QRegularExpressionValidator, QSyntaxHighlighter, QTextCharFormat
 from PySide6.QtWidgets import QHBoxLayout, QLineEdit, QMenu, QPlainTextEdit, QVBoxLayout, QWidget
 
+from thundertalk.core import music_lyrics
 from thundertalk.core.i18n import t
 from thundertalk.ui import theme
 from thundertalk.ui.studio.parts import RoundButton, _ElidedLabel
@@ -63,6 +64,12 @@ class SectionHighlighter(QSyntaxHighlighter):
         self._odd.setFontWeight(700)
 
     def highlightBlock(self, text: str) -> None:
+        for word in music_lyrics.latin_words(text):
+            fmt = QTextCharFormat()
+            fmt.setUnderlineStyle(QTextCharFormat.UnderlineStyle.DotLine)
+            fmt.setUnderlineColor(theme.qcolor(theme.ACCENT_BLUE))
+            for match in re.finditer(re.escape(word), text):
+                self.setFormat(match.start(), len(word), fmt)
         if not _TAG_QRE.match(text).hasMatch():
             return
         fmt = self._tag if not unknown_sections(text) else self._odd
@@ -71,6 +78,8 @@ class SectionHighlighter(QSyntaxHighlighter):
 
 class LyricsEdit(QPlainTextEdit):
     """Plain-text lyrics with highlighted section tags and an insert menu."""
+
+    pronounced = Signal(str, str, str)  # line, word, accepted sung form
 
     def __init__(self) -> None:
         super().__init__()
@@ -82,6 +91,20 @@ class LyricsEdit(QPlainTextEdit):
             f" padding: 10px 12px; font-size: 14px; }}"
             f"QPlainTextEdit:focus {{ border: 1px solid {theme.INK}; }}")
         self._hl = SectionHighlighter(self.document())
+
+    def contextMenuEvent(self, event) -> None:
+        menu = self.createStandardContextMenu()
+        cursor = self.cursorForPosition(event.pos())
+        line = cursor.block().text()
+        pos = cursor.positionInBlock()
+        for match in re.finditer(r"[A-Za-z]+", line):
+            if match.start() <= pos <= match.end() and match.group() in music_lyrics.latin_words(line):
+                word = match.group()
+                sung = music_lyrics.suggest_sung(word, "zh")
+                menu.addSeparator()
+                menu.addAction(f"{word} → {sung}", lambda: self.pronounced.emit(line, word, sung))
+                break
+        menu.exec(event.globalPos())
 
     def insert_section(self, tag: str) -> None:
         """Put "[tag]" on its own line at the cursor, with a blank line before
@@ -211,6 +234,10 @@ class TakeRow(QWidget):
         self._more.clicked.connect(self._show_menu)
         row.addWidget(self._more)
         col.addLayout(row)
+        self.check_button = theme.make_button(t("studio.compose.check.details"), "ghost", 26, font_px=11)
+        self.check_button.clicked.connect(lambda: self.action.emit("check"))
+        self.check_button.hide()
+        col.addWidget(self.check_button)
         self._repaint_ok = False
         self.retranslate()
 
