@@ -80,6 +80,10 @@ fresh CPU `ResidualFSQ` (commit da760f1). Regression test
 `test_reloaded_model_keeps_weights_and_rebuilt_buffers` save/reloads a lyric encoder and audio
 tokenizer (turbo + XL) and checks every parameter and buffer: red on the old patch, green now.
 
-Next: `tools/music-spike/gate-weights.sh` re-dumps 5.6.2 and diffs against the 4.57.6 dump
-(→ `docs/verification/music-statediff-weights.log`, gitignored), then two 30 s vocal takes (MPS DiT,
-MLX DiT) and ASR (→ `docs/verification/music-asr-weights.log`).
+After the fix (`tools/music-spike/gate-weights.sh`, 5.6.2 dump diffed against the 4.57.6 dump):
+**all 677 DiT parameters and all 310 text-encoder tensors identical**. Left over: `original_inv_freq`
+(a buffer only transformers 5 registers) and the FSQ `implicit_codebook`, which differs only by bf16
+rounding (|x| sum 224 887 vs 224 700: built in fp32 and cast, vs built under the bf16 default dtype).
+
+Next in the same chain: two 30 s vocal takes (MPS DiT, MLX DiT) and ASR
+(→ `docs/verification/music-asr-weights.log`, gitignored; numbers to be copied here).
