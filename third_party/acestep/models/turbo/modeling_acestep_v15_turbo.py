@@ -565,21 +565,18 @@ class AceStepPreTrainedModel(PreTrainedModel):
 
         TODO: Support separate initialization for encoders and decoders.
         """
-        std = self.config.initializer_range
-        if isinstance(module, nn.Linear):
-            module.weight.data.normal_(mean=0.0, std=std)
-            if module.bias is not None:
-                module.bias.data.zero_()
-        elif isinstance(module, nn.Embedding):
-            module.weight.data.normal_(mean=0.0, std=std)
-            if module.padding_idx is not None:
-                module.weight.data[module.padding_idx].zero_()
-        elif isinstance(module, Qwen3RMSNorm):
-            module.weight.data.fill_(1.0)
-        elif isinstance(module, Qwen3RotaryEmbedding):
-            # ThunderTalk patch: transformers 5 builds the non-persistent inv_freq buffers on the
-            # meta device and only the base initializer refills them; skipping it left them zero.
-            super()._init_weights(module)
+        # ThunderTalk patch: transformers 5 runs this on every module after loading. Only the base
+        # initializer's guarded helpers skip loaded tensors (writing through `.data` re-randomised
+        # the checkpoint), and it refills the meta-built rotary buffers; the FSQ constants need
+        # the same treatment. The base scheme (normal(std), zero bias, unit norms) is upstream's.
+        super()._init_weights(module)
+        if isinstance(module, ResidualFSQ):
+            with torch.device("cpu"):
+                fresh = ResidualFSQ(dim=self.config.fsq_dim, levels=self.config.fsq_input_levels,
+                                    num_quantizers=self.config.fsq_input_num_quantizers)
+            with torch.no_grad():
+                for name, buffer in fresh.named_buffers():
+                    module.get_buffer(name).copy_(buffer)
 
 
 class AceStepLyricEncoder(AceStepPreTrainedModel):

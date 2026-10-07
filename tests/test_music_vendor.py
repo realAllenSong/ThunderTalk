@@ -38,9 +38,9 @@ def test_offline_paths_reject_unapproved_vae(tmp_path, monkeypatch):
 
 
 @pytest.mark.parametrize("variant", ["turbo.modeling_acestep_v15_turbo", "xl_sft.modeling_acestep_v15_xl_base"])
-def test_reloaded_model_has_real_rotary_frequencies(tmp_path, monkeypatch, variant):
-    # transformers 5 left every inv_freq at zero (no positions, so no sung lyrics) until the
-    # vendored _init_weights deferred rotary modules to the base initializer.
+def test_reloaded_model_keeps_weights_and_rebuilt_buffers(tmp_path, monkeypatch, variant):
+    # Under transformers 5 the vendored _init_weights re-randomised every loaded weight and left
+    # the rotary and FSQ buffers at zero: the DiT made sound but never sang the lyrics.
     pytest.importorskip("vector_quantize_pytorch")
     pytest.importorskip("loguru")
     import importlib
@@ -50,11 +50,24 @@ def test_reloaded_model_has_real_rotary_frequencies(tmp_path, monkeypatch, varia
     modeling = importlib.import_module(f"acestep.models.{variant}")
     config = modeling.AceStepConfig(
         hidden_size=32, intermediate_size=64, num_attention_heads=2, num_key_value_heads=1, head_dim=16,
-        num_lyric_encoder_hidden_layers=1, text_hidden_dim=16)
-    modeling.AceStepLyricEncoder(config).save_pretrained(tmp_path)
-    model = modeling.AceStepLyricEncoder.from_pretrained(tmp_path)
+        num_lyric_encoder_hidden_layers=1, num_attention_pooler_hidden_layers=1, text_hidden_dim=16,
+        audio_acoustic_hidden_dim=8)
+    for cls in [modeling.AceStepLyricEncoder, modeling.AceStepAudioTokenizer]:
+        original = cls(config)
+        with torch.no_grad():
+            for param in original.parameters():
+                param.add_(0.5)
+        folder = tmp_path / cls.__name__
+        original.save_pretrained(folder)
+        model = cls.from_pretrained(folder)
+        for name, param in original.named_parameters():
+            torch.testing.assert_close(model.get_parameter(name), param, msg=name)
+        for name, buffer in original.named_buffers():
+            torch.testing.assert_close(model.get_buffer(name), buffer, msg=name)
     expected = 1.0 / (config.rope_theta ** (torch.arange(0, 16, 2, dtype=torch.float32) / 16))
-    torch.testing.assert_close(model.rotary_emb.inv_freq, expected)
+    torch.testing.assert_close(modeling.AceStepLyricEncoder.from_pretrained(
+        tmp_path / "AceStepLyricEncoder").rotary_emb.inv_freq, expected)
+    assert model.quantizer.layers[0]._levels.tolist() == list(config.fsq_input_levels)
 
 
 def test_no_remote_code_or_network_imports_in_inference_copy():

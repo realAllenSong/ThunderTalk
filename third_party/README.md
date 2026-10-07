@@ -14,12 +14,14 @@ Local patches for the compatibility gate:
 - Explicit handler dtype argument, so the worker chooses MPS bf16.
 - Construct FSQ on CPU: its initialization reads scalar values and cannot run
   under transformers 5.6.2's meta-device construction context.
-- `AceStepPreTrainedModel._init_weights` defers rotary embeddings to the base
-  initializer. Under transformers 5 the non-persistent `inv_freq` buffers are
-  created on the meta device and only the base initializer refills them; the
-  upstream override skipped it, so every rotary frequency was zero (no position
-  information: takes came out without intelligible vocals). transformers 4.57.6
-  computed them in `__init__` and was unaffected.
+- `AceStepPreTrainedModel._init_weights` delegates to the base initializer and
+  then rebuilds the FSQ constants. transformers 5 runs it on every module after
+  loading; only the base initializer's guarded helpers skip loaded tensors. The
+  upstream override wrote through `.data`, so it re-randomised 644 of 677 DiT
+  weights, and it skipped the meta-built non-persistent buffers, leaving every
+  rotary `inv_freq` and FSQ level/basis/codebook at zero. Takes still made sound
+  but never sang the lyrics. transformers 4.57.6 only initialised missing keys
+  and computed the buffers in `__init__`, so it was unaffected.
 - Direct vendored turbo/XL model classes, no remote model code or code syncing.
 - Offline checkpoint precheck and path resolver; missing weights cannot trigger
   upstream downloads. The LM uses `trust_remote_code=False`.

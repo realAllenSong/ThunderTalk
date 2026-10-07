@@ -7,6 +7,31 @@ import subprocess
 SOURCE = Path.home() / "Library/Caches/ThunderTalk-bench/ace-step-src"
 TARGET = Path(__file__).resolve().parents[2] / "third_party/acestep"
 REVISION = "ca1e85fe9430179831e6bc6be790c332190a3866"
+INIT_WEIGHTS_UPSTREAM = '''        std = self.config.initializer_range
+        if isinstance(module, nn.Linear):
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.bias is not None:
+                module.bias.data.zero_()
+        elif isinstance(module, nn.Embedding):
+            module.weight.data.normal_(mean=0.0, std=std)
+            if module.padding_idx is not None:
+                module.weight.data[module.padding_idx].zero_()
+        elif isinstance(module, Qwen3RMSNorm):
+            module.weight.data.fill_(1.0)
+'''
+INIT_WEIGHTS_PATCHED = '''        # ThunderTalk patch: transformers 5 runs this on every module after loading. Only the base
+        # initializer's guarded helpers skip loaded tensors (writing through `.data` re-randomised
+        # the checkpoint), and it refills the meta-built rotary buffers; the FSQ constants need
+        # the same treatment. The base scheme (normal(std), zero bias, unit norms) is upstream's.
+        super()._init_weights(module)
+        if isinstance(module, ResidualFSQ):
+            with torch.device("cpu"):
+                fresh = ResidualFSQ(dim=self.config.fsq_dim, levels=self.config.fsq_input_levels,
+                                    num_quantizers=self.config.fsq_input_num_quantizers)
+            with torch.no_grad():
+                for name, buffer in fresh.named_buffers():
+                    module.get_buffer(name).copy_(buffer)
+'''
 
 
 def replace(path, old, new):
@@ -118,12 +143,7 @@ def main():
         if count != 1:
             raise ValueError(f'Expected one FSQ constructor in {path}, found {count}')
         path.write_text(text)
-        replace(path, '        elif isinstance(module, Qwen3RMSNorm):\n            module.weight.data.fill_(1.0)\n',
-                '        elif isinstance(module, Qwen3RMSNorm):\n            module.weight.data.fill_(1.0)\n'
-                '        elif isinstance(module, Qwen3RotaryEmbedding):\n'
-                '            # ThunderTalk patch: transformers 5 builds the non-persistent inv_freq buffers on the\n'
-                '            # meta device and only the base initializer refills them; skipping it left them zero.\n'
-                '            super()._init_weights(module)\n')
+        replace(path, INIT_WEIGHTS_UPSTREAM, INIT_WEIGHTS_PATCHED)
     for path in TARGET.rglob('*.py'):
         path.write_text('# ruff: noqa  # Pinned upstream source; local integration is linted separately.\n' + path.read_text())
     print(f"Vendored {len(files)} files from {revision}")
