@@ -27,6 +27,7 @@ ABORT_FREE_PERCENT = 15
 STALL_S = 180.0
 CANCEL_GRACE_S = 10.0
 EXIT_GRACE_S = 10.0
+KILL_WAIT_S = 10.0
 POLL_S = 0.1
 MEMORY_EVERY_S = 1.0
 
@@ -200,7 +201,12 @@ class MusicProcess:
             process.join(timeout=3)
         if process.is_alive():
             process.kill()
-            process.join(timeout=3)
+            process.join(timeout=KILL_WAIT_S)
+        if process.is_alive():
+            # A killed child can outlive the wait while the kernel frees a large
+            # model heap; keep it so the idle sweep reaps it instead of raising here.
+            self._process = process
+            return
         process.close()
 
     def release_idle(self) -> bool:

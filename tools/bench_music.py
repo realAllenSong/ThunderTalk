@@ -70,7 +70,8 @@ def audio_metrics(path):
     ff = subprocess.run(['ffmpeg', '-hide_banner', '-nostats', '-i', str(path), '-af',
                          'loudnorm=I=-16:TP=-1:LRA=11:print_format=json', '-f', 'null', '-'],
                         capture_output=True, text=True, check=True)
-    loud = json.loads(ff.stderr[ff.stderr.rfind('{'):])
+    end = ff.stderr.rfind('}') + 1
+    loud = json.loads(ff.stderr[ff.stderr.rfind('{', 0, end):end])
     rms = float(np.sqrt(np.mean(x.astype('float64') ** 2)))
     peak = float(np.max(np.abs(x)))
     return {'sample_rate': sr, 'channels': x.shape[1], 'duration': len(x) / sr,

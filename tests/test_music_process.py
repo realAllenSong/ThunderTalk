@@ -341,5 +341,26 @@ def test_lease_armed_and_idle_release_kills_a_leftover(env):
     assert not leftover.alive and leftover.closed
 
 
+def test_child_surviving_kill_is_kept_for_the_idle_sweep(env, monkeypatch):
+    original = mp.MusicProcess._spawn
+
+    def spawn(self, request):
+        connection = original(self, request)
+        self._process.terminate = lambda: None
+        self._process.kill = lambda: setattr(env.child, "killed", True)
+        return connection
+
+    monkeypatch.setattr(mp.MusicProcess, "_spawn", spawn)
+    env.free = [60, 10]
+    env.child = Child(lambda child: None)
+    proc = mp.MusicProcess(clock=lambda: env.now[0])
+    with pytest.raises(mp.MusicError) as err:
+        proc.run("request", lambda e: None, threading.Event(), ram_need_mb=12000, total_mb=65536)
+    assert err.value.code == "music:memory_low:10"
+    assert env.child.killed and not env.child.closed and proc._process is not None
+    env.child.alive = False
+    assert proc.release_idle() and env.child.closed and proc._process is None
+
+
 def test_total_memory_reads_hw_memsize():
     assert mp.total_memory_mb() > 1024
