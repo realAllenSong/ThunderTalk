@@ -135,3 +135,12 @@ def test_sentence_timestamps_map_to_lines_only_one_to_one():
     assert ml.line_spans(stamps, 3) is None
     assert ml.line_spans(None, 2) is None
     assert ml.line_spans([{"text": "x", "start": 4, "end": 2}], 1) is None
+
+
+def test_collapsed_alignment_is_not_trusted():
+    # Shapes from a real MPS take: lines piled up at the end with zero length.
+    stamps = [{"text": "第一行", "start": 0.24, "end": 12.72}, {"text": "第二行", "start": 12.8, "end": 29.92},
+              {"text": "第三行", "start": 29.92, "end": 29.92}]
+    assert ml.line_spans(stamps, 3) is None
+    assert ml.line_spans([{"text": "第一行", "start": 0.0, "end": 0.0},
+                          {"text": "第二行", "start": 0.0, "end": 7.9}], 2) is None

@@ -28,3 +28,12 @@ Decision: the worker now skips alignment when the torch decoder is gone (no trac
 MLX-DiT takes are checked with the lyric check's scan-and-assign fallback. Keeping a second (torch) copy of
 the DiT only for alignment would add several GB to an already 17.8 GB job. The MPS DiT path (16 GB tier)
 keeps sentence timestamps — `tools/music-spike/gate-stamps-mps.sh` checks it.
+
+`gate-stamps-mps.sh` (same job, `--dit mps`): outcome `done`, 39.8 s wall; takes 12.8 s / 11.2 s (alignment
+included); child peak 16.65 GB. `lyric_timestamps` came back on both takes (8 sentences = 2 tags + 6 lines,
+so they map one to one), but every confidence is 0.0 and the spans are not usable: take 1 gives the first
+line 0.00–0.00 s; take 2 gives line 2 12.8–29.9 s and piles the last four lines up at 29.92 s with zero length.
+
+Decision: `music_lyrics.line_spans` now rejects any line shorter than 0.3 s (`MIN_SPAN_S`), so takes like
+these fall back to scan-and-assign. Sentence timestamps stay an optional hint; the scan path is the one
+the lyric check relies on (both DiT backends).

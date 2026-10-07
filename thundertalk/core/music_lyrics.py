@@ -27,6 +27,7 @@ PASS_ERROR = 0.35
 PAD_S = 0.4
 WINDOW_S = 15.0
 OVERLAP_S = 2.0
+MIN_SPAN_S = 0.3   # shorter lines mean the alignment collapsed (seen on real takes)
 
 _PINYIN_LANGS = {"zh", "yue"}
 _CHAR_LANGS = {"ja": "japanese", "ko": "korean"}
@@ -101,12 +102,13 @@ def judge(index: int, heard: str, got: Sequence[str], targets: Sequence[Sequence
 
 def line_spans(sentences: Optional[Sequence[dict]], n_lines: int) -> Optional[list[tuple[float, float]]]:
     """(start, end) per lyric line from the worker's sentence timestamps,
-    skipping section-tag sentences; None unless they match the lines one to one."""
+    skipping section-tag sentences; None unless they match the lines one to one
+    and every line has a plausible length."""
     if not sentences:
         return None
     spans = [(float(s["start"]), float(s["end"])) for s in sentences
              if str(s.get("text", "")).strip() and not SECTION_RE.match(str(s["text"]))]
-    if len(spans) != n_lines or any(b < a for a, b in spans):
+    if len(spans) != n_lines or any(b - a < MIN_SPAN_S for a, b in spans):
         return None
     return spans
 

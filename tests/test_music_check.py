@@ -25,7 +25,7 @@ def test_timed_take_scores_each_line_in_its_own_window(tmp_path):
     stamps = [{"text": "[Verse]", "start": 0.0, "end": 0.5, "confidence": 0.1},
               {"text": "我们唱欧拉宋", "start": 1.0, "end": 4.0, "confidence": 0.9},
               {"text": "一行公式", "start": 5.0, "end": 7.0, "confidence": 0.9},
-              {"text": "原文", "start": 29.8, "end": 30.0, "confidence": 0.9}]
+              {"text": "原文", "start": 29.5, "end": 30.0, "confidence": 0.9}]
     wav = _take(tmp_path, lyrics=ZH_SUNG, shown_lyrics=ZH_SHOWN, lyric_timestamps=stamps)
     replies = iter(["我们唱欧拉颂", "遗憾", ""])
     lengths, waits = [], []
@@ -37,8 +37,8 @@ def test_timed_take_scores_each_line_in_its_own_window(tmp_path):
 
     result = music_check.check_take(wav, recognise, between=lambda: waits.append(1))
     assert result.timed and len(waits) == 3
-    assert np.allclose(result.windows, [(0.6, 4.4), (4.6, 7.4), (29.4, 30.0)])
-    assert [n // 1600 for n in lengths] == [38, 28, 6]
+    assert np.allclose(result.windows, [(0.6, 4.4), (4.6, 7.4), (29.1, 30.0)])
+    assert [n // 1600 for n in lengths] == [38, 28, 9]
     assert [c.status for c in result.checks] == [music_lyrics.CLEAR, music_lyrics.UNCLEAR,
                                                  music_lyrics.NOT_HEARD]
     assert [line.text for line in result.lines] == ["我们唱欧拉SONG", "一行公式", "原文"]
