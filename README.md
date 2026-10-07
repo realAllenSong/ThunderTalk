@@ -32,6 +32,10 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.9.3
+
+- **Talk the moment you press the hotkey:** recording now starts as soon as you press the key. Before, the first second of speech could be cut off while ThunderTalk muted background audio. Muting now happens alongside recording and never trims your words.
+
 ## New in v1.9.2
 
 - **Signed with an Apple Developer ID and notarized by Apple:** macOS opens ThunderTalk without the "unidentified developer" warning, with no right-click → Open or System Settings exception needed.

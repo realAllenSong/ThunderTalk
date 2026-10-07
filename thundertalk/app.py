@@ -962,6 +962,11 @@ def main() -> None:
             app.processEvents()
             if not pipe._starting:
                 return
+            # Open the microphone first and keep every sample from the key
+            # press on: people start talking immediately. Muting background
+            # audio runs alongside and never delays or trims the take.
+            if not _start_capture():
+                return
             if settings.get("mute_speakers"):
                 try:
                     session = mute_system_audio()
@@ -969,30 +974,13 @@ def main() -> None:
                     # Muting is a courtesy; it must never block dictation.
                     print(f"[Toggle] speaker mute startup failed: {exc}")
                     audio_diagnostic("mute_unavailable_continue", error=type(exc).__name__)
-                    pipe._ducking_session = None
-                    _start_capture(None)
                     return
                 pipe._ducking_session = session
                 session.ready.add_done_callback(lambda _future: pipe.audio_ready.emit(session))
-            else:
-                _start_capture(None)
 
-    def _start_capture(session) -> None:
-        if not pipe._starting or session is not pipe._ducking_session:
-            audio_diagnostic("capture_skipped", reason="stale_or_cancelled_ready")
-            return  # cancelled startup or a completion from an older generation
-        error_text = t("overlay.audio_unavailable")
+    def _start_capture() -> bool:
+        mic = settings.microphone
         try:
-            if session is not None:
-                try:
-                    session.ready.result()  # already done; never blocks the Qt thread
-                    session.microphone_transition("open")
-                except Exception as exc:
-                    # Keep the session so whatever was muted is restored at
-                    # stop, but record anyway: muting must never block dictation.
-                    audio_diagnostic("mute_unconfirmed_continue", error=type(exc).__name__)
-            error_text = t("overlay.mic_unavailable")
-            mic = settings.microphone
             audio_diagnostic("microphone_open")
             pipe.recorder.start(device=None if mic == "auto" else mic)
             audio_diagnostic("microphone_opened")
@@ -1000,36 +988,14 @@ def main() -> None:
                 raise RuntimeError("microphone startup timed out")
         except Exception as exc:
             try:
-                stop_recording_and_restore(pipe.recorder, session)
+                pipe.recorder.stop()
             except Exception as stop_exc:
                 audio_diagnostic("startup_cleanup_failed", error=type(stop_exc).__name__)
-            pipe._ducking_session = None
             pipe._starting = False
             DICTATION.end()
             print(f"[Toggle] recording startup failed: {exc}")
-            overlay.show_error(error_text)
-            return
-        if session is not None:
-            checked = session.synchronize()
-            checked.add_done_callback(lambda future: pipe.capture_ready.emit((session, future)))
-        else:
-            _finish_capture((None, None))
-
-    def _finish_capture(payload) -> None:
-        session, checked = payload
-        if not pipe._starting or session is not pipe._ducking_session:
-            audio_diagnostic("capture_skipped", reason="stale_or_cancelled_check")
-            return
-        if checked is not None:
-            try:
-                checked.result()  # delivered by the worker after graph verification
-            except Exception as exc:
-                # Background audio may still be audible; record anyway and
-                # restore at stop. Never abort a dictation over muting.
-                audio_diagnostic("capture_check_failed_continue", error=type(exc).__name__)
-        pipe.recorder.discard_pending()
-        if session is not None:
-            session.diagnostic("capture_started")
+            overlay.show_error(t("overlay.mic_unavailable"))
+            return False
         pipe._starting = False
         pipe._recording = True
         state.set_recording(st.REC_RECORDING)
@@ -1037,9 +1003,35 @@ def main() -> None:
         if preview_wanted(settings):
             live.start()
         print("[Toggle] Recording started")
+        return True
 
-    pipe.audio_ready.connect(_start_capture, Qt.QueuedConnection)
-    pipe.capture_ready.connect(_finish_capture, Qt.QueuedConnection)
+    def _on_mute_ready(session) -> None:
+        """Muting finished after capture began: let the session watch the
+        microphone's output-graph change, then verify in the background.
+        Results are logged only; the take is never interrupted or trimmed."""
+        if session is not pipe._ducking_session or not pipe._recording:
+            audio_diagnostic("mute_ready_after_stop")
+            return
+        try:
+            session.ready.result()  # already done; never blocks the Qt thread
+            session.microphone_transition("open")
+            checked = session.synchronize()
+            checked.add_done_callback(lambda future: pipe.capture_ready.emit((session, future)))
+        except Exception as exc:
+            audio_diagnostic("mute_unconfirmed_continue", error=type(exc).__name__)
+
+    def _on_mute_checked(payload) -> None:
+        session, checked = payload
+        try:
+            checked.result()
+            session.diagnostic("mute_verified_during_capture")
+        except Exception as exc:
+            # Background audio may still be audible; record anyway and
+            # restore at stop. Never abort a dictation over muting.
+            audio_diagnostic("capture_check_failed_continue", error=type(exc).__name__)
+
+    pipe.audio_ready.connect(_on_mute_ready, Qt.QueuedConnection)
+    pipe.capture_ready.connect(_on_mute_checked, Qt.QueuedConnection)
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 

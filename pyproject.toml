@@ -1,6 +1,6 @@
 [project]
 name = "thundertalk"
-version = "1.9.2"
+version = "1.9.3"
 description = "Lightning-fast voice-to-text for every desktop"
 license = "MIT"
 requires-python = ">=3.12"
