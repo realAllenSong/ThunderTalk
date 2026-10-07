@@ -37,6 +37,26 @@ def test_offline_paths_reject_unapproved_vae(tmp_path, monkeypatch):
         module.resolve_vae_path(tmp_path, "/untrusted/vae")
 
 
+@pytest.mark.parametrize("variant", ["turbo.modeling_acestep_v15_turbo", "xl_sft.modeling_acestep_v15_xl_base"])
+def test_reloaded_model_has_real_rotary_frequencies(tmp_path, monkeypatch, variant):
+    # transformers 5 left every inv_freq at zero (no positions, so no sung lyrics) until the
+    # vendored _init_weights deferred rotary modules to the base initializer.
+    pytest.importorskip("vector_quantize_pytorch")
+    pytest.importorskip("loguru")
+    import importlib
+
+    torch = pytest.importorskip("torch")
+    monkeypatch.syspath_prepend(str(ROOT.parent))
+    modeling = importlib.import_module(f"acestep.models.{variant}")
+    config = modeling.AceStepConfig(
+        hidden_size=32, intermediate_size=64, num_attention_heads=2, num_key_value_heads=1, head_dim=16,
+        num_lyric_encoder_hidden_layers=1, text_hidden_dim=16)
+    modeling.AceStepLyricEncoder(config).save_pretrained(tmp_path)
+    model = modeling.AceStepLyricEncoder.from_pretrained(tmp_path)
+    expected = 1.0 / (config.rope_theta ** (torch.arange(0, 16, 2, dtype=torch.float32) / 16))
+    torch.testing.assert_close(model.rotary_emb.inv_freq, expected)
+
+
 def test_no_remote_code_or_network_imports_in_inference_copy():
     for path in ROOT.rglob("*.py"):
         tree = ast.parse(path.read_text())

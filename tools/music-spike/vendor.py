@@ -118,6 +118,12 @@ def main():
         if count != 1:
             raise ValueError(f'Expected one FSQ constructor in {path}, found {count}')
         path.write_text(text)
+        replace(path, '        elif isinstance(module, Qwen3RMSNorm):\n            module.weight.data.fill_(1.0)\n',
+                '        elif isinstance(module, Qwen3RMSNorm):\n            module.weight.data.fill_(1.0)\n'
+                '        elif isinstance(module, Qwen3RotaryEmbedding):\n'
+                '            # ThunderTalk patch: transformers 5 builds the non-persistent inv_freq buffers on the\n'
+                '            # meta device and only the base initializer refills them; skipping it left them zero.\n'
+                '            super()._init_weights(module)\n')
     for path in TARGET.rglob('*.py'):
         path.write_text('# ruff: noqa  # Pinned upstream source; local integration is linted separately.\n' + path.read_text())
     print(f"Vendored {len(files)} files from {revision}")

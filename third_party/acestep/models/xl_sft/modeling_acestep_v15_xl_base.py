@@ -579,6 +579,10 @@ class AceStepPreTrainedModel(PreTrainedModel):
                 module.weight.data[module.padding_idx].zero_()
         elif isinstance(module, Qwen3RMSNorm):
             module.weight.data.fill_(1.0)
+        elif isinstance(module, Qwen3RotaryEmbedding):
+            # ThunderTalk patch: transformers 5 builds the non-persistent inv_freq buffers on the
+            # meta device and only the base initializer refills them; skipping it left them zero.
+            super()._init_weights(module)
 
 
 class AceStepLyricEncoder(AceStepPreTrainedModel):
