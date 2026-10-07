@@ -16,10 +16,24 @@ from PySide6.QtCore import QThread, Signal
 from thundertalk.core import audio_io, burn, links, meeting_notes, transcribe, tts, tts_verify
 from thundertalk.core.llm_providers import CompletionCancelled
 from thundertalk.core.models import DownloadCancelled, download_repo
+from thundertalk.core.music_process import MusicError
+from thundertalk.core.music_worker import MusicCancelled
+
+
+def _music_code(exc: MusicError) -> str:
+    if exc.code == "model_busy":
+        return exc.code
+    code = exc.code if exc.code.startswith("music:") else f"music:{exc.code}"
+    if exc.detail and code.count(":") == 1:
+        lines = [s for s in exc.detail.strip().splitlines() if s.strip()]
+        code += ":" + (lines[0][:200] if lines else "")
+    return code
 
 
 def error_code(exc: BaseException) -> str:
     """Map an exception to a short code the UI translates (or the raw text)."""
+    if isinstance(exc, MusicError):
+        return _music_code(exc)
     if isinstance(exc, links.LinkError):
         return f"link:{exc.code}:{exc.detail}"
     if isinstance(exc, burn.BurnError):
@@ -50,6 +64,10 @@ def friendly_error(code: str) -> str:
             if sub == "other" or sub == "failed":
                 return t(f"studio.{kind}.err.{sub}").format(msg=detail or "?")
             return t(f"studio.{kind}.err.{sub}")
+    if code.startswith("music:"):
+        sub, _, detail = code[6:].partition(":")
+        if sub in ("memory", "memory_low", "stalled", "worker_stopped", "load_failed", "failed"):
+            return t(f"studio.music.err.{sub}").format(pct=detail or "?", msg=detail or "?")
     if code.startswith("decode:"):
         return t("studio.err.decode").format(msg=code[7:])
     return t("studio.err.other").format(msg=code[6:] if code.startswith("other:") else code)
@@ -79,7 +97,7 @@ class _Worker(QThread):
         try:
             result = self.work()
         except (transcribe.TranscribeCancelled, tts.TtsCancelled, DownloadCancelled,
-                links.LinkCancelled, burn.BurnCancelled, CompletionCancelled):
+                links.LinkCancelled, burn.BurnCancelled, CompletionCancelled, MusicCancelled):
             self.cancelled.emit()
             return
         except BaseException as exc:      # noqa: BLE001 - surfaced to the UI
@@ -319,3 +337,50 @@ class RefTranscribeWorker(_Worker):
         with GPU_LOCK:
             r = self._engine.recognize(self._x, 16000)
         return (r.text or "").strip()
+
+
+def music_status(event: tuple) -> Optional[str]:
+    """The progress line for one compose event, or None for events without one."""
+    from thundertalk.core.i18n import t
+    kind = event[0]
+    if kind == "phase":
+        return t(f"studio.music.progress.{event[1]}") if event[1] in ("load", "render", "write") else None
+    if kind == "tokens":
+        return t("studio.music.progress.plan").format(done=f"{event[1]:,}", total=f"{event[2]:,}")
+    if kind == "step":
+        return t("studio.music.progress.compose").format(done=event[1], total=event[2])
+    if kind == "paused":
+        return t("studio.music.progress.paused")
+    if kind == "memory_low_warn":
+        return t("studio.music.progress.memory_low").format(pct=event[1])
+    return None
+
+
+class MusicWorker(_Worker):
+    """One Compose job (every take) in a disposable process. ``done`` carries the
+    finished takes; each also arrives on ``take`` as soon as it is written, so a
+    later cancel or error keeps it."""
+
+    event = Signal(object)                # phase / tokens / step / paused / memory_low_warn tuples
+    take = Signal(int, str, object)       # index, WAV path, sidecar dict
+
+    def __init__(self, request, ram_need_mb: int, process=None) -> None:
+        super().__init__()
+        from thundertalk.core.music_process import MusicProcess
+        self._request, self._ram_need_mb = request, ram_need_mb
+        self._process = process or MusicProcess()
+        self.takes: list[tuple[int, str, dict]] = []
+
+    def _on_event(self, event: tuple) -> None:
+        if event[0] == "take":
+            _, index, path, meta = event
+            self.takes.append((index, path, meta))
+            self.take.emit(index, path, meta)
+        else:
+            self.event.emit(event)
+
+    def work(self):
+        outcome = self._process.run(self._request, self._on_event, self._cancel, ram_need_mb=self._ram_need_mb)
+        if outcome == "cancelled":
+            raise MusicCancelled
+        return list(self.takes)

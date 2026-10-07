@@ -388,4 +388,36 @@ STUDIO: dict[str, dict[str, str]] = {
         "en": "Nothing was recorded. Check microphone permission in System Settings ▸ Privacy & Security.",
         "zh": "没有录到声音。请在「系统设置 ▸ 隐私与安全性」里检查麦克风权限。",
     },
+
+    # ── compose (music) ──────────────────────────────────────────────
+    "studio.music.progress.load": {"en": "Loading the music model…", "zh": "正在加载作曲模型…"},
+    "studio.music.progress.plan": {"en": "Planning the song · {done} / ~{total}", "zh": "正在构思歌曲 · {done} / ~{total}"},
+    "studio.music.progress.compose": {"en": "Composing · step {done} / {total}", "zh": "正在作曲 · 第 {done} / {total} 步"},
+    "studio.music.progress.render": {"en": "Rendering audio…", "zh": "正在渲染音频…"},
+    "studio.music.progress.write": {"en": "Saving the take…", "zh": "正在保存这一版…"},
+    "studio.music.progress.take": {"en": "Take {i} of {n}", "zh": "第 {i} / {n} 版"},
+    "studio.music.progress.paused": {
+        "en": "Paused while you dictate…", "zh": "你正在听写，作曲已暂停…",
+    },
+    "studio.music.progress.memory_low": {
+        "en": "Memory is getting low ({pct} % free)", "zh": "可用内存偏低（剩余 {pct}%）",
+    },
+    "studio.music.err.memory": {
+        "en": "Not enough free memory to compose right now ({pct} % free). Close other apps and try again.",
+        "zh": "当前可用内存不足（剩余 {pct}%），暂时无法作曲。请关闭其他应用后重试。",
+    },
+    "studio.music.err.memory_low": {
+        "en": "Stopped to protect your Mac: free memory fell to {pct} %. Finished takes are kept.",
+        "zh": "为保护你的 Mac 已停止：可用内存降到了 {pct}%。已完成的版本会保留。",
+    },
+    "studio.music.err.stalled": {
+        "en": "The composer stopped responding and was closed. Finished takes are kept.",
+        "zh": "作曲进程没有响应，已被关闭。已完成的版本会保留。",
+    },
+    "studio.music.err.worker_stopped": {
+        "en": "The composer quit unexpectedly. Finished takes are kept.",
+        "zh": "作曲进程意外退出。已完成的版本会保留。",
+    },
+    "studio.music.err.load_failed": {"en": "Couldn't load the music model: {msg}", "zh": "无法加载作曲模型：{msg}"},
+    "studio.music.err.failed": {"en": "Composing failed: {msg}", "zh": "作曲失败：{msg}"},
 }
