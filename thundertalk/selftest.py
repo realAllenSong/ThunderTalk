@@ -206,6 +206,39 @@ def check_translate() -> bool:
         eng.unload()
 
 
+def check_apple() -> bool:
+    """Built-in Apple engines: a system voice speaks zh and en, Apple recognition reads it back."""
+    from thundertalk.core import apple_speech, audio_io, speech, tts_verify
+    from thundertalk.core.tts_backends.apple import best_voice
+    apple_speech.PROMPT = False
+    status = apple_speech.authorization_status()
+    ok_all = True
+    for lang, text in (("chinese", "今天下午三点开会，请大家准时到会议室。"),
+                       ("english", "The meeting starts at three this afternoon, please be on time.")):
+        voice = best_voice(lang)
+        if voice is None:
+            ok_all &= _say(False, f"apple:{lang}", error="no system voice")
+            continue
+        t0 = time.monotonic()
+        r = speech.get_engine().synthesize(text, voice, language=lang, seed=7)
+        tts_s = time.monotonic() - t0
+        heard, err, asr_s = "", None, None
+        if apple_speech.on_device_locales():
+            t0 = time.monotonic()
+            got = apple_speech.AppleRecognizer().recognize(
+                audio_io.resample(r.audio, r.sample_rate, 16000), 16000,
+                [apple_speech.resolve_locale("zh" if lang == "chinese" else "en")])
+            asr_s = time.monotonic() - t0
+            heard = got.text
+            err = tts_verify.error_rate(text, heard, lang)
+        ok = r.duration > 1.0 and (err is None or err < 0.3)
+        ok_all &= _say(ok, f"apple:{lang}", voice=voice, permission=status,
+                       can_ask=apple_speech.can_request_permission(), seconds_audio=round(r.duration, 2),
+                       tts_seconds=round(tts_s, 2), asr_seconds=None if asr_s is None else round(asr_s, 2),
+                       heard=heard, read_back_error=None if err is None else round(err, 3))
+    return ok_all
+
+
 def check_runtime() -> bool:
     from thundertalk.core import runtime
     runtime.install(lambda pct, msg: _say(True, "runtime-progress", percent=pct, message=msg))
@@ -219,7 +252,7 @@ def check_runtime() -> bool:
 
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "apple", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
     ap.add_argument("--model", default="", help="ASR model id from the Models page")
@@ -234,6 +267,8 @@ def run(argv: list[str]) -> int:
             ok &= check_tts(a.engine)
         if a.what == "asr":
             ok &= check_asr(a.file, a.model, a.model_dir)
+        if a.what == "apple":
+            ok &= check_apple()
         if a.what == "moss":
             ok &= check_moss(a.file)
         if a.what == "runtime":

@@ -371,6 +371,9 @@ class Pipeline(QObject):
 
 
 def main() -> None:
+    if len(sys.argv) > 1 and sys.argv[1] == "--cli":
+        from thundertalk import cli
+        sys.exit(cli.main(sys.argv[2:]))
     if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
         from thundertalk import selftest
         sys.exit(selftest.run(sys.argv[2:]))

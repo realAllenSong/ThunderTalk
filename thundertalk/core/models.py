@@ -27,6 +27,9 @@ from thundertalk.core.model_metadata import (
 )
 
 
+APPLE_SPEECH_ID = "apple-speech"
+
+
 @dataclass
 class ModelInfo:
     id: str
@@ -58,6 +61,11 @@ class ModelInfo:
     @property
     def runs_on_cpu(self) -> bool:
         return not self.backend.startswith("mlx")
+
+    @property
+    def built_in(self) -> bool:
+        """Ships with macOS: nothing to download."""
+        return self.backend == "apple"
 
     @property
     def supports_chinese(self) -> bool:
@@ -208,6 +216,17 @@ BUILTIN_MODELS: list[ModelInfo] = [
         accuracy_stars=0, hotword_support=True,
         download_url="https://github.com/k2-fsa/sherpa-onnx/releases/download/asr-models/sherpa-onnx-funasr-nano-int8-2025-12-30.tar.bz2",
     ),
+    # ── Apple Speech (macOS built in, on-device only) ───────────────────
+    # Languages are whatever this Mac has installed for on-device dictation
+    # (filled in by refresh_system_models()); zh/en until then.
+    ModelInfo(
+        id=APPLE_SPEECH_ID, family="Apple-Speech", name="Apple", variant="Built in",
+        backend="apple", size_mb=0, languages=["zh", "en"], language_count=2, languages_complete=False,
+        accuracy_stars=0, download_url="",
+        speed="apple", timestamps=True, hotword_support=True, platform="macos",
+        notes="macOS Speech framework, on device",
+        max_clip_seconds=60.0,
+    ),
     # ── SeamlessM4T v2 (translation) ────────────────────────────────────
     ModelInfo(
         id="seamless-m4t-v2-large",
@@ -236,6 +255,19 @@ BUILTIN_MODELS: list[ModelInfo] = [
 # ---------------------------------------------------------------------------
 # Grouping & recommendation
 # ---------------------------------------------------------------------------
+
+def refresh_system_models() -> None:
+    """Fill in what only this Mac can say about the built-in recognizer."""
+    from thundertalk.core import apple_speech
+    info = next(m for m in BUILTIN_MODELS if m.id == APPLE_SPEECH_ID)
+    try:
+        info.languages = apple_speech.on_device_languages() if apple_speech.available() else []
+    except Exception as exc:              # a broken Speech binding must not break the Models page
+        print(f"[Models] Apple Speech languages unavailable: {exc}")
+        info.languages = []
+    info.language_count = len(info.languages)
+    info.languages_complete = True
+
 
 def get_families() -> OrderedDict[str, list[ModelInfo]]:
     """Group BUILTIN_MODELS by family, preserving insertion order."""
@@ -269,6 +301,8 @@ def is_variant_compatible(info: ModelInfo) -> bool:
     """Can this variant run on the current hardware?"""
     if info.platform == "all":
         return True
+    if info.platform == "macos":
+        return platform.system() == "Darwin"
     if info.platform == "apple-silicon" and _CURRENT_PLATFORM == "apple-silicon":
         return True
     if info.platform == "nvidia" and _CURRENT_PLATFORM == "nvidia":
@@ -316,6 +350,13 @@ def get_models_dir() -> Path:
 
 def is_downloaded(model_id: str) -> bool:
     info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+    if info and info.built_in:
+        # "Downloaded" = macOS has at least one on-device dictation language.
+        from thundertalk.core import apple_speech
+        try:
+            return apple_speech.available() and bool(apple_speech.on_device_locales())
+        except Exception:
+            return False
     if info and info.backend == "mlx":
         # MLX weights live in the shared HuggingFace cache (that is where
         # mlx-qwen3-asr resolves them). This used to return True
@@ -343,6 +384,8 @@ def is_downloaded(model_id: str) -> bool:
 
 def get_model_path(model_id: str) -> Optional[str]:
     info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+    if info and info.built_in:
+        return "apple://speech"
     if info and info.backend == "mlx":
         return info.download_url  # "hf://Qwen/Qwen3-ASR-0.6B" — resolved by asr.py
     if info and info.backend == "mlx-moss":

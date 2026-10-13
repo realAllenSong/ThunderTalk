@@ -150,7 +150,8 @@ def test_leftover_directory_is_not_a_finished_download(tmp_path, monkeypatch) ->
 def test_registry_ids_are_unique_and_sizes_positive() -> None:
     ids = [x.id for x in m.BUILTIN_MODELS]
     assert len(ids) == len(set(ids))
-    assert all(x.size_mb > 0 for x in m.BUILTIN_MODELS)
+    assert all(x.size_mb > 0 for x in m.BUILTIN_MODELS if not x.built_in)
+    assert all(x.size_mb == 0 for x in m.BUILTIN_MODELS if x.built_in)
 
 
 def test_seamless_download_is_filtered_to_safetensors() -> None:

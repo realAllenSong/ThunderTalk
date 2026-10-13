@@ -35,7 +35,7 @@ def language_name(code):
 
 
 def facts_text(
-    params, size_mb, cpu, speed="unmeasured", *, backbone=False, cpu_gpu=False
+    params, size_mb, cpu, speed="unmeasured", *, backbone=False, cpu_gpu=False, ane=False
 ):
     size = f"{size_mb / 1000:.1f} GB" if size_mb >= 1000 else f"{size_mb} MB"
     count = (
@@ -49,7 +49,7 @@ def facts_text(
         (
             count,
             size,
-            t("models.cpu_gpu" if cpu_gpu else "models.cpu" if cpu else "models.gpu"),
+            t("models.ane" if ane else "models.cpu_gpu" if cpu_gpu else "models.cpu" if cpu else "models.gpu"),
             t(f"models.speed.{speed}"),
         )
     )

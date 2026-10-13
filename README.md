@@ -32,6 +32,13 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+<!-- DRAFT: rename to the release version when it ships. -->
+## New in vX
+
+- **Apple's own speech, nothing to download:** a new **Apple · Built in** model uses the recognizer built into macOS, on device only. It's about 3× faster than Qwen3-ASR ONNX and fine for clear, close speech (5.8 % Chinese CER against 3.3 % in our tests). It misses most words in noisy, far-away, fast or sung audio, and English words inside Chinese sentences, so Qwen3-ASR stays the recommendation. macOS asks for Speech Recognition access once, when you activate it.
+- **System voices in Speak:** the Chinese and English voices installed on your Mac (Siri voices included) appear in Speak with the tag **System**. They need no download, render about 37× faster than real time, and read our test texts back with no Chinese errors and 1.1 % English WER. They don't clone voices.
+- **Command line:** `ThunderTalk --cli transcribe | speak | voices | status` works without opening a window, even while the app is running. It writes SRT/VTT/JSON/TXT subtitles (cues of at most 7 s and two lines) and M4A/WAV/MP3 speech, and prints JSON progress. See [Command line](#command-line). The MCP server can call it too.
+
 ## New in v1.9.3
 
 - **Talk the moment you press the hotkey:** recording now starts as soon as you press the key. Before, the first second of speech could be cut off while ThunderTalk muted background audio. Muting now happens alongside recording and never trims your words.
@@ -150,6 +157,25 @@ ThunderTalk is signed with an Apple Developer ID and notarised by Apple, so it o
 
 Change the hotkey, press mode, microphone and language in **Settings**. Open **Studio** for file/link transcription, batch exports, subtitles, meeting notes and text to speech.
 
+### Command line
+
+The app binary has a headless mode that never opens a window and can run while the app is open:
+
+```sh
+TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # or: uv run python run.py
+"$TT" --cli transcribe talk.m4a --out talk.srt                   # also .vtt / .json / .txt; video files work
+"$TT" --cli transcribe talk.m4a --out talk.srt --engine apple    # or a model id from the Models page
+"$TT" --cli speak --text "明天下午三点开会。" --out hi.m4a --engine apple   # .m4a / .wav / .mp3
+"$TT" --cli voices --engine apple
+"$TT" --cli status
+```
+
+- **stdout** carries JSON lines only: `{"type": "stage", …}`, `{"type": "progress", "value": 0.42}`, then one `{"type": "result", "ok": true, …}`. Logs go to stderr. The exit code is 0 on success and 1 on error, and errors carry a stable `code` (`not_found`, `no_model`, `no_speech`, `permission_denied`, `bad_args`, …).
+- **`--engine auto`** (the default) transcribes with your dictation model and falls back to Apple if it isn't downloaded. For `speak`, `auto` uses the voice chosen on the Speak page if its engine is downloaded and it speaks the text's language, and otherwise the best system voice.
+- **Subtitles** are cut into cues of at most 7 seconds and two lines, in order and never overlapping. JSON also includes word times when the engine provides them (Apple does).
+- The CLI never asks for permissions. If Apple recognition hasn't been allowed yet, it still works from the packaged app on macOS 15. If access was denied, it returns `permission_denied`.
+- The MCP server (`python -m thundertalk.mcp.server`) exposes the same commands as `transcribe_file`, `speak_text` and `list_local_voices`. Set `THUNDERTALK_BIN` to the packaged binary to use it.
+
 ## Supported models
 
 ### Speech recognition
@@ -164,6 +190,7 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25 (European) | ★★★★★ | No |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | English | ★★★★★ | No |
 | Fun-ASR-Nano-2512 (experimental) | 842 MB | ONNX (CPU) | Chinese, English, Japanese | ★★★★★ | Yes |
+| Apple · Built in | 0 MB (part of macOS) | Speech framework (CPU / Neural Engine) | Dictation languages installed on the Mac | ★★☆☆☆ | Yes |
 
 > **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), first place in the 2nd MLC-SLM Challenge at INTERSPEECH 2026) is a multi-speaker model. In dictation it pastes clean text (there is an optional S01:/S02: speaker-label toggle on its model card), and it powers Studio's Label speakers option, with speaker labels and timestamps for recordings up to about 90 minutes in a single pass.
 >
@@ -178,6 +205,7 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 | VoxCPM2 (8-bit, Apache-2.0) | 3.2 GB | MLX (Metal GPU) | Built-in voices, cloning |
 | IndexTTS-2.5 (8-bit, bilibili Model Use License) | 1.7 GB + 2.3 GB encoder | MLX (Metal GPU) | Built-in voices, cloning |
 | Kokoro v1.1 multi-lang (Apache-2.0) | 364 MB | ONNX (CPU) | 23 built-in voices (20 Chinese, 3 English) |
+| Apple system voices | 0 MB (part of macOS) | AVSpeechSynthesizer (CPU) | The Chinese and English voices installed on the Mac |
 
 Each is a one-time download offered from the Speak tab when you pick one of its voices. IndexTTS runs through a patched copy of the [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX port (see `third_party/README.md`).
 

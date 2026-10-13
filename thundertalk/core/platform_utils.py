@@ -175,11 +175,14 @@ def request_microphone(callback=None) -> None:
         return
     try:
         import AVFoundation
-        AVFoundation.AVCaptureDevice.requestAccessForMediaType_completionHandler_(
-            AVFoundation.AVMediaTypeAudio,
-            callback or (lambda granted: None),
-        )
-        return
+        from Foundation import NSBundle
+        # Without the usage string in Info.plist (a source run) TCC aborts the process.
+        if NSBundle.mainBundle().objectForInfoDictionaryKey_("NSMicrophoneUsageDescription") is not None:
+            AVFoundation.AVCaptureDevice.requestAccessForMediaType_completionHandler_(
+                AVFoundation.AVMediaTypeAudio,
+                callback or (lambda granted: None),
+            )
+            return
     except ImportError:
         pass
 

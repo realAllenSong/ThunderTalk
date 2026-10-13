@@ -28,8 +28,33 @@ def preview_path(voice_id: str, root: Optional[Path] = None) -> Path:
     return (root or _root()) / "assets" / "voices" / "previews" / engine / f"{slug}.flac"
 
 
+_LIVE: dict[str, tuple[np.ndarray, int]] = {}
+
+
+def _live_preview(voice_id: str) -> Optional[tuple[np.ndarray, int]]:
+    """System voices differ per Mac, so their clip is spoken on first use."""
+    if voice_id not in _LIVE:
+        from thundertalk.core.tts_backends import apple
+        voice = next((v for v in apple.system_voices() if v.id == voice_id), None)
+        if voice is None:
+            return None
+        try:
+            backend = apple.AppleBackend()
+            x = backend.generate(PREVIEW_TEXT.get(voice.language, PREVIEW_TEXT["english"]), voice_id, voice.language)
+        except Exception:
+            return None
+        _LIVE[voice_id] = (x, backend.sample_rate)
+    return _LIVE[voice_id]
+
+
+def has_preview(voice_id: str) -> bool:
+    return voice_id.startswith("apple:") or preview_path(voice_id).is_file()
+
+
 def load_preview(voice_id: str) -> Optional[tuple[np.ndarray, int]]:
     """(mono float32 audio, sample rate), or None when there is no clip."""
+    if voice_id.startswith("apple:"):
+        return _live_preview(voice_id)
     p = preview_path(voice_id)
     if not p.is_file():
         return None

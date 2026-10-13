@@ -8,6 +8,7 @@ backend owns the chosen voice:
   * ``kokoro``  — Kokoro v1.1 through sherpa-onnx (CPU, small, 100+ voices)
   * ``voxcpm2`` — VoxCPM2 through mlx-audio (Apple GPU, designed voices and cloning)
   * ``indextts`` — IndexTTS-2.5 through the vendored MLX port (Apple GPU, cloning)
+  * ``apple``   — the voices built into macOS (AVSpeechSynthesizer, no download)
 
 The old Qwen3-TTS engine (``tts.TtsEngine``) is no longer offered in the app.
 """
@@ -64,10 +65,13 @@ def _make(bid: str) -> TtsBackend:
     if bid == "indextts":
         from thundertalk.core.tts_backends.indextts import IndexTTSBackend
         return IndexTTSBackend()
+    if bid == "apple":
+        from thundertalk.core.tts_backends.apple import AppleBackend
+        return AppleBackend()
     raise KeyError(bid)
 
 
-BACKEND_ORDER = ("voxcpm2", "indextts", "kokoro")
+BACKEND_ORDER = ("voxcpm2", "indextts", "kokoro", "apple")
 
 
 def backend(bid: str) -> TtsBackend:

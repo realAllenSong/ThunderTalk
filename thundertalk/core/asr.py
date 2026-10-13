@@ -138,6 +138,9 @@ class AsrResult:
     truncated: bool = False
     recovery_source: str = ""
     no_speech: bool = False  # explicit decoder silence marker, not an energy gate
+    # (start_s, end_s, text) per word, from engines with acoustic word times (Apple)
+    words: list[tuple[float, float, str]] = field(default_factory=list)
+    language: str = ""       # the locale an engine chose, when it chose one
 
 
 # ---------------------------------------------------------------------------
@@ -150,6 +153,8 @@ class AsrEngine:
         self._recognizer = None          # sherpa-onnx recognizer (ONNX backends)
         self._mlx_model = None           # pre-loaded mlx model object
         self._moss_model = None          # MOSS-Transcribe-Diarize (mlx-audio)
+        self._apple = None               # Apple Speech framework (core/apple_speech.py)
+        self._language_code = "auto"     # settings code, before mapping to Qwen names
         self._model_id: Optional[str] = None
         self._hotwords: str = ""
         self._hotword_set: set[str] = set()
@@ -171,7 +176,13 @@ class AsrEngine:
             self._recognizer is not None
             or self._mlx_model is not None
             or self._moss_model is not None
+            or self._apple is not None
         )
+
+    @property
+    def word_timestamps(self) -> bool:
+        """Results carry acoustic per-word times (``AsrResult.words``)."""
+        return self._apple is not None
 
     @property
     def current_model(self) -> Optional[str]:
@@ -237,6 +248,7 @@ class AsrEngine:
 
     def set_language(self, language: str) -> None:
         """Set forced language for transcription. 'auto' = auto-detect."""
+        self._language_code = language or "auto"
         if language in ("auto", ""):
             self._language = None
         else:
@@ -286,6 +298,7 @@ class AsrEngine:
         self._recognizer = None
         self._mlx_model = None
         self._moss_model = None
+        self._apple = None
         from thundertalk.core import diarize
         diarize.unpin_model(self)
         self._model_id = None
@@ -333,6 +346,8 @@ class AsrEngine:
             if not _check_mlx():
                 raise RuntimeError("MLX is not available on this system")
             self._load_mlx_moss(model_dir)
+        elif backend == "apple":
+            self._load_apple()
         elif family == "SenseVoice":
             self._load_sherpa_sensevoice(model_dir, backend, memory_mode)
         elif family in ("Qwen3-ASR", "Qwen3-ASR-1.7B"):
@@ -385,6 +400,51 @@ class AsrEngine:
         self._moss_model = diarize.load_model(owner=self)
         self._model_id = "MOSS-Transcribe-Diarize"
         print("[ASR] Loaded MOSS-Transcribe-Diarize via MLX (Metal GPU)")
+
+    def _load_apple(self) -> None:
+        """Nothing to load: check that macOS can recognise on device, asking
+        for Speech Recognition access the first time (app bundle only)."""
+        from thundertalk.core import apple_speech
+
+        def fail(key: str) -> RuntimeError:
+            from thundertalk.core.i18n import t          # Qt; the CLI's happy path stays Qt-free
+            return RuntimeError(t(key))
+
+        if not apple_speech.available():
+            raise fail("apple.unavailable")
+        if not apple_speech.on_device_locales():
+            raise fail("apple.no_locales")
+        if apple_speech.request_permission() in ("denied", "restricted"):
+            raise fail("apple.denied")
+        self._apple = apple_speech.AppleRecognizer()
+        self._model_id = "apple-speech"
+        print(f"[ASR] Apple Speech ready  on-device={apple_speech.on_device_locales()}  "
+              f"permission={apple_speech.authorization_status()}")
+
+    def _apple_locales(self) -> list[str]:
+        from thundertalk.core import apple_speech
+        code = self._language_code
+        return apple_speech.auto_locales() if code in ("", "auto") else [apple_speech.resolve_locale(code)]
+
+    def _recognize_apple(self, samples: np.ndarray, sample_rate: int, preview: bool) -> AsrResult:
+        duration = len(samples) / sample_rate
+        from thundertalk.core import apple_speech
+        t0 = time.perf_counter()
+        try:
+            r = self._apple.recognize(samples, sample_rate, self._apple_locales(),
+                                      contextual=[w for w in self._hotwords.split("/") if w],
+                                      dictation=True)
+        except apple_speech.AppleSpeechError as exc:
+            if exc.code in ("permission_denied", "locale_unsupported"):
+                from thundertalk.core.i18n import t
+                exc.args = (t(f"apple.{'denied' if exc.code == 'permission_denied' else 'locale_unsupported'}"),)
+            raise
+        ms = int((time.perf_counter() - t0) * 1000)
+        print(f"[ASR-Apple] {duration:.1f}s → {len(r.text)} chars in {ms}ms ({r.locale}, conf {r.confidence:.2f})")
+        return AsrResult(text=r.text, duration_secs=duration, inference_ms=ms, model="apple-speech",
+                         backend="apple", rtf=ms / 1000 / duration if duration else 0.0,
+                         tokens=[w.text for w in r.words], token_timestamps=[w.start for w in r.words],
+                         words=[(w.start, w.end, w.text) for w in r.words], language=r.locale)
 
     def _load_sherpa_sensevoice(
         self, model_dir: str, backend: str, memory_mode: str = "high"
@@ -537,6 +597,9 @@ class AsrEngine:
             print(f"[ASR] Audio too quiet (rms={rms:.5f}), skipping inference")
             return AsrResult(text="", duration_secs=duration, inference_ms=0,
                              model=self._model_id or "unknown", backend=self._active_backend)
+
+        if self._apple is not None:
+            return self._recognize_apple(samples, sample_rate, preview)
 
         # MLX runs on the shared Metal queue; serialise with TTS / file jobs.
         if self._moss_model is not None:

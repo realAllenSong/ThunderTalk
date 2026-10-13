@@ -82,6 +82,9 @@ class Segment:
     end: float
     text: str
     speaker: str = ""
+    # (start_s, end_s, text) per word, file time; only from engines with
+    # acoustic word times (Apple). Subtitle cues are cut at these.
+    words: list = field(default_factory=list)
 
 
 @dataclass
@@ -293,6 +296,125 @@ def subtitle_cues(tr: Transcript, cjk_chars: int = 32, latin_chars: int = 84) ->
 def cues_to_srt(cues: list[Segment]) -> str:
     return "\n".join(f"{i}\n{srt_time(c.start)} --> {srt_time(max(c.end, c.start + 0.3))}\n{c.text}\n"
                      for i, c in enumerate(cues, 1))
+
+
+def cues_to_vtt(cues: list[Segment]) -> str:
+    return "WEBVTT\n\n" + "\n".join(
+        f"{srt_time(c.start, '.')} --> {srt_time(max(c.end, c.start + 0.3), '.')}\n{c.text}\n" for c in cues)
+
+
+_SENTENCE_END = "。！？!?."
+_NO_SPACE_BEFORE = ",.;:!?%)]}'’”，。！？；：、"
+
+
+def _glue(prev: str, word: str, cjk: bool) -> str:
+    if not prev:
+        return word
+    if word[:1] in _NO_SPACE_BEFORE:
+        return prev + word
+    latin = prev[-1:].isascii() and prev[-1:].isalnum() and word[:1].isascii() and word[:1].isalnum()
+    return prev + (" " if latin or not cjk else "") + word
+
+
+def _two_lines(text: str, limit: int, cjk: bool) -> str:
+    """Break a cue longer than one line (half of ``limit``) near its middle:
+    at a space for Latin text, after a comma for Chinese if one is close."""
+    if len(text) <= limit // 2:
+        return text
+    mid = len(text) // 2
+    if cjk:
+        line = max(limit // 2, mid)
+        marks = [i + 1 for i, c in enumerate(text[:-1])
+                 if c in _CLAUSE_END + "。" and i + 1 <= line and len(text) - i - 1 <= line]
+        if not marks:
+            # Never cut inside a Latin word or number embedded in Chinese.
+            def latin(c: str) -> bool:
+                return c.isascii() and c.isalnum()
+            marks = [i for i in range(1, len(text))
+                     if not (latin(text[i - 1]) and latin(text[i]))
+                     and i <= line and len(text) - i <= line]
+        cut = min(marks, key=lambda i: abs(i - mid)) if marks else mid
+    else:
+        spaces = [i for i, c in enumerate(text) if c == " "]
+        if not spaces:
+            return text
+        cut = min(spaces, key=lambda i: abs(i - mid))
+    return text[:cut].rstrip() + "\n" + text[cut:].lstrip()
+
+
+def _cues_from_words(words, speaker: str, cjk: bool, limit: int, max_s: float) -> list[Segment]:
+    out: list[Segment] = []
+    cur: list = []
+
+    def text_of(ws) -> str:
+        s = ""
+        for w in ws:
+            s = _glue(s, w[2].strip(), cjk)
+        return s
+
+    def emit(ws) -> None:
+        if ws:
+            out.append(Segment(ws[0][0], ws[-1][1], text_of(ws), speaker))
+
+    for w in words:
+        if not str(w[2]).strip():
+            continue
+        while cur:
+            gap = w[0] - cur[-1][1]
+            too_long = w[1] - cur[0][0] > max_s or len(text_of(cur + [w])) > limit
+            if not too_long and gap < 0.8:
+                break
+            # Cut at the last clause mark inside the cue when that leaves a
+            # readable piece; otherwise between the last word and this one.
+            marks = [i for i, c in enumerate(cur[:-1]) if c[2].strip()[-1:] in _CLAUSE_END + "."]
+            if too_long and marks and cur[marks[-1]][1] - cur[0][0] >= 1.0:
+                k = marks[-1] + 1
+                emit(cur[:k])
+                cur = cur[k:]
+            else:
+                emit(cur)
+                cur = []
+        cur.append(w)
+        dur = cur[-1][1] - cur[0][0]
+        end = w[2].strip()[-1:]
+        if (end in _SENTENCE_END and dur >= 1.2) or (end in _CLAUSE_END and dur >= 0.6 * max_s):
+            emit(cur)
+            cur = []
+    emit(cur)
+    return out
+
+
+def timed_cues(tr: Transcript, max_seconds: float = 7.0, cjk_chars: int = 32,
+               latin_chars: int = 84) -> list[Segment]:
+    """Subtitle cues of at most ``max_seconds`` and two lines, in order and
+    never overlapping. Segments with word times (Apple) are cut between words,
+    at punctuation or a pause where possible; the others are split at clauses
+    into pieces short enough to fit, their time shared out by length."""
+    cues: list[Segment] = []
+    for s in tr.segments:
+        text = s.text.strip()
+        if not text:
+            continue
+        cjk = _cjk_heavy(text)
+        limit = cjk_chars if cjk else latin_chars
+        if s.words:
+            parts = _cues_from_words(s.words, s.speaker, cjk, limit, max_seconds)
+        else:
+            span = max(s.end - s.start, 0.5)
+            fit = max(4, int(len(text) * max_seconds / span))     # chars that fit in max_seconds
+            pieces = _split_long(text, min(limit, fit))
+            total = sum(len(p) for p in pieces) or 1
+            parts, t = [], s.start
+            for p in pieces:
+                dur = span * len(p) / total
+                parts.append(Segment(t, t + dur, p, s.speaker))
+                t += dur
+        cues.extend(Segment(c.start, c.end, _two_lines(c.text, limit, cjk), c.speaker) for c in parts)
+    for i, c in enumerate(cues):
+        if i:
+            c.start = max(c.start, cues[i - 1].end)
+        c.end = min(max(c.end, c.start + 0.3), c.start + max_seconds)
+    return cues
 
 
 # ── segmentation at natural pauses ───────────────────────────────────────
@@ -554,6 +676,15 @@ def _transcribe_file(
         _p(pct, f"{i + 1}/{total}")
         pad = int(0.15 * SR)
         seg = x[max(0, int(a * SR) - pad): min(len(x), int(b * SR) + pad)]
+        if getattr(engine, "word_timestamps", False):
+            # Not autoregressive: it cannot loop, so no repetition guard.
+            r = engine.recognize(seg, SR, cut_loops=False)
+            text = (r.text or "").strip()
+            off = max(0.0, a - pad / SR)
+            words = [(round(s + off, 3), round(e + off, 3), w) for s, e, w in r.words]
+            if text:
+                segs.append(Segment(words[0][0] if words else a, words[-1][1] if words else b, text, words=words))
+            continue
         text = decode_guarded(engine, seg, before_decode=yield_to_dictation, where=f"{a:.1f}–{b:.1f}s")
         if text:
             segs.append(Segment(a, b, text))
