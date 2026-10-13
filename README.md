@@ -33,7 +33,7 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
 <!-- DRAFT: rename to the release version when it ships. -->
-## New in vX
+## New in v1.10.0
 
 - **Apple's own speech, nothing to download:** a new **Apple · Built in** model uses the recognizer built into macOS, on device only. It's about 3× faster than Qwen3-ASR ONNX and fine for clear, close speech (5.8 % Chinese CER against 3.3 % in our tests). It misses most words in noisy, far-away, fast or sung audio, and English words inside Chinese sentences, so Qwen3-ASR stays the recommendation. macOS asks for Speech Recognition access once, when you activate it.
 - **System voices in Speak:** the Chinese and English voices installed on your Mac (Siri voices included) appear in Speak with the tag **System**. They need no download, render about 37× faster than real time, and read our test texts back with no Chinese errors and 1.1 % English WER. They don't clone voices.
