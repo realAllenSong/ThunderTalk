@@ -159,6 +159,9 @@ app = BUNDLE(
         'NSSpeechRecognitionUsageDescription': 'ThunderTalk uses Apple speech recognition on this Mac, '
                                                'when you choose the built-in Apple model, to turn your speech into text. '
                                                'Audio is recognized on device and never leaves the Mac.',
+        # Other apps (Wemute) read this before running `--cli`, so an older
+        # ThunderTalk is never launched with arguments it would not understand.
+        'ThunderTalkCLIVersion': 1,
         'CFBundleShortVersionString': _APP_VERSION,
         'CFBundleVersion': _APP_VERSION,
         # Bundled libraries set the real floor: Qt needs macOS 13, onnxruntime 14,
