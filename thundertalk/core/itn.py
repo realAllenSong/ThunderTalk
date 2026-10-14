@@ -465,8 +465,57 @@ def _split_en_numbers(span: str) -> str:
     return span
 
 
+_EN_BIG_SCALES = ("million", "billion", "trillion")
+
+
+def _scaled(value: int, last_word: str) -> str | None:
+    """'four billion' → '4 billion': whole millions and up keep their word,
+    as written English does, instead of a long run of zeros."""
+    word = last_word.lower()
+    if word not in _EN_BIG_SCALES:
+        return None
+    power = _EN_POWERS[word]
+    if value % power or not 0 < value // power < 1000:
+        return None
+    return f"{value // power} {last_word}"
+
+
 def _convert_en_number(match: re.Match) -> str:
-    return _split_en_numbers(match.group())
+    span = match.group()
+    value = _parse_en_number(span)
+    if value is not None:
+        scaled = _scaled(value, re.split(r"[\s-]+", span.strip())[-1])
+        if scaled:
+            # "a million thanks" is an idiom, not a quantity to rewrite.
+            return span if span.lower().startswith("a ") else scaled
+    return _split_en_numbers(span)
+
+
+_EN_DIGIT_WORDS = {"zero": "0", "oh": "0", "one": "1", "two": "2", "three": "3", "four": "4",
+                   "five": "5", "six": "6", "seven": "7", "eight": "8", "nine": "9"}
+_EN_NUM_WORD = (r"(?:one|two|three|four|five|six|seven|eight|nine|ten|eleven|twelve|thirteen|"
+                r"fourteen|fifteen|sixteen|seventeen|eighteen|nineteen|twenty|thirty|forty|"
+                r"fifty|sixty|seventy|eighty|ninety|zero|hundred)")
+_EN_DIGIT_WORD = r"(?:zero|oh|one|two|three|four|five|six|seven|eight|nine)"
+# "twelve point four billion", "3 point one four", "zero point five percent".
+# The whole part must be a number (words or digits), so "at that point two
+# people left" is untouched.
+_EN_DECIMAL_RE = re.compile(
+    rf"\b(?P<whole>\d+|{_EN_NUM_WORD}(?:[\s-]+(?:and[\s-]+)?{_EN_NUM_WORD})*)"
+    rf"\s+point\s+(?P<frac>{_EN_DIGIT_WORD}(?:\s+{_EN_DIGIT_WORD})*)"
+    rf"(?:\s+(?P<scale>thousand|million|billion|trillion)\b)?\b",
+    re.IGNORECASE,
+)
+
+
+def _convert_en_decimal(match: re.Match) -> str:
+    whole = match.group("whole")
+    value = int(whole) if whole.isdigit() else _parse_en_number(whole)
+    if value is None:
+        return match.group()
+    frac = "".join(_EN_DIGIT_WORDS[w.lower()] for w in match.group("frac").split())
+    scale = match.group("scale")
+    return f"{value}.{frac}" + (f" {scale}" if scale else "")
 
 
 # ── Letter merging (M B S → MBS) ─────────────────────────────────────────
@@ -528,6 +577,7 @@ def normalize_numbers(text: str) -> str:
         return m.group()
 
     result = _ZH_NUM_RE.sub(_zh_replacer, result)
+    result = _EN_DECIMAL_RE.sub(_convert_en_decimal, result)
     result = _EN_NUM_RE.sub(_convert_en_number, result)
     result = _merge_spaced_letters(result)
 

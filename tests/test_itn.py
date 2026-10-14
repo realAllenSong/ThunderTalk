@@ -267,3 +267,21 @@ def test_counter_and_compounds_unchanged(
     spoken: str, expected: str
 ) -> None:
     assert normalize_numbers(spoken) == expected
+
+
+@pytest.mark.parametrize("spoken,written", [
+    ("twelve point four billion dollars", "12.4 billion dollars"),
+    ("revenue was four billion", "revenue was 4 billion"),
+    ("two million users", "2 million users"),
+    ("one hundred twenty million", "120 million"),
+    ("one point two three trillion", "1.23 trillion"),
+    ("three point one four", "3.14"),
+    ("0 point five", "0.5"),
+    ("version two point oh", "version 2.0"),
+    ("it grew by twelve point five percent", "it grew by 12.5 percent"),
+    ("a million thanks", "a million thanks"),
+    ("at that point two people left", "at that point two people left"),
+    ("five thousand people", "5000 people"),
+])
+def test_english_decimals_and_large_scales(spoken, written):
+    assert normalize_numbers(spoken) == written
