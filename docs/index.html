@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light" />
 
   <title>ThunderTalk — Free, open-source voice input for macOS</title>
-  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute." />
+  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. New in v1.11.0: Studio Compose creates songs locally with ACE-Step 1.5, turbo by default and optional XL; CLI v2 adds best engines, speaker labels and Markdown transcripts." />
   <link rel="canonical" href="https://realallensong.github.io/ThunderTalk/" />
   <meta name="robots" content="index, follow" />
 
@@ -17,7 +17,7 @@
   <meta property="og:locale" content="en_US" />
   <meta property="og:locale:alternate" content="zh_CN" />
   <meta property="og:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
-  <meta property="og:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute." />
+  <meta property="og:description" content="ThunderTalk is a free, open-source voice input app for macOS. New in v1.11.0: Studio Compose creates songs locally with ACE-Step 1.5, turbo by default and optional XL; CLI v2 adds best engines, speaker labels and Markdown transcripts." />
   <meta property="og:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -25,7 +25,7 @@
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
-  <meta name="twitter:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute." />
+  <meta name="twitter:description" content="ThunderTalk is a free, open-source voice input app for macOS. New in v1.11.0: Studio Compose creates songs locally with ACE-Step 1.5, turbo by default and optional XL; CLI v2 adds best engines, speaker labels and Markdown transcripts." />
   <meta name="twitter:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
 
   <link rel="icon" type="image/svg+xml" href="assets/mark.svg" />
@@ -39,9 +39,9 @@
     "name": "ThunderTalk",
     "operatingSystem": "macOS",
     "applicationCategory": "UtilitiesApplication",
-    "softwareVersion": "1.10.0",
+    "softwareVersion": "1.11.0",
     "applicationSubCategory": "Speech-to-Text / Dictation",
-    "description": "ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute.",
+    "description": "ThunderTalk is a free, open-source voice input app for macOS. New in v1.11.0: Studio Compose creates songs locally with ACE-Step 1.5, turbo by default and optional XL; CLI v2 adds best engines, speaker labels and Markdown transcripts.",
     "url": "https://realallensong.github.io/ThunderTalk/",
     "downloadUrl": "https://github.com/realAllenSong/ThunderTalk/releases/latest",
     "license": "https://opensource.org/licenses/MIT",
@@ -70,7 +70,7 @@
       {
         "@type": "Question",
         "name": "What is Studio?",
-        "acceptedAnswer": {"@type": "Answer", "text": "Studio has Transcribe and Speak. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with a model choice per job, timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Every completed transcript goes to History. The layout stays compact, with instant timestamp/text switching. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model on the AI Proofread sidebar page, even with proofreading off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection."}
+        "acceptedAnswer": {"@type": "Answer", "text": "Studio has Transcribe, Speak and Compose. Compose generates original songs locally with ACE-Step 1.5: turbo by default, optional XL on Macs with at least 32 GB RAM and enough free memory. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with a model choice per job, timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Every completed transcript goes to History. The layout stays compact, with instant timestamp/text switching. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model on the AI Proofread sidebar page, even with proofreading off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection."}
       },
       {
         "@type": "Question",
@@ -714,8 +714,8 @@
       </div>
 
       <a class="news rv" href="#models">
-        <span class="tag" data-i18n="hero.newtag">New in v1.10.0</span>
-        <span class="txt" data-i18n="hero.newtxt">Apple recognition and System voices, no download. Command line for MCP and Wemute.</span>
+        <span class="tag" data-i18n="hero.newtag">New in v1.11.0</span>
+        <span class="txt" data-i18n="hero.newtxt">Compose songs on your Mac. CLI v2: best engines, speakers and Markdown.</span>
         <svg class="arrow" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
       </a>
 
@@ -871,10 +871,10 @@
 
     <!-- ═════════════ 02 Studio ═════════════ -->
     <section class="sec wrap" id="studio" aria-labelledby="st-h">
-      <div class="sec-head rv"><p class="kicker"><b>02</b><span data-i18n="st.kicker">Studio</span></p><span class="tag" data-i18n="st.tag">Improved in v1.8.0</span></div>
+      <div class="sec-head rv"><p class="kicker"><b>02</b><span data-i18n="st.kicker">Studio</span></p><span class="tag" data-i18n="st.tag">Compose in v1.11.0</span></div>
       <div class="sec-title">
-        <h2 id="st-h" class="rv" data-i18n="st.h2">Studio turns recordings into text, and text into speech.</h2>
-        <p class="sec-p rv" data-i18n="st.p">Transcribe recordings or web links, save a batch of transcripts, add subtitles to a video copy, or turn text into speech. Speech processing stays on your Mac. Optional AI meeting notes use your chosen provider.</p>
+        <h2 id="st-h" class="rv" data-i18n="st.h2">Studio turns recordings into text, text into speech, and lyrics into songs.</h2>
+        <p class="sec-p rv" data-i18n="st.p">Transcribe recordings or web links, save a batch of transcripts, add subtitles, turn text into speech, or compose an original song. Audio processing stays on your Mac. Optional AI meeting notes use your chosen provider.</p>
       </div>
 
       <div class="bento rise">
@@ -966,6 +966,12 @@
             </div>
           </div>
         </article>
+        <article class="card b12 rv" id="compose">
+          <p class="card-k" data-i18n="co.k">Compose · ACE-Step 1.5 · MIT</p>
+          <h3 data-i18n="co.h">Original songs on your Mac.</h3>
+          <p data-i18n="co.p">Create vocals with background music or an instrumental. Turbo is the fast default; optional XL gives clearer lyric read-back and needs at least 32 GB RAM plus plenty of free memory. Compose is hidden below 16 GB; 16–23 GB is experimental turbo only, one take, up to four minutes. The memory guard refuses jobs when headroom is short, and dictation keeps priority.</p>
+          <p data-i18n="co.lyrics">Qwen3-ASR flags lines that were not sung clearly; listen to confirm. Adjust difficult words with the sung-lyrics pronunciation helper, review the approximate range to repaint a line when memory allows, or make a new take. Repaint cannot fit the 16 GB tier. Takes save to <code>~/Music/ThunderTalk</code>. Describe style by genre, mood and instruments; real artist names trigger a warning. When releasing to streaming platforms, disclose AI-generated music through your platform or distributor.</p>
+        </article>
       </div>
     </section>
 
@@ -1037,7 +1043,7 @@
 
       <p class="sec-p rv" data-i18n="md.runtime">The v1.7.0 download measured about 592 MiB installed and 224 MB zipped (214 MiB), down from 961 MiB and a 330 MB zip in v1.6.4. Translation and IndexTTS share an optional 90 MB PyTorch component, downloaded by the app when needed into <code>~/.thundertalk/runtime/</code>. Restart once if prompted. Dictation, Studio transcription, VoxCPM2 and Kokoro do not need it. Model weights below are extra.</p>
 
-      <p class="sec-p rv" data-i18n="md.cli">Command line: <code>ThunderTalk --cli transcribe|speak|voices|status</code> runs without a window, even while the app is open. Progress and results are JSON lines. Transcribe exports TXT/SRT/VTT/JSON; Speak exports M4A/WAV/MP3. The MCP server and apps such as Wemute can call it.</p>
+      <p class="sec-p rv" data-i18n="md.cli">CLI v2: <code>ThunderTalk --cli transcribe|speak|voices|status</code> runs without a window, even while the app is open. Progress and results are JSON lines. Transcribe exports TXT/Markdown/SRT/VTT/JSON; <code>--engine best</code> selects the most accurate downloaded ASR model, and <code>--speakers</code> uses MOSS for speaker labels. Speak exports M4A/WAV/MP3; its <code>--engine best</code> prefers IndexTTS, then VoxCPM2, Kokoro (except mixed Chinese-English text), then Apple. Packaged apps advertise <code>ThunderTalkCLIVersion 2</code>. The MCP server can call it.</p>
 
       <div class="mt rv">
         <div class="mt-head"><span data-i18n="md.c1">Model</span><span data-i18n="md.c2">Runs on</span><span data-i18n="md.c3">Download size</span><span data-i18n="md.c4">Languages</span><span data-i18n="md.c5">Good for</span></div>
@@ -1060,9 +1066,13 @@
         <div class="mt-row"><span class="c-name">IndexTTS-2.5 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">1.7 + 2.3 GB</span><span class="c-lang" data-i18n="md.lidx">5 languages</span><span class="c-note" data-i18n="md.n8b">Very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic, about real time. 1.7 GB model plus a 2.3 GB encoder. bilibili Model Use License.</span></div>
         <div class="mt-row"><span class="c-name">Kokoro v1.1 82M <span class="tag blue">Speak</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">364 MB</span><span class="c-lang" data-i18n="md.lkok">Chinese, English</span><span class="c-note" data-i18n="md.n8c">Small and fast, about 4× real time. 23 built-in voices (20 Chinese, 3 English). Apache-2.0.</span></div>
 
+        <div class="mt-group" data-i18n="md.gmusic">Music · Compose</div>
+        <div class="mt-row"><span class="c-name">ACE-Step 1.5 Turbo 2B</span><span class="c-run">GPU · MLX / MPS</span><span class="c-size">~6.3 GB</span><span class="c-lang" data-i18n="md.lmusic">Songs / instrumentals</span><span class="c-note" data-i18n="md.nturbo">MIT. Default and recommended; ≥16 GB RAM. Experimental at 16–23 GB, one take, ≤4 min.</span></div>
+        <div class="mt-row"><span class="c-name">ACE-Step 1.5 XL 4B</span><span class="c-run">GPU · MLX / MPS</span><span class="c-size">~21.5 GB</span><span class="c-lang" data-i18n="md.lmusic">Songs / instrumentals</span><span class="c-note" data-i18n="md.nxl">MIT. Optional, clearer lyric read-back; ≥32 GB RAM and substantial free memory.</span></div>
         <div class="mt-group" data-i18n="md.g3">Translation</div>
         <div class="mt-row"><span class="c-name">SeamlessM4T v2 Large</span><span class="c-run">PyTorch · MPS / CPU</span><span class="c-size">~9 GB</span><span class="c-lang" data-i18n="md.l100">100+ languages</span><span class="c-note" data-i18n="md.n9">Speech and text translation. Best with 16 GB of RAM or more.</span></div>
       </div>
+      <p class="cmp-note rv" data-i18n="md.musicdownload">One-time catalog downloads above include shared VAE and text-encoder weights. XL's checkpoint alone is about 20 GB and is converted to bf16 after download. The optional 1.7B planner adds about 3.8 GB (turbo total ~10.1 GB; XL ~25.3 GB). Shared weights are reused. Runtime components and lyric-check ASR weights are separate. Music generation works offline after downloads.</p>
     </section>
 
     <!-- ═════════════ 05 FAQ ═════════════ -->
@@ -1096,7 +1106,7 @@
         <details open><summary><span data-i18n="faq.1q">Is ThunderTalk free?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.1a">Yes. ThunderTalk is MIT licensed and free to use. There is no account, no subscription and no usage limit, and the source code is on GitHub.</p></div></details>
         <details><summary><span data-i18n="faq.2q">Does it work offline?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.2a">Yes. After downloading the models and any required component, speech recognition, translation, file transcription and text to speech work offline. Studio links need a connection. Optional AI Proofread and meeting notes depend on your chosen provider: Ollama and LM Studio use local servers; cloud providers need a connection and receive text.</p></div></details>
         <details><summary><span data-i18n="faq.3q">Which apps can I dictate into?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.3a">Any app with a text cursor: browsers, editors, Slack, mail, terminals. ThunderTalk pastes the text where the cursor is, so it asks for Microphone and Accessibility permission the first time you run it.</p></div></details>
-        <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio has Transcribe and Speak. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with a model choice per job, timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Every completed transcript goes to History. The layout stays compact, with instant timestamp/text switching. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model on the AI Proofread sidebar page, even with proofreading off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection.</p></div></details>
+        <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio has Transcribe, Speak and Compose. Compose generates original songs locally with ACE-Step 1.5: turbo by default, optional XL on Macs with at least 32 GB RAM and enough free memory. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with a model choice per job, timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Every completed transcript goes to History. The layout stays compact, with instant timestamp/text switching. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model on the AI Proofread sidebar page, even with proofreading off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection.</p></div></details>
         <details><summary><span data-i18n="faq.5q">Do I need ffmpeg for Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.5a">Common formats such as M4A, MP3, WAV, MP4 and MOV decode with macOS tools. Burning subtitles into a video copy requires ffmpeg, and WebM/Opus link audio or other formats may need it too. ffmpeg is not bundled. With <a href="https://brew.sh/" rel="noopener">Homebrew</a> installed, run <code>brew install ffmpeg</code> in Terminal, then retry.</p></div></details>
         <details><summary><span data-i18n="faq.6q">Where does a cloned voice go?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.6a">Nowhere. The short reference recording and its transcript are stored in <code>~/.thundertalk/voices</code> on your Mac, and nothing is uploaded. Delete a voice in the app, or delete the folder, to remove it. Please only clone voices you have the right to use.</p></div></details>
         <details><summary><span data-i18n="faq.7q">Does it handle Chinese and mixed Chinese-English?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.7a">Yes. Qwen3-ASR handles 52 languages, including Chinese and English mixed in the same sentence, and the app itself is available in English and Chinese.</p></div></details>
@@ -1148,6 +1158,16 @@
 
     /* ════════════ i18n ════════════ */
     var ZH = {
+      "co.k": "作曲 · ACE-Step 1.5 · MIT",
+      "co.h": "在 Mac 上创作原创歌曲。",
+      "co.p": "生成带人声和伴奏的歌曲或纯音乐。turbo 是快速的默认模型；可选 XL 的歌词回读更清晰，需要至少 32 GB 内存及充足的空闲内存。低于 16 GB 时隐藏作曲；16–23 GB 仅提供实验性 turbo，限一个版本、最长四分钟。内存余量不足时保护机制会拒绝启动，听写保持优先。",
+      "co.lyrics": "Qwen3-ASR 标出未唱清楚的行，请试听确认。可用演唱歌词发音助手调整难读词，内存允许时核对近似时间范围并重绘一行，或生成新版本。16 GB 档位无法容纳重绘。作品保存在 <code>~/Music/ThunderTalk</code>。风格用曲风、情绪和乐器描述；真人艺人姓名会触发提醒。发布到流媒体平台时，请通过平台或发行商披露 AI 生成音乐。",
+      "md.gmusic": "音乐 · 作曲",
+      "md.lmusic": "歌曲 / 纯音乐",
+      "md.nturbo": "MIT。默认推荐；≥16 GB 内存。16–23 GB 为实验性，限一个版本、≤4 分钟。",
+      "md.nxl": "MIT。可选，歌词回读更清晰；≥32 GB 内存及大量空闲内存。",
+      "md.musicdownload": "以上为一次性目录下载量，含共享 VAE 与文本编码器。XL 检查点本身约 20 GB，下载后转换为 bf16。可选的 1.7B 规划模型另加约 3.8 GB（turbo 总量约 10.1 GB；XL 约 25.3 GB）。共享权重可复用，运行组件和歌词检查 ASR 权重另计。下载完成后音乐生成可离线运行。",
+
       "skip": "跳到正文",
       "nav.dictation": "听写", "nav.studio": "工作室", "nav.privacy": "隐私", "nav.models": "模型", "nav.faq": "常见问题", "nav.dl": "下载",
       "hero.eyebrow": "免费 · 开源 · 完全在你的 Mac 上运行",
@@ -1155,7 +1175,7 @@
       "hero.lede": "ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就出现在光标处。识别全部在你自己的电脑上完成：无需账号，无需订阅，没有云端。",
       "hero.cta1": "下载 macOS 版", "hero.cta2": "查看源码",
       "hero.fine": "免费，MIT 协议。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
-      "hero.newtag": "v1.10.0 新增", "hero.newtxt": "Apple 识别与系统音色，无需下载。命令行支持 MCP 和 Wemute。",
+      "hero.newtag": "v1.11.0 新增", "hero.newtxt": "在 Mac 上作曲。CLI v2：最佳引擎、说话人和 Markdown。",
       "scene.cap": "主页界面的交互式复刻，数据为示例。点击按键即可试一次听写。",
       "app.home": "主页", "app.models": "模型", "app.hotwords": "热词", "app.settings": "设置", "app.studio": "工作室", "app.about": "关于",
       "app.todictate": "开始听写", "app.words": "已听写字数", "app.speak": "发声时长", "app.saved": "预计节省时间", "app.sessions": "次数",
@@ -1174,9 +1194,9 @@
       "f1.h": "第一次运行有引导", "f1.p": "四个简短步骤：欢迎、权限、选模型、在输入框里试一试。",
       "f2.h": "历史保存在本机", "f2.p": "每次听写都保存在 <code>~/.thundertalk</code> 里的文件中。可以在主页搜索、删除单条，或全部清空。",
       "f3.h": "自动更新", "f3.p": "有新版本发布时会出现小提示，点一下就下载、替换应用并重启。固定签名让麦克风与辅助功能权限在以后的更新中保留；从 v1.7.0 或更早版本升级时可能会最后再请求一次。",
-      "st.kicker": "工作室", "st.tag": "v1.8.0 体验升级",
-      "st.h2": "工作室：把录音变成文字，把文字变成声音。",
-      "st.p": "转写录音或网页链接、批量保存文稿、为视频副本添加字幕，或把文字读出来。语音处理在你的 Mac 上完成，可选的 AI 会议纪要使用你选择的服务。",
+      "st.kicker": "工作室", "st.tag": "v1.11.0 新增作曲",
+      "st.h2": "工作室：录音变文字，文字变声音，歌词变歌曲。",
+      "st.p": "转写录音或网页链接、批量保存文稿、制作字幕、朗读文字，或创作原创歌曲。音频处理在你的 Mac 上完成，可选的 AI 会议纪要使用你选择的服务。",
       "st.local": "下载完成后，文件转写与语音生成可离线使用。网页链接和云端 AI 服务需要联网。",
       "tc.k": "转写", "tc.h": "拖入录音或粘贴链接，得到带时间戳的文稿。",
       "tc.p": "音频或视频均可：m4a、mp3、wav、mp4、mov 等。每次转写可选择已下载的语音模型，默认使用当前听写模型。需要说话人标签时，选择 MOSS-Transcribe-Diarize 并开启“标注说话人”；点击说话人即可改名。可导出 TXT、Markdown、SRT、VTT 或 JSON。转写后页面保持紧凑，一小时录音在时间戳与纯文本之间也能即时切换。常见格式用 macOS 自带的工具解码；WebM、MKV 等部分格式可能需要 ffmpeg。",
@@ -1210,7 +1230,7 @@
       "pv.d.cap": "音频进，文字出。没有网络这一跳。",
       "md.none": "无需下载", "md.lapple": "Mac 已安装的听写语言", "md.napple": "仅在本机运行。适合清晰语音的快速上手或备用选择；仍推荐 Qwen3-ASR。",
       "md.system": "Apple 系统音色", "md.nsystem": "已安装的音色（包括 Siri）在朗读中显示 System 标签。测试中约为实时的 37 倍。不支持克隆。",
-      "md.cli": "命令行：<code>ThunderTalk --cli transcribe|speak|voices|status</code> 无需打开窗口，应用运行时也可调用。进度与结果以 JSON 行输出。转写导出 TXT/SRT/VTT/JSON，朗读导出 M4A/WAV/MP3。MCP 服务和 Wemute 等应用可通过它调用 ThunderTalk。",
+      "md.cli": "CLI v2：<code>ThunderTalk --cli transcribe|speak|voices|status</code> 无需打开窗口，应用运行时也可调用，进度与结果以 JSON 行输出。转写导出 TXT/Markdown/SRT/VTT/JSON；<code>--engine best</code> 选择已下载的最准确 ASR 模型，<code>--speakers</code> 使用 MOSS 标注说话人。朗读导出 M4A/WAV/MP3，<code>--engine best</code> 依次选择 IndexTTS、VoxCPM2、Kokoro（中英混合时跳过）和 Apple。打包应用声明 <code>ThunderTalkCLIVersion 2</code>，MCP 服务也可调用。",
       "md.kicker": "模型", "md.h2": "选一个适合你 Mac 的引擎。",
       "md.p": "所有语音模型都在本机运行。所有 Mac 仍推荐 Qwen3-ASR-0.6B ONNX。Apple · Built in 无需下载：测试中比 Qwen3-ASR ONNX 快约 3 倍，适合清晰的近距离语音，但在嘈杂、远距离、快速、歌唱音频和中英混说上表现较弱。首次启用时，macOS 会请求一次语音识别权限。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。模型页显示参数量、下载大小、使用 CPU 还是需要 Apple GPU、语言标签（不支持中文时明确标注“不支持中文”）及功能。只有听写模型常驻；工作室、语音合成和翻译模型闲置三分钟后释放，需要时重新加载。闲置内存从约 9 GB 降到 2 GB 以下。AI 校对与纪要使用侧边栏“AI 校对”页面选择的已有服务和模型，不为它们内置或下载 AI 模型。",
       "md.runtime": "v1.7.0 下载版实测安装后约 592 MiB，zip 约 224 MB（214 MiB）；v1.6.4 分别为 961 MiB 和 330 MB。翻译与 IndexTTS 共用可选的 90 MB PyTorch 组件，由应用按需下载到 <code>~/.thundertalk/runtime/</code>，出现提示后重启一次。听写、工作室转写、VoxCPM2 和 Kokoro 无需它。下列模型权重另计。",
@@ -1233,7 +1253,7 @@
       "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "不收费。ThunderTalk 以 MIT 协议开源，可以免费使用。无需账号，无订阅，无使用次数限制，源码就在 GitHub 上。",
       "faq.2q": "能离线使用吗？", "faq.2a": "可以。下载模型及所需组件后，语音识别、翻译、文件转写和文字转语音可离线使用。工作室链接需要联网。可选的 AI 校对与会议纪要取决于所选服务：Ollama 和 LM Studio 使用本机服务；云端服务需要联网并接收文字。",
       "faq.3q": "可以在哪些应用里听写？", "faq.3a": "任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。ThunderTalk 会把文字粘贴到光标处，所以第一次运行时会请求“麦克风”和“辅助功能”权限。",
-      "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室分为“转写”和“朗读”。“转写”支持音频/视频文件及 YouTube、Bilibili 等 yt-dlp 支持的网站的单个视频链接，每次可选模型，提供时间戳、可选说话人标签、批量导出和本地视频字幕烧录。每份完成的文稿都保存在“历史记录”中。页面保持紧凑，时间戳与纯文本即时切换。可导出 TXT、Markdown、SRT、VTT 或 JSON。AI 会议纪要复用侧边栏“AI 校对”页面的服务与模型，校对开关可保持关闭。纪要最多处理约 6,000 字符的 16 段加一次合并，每次请求限 60 秒，可取消；过长录音需拆分。“朗读”使用本地 VoxCPM2、IndexTTS-2.5 或 Kokoro，可用内置音色或你自己 5 到 15 秒录音克隆的声音。链接和云端 AI 服务需要联网。",
+      "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室包含“转写”“朗读”和“作曲”。作曲使用 ACE-Step 1.5 本地生成原创歌曲，默认 turbo；至少 32 GB 内存且空闲内存充足的 Mac 可选 XL。“转写”支持音频/视频文件及 YouTube、Bilibili 等 yt-dlp 支持的网站的单个视频链接，每次可选模型，提供时间戳、可选说话人标签、批量导出和本地视频字幕烧录。每份完成的文稿都保存在“历史记录”中。页面保持紧凑，时间戳与纯文本即时切换。可导出 TXT、Markdown、SRT、VTT 或 JSON。AI 会议纪要复用侧边栏“AI 校对”页面的服务与模型，校对开关可保持关闭。纪要最多处理约 6,000 字符的 16 段加一次合并，每次请求限 60 秒，可取消；过长录音需拆分。“朗读”使用本地 VoxCPM2、IndexTTS-2.5 或 Kokoro，可用内置音色或你自己 5 到 15 秒录音克隆的声音。链接和云端 AI 服务需要联网。",
       "faq.5q": "使用工作室需要安装 ffmpeg 吗？", "faq.5a": "M4A、MP3、WAV、MP4、MOV 等常见格式使用 macOS 自带的工具解码。把字幕烧录进视频副本需要 ffmpeg，WebM/Opus 链接音频等格式也可能需要它。应用未内置 ffmpeg。安装 <a href=\"https://brew.sh/\" rel=\"noopener\">Homebrew</a> 后在终端运行 <code>brew install ffmpeg</code>，再重试。",
       "faq.6q": "克隆出的声音会存到哪里？", "faq.6a": "哪里也不去。那段简短的参考录音和它的文字保存在你 Mac 上的 <code>~/.thundertalk/voices</code>，不会上传。在应用里删除声音，或直接删掉该文件夹即可移除。请只克隆你有权使用的声音。",
       "faq.7q": "支持中文和中英混说吗？", "faq.7a": "支持。Qwen3-ASR 支持 52 种语言，包括同一句话里中英混说，应用界面也有中文和英文两种语言。",
@@ -1250,7 +1270,7 @@
     };
     var DESC = {
       en: $('meta[name="description"]').getAttribute("content"),
-      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用，语音识别在你的 Mac 上运行。v1.10.0 新增无需下载的 Apple 本机识别和系统音色，以及输出 JSON、可供 MCP 和 Wemute 等应用调用的命令行。"
+      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用。v1.11.0 新增工作室作曲，使用 ACE-Step 1.5 本地生成歌曲，默认 turbo、可选 XL；CLI v2 支持最佳引擎、说话人标签和 Markdown 文稿。"
     };
 
     var i18nNodes = $$("[data-i18n]");

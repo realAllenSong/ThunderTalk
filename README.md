@@ -32,7 +32,13 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
-<!-- DRAFT: rename to the release version when it ships. -->
+## New in v1.11.0
+
+- **Studio ▸ Compose:** create original songs with vocals and background music, or instrumentals, on your Mac with ACE-Step 1.5 (MIT). Turbo is the fast default; optional XL gives clearer lyrics in our read-back tests and needs at least 32 GB RAM and plenty of free memory.
+- **Check and revise lyrics:** Qwen3-ASR flags lines that were not sung clearly. A sung-lyrics pronunciation helper handles difficult words without changing the displayed lyrics. Repaint a line when memory allows, or make a new take; takes save to `~/Music/ThunderTalk`.
+- **Downloads and safeguards:** XL's checkpoint is about 20 GB; turbo-only is smaller (about 6.3 GB including shared weights, or 10.1 GB with the optional planner). Compose refuses to start when memory is short, and dictation keeps priority. Describe style by genre, mood and instruments; real artist names trigger a warning. When releasing to streaming platforms, disclose AI-generated music through your platform or distributor.
+- **CLI v2:** `--engine best` selects the most accurate downloaded transcription model or the preferred available speech engine; `--speakers` adds speaker labels, and `.md` exports timestamped Markdown transcripts. Packaged apps advertise `ThunderTalkCLIVersion 2`. See [Command line](#command-line).
+
 ## New in v1.10.0
 
 - **Apple's own speech, nothing to download:** a new **Apple · Built in** model uses the recognizer built into macOS, on device only. It's about 3× faster than Qwen3-ASR ONNX and fine for clear, close speech (5.8 % Chinese CER against 3.3 % in our tests). It misses most words in noisy, far-away, fast or sung audio, and English words inside Chinese sentences, so Qwen3-ASR stays the recommendation. macOS asks for Speech Recognition access once, when you activate it.
@@ -80,7 +86,7 @@ The interface is deliberately quiet: warm paper background, near-black ink, one 
 
 ## New: Studio
 
-Studio replaces the old Lab page. It has two parts: Transcribe and Speak.
+Studio replaces the old Lab page. It has Transcribe, Speak and Compose (on supported Macs).
 
 **Transcribe.** Drop an audio or video recording (m4a, mp3, wav, mp4, mov and more) and get a timestamped transcript. Choose from your downloaded speech models; the active dictation model is selected by default. For speaker labels, select **MOSS-Transcribe-Diarize** and enable **Label speakers**; click a speaker to rename it. Selecting MOSS offers its download if needed. Export as TXT, Markdown, SRT, VTT or JSON. Common formats decode with the tools built into macOS; some formats such as WebM or MKV may need ffmpeg.
 
@@ -105,6 +111,18 @@ Studio replaces the old Lab page. It has two parts: Transcribe and Speak.
 - **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2 or IndexTTS. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
 
 The speech engines are one-time downloads. After that, file transcription and speech generation work offline. Optional AI notes use your chosen provider; web links and cloud providers require a connection.
+
+### Compose
+
+Choose **Studio ▸ Compose**, enter lyrics and describe the genre, mood and instruments for an original song with vocals and background music, or choose an instrumental. ACE-Step 1.5 runs locally on Apple Silicon; turbo is the default and recommended model on every supported tier. XL is optional for clearer lyrics and requires at least 32 GB RAM plus substantial free memory. Compose is hidden below 16 GB; on 16–23 GB Macs, turbo is experimental, with one take and a maximum of four minutes. Repaint cannot fit the 16 GB tier; use **New take** instead. Having enough total RAM does not guarantee admission: the memory guard checks current headroom before starting, and the worker yields to dictation.
+
+After a vocal take, a local **Qwen3-ASR lyric check** flags lines that were not sung clearly. It is advisory: listen to the take before accepting it. The pronunciation helper lets you adjust the sung form of difficult words, including Latin words in Chinese lyrics, while keeping the original displayed and exported lyrics. Review the approximate time range before repainting a line, or generate a new take. Takes are saved to `~/Music/ThunderTalk`.
+
+One-time catalog downloads include shared VAE and text-encoder weights: about **6.3 GB for turbo** or **21.5 GB for XL** (the XL checkpoint alone is about 20 GB). The optional 1.7B planner adds about **3.8 GB**, making totals about **10.1 GB / 25.3 GB**. Shared weights are reused; XL is converted to bf16 after download, so retained disk size is smaller than the download. Required runtime components and Qwen3-ASR for lyric checking are separate. See [Supported models](#supported-models).
+
+On the measured 36 GiB M3 Max, turbo generated 60 s in about 32 s (13.0 GiB peak worker memory) and 170 s in about 71 s (13.3 GiB). XL took about 135 s and 374 s respectively (18.0 GiB peak). In the lyric read-back check, XL had 23/24 clear lines and turbo 16/24; this does not mean every word was reproduced exactly. These are measured samples, not guarantees for other Macs or songs; actual 16/24 GB hardware was not verified. [Verification details](docs/verification/2026-10-music-perf.md).
+
+Use genre, mood and instruments for style prompts; Compose warns on real artist names and offers to remove them. When distributing to streaming platforms, disclose AI-generated music through the platform or distributor's disclosure process.
 
 ## Features
 
@@ -155,7 +173,7 @@ ThunderTalk is signed with an Apple Developer ID and notarised by Apple, so it o
 2. Click into any text field in any app.
 3. Press the hotkey (default **Right ⌘**), speak, and press it again. The text is pasted at the cursor.
 
-Change the hotkey, press mode, microphone and language in **Settings**. Open **Studio** for file/link transcription, batch exports, subtitles, meeting notes and text to speech.
+Change the hotkey, press mode, microphone and language in **Settings**. Open **Studio** for file/link transcription, batch exports, subtitles, meeting notes, text to speech and Compose.
 
 ### Command line
 
@@ -163,7 +181,7 @@ The app binary has a headless mode that never opens a window and can run while t
 
 ```sh
 TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # or: uv run python run.py
-"$TT" --cli transcribe talk.m4a --out talk.srt                   # also .vtt / .json / .txt; video files work
+"$TT" --cli transcribe talk.m4a --out talk.srt                   # also .vtt / .json / .txt / .md; video files work
 "$TT" --cli transcribe talk.m4a --out talk.srt --engine apple    # or a model id from the Models page
 "$TT" --cli transcribe call.m4a --out call.md --speakers         # who said what, as Markdown
 "$TT" --cli transcribe talk.m4a --out talk.txt --engine best     # most accurate downloaded model
@@ -174,6 +192,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # or: uv run py
 
 - **stdout** carries JSON lines only: `{"type": "stage", …}`, `{"type": "progress", "value": 0.42}`, then one `{"type": "result", "ok": true, …}`. Logs go to stderr. The exit code is 0 on success and 1 on error, and errors carry a stable `code` (`not_found`, `no_model`, `no_speech`, `permission_denied`, `bad_args`, …).
 - **`--engine auto`** (the default) transcribes with your dictation model and falls back to Apple if it isn't downloaded. **`--engine best`** uses the most accurate downloaded model instead (Qwen3-ASR 1.7B first), which suits recordings and calls better than the dictation model. **`--speakers`** labels who is speaking (MOSS-Transcribe-Diarize). For `speak`, `auto` uses the voice chosen on the Speak page if its engine is downloaded and it speaks the text's language, and otherwise the best system voice. `best` picks IndexTTS, then VoxCPM2, then Kokoro (skipped for mixed Chinese–English text), then Apple.
+- **Markdown** (`.md`) transcripts include timestamps and speaker labels when available.
 - **Subtitles** are cut into cues of at most 7 seconds and two lines, in order and never overlapping. JSON also includes word times when the engine provides them (Apple does).
 - The CLI never asks for permissions. If Apple recognition hasn't been allowed yet, it still works from the packaged app on macOS 15. If access was denied, it returns `permission_denied`.
 - The MCP server (`python -m thundertalk.mcp.server`) exposes the same commands as `transcribe_file`, `speak_text` and `list_local_voices`. Set `THUNDERTALK_BIN` to the packaged binary to use it.
@@ -210,6 +229,15 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # or: uv run py
 | Apple system voices | 0 MB (part of macOS) | AVSpeechSynthesizer (CPU) | The Chinese and English voices installed on the Mac |
 
 Each is a one-time download offered from the Speak tab when you pick one of its voices. IndexTTS runs through a patched copy of the [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX port (see `third_party/README.md`).
+
+### Music generation (Studio ▸ Compose)
+
+| Model | Parameters | Catalog download (shared weights included) | Requirements |
+|-------|------------|--------------------------------------------|--------------|
+| ACE-Step 1.5 Turbo (MIT) | 2B | ~6.3 GB; ~10.1 GB with optional planner | Apple Silicon GPU; ≥16 GB RAM; default and recommended; experimental at 16–23 GB, one take, ≤4 min |
+| ACE-Step 1.5 XL (MIT) | 4B | ~21.5 GB; ~25.3 GB with optional planner | Apple Silicon GPU; ≥32 GB RAM and substantial free memory; optional, clearer lyric read-back |
+
+Downloads are one-time; both models share the VAE and text encoder. Runtime components and lyric-check ASR weights are extra. The memory guard can refuse a job even on a supported Mac. See [Compose](#compose) for measured performance and limitations.
 
 ### Translation
 

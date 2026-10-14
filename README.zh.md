@@ -32,7 +32,13 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
-<!-- 草稿：发布时改成正式版本号。 -->
+## v1.11.0 新功能
+
+- **工作室 ▸ 作曲（Compose）：**使用 ACE-Step 1.5（MIT）在 Mac 上创作带人声和伴奏的原创歌曲，也可生成纯音乐。turbo 是快速的默认模型；可选 XL 在回读测试中歌词更清晰，需要至少 32 GB 内存及充足的空闲内存。
+- **检查并修改歌词：**Qwen3-ASR 标出未唱清楚的行；演唱歌词发音助手可调整难读词的唱法，不改变显示的歌词。内存允许时可重绘一行，也可生成新版本；作品保存在 `~/Music/ThunderTalk`。
+- **下载与保护：**XL 检查点约需一次性下载 20 GB；仅用 turbo 更小（含共享权重约 6.3 GB，加可选规划模型约 10.1 GB）。内存不足时作曲不会启动，听写保持优先。风格用曲风、情绪和乐器描述；真人艺人姓名会触发提醒。发布到流媒体平台时，请通过平台或发行商披露 AI 生成音乐。
+- **CLI v2：**`--engine best` 选择已下载的最准确转写模型或优先可用的朗读引擎；`--speakers` 添加说话人标签，`.md` 导出带时间戳的 Markdown 文稿。打包应用声明 `ThunderTalkCLIVersion 2`。详见[命令行](#命令行)。
+
 ## v1.10.0 新功能
 
 - **macOS 自带的语音识别，无需下载：**新增 **Apple · 系统自带** 模型，使用 macOS 内置的识别器，只在本机识别。速度约为 Qwen3-ASR ONNX 的 3 倍，清晰近讲的语音没问题（我们测得中文字错率 5.8%，Qwen 为 3.3%）。但在嘈杂、远场、语速快或唱歌的音频里会漏掉大部分内容，中文句子里夹的英文词也常认错，所以推荐模型仍是 Qwen3-ASR。首次启用时 macOS 会请求一次“语音识别”权限。
@@ -80,7 +86,7 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 ## 新功能：工作室（Studio）
 
-工作室取代了原来的“实验室”页，分为“转写”和“朗读”两部分。
+工作室取代了原来的“实验室”页，包含“转写”“朗读”和“作曲”（仅在支持的 Mac 上显示）。
 
 **转写。** 把音频或视频录音（m4a、mp3、wav、mp4、mov 等）拖进来，就能得到带时间戳的文字稿。可选择已下载的语音识别模型，默认使用当前听写模型。需要区分说话人时，选择 **MOSS-Transcribe-Diarize** 并勾选“标注说话人”；点击说话人即可改名。尚未下载 MOSS 时，选择它会启动下载。可导出为 TXT、Markdown、SRT、VTT 或 JSON。常见格式用 macOS 自带的工具解码；WebM、MKV 等部分格式可能需要 ffmpeg。
 
@@ -105,6 +111,18 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 - **我的声音：** 录制或导入 5 到 15 秒你自己的声音，就能用 VoxCPM2 或 IndexTTS 以你的声音朗读任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
 
 语音引擎只需下载一次，之后文件转写与语音生成可离线使用。可选的 AI 纪要使用你选择的服务；网页链接和云端服务需要联网。
+
+### 作曲（Compose）
+
+打开**工作室 ▸ 作曲**，输入歌词，用曲风、情绪和乐器描述想要的原创歌曲，生成人声与伴奏；也可选择纯音乐。ACE-Step 1.5 在 Apple Silicon 上本地运行，turbo 在所有支持的内存档位都是默认推荐模型。XL 为可选项，歌词更清晰，需要至少 32 GB 内存及大量空闲内存。低于 16 GB 时隐藏作曲；16–23 GB Mac 仅提供实验性 turbo，限一个版本、最长四分钟。16 GB 档位无法容纳重绘，请使用**再生成一版（New take）**。总内存达标不代表一定能启动：内存保护会检查当前余量，生成进程会为听写让出资源。
+
+每次生成人声版本后，本地 **Qwen3-ASR 歌词检查**会标出未唱清楚的行。检查仅供参考，请试听确认。发音助手可调整难读词的演唱形式，包括中文歌词中的拉丁字母词，同时保留原始显示及导出歌词。重绘一行前请核对近似时间范围，也可重新生成一个版本。作品保存在 `~/Music/ThunderTalk`。
+
+模型目录的一次性下载包含共享 VAE 与文本编码器：**turbo 约 6.3 GB**，**XL 约 21.5 GB**（XL 检查点本身约 20 GB）。可选的 1.7B 规划模型另加约 **3.8 GB**，总量分别约 **10.1 GB / 25.3 GB**。共享权重可复用；XL 下载后转换为 bf16，保留的磁盘大小小于下载量。运行组件和歌词检查所需 Qwen3-ASR 另计。详见[支持的模型](#支持的模型)。
+
+在 36 GiB M3 Max 上实测，turbo 生成 60 秒约需 32 秒（生成进程峰值内存 13.0 GiB），170 秒约需 71 秒（13.3 GiB）；XL 分别约需 135 秒和 374 秒（峰值均约 18.0 GiB）。歌词回读检查中，XL 有 23/24 行清晰，turbo 为 16/24；不代表每个词都完全正确。这些是样本实测，不保证其他 Mac 或歌曲相同；尚未在真实 16/24 GB 设备上验证。[验证详情](docs/verification/2026-10-music-perf.md)。
+
+风格请用曲风、情绪和乐器描述；作曲会提醒真人艺人姓名，并提供移除选项。发布到流媒体平台时，请按平台或发行商的流程披露 AI 生成音乐。
 
 ## 功能特性
 
@@ -155,7 +173,7 @@ ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后�
 2. 点进任意应用里的任意输入框。
 3. 按下快捷键（默认 **Right ⌘**），说话，再按一次结束，文字会粘贴到光标处。
 
-在“设置”里可以修改快捷键、按键模式、麦克风和界面语言。打开“工作室”可以转写文件/链接、批量导出、制作字幕、生成会议纪要和文字转语音。
+在“设置”里可以修改快捷键、按键模式、麦克风和界面语言。打开“工作室”可以转写文件/链接、批量导出、制作字幕、生成会议纪要、文字转语音和作曲。
 
 ### 命令行
 
@@ -163,15 +181,18 @@ ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后�
 
 ```sh
 TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # 或从源码：uv run python run.py
-"$TT" --cli transcribe talk.m4a --out talk.srt                   # 也支持 .vtt / .json / .txt；视频文件也可以
+"$TT" --cli transcribe talk.m4a --out talk.srt                   # 也支持 .vtt / .json / .txt / .md；视频文件也可以
 "$TT" --cli transcribe talk.m4a --out talk.srt --engine apple    # 或“模型”页上的模型 id
+"$TT" --cli transcribe call.m4a --out call.md --speakers         # 带说话人标签的 Markdown
+"$TT" --cli transcribe talk.m4a --out talk.txt --engine best     # 已下载的最准确模型
 "$TT" --cli speak --text "明天下午三点开会。" --out hi.m4a --engine apple   # .m4a / .wav / .mp3
 "$TT" --cli voices --engine apple
 "$TT" --cli status
 ```
 
 - **stdout** 只输出 JSON 行：`{"type": "stage", …}`、`{"type": "progress", "value": 0.42}`，最后是一行 `{"type": "result", "ok": true, …}`；日志写到 stderr。成功退出码为 0，出错为 1，错误带固定的 `code`（`not_found`、`no_model`、`no_speech`、`permission_denied`、`bad_args` 等）。
-- **`--engine auto`**（默认）用你的听写模型转写，未下载时改用 Apple。`speak` 的 `auto` 优先用“朗读”页选中的声音（引擎已下载且语言匹配时），否则用最合适的系统声音。
+- **`--engine auto`**（默认）用你的听写模型转写，未下载时改用 Apple。`speak` 的 `auto` 优先用“朗读”页选中的声音（引擎已下载且语言匹配时），否则用最合适的系统声音。 **`--engine best`** 转写优先选择已下载的 Qwen3-ASR 1.7B；**`--speakers`** 用 MOSS-Transcribe-Diarize 标注说话人。朗读的 `best` 依次选择 IndexTTS、VoxCPM2、Kokoro（中英混合文字时跳过）和 Apple。
+- **Markdown**（`.md`）文稿包含时间戳，以及可用的说话人标签。
 - **字幕**每条最多 7 秒、两行，按时间顺序且不重叠。JSON 里还带有引擎提供的逐词时间（Apple 提供）。
 - 命令行从不弹出权限请求；若已拒绝 Apple 语音识别，会返回 `permission_denied`。
 - MCP 服务（`python -m thundertalk.mcp.server`）提供同样的功能：`transcribe_file`、`speak_text`、`list_local_voices`。把 `THUNDERTALK_BIN` 设为打包后的可执行文件即可使用它。
@@ -207,6 +228,15 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # 或从源码�
 | Kokoro v1.1 多语言版（Apache-2.0） | 364 MB | ONNX (CPU) | 23 种内置音色（20 种中文、3 种英文） |
 
 都是一次性下载：在“朗读”里选中某个引擎的音色时，应用会提示下载。IndexTTS 使用打过补丁的 [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX 移植版（见 `third_party/README.md`）。
+
+### 音乐生成（工作室 ▸ 作曲）
+
+| 模型 | 参数量 | 目录下载量（含共享权重） | 要求 |
+|------|--------|------------------------|------|
+| ACE-Step 1.5 Turbo（MIT） | 2B | ~6.3 GB；加可选规划模型 ~10.1 GB | Apple Silicon GPU；≥16 GB 内存；默认推荐；16–23 GB 为实验性，限一个版本、≤4 分钟 |
+| ACE-Step 1.5 XL（MIT） | 4B | ~21.5 GB；加可选规划模型 ~25.3 GB | Apple Silicon GPU；≥32 GB 内存及大量空闲内存；可选，歌词回读更清晰 |
+
+均为一次性下载，共用 VAE 与文本编码器。运行组件及歌词检查的 ASR 权重另计。支持的 Mac 也可能因当前内存不足而被拒绝启动。实测性能及限制见[作曲](#作曲compose)。
 
 ### 翻译
 
