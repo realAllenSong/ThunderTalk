@@ -32,6 +32,13 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
+<!-- 草稿：发布时改成正式版本号。 -->
+## v1.10.0 新功能
+
+- **macOS 自带的语音识别，无需下载：**新增 **Apple · 系统自带** 模型，使用 macOS 内置的识别器，只在本机识别。速度约为 Qwen3-ASR ONNX 的 3 倍，清晰近讲的语音没问题（我们测得中文字错率 5.8%，Qwen 为 3.3%）。但在嘈杂、远场、语速快或唱歌的音频里会漏掉大部分内容，中文句子里夹的英文词也常认错，所以推荐模型仍是 Qwen3-ASR。首次启用时 macOS 会请求一次“语音识别”权限。
+- **朗读里的系统声音：**本机已安装的中英文系统声音（包括 Siri 声音）出现在“朗读”里，标签为 **系统**。无需下载，合成速度约为实时的 37 倍；用我们的测试文本读回，中文零错误，英文词错率 1.1%。不支持克隆。
+- **命令行：**`ThunderTalk --cli transcribe | speak | voices | status` 不打开窗口，应用开着时也能用。可输出 SRT/VTT/JSON/TXT 字幕（每条最多 7 秒、两行）和 M4A/WAV/MP3 语音，并以 JSON 输出进度。详见[命令行](#命令行)。MCP 服务也能调用它。
+
 ## v1.9.3 新功能
 
 - **按下快捷键立刻就能说：**按键后马上开始录音。之前在静音背景音频的约一秒内说的话可能被截掉；现在静音与录音同时进行，不会再丢掉开头的话。
@@ -150,6 +157,25 @@ ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后�
 
 在“设置”里可以修改快捷键、按键模式、麦克风和界面语言。打开“工作室”可以转写文件/链接、批量导出、制作字幕、生成会议纪要和文字转语音。
 
+### 命令行
+
+应用的可执行文件带有无界面模式，不会打开窗口，应用开着时也能同时运行：
+
+```sh
+TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # 或从源码：uv run python run.py
+"$TT" --cli transcribe talk.m4a --out talk.srt                   # 也支持 .vtt / .json / .txt；视频文件也可以
+"$TT" --cli transcribe talk.m4a --out talk.srt --engine apple    # 或“模型”页上的模型 id
+"$TT" --cli speak --text "明天下午三点开会。" --out hi.m4a --engine apple   # .m4a / .wav / .mp3
+"$TT" --cli voices --engine apple
+"$TT" --cli status
+```
+
+- **stdout** 只输出 JSON 行：`{"type": "stage", …}`、`{"type": "progress", "value": 0.42}`，最后是一行 `{"type": "result", "ok": true, …}`；日志写到 stderr。成功退出码为 0，出错为 1，错误带固定的 `code`（`not_found`、`no_model`、`no_speech`、`permission_denied`、`bad_args` 等）。
+- **`--engine auto`**（默认）用你的听写模型转写，未下载时改用 Apple。`speak` 的 `auto` 优先用“朗读”页选中的声音（引擎已下载且语言匹配时），否则用最合适的系统声音。
+- **字幕**每条最多 7 秒、两行，按时间顺序且不重叠。JSON 里还带有引擎提供的逐词时间（Apple 提供）。
+- 命令行从不弹出权限请求；若已拒绝 Apple 语音识别，会返回 `permission_denied`。
+- MCP 服务（`python -m thundertalk.mcp.server`）提供同样的功能：`transcribe_file`、`speak_text`、`list_local_voices`。把 `THUNDERTALK_BIN` 设为打包后的可执行文件即可使用它。
+
 ## 支持的模型
 
 ### 语音识别（ASR）
@@ -164,6 +190,7 @@ ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后�
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25（欧洲语言） | ★★★★★ | 否 |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | 英语 | ★★★★★ | 否 |
 | Fun-ASR-Nano-2512（实验性） | 842 MB | ONNX (CPU) | 中文、英文、日文 | ★★★★★ | 是 |
+| Apple · 系统自带 | 0 MB（macOS 自带） | Speech 框架（CPU / 神经网络引擎） | 本机已安装的听写语言 | ★★☆☆☆ | 是 |
 
 > **MOSS-Transcribe-Diarize**（[OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize)，INTERSPEECH 2026 第二届 MLC-SLM 挑战赛第一名）是多说话人模型。听写时它粘贴纯文本（模型卡片上有可选的 S01:/S02: 说话人标签开关），同时它也驱动工作室的“标注说话人”选项，单次即可转写最长约 90 分钟的录音，并附说话人标签和时间戳。
 >

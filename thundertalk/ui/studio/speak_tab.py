@@ -23,7 +23,7 @@ from thundertalk.core import audio_io, i18n, speech, tts
 from thundertalk.core.i18n import t
 from thundertalk.core.memory_policy import IDLE_SECONDS
 from thundertalk.core.playback import Player
-from thundertalk.core.tts_backends.previews import load_preview, preview_path
+from thundertalk.core.tts_backends.previews import has_preview, load_preview
 from thundertalk.core.voices import SavedVoice, VoiceLibrary
 from thundertalk.ui import theme
 from thundertalk.ui.model_facts import facts_text, language_tags
@@ -44,7 +44,10 @@ def _voice_tag(v, zh: bool) -> str:
     """Short second line for a voice chip: "中文 · 女声" / "Chinese · female"."""
     lang = {"chinese": ("中文", "Chinese"), "english": ("英文", "English")}.get(v.language, ("多语言", "Multilingual"))
     sex = {"f": ("女声", "female"), "m": ("男声", "male")}.get(v.gender, ("", ""))
-    return f"{lang[0]} · {sex[0]}" if zh else f"{lang[1]} · {sex[1]}"
+    parts = [lang[0] if zh else lang[1], sex[0] if zh else sex[1]]
+    if v.id.startswith("apple:"):
+        parts.insert(0, t("studio.voices.system"))
+    return " · ".join(p for p in parts if p)
 
 
 def default_voice() -> str:
@@ -179,7 +182,7 @@ class SpeakTab(QWidget):
         vly.addWidget(self._mine_host)
         self._mine_hint = _muted(t("studio.voices.mine_hint"), 12)
         vly.addWidget(self._mine_hint)
-        self._no_clone = _muted(t("studio.voices.no_clone"), 12)
+        self._no_clone = _muted("", 12)
         vly.addWidget(self._no_clone)
         root.addWidget(vcard)
 
@@ -337,7 +340,6 @@ class SpeakTab(QWidget):
         self._update_pick_count()
         self._mine_hint.setText(t("studio.voices.mine_hint"))
         self._cap_engine.setText(t("studio.engine.pick"))
-        self._no_clone.setText(t("studio.voices.no_clone"))
         self._text.setPlaceholderText(t("studio.text.placeholder"))
         self._lang_lbl.setText(t("studio.lang.label"))
         self._speed_lbl.setText(t("studio.speed.label"))
@@ -384,11 +386,14 @@ class SpeakTab(QWidget):
         self._engine_tag.setText(facts_text(info.params, info.size_mb, not info.needs_gpu,
                                           info.speed, backbone=info.backbone_params))
         while self._engine_tags_layout.count():
-            self._engine_tags_layout.takeAt(0).widget().deleteLater()
+            old = self._engine_tags_layout.takeAt(0).widget()
+            old.hide()
+            old.deleteLater()
         self._engine_tags_layout.addWidget(language_tags(info.language_codes, clone=info.supports_clone))
         self._engine_tags_host.setToolTip(t(f"studio.engine.tag.{info.id}"))
         for v in b.voices():
-            chip = VoiceChip(v.name, _voice_tag(v, zh), previewable=preview_path(v.id).is_file())
+            chip = VoiceChip(v.name, _voice_tag(v, zh), previewable=has_preview(v.id))
+            chip.setToolTip(v.blurb_zh if zh else v.blurb_en)
             chip.clicked.connect(lambda _=False, vid=v.id: self._select(vid))
             chip.preview.connect(lambda vid=v.id: self._toggle_preview(vid))
             self._builtin_flow.addWidget(chip)
@@ -415,6 +420,7 @@ class SpeakTab(QWidget):
         if not mine:
             self._picking = False
         self._apply_pick_mode()
+        self._no_clone.setText(t("studio.voices.no_clone").format(name=info.name))
         self._no_clone.setVisible(not clone)
         if self._voice_id not in self._chips:
             self._voice_id = self._default_for(b)
@@ -667,6 +673,9 @@ class SpeakTab(QWidget):
                                   + t("studio.engine.size").format(size=size_txt) + "  " + component)
         self._dl_btn.setText(t("studio.engine.download_named").format(name=b.info.name, size=size_txt))
         self._dl_btn.setVisible(not downloading and not (b.info.id == "indextts" and restart_needed()))
+        if not b.info.downloads:                    # built into macOS: nothing to download
+            self._engine_body.setText(t("studio.voices.none_apple"))
+            self._dl_btn.setVisible(False)
         self._dl_cancel.setVisible(downloading)
         self._dl_bar.setVisible(downloading)
         busy = self.busy()

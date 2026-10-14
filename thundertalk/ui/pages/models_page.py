@@ -35,6 +35,7 @@ from thundertalk.core.models import (
     get_recommended_id,
     is_downloaded,
     is_variant_compatible,
+    refresh_system_models,
 )
 from thundertalk.ui import theme
 from thundertalk.ui.icons import paint_icon
@@ -57,6 +58,15 @@ _BIG_DOWNLOAD_MB = 2000
 
 def _fmt_size(mb: int) -> str:
     return f"{mb / 1000:.1f} GB" if mb >= 1000 else f"{mb} MB"
+
+
+def _facts(info: ModelInfo) -> str:
+    return facts_text(info.params, info.size_mb, info.runs_on_cpu, info.speed,
+                      cpu_gpu=info.backend == "seamless-torch", ane=info.built_in)
+
+
+def _variant(info: ModelInfo) -> str:
+    return t("apple.variant") if info.built_in else info.variant
 
 
 def _blurb(info: ModelInfo) -> str:
@@ -333,7 +343,8 @@ class VariantRow(QWidget):
         left.setContentsMargins(0, 0, 0, 0)
         name_row = QHBoxLayout()
         name_row.setSpacing(8)
-        vlabel = QLabel(f"{info.name} · {info.variant}")
+        vlabel = QLabel(f"{info.name} · {_variant(info)}")
+        self._vlabel = vlabel
         vlabel.setFont(theme.font(14, bold=True))
         vlabel.setStyleSheet(
             f"color: {theme.TEXT_PRIMARY if compatible else theme.TEXT_MUTED}; background: transparent;")
@@ -346,7 +357,7 @@ class VariantRow(QWidget):
             name_row.addWidget(self._status_badge)
         name_row.addStretch()
         left.addLayout(name_row)
-        self._facts = facts_label(facts_text(info.params, info.size_mb, info.runs_on_cpu, info.speed, cpu_gpu=info.backend == "seamless-torch"))
+        self._facts = facts_label(_facts(info))
         left.addWidget(self._facts)
         tags = language_tags(info.languages, complete=info.languages_complete,
                              hotwords=info.hotword_support, speakers=info.speaker_labels,
@@ -399,7 +410,8 @@ class VariantRow(QWidget):
         if self._status_badge is not None:
             self._status_badge.setText(t(self._status_badge_key))
         info = self.info
-        self._facts.setText(facts_text(info.params, info.size_mb, info.runs_on_cpu, info.speed, cpu_gpu=info.backend == "seamless-torch"))
+        self._vlabel.setText(f"{info.name} · {_variant(info)}")
+        self._facts.setText(_facts(info))
         tags = language_tags(info.languages, complete=info.languages_complete,
                              hotwords=info.hotword_support, speakers=info.speaker_labels,
                              clone=info.voice_cloning, timestamps=info.timestamps)
@@ -521,6 +533,8 @@ class VariantRow(QWidget):
                 " font-size: 12px; font-weight: 600; }")
         elif downloaded:
             self._style("primary", t("models.btn.activate"), True)
+        elif self.info.built_in:
+            self._style("secondary", t("apple.btn.setup"), True)
         elif self.info.download_url:
             self._style("secondary", t("models.btn.download"), True)
         else:
@@ -536,6 +550,9 @@ class VariantRow(QWidget):
             if path:
                 self.activate_clicked.emit(
                     self.info.id, path, self.info.family, self.info.backend)
+        elif self.info.built_in:
+            from thundertalk.core import apple_speech
+            apple_speech.open_dictation_settings()
         elif self.info.download_url:
             self.download_clicked.emit(self.info.id)
 
@@ -736,6 +753,7 @@ class ModelsPage(QWidget):
             self._mode_card.mode_changed.connect(self._on_mode_changed)
             self._layout.addWidget(self._mode_card)
 
+        refresh_system_models()
         for family, variants in get_families().items():
             card = FamilyCard(family, variants, self._active_model)
             card.activate_clicked.connect(self._on_activate)

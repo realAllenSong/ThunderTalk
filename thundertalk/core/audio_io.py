@@ -264,4 +264,22 @@ def export_audio(path: str, x: np.ndarray, sr: int) -> None:
             except OSError:
                 pass
         return
+    if ext == ".mp3":                      # CoreAudio has no MP3 encoder
+        ff = find_ffmpeg()
+        if not ff:
+            raise AudioDecodeError("ffmpeg_missing")
+        fd, tmp = tempfile.mkstemp(suffix=".wav")
+        os.close(fd)
+        try:
+            write_wav(tmp, x, sr)
+            r = subprocess.run([ff, "-v", "error", "-y", "-i", tmp, "-codec:a", "libmp3lame", "-q:a", "3", path],
+                               capture_output=True, text=True, timeout=300)
+            if r.returncode:
+                raise AudioDecodeError(r.stderr.strip()[-300:] or "mp3 export failed")
+        finally:
+            try:
+                os.unlink(tmp)
+            except OSError:
+                pass
+        return
     raise AudioDecodeError(f"Can't export as {ext}")

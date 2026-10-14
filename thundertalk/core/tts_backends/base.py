@@ -34,6 +34,7 @@ class BackendVoice:
     gender: str                 # "f" | "m"
     blurb_en: str = ""
     blurb_zh: str = ""
+    quality: str = ""           # system voices: "premium" | "enhanced" | "siri" | "compact"
 
 
 @dataclass(frozen=True)

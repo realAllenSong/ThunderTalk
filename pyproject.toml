@@ -1,6 +1,6 @@
 [project]
 name = "thundertalk"
-version = "1.9.3"
+version = "1.10.0"
 description = "Lightning-fast voice-to-text for every desktop"
 license = "MIT"
 requires-python = ">=3.12"
@@ -18,6 +18,8 @@ dependencies = [
     "yt-dlp>=2026.8.19",
     # Studio ▸ Compose lyric check: tone-less pinyin so homophones count as sung.
     "pypinyin>=0.55",
+    "pyobjc-framework-speech>=12.1 ; sys_platform == 'darwin'",
+    "pyobjc-framework-avfoundation>=12.1 ; sys_platform == 'darwin'",
 ]
 
 [project.optional-dependencies]

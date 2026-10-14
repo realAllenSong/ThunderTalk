@@ -7,7 +7,7 @@
   <meta name="color-scheme" content="light" />
 
   <title>ThunderTalk — Free, open-source voice input for macOS</title>
-  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.9.0: experimental Fun-ASR-Nano, a 0.8B CPU model for Chinese, English and Japanese; clearer model details; long dictations are never lost; background-audio muting never blocks dictation." />
+  <meta name="description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute." />
   <link rel="canonical" href="https://realallensong.github.io/ThunderTalk/" />
   <meta name="robots" content="index, follow" />
 
@@ -17,7 +17,7 @@
   <meta property="og:locale" content="en_US" />
   <meta property="og:locale:alternate" content="zh_CN" />
   <meta property="og:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
-  <meta property="og:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.9.0: experimental Fun-ASR-Nano, a 0.8B CPU model for Chinese, English and Japanese; clearer model details; long dictations are never lost; background-audio muting never blocks dictation." />
+  <meta property="og:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute." />
   <meta property="og:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
   <meta property="og:image:width" content="1200" />
   <meta property="og:image:height" content="630" />
@@ -25,7 +25,7 @@
   <!-- Twitter -->
   <meta name="twitter:card" content="summary_large_image" />
   <meta name="twitter:title" content="ThunderTalk — Talk, and it types. Speech stays on your Mac." />
-  <meta name="twitter:description" content="Free, open-source voice input for macOS. Speech processing stays on-device; optional AI features use your chosen provider." />
+  <meta name="twitter:description" content="ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute." />
   <meta name="twitter:image" content="https://realallensong.github.io/ThunderTalk/assets/og.png" />
 
   <link rel="icon" type="image/svg+xml" href="assets/mark.svg" />
@@ -39,8 +39,9 @@
     "name": "ThunderTalk",
     "operatingSystem": "macOS",
     "applicationCategory": "UtilitiesApplication",
+    "softwareVersion": "1.10.0",
     "applicationSubCategory": "Speech-to-Text / Dictation",
-    "description": "ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.9.0: experimental Fun-ASR-Nano, a 0.8B CPU model for Chinese, English and Japanese; clearer model details; long dictations are never lost; background-audio muting never blocks dictation.",
+    "description": "ThunderTalk is a free, open-source voice input app for macOS. Speech recognition runs on your Mac. New in v1.10.0: Apple on-device recognition and System voices with no download, plus a command line with JSON output for MCP and apps such as Wemute.",
     "url": "https://realallensong.github.io/ThunderTalk/",
     "downloadUrl": "https://github.com/realAllenSong/ThunderTalk/releases/latest",
     "license": "https://opensource.org/licenses/MIT",
@@ -713,8 +714,8 @@
       </div>
 
       <a class="news rv" href="#models">
-        <span class="tag" data-i18n="hero.newtag">New in v1.9.0</span>
-        <span class="txt" data-i18n="hero.newtxt">Experimental Fun-ASR-Nano, clearer Models, long dictations never lost and muting that never blocks dictation</span>
+        <span class="tag" data-i18n="hero.newtag">New in v1.10.0</span>
+        <span class="txt" data-i18n="hero.newtxt">Apple recognition and System voices, no download. Command line for MCP and Wemute.</span>
         <svg class="arrow" width="18" height="18" viewBox="0 0 16 16" fill="none" stroke="currentColor" stroke-width="1.6" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 8h10M9 4l4 4-4 4"/></svg>
       </a>
 
@@ -906,8 +907,8 @@
         <!-- Speak -->
         <article class="card b5 rv" id="speak">
           <p class="card-k" data-i18n="sp.k">Speak</p>
-          <h3 data-i18n="sp.h">Three engines, or your own voice.</h3>
-          <p data-i18n="sp.p">Three local engines: VoxCPM2 for studio-quality 48 kHz speech, IndexTTS-2.5 for faithful cloning, Kokoro for small and fast. Each downloads once, when you first pick one of its voices. Set the speed, scrub through the result, and save it as WAV or M4A.</p>
+          <h3 data-i18n="sp.h">System voices, or your own voice.</h3>
+          <p data-i18n="sp.p">Four local engines: the Chinese and English voices installed on your Mac, including Siri voices, appear with the System tag. They need no download, render about 37× faster than real time in our tests, and do not clone voices. VoxCPM2 offers studio-quality 48 kHz speech, IndexTTS-2.5 faithful cloning, and Kokoro small and fast speech; these three download once when you first pick one of their voices. Set the speed, scrub through the result, and save it as WAV or M4A.</p>
           <div class="mock" role="group" aria-labelledby="sp-lab">
             <span class="sr" id="sp-lab" data-i18n="sp.aria">Interactive Speak preview. This page plays no sound.</span>
             <div class="cap" data-i18n="sp.builtin">Built-in voices</div>
@@ -1031,18 +1032,21 @@
       <div class="sec-head rv"><p class="kicker"><b>04</b><span data-i18n="md.kicker">Models</span></p></div>
       <div class="sec-title">
         <h2 id="md-h" class="rv" data-i18n="md.h2">Choose the engine that suits your Mac.</h2>
-        <p class="sec-p rv" data-i18n="md.p">Every speech model runs on-device. The app reads your hardware and marks the ones that fit, then downloads them with real progress. In v1.9.0, the Models page shows parameter counts, download sizes, CPU or Apple GPU requirements, language tags (including an explicit “No Chinese” where applicable) and features. Only the dictation model stays resident; Studio, text-to-speech and translation models release after three idle minutes and reload when needed. Idle memory fell from about 9 GB to under 2 GB. AI Proofread and notes use your existing provider/model selected on the AI Proofread sidebar page; no AI model is bundled or downloaded for them.</p>
+        <p class="sec-p rv" data-i18n="md.p">Every speech model runs on-device. Qwen3-ASR-0.6B ONNX stays recommended on every Mac. Apple · Built in needs no download: about 3× faster than Qwen3-ASR ONNX in our tests and fine for clear, close speech, but weak on noisy, far-away, fast or sung audio and mixed Chinese-English speech. macOS asks for Speech Recognition access once when you activate it. The app reads your hardware and marks the models that fit; downloads show real progress. The Models page shows parameter counts, download sizes, CPU or Apple GPU requirements, language tags (including an explicit “No Chinese” where applicable) and features. Only the dictation model stays resident; Studio, text-to-speech and translation models release after three idle minutes and reload when needed. Idle memory fell from about 9 GB to under 2 GB. AI Proofread and notes use your existing provider/model selected on the AI Proofread sidebar page; no AI model is bundled or downloaded for them.</p>
       </div>
 
       <p class="sec-p rv" data-i18n="md.runtime">The v1.7.0 download measured about 592 MiB installed and 224 MB zipped (214 MiB), down from 961 MiB and a 330 MB zip in v1.6.4. Translation and IndexTTS share an optional 90 MB PyTorch component, downloaded by the app when needed into <code>~/.thundertalk/runtime/</code>. Restart once if prompted. Dictation, Studio transcription, VoxCPM2 and Kokoro do not need it. Model weights below are extra.</p>
+
+      <p class="sec-p rv" data-i18n="md.cli">Command line: <code>ThunderTalk --cli transcribe|speak|voices|status</code> runs without a window, even while the app is open. Progress and results are JSON lines. Transcribe exports TXT/SRT/VTT/JSON; Speak exports M4A/WAV/MP3. The MCP server and apps such as Wemute can call it.</p>
 
       <div class="mt rv">
         <div class="mt-head"><span data-i18n="md.c1">Model</span><span data-i18n="md.c2">Runs on</span><span data-i18n="md.c3">Download size</span><span data-i18n="md.c4">Languages</span><span data-i18n="md.c5">Good for</span></div>
 
         <div class="mt-group" data-i18n="md.g1">Speech recognition</div>
+        <div class="mt-row"><span class="c-name">Apple · Built in</span><span class="c-run">CPU / Neural Engine</span><span class="c-size" data-i18n="md.none">No download</span><span class="c-lang" data-i18n="md.lapple">Dictation languages installed on your Mac</span><span class="c-note" data-i18n="md.napple">On-device only. Quick start or fallback for clear speech; Qwen3-ASR stays recommended.</span></div>
         <div class="mt-row"><span class="c-name">SenseVoice-Small</span><span class="c-run">CPU · ONNX</span><span class="c-size">241 MB</span><span class="c-lang" data-i18n="md.l5">5 languages</span><span class="c-note" data-i18n="md.n1">Smallest and quickest to start. No hotwords.</span></div>
-        <div class="mt-row"><span class="c-name">Qwen3-ASR 0.6B <span class="tag neutral">int8</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">940 MB</span><span class="c-lang" data-i18n="md.l52">52 languages</span><span class="c-note" data-i18n="md.n2">Runs on every Mac. Supports hotwords.</span></div>
-        <div class="mt-row"><span class="c-name">Qwen3-ASR 0.6B <span class="tag green" data-i18n="md.def">Default</span></span><span class="c-run">GPU · MLX</span><span class="c-size">~1.9 GB</span><span class="c-lang" data-i18n="md.l52b">52 languages</span><span class="c-note" data-i18n="md.n3">The default on Apple Silicon. Supports hotwords.</span></div>
+        <div class="mt-row"><span class="c-name">Qwen3-ASR 0.6B <span class="tag neutral">int8</span> <span class="tag green" data-i18n="md.def">Recommended</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">940 MB</span><span class="c-lang" data-i18n="md.l52">52 languages</span><span class="c-note" data-i18n="md.n2">Recommended on every Mac. Supports hotwords.</span></div>
+        <div class="mt-row"><span class="c-name">Qwen3-ASR 0.6B</span><span class="c-run">GPU · MLX</span><span class="c-size">~1.9 GB</span><span class="c-lang" data-i18n="md.l52b">52 languages</span><span class="c-note" data-i18n="md.n3">Apple GPU option. Supports hotwords.</span></div>
         <div class="mt-row"><span class="c-name">Qwen3-ASR 1.7B</span><span class="c-run">GPU · MLX</span><span class="c-size">~4.7 GB</span><span class="c-lang" data-i18n="md.l52c">52 languages</span><span class="c-note" data-i18n="md.n4">Harder accents and noisy audio. Wants 16 GB of RAM.</span></div>
         <div class="mt-row"><span class="c-name">MOSS-Transcribe-Diarize 0.9B <span class="tag blue">Studio</span></span><span class="c-run">GPU · MLX</span><span class="c-size">~1.8 GB</span><span class="c-lang" data-i18n="md.l50">50+ languages</span><span class="c-note" data-i18n="md.n5">Speaker labels and timestamps. Powers the multi-speaker mode.</span></div>
         <div class="mt-row"><span class="c-name">Parakeet-TDT 0.6B v3</span><span class="c-run">CPU · ONNX</span><span class="c-size">640 MB</span><span class="c-lang" data-i18n="md.l25">25 European languages · No Chinese</span><span class="c-note" data-i18n="md.n6">Punctuation and casing built in.</span></div>
@@ -1051,6 +1055,7 @@
         <div class="mt-row"><span class="c-name">Fun-ASR-Nano-2512 0.8B <span class="tag neutral" data-i18n="md.exp">Experimental</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">842 MB</span><span class="c-lang" data-i18n="md.lfun">Chinese, English, Japanese</span><span class="c-note" data-i18n="md.nfun">Supports hotwords. In our tests, roughly 25% faster on short sentences than Qwen3-ASR-0.6B, with similar accuracy and lower memory. About 20 s per pass; longer dictations are split at pauses. Can invent text on pure noise.</span></div>
 
         <div class="mt-group" data-i18n="md.g2">Studio</div>
+        <div class="mt-row"><span class="c-name" data-i18n="md.system">Apple system voices</span><span class="c-run">CPU · AVSpeechSynthesizer</span><span class="c-size" data-i18n="md.none">No download</span><span class="c-lang" data-i18n="md.lkok">Chinese, English</span><span class="c-note" data-i18n="md.nsystem">Installed voices, including Siri, tagged System in Speak. About 37× real time in our tests. No cloning.</span></div>
         <div class="mt-row"><span class="c-name">VoxCPM2 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">3.2 GB</span><span class="c-lang" data-i18n="md.ltts">Chinese, English and more</span><span class="c-note" data-i18n="md.n8">Studio-quality 48 kHz speech and voice cloning, about real time. Apache-2.0.</span></div>
         <div class="mt-row"><span class="c-name">IndexTTS-2.5 <span class="tag neutral">8-bit</span> <span class="tag blue">Speak</span></span><span class="c-run">GPU · MLX</span><span class="c-size">1.7 + 2.3 GB</span><span class="c-lang" data-i18n="md.lidx">5 languages</span><span class="c-note" data-i18n="md.n8b">Very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic, about real time. 1.7 GB model plus a 2.3 GB encoder. bilibili Model Use License.</span></div>
         <div class="mt-row"><span class="c-name">Kokoro v1.1 82M <span class="tag blue">Speak</span></span><span class="c-run">CPU · ONNX</span><span class="c-size">364 MB</span><span class="c-lang" data-i18n="md.lkok">Chinese, English</span><span class="c-note" data-i18n="md.n8c">Small and fast, about 4× real time. 23 built-in voices (20 Chinese, 3 English). Apache-2.0.</span></div>
@@ -1078,7 +1083,7 @@
           </tbody>
         </table>
       </div>
-      <p class="cmp-note rv" data-i18n="cp.note">ThunderTalk also transcribes meetings with speaker labels, reads text aloud with three local speech engines and clones your own voice, all on your Mac. We have not checked whether the others offer these, so they are not in the table. Where ThunderTalk falls short: it needs an Apple Silicon Mac with macOS 15, and it is not yet notarised by Apple.</p>
+      <p class="cmp-note rv" data-i18n="cp.note">ThunderTalk also transcribes meetings with speaker labels, reads text aloud with four local speech engines and clones your own voice, all on your Mac. We have not checked whether the others offer these, so they are not in the table. ThunderTalk needs an Apple Silicon Mac with macOS 15 or later. It is signed with an Apple Developer ID and notarised by Apple.</p>
     </section>
 
     <section class="sec wrap" id="faq" aria-labelledby="fq-h">
@@ -1150,7 +1155,7 @@
       "hero.lede": "ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就出现在光标处。识别全部在你自己的电脑上完成：无需账号，无需订阅，没有云端。",
       "hero.cta1": "下载 macOS 版", "hero.cta2": "查看源码",
       "hero.fine": "免费，MIT 协议。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
-      "hero.newtag": "v1.9.0 新增", "hero.newtxt": "实验性 Fun-ASR-Nano、更清晰的模型页、长听写不再丢失、静音不再阻止听写",
+      "hero.newtag": "v1.10.0 新增", "hero.newtxt": "Apple 识别与系统音色，无需下载。命令行支持 MCP 和 Wemute。",
       "scene.cap": "主页界面的交互式复刻，数据为示例。点击按键即可试一次听写。",
       "app.home": "主页", "app.models": "模型", "app.hotwords": "热词", "app.settings": "设置", "app.studio": "工作室", "app.about": "关于",
       "app.todictate": "开始听写", "app.words": "已听写字数", "app.speak": "发声时长", "app.saved": "预计节省时间", "app.sessions": "次数",
@@ -1181,8 +1186,8 @@
       "tc.notes": "AI 会议纪要按文稿的中文或英文生成摘要、要点、决定、行动项与待解决问题。复用侧边栏“AI 校对”页面选择的服务与模型，校对开关可保持关闭，不会下载 AI 模型。可复制或保存 Markdown、将纪要纳入文稿的 Markdown 导出，或勾选队列中每项完成后生成纪要。请对照文稿核对纪要；生成失败会保留文稿。",
       "tc.aria": "转写功能交互预览", "tc.file": "点击更换文件", "tc.sample": "示例", "tc.fast": "单人", "tc.multi": "多人对话",
       "tc.export": "导出", "tc.view": "转写稿", "tc.time": "时间戳", "tc.plain": "纯文本", "tc.hint": "点击说话人名字即可改名，导出内容会随之更新。",
-      "sp.k": "朗读", "sp.h": "三个引擎，或者你自己的声音。",
-      "sp.p": "三个本地引擎：VoxCPM2 提供 48 kHz 录音棚音质，IndexTTS-2.5 克隆还原度高，Kokoro 小巧快速。第一次选中某个引擎的音色时，它才需要下载，且只下载一次。可调语速、拖动进度试听，并保存为 WAV 或 M4A。",
+      "sp.k": "朗读", "sp.h": "系统音色，或者你自己的声音。",
+      "sp.p": "四个本地引擎：Mac 已安装的中英文音色（包括 Siri 音色）显示 System 标签，无需下载，测试中生成速度约为实时的 37 倍，不支持声音克隆。VoxCPM2 提供 48 kHz 录音棚音质，IndexTTS-2.5 克隆还原度高，Kokoro 小巧快速；这三个引擎在首次选择其音色时下载，且只下载一次。可调语速、拖动进度试听，并保存为 WAV 或 M4A。",
       "sp.aria": "朗读功能交互预览，本页不会发出声音。", "sp.builtin": "内置音色", "sp.speed": "语速", "sp.mine": "我的声音", "sp.designed": "VoxCPM2 和 IndexTTS 的内置音色根据文字描述设计生成，不是真人录音。", "sp.with": "克隆引擎", "sp.save": "保存…", "sp.gen": "生成语音", "sp.lang": "语言：自动识别", "sp.wav": "无损", "sp.m4a": "体积小",
       "sp.demo": "仅为界面预览：不会播放声音，也不会写入文件。",
       "cl.k": "我的声音", "cl.h": "用 5 到 15 秒录音克隆你的声音。",
@@ -1203,15 +1208,18 @@
       "pv.d.net": "互联网", "pv.d.mac": "在你的 Mac 上", "pv.d.line": "音频留在你的 Mac 上",
       "pv.d.a": "你的声音", "pv.d.a2": "麦克风", "pv.d.b": "语音模型", "pv.d.b2": "在你的芯片上运行", "pv.d.c": "光标处的文字", "pv.d.c2": "任意应用",
       "pv.d.cap": "音频进，文字出。没有网络这一跳。",
+      "md.none": "无需下载", "md.lapple": "Mac 已安装的听写语言", "md.napple": "仅在本机运行。适合清晰语音的快速上手或备用选择；仍推荐 Qwen3-ASR。",
+      "md.system": "Apple 系统音色", "md.nsystem": "已安装的音色（包括 Siri）在朗读中显示 System 标签。测试中约为实时的 37 倍。不支持克隆。",
+      "md.cli": "命令行：<code>ThunderTalk --cli transcribe|speak|voices|status</code> 无需打开窗口，应用运行时也可调用。进度与结果以 JSON 行输出。转写导出 TXT/SRT/VTT/JSON，朗读导出 M4A/WAV/MP3。MCP 服务和 Wemute 等应用可通过它调用 ThunderTalk。",
       "md.kicker": "模型", "md.h2": "选一个适合你 Mac 的引擎。",
-      "md.p": "所有语音模型都在本机运行。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。v1.9.0 的模型页显示参数量、下载大小、使用 CPU 还是需要 Apple GPU、语言标签（不支持中文时明确标注“不支持中文”）及功能。只有听写模型常驻；工作室、语音合成和翻译模型闲置三分钟后释放，需要时重新加载。闲置内存从约 9 GB 降到 2 GB 以下。AI 校对与纪要使用侧边栏“AI 校对”页面选择的已有服务和模型，不为它们内置或下载 AI 模型。",
+      "md.p": "所有语音模型都在本机运行。所有 Mac 仍推荐 Qwen3-ASR-0.6B ONNX。Apple · Built in 无需下载：测试中比 Qwen3-ASR ONNX 快约 3 倍，适合清晰的近距离语音，但在嘈杂、远距离、快速、歌唱音频和中英混说上表现较弱。首次启用时，macOS 会请求一次语音识别权限。应用会读取你的硬件并标出适合的模型，下载时显示真实进度。模型页显示参数量、下载大小、使用 CPU 还是需要 Apple GPU、语言标签（不支持中文时明确标注“不支持中文”）及功能。只有听写模型常驻；工作室、语音合成和翻译模型闲置三分钟后释放，需要时重新加载。闲置内存从约 9 GB 降到 2 GB 以下。AI 校对与纪要使用侧边栏“AI 校对”页面选择的已有服务和模型，不为它们内置或下载 AI 模型。",
       "md.runtime": "v1.7.0 下载版实测安装后约 592 MiB，zip 约 224 MB（214 MiB）；v1.6.4 分别为 961 MiB 和 330 MB。翻译与 IndexTTS 共用可选的 90 MB PyTorch 组件，由应用按需下载到 <code>~/.thundertalk/runtime/</code>，出现提示后重启一次。听写、工作室转写、VoxCPM2 和 Kokoro 无需它。下列模型权重另计。",
       "md.c1": "模型", "md.c2": "运行于", "md.c3": "下载大小", "md.c4": "语言", "md.c5": "适合",
       "md.g1": "语音识别", "md.g2": "工作室", "md.g3": "翻译",
       "md.l5": "5 种语言", "md.l52": "52 种语言", "md.l52b": "52 种语言", "md.l52c": "52 种语言", "md.l50": "50 多种语言", "md.l25": "25 种欧洲语言 · 不支持中文", "md.len": "英语 · 不支持中文", "md.l100": "100 多种语言",
-      "md.ltts": "中文、英文等", "md.lidx": "5 种语言", "md.lkok": "中文、英文", "md.def": "默认",
+      "md.ltts": "中文、英文等", "md.lidx": "5 种语言", "md.lkok": "中文、英文", "md.def": "推荐",
       "md.exp": "实验性", "md.lfun": "中文、英文、日文", "md.nfun": "支持热词。我们测试中短句比 Qwen3-ASR-0.6B 快约 25%，准确率相当且更省内存。单次约处理 20 秒，长听写会在停顿处分段识别。在纯噪音上可能凭空输出文字。",
-      "md.n1": "最小、启动最快。不支持热词。", "md.n2": "所有 Mac 都能跑，支持热词。", "md.n3": "Apple Silicon 上的默认选择，支持热词。",
+      "md.n1": "最小、启动最快。不支持热词。", "md.n2": "所有 Mac 的推荐选择，支持热词。", "md.n3": "Apple GPU 版本，支持热词。",
       "md.n4": "更难的口音和嘈杂音频，建议 16 GB 内存。", "md.n5": "说话人标签和时间戳，驱动多说话人模式。",
       "md.n6": "自带标点和大小写。", "md.n7": "只用 CPU 的快速英语听写（M3 Max 上约为实时的 50 倍）。",
       "md.n8": "48 kHz 录音棚音质与声音克隆，约为实时速度。Apache-2.0。", "md.n8b": "克隆还原度很高，支持中、英、日、西、阿语，约为实时速度。模型 1.7 GB，另需 2.3 GB 编码器。bilibili 模型使用许可。", "md.n8c": "小巧快速，约为实时的 4 倍。23 种内置音色（20 种中文、3 种英文）。Apache-2.0。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
@@ -1220,7 +1228,7 @@
       "cp.r2": "开源", "cp.tt2": "是，MIT", "cp.no": "否", "cp.no2": "否", "cp.v2": "是，GPL-3.0",
       "cp.r3": "语音在哪里处理", "cp.tt3": "你的 Mac 上", "cp.w3": "云端（<a href=\"https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq\" rel=\"noopener\">见其安全 FAQ</a>）", "cp.s3": "本机或云端，可自选", "cp.v3": "你的 Mac 上",
       "cp.r4": "平台", "cp.tt4": "macOS 15 及以上（Apple Silicon）", "cp.w4": "Mac、Windows、iOS、Android", "cp.s4": "Mac、Windows、iOS、Android", "cp.v4": "macOS 15 及以上",
-      "cp.note": "ThunderTalk 还能转写会议并区分说话人、用三个本地语音引擎朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 的不足：需要 Apple Silicon 且 macOS 15 的 Mac，也还没有经过 Apple 公证。",
+      "cp.note": "ThunderTalk 还能转写会议并区分说话人、用四个本地语音引擎朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 需要 Apple Silicon 且 macOS 15 或更新版本的 Mac，使用 Apple 开发者 ID 签名并经过 Apple 公证。",
       "faq.kicker": "常见问题", "faq.h2": "直接回答。", "faq.p": "这里没讲到的问题？在 GitHub 上提一个 issue，就会有回复。",
       "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "不收费。ThunderTalk 以 MIT 协议开源，可以免费使用。无需账号，无订阅，无使用次数限制，源码就在 GitHub 上。",
       "faq.2q": "能离线使用吗？", "faq.2a": "可以。下载模型及所需组件后，语音识别、翻译、文件转写和文字转语音可离线使用。工作室链接需要联网。可选的 AI 校对与会议纪要取决于所选服务：Ollama 和 LM Studio 使用本机服务；云端服务需要联网并接收文字。",
@@ -1242,7 +1250,7 @@
     };
     var DESC = {
       en: $('meta[name="description"]').getAttribute("content"),
-      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用，语音识别在你的 Mac 上运行。v1.9.0 新增实验性 Fun-ASR-Nano：支持中、英、日语的 0.8B CPU 模型；模型信息更清晰，长听写不再丢失，背景音频静音不会阻止听写。"
+      zh: "ThunderTalk 是一款免费开源的 macOS 语音输入应用，语音识别在你的 Mac 上运行。v1.10.0 新增无需下载的 Apple 本机识别和系统音色，以及输出 JSON、可供 MCP 和 Wemute 等应用调用的命令行。"
     };
 
     var i18nNodes = $$("[data-i18n]");

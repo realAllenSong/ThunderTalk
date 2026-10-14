@@ -11,6 +11,19 @@ import pytest
 os.environ.setdefault("QT_QPA_PLATFORM", "offscreen")
 
 
+@pytest.fixture(scope="session", autouse=True)
+def _never_touch_real_settings(tmp_path_factory):
+    """Background work (e.g. the Proofread page's CLI detection) can finish
+    after a test's isolated_home is undone and would then save its settings
+    over the user's real ~/.thundertalk/settings.json."""
+    from thundertalk.core import i18n, settings as settings_mod
+    path = tmp_path_factory.mktemp("settings-home") / "settings.json"
+    with pytest.MonkeyPatch.context() as mp:
+        mp.setattr(settings_mod, "_PATH", path)
+        mp.setattr(i18n, "_SETTINGS_PATH", path)
+        yield
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from PySide6.QtWidgets import QApplication

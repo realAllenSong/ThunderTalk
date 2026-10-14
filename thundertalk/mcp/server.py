@@ -17,7 +17,6 @@ import json
 import os
 import urllib.request
 from pathlib import Path
-from typing import Optional
 
 try:
     from mcp.server.fastmcp import FastMCP
@@ -154,6 +153,79 @@ def get_tts_voices() -> list[str]:
             return data.get("voices", [])
     except Exception:
         return ["ryan", "serena", "vivian", "aiden", "eric", "dylan", "sohee", "uncle_fu", "ono_anna"]
+
+
+# ── Local CLI tools (no server needed) ────────────────────────────────────────
+
+def _cli(*args: str, timeout: float = 3600) -> dict:
+    """Run `ThunderTalk --cli …` and return its final JSON result line.
+    THUNDERTALK_BIN may point at the packaged binary
+    (…/ThunderTalk.app/Contents/MacOS/ThunderTalk); otherwise this Python is used."""
+    import subprocess
+    import sys
+
+    exe = os.environ.get("THUNDERTALK_BIN")
+    cmd = [exe] if exe else [sys.executable, "-m", "thundertalk"]
+    proc = subprocess.run([*cmd, "--cli", *args], capture_output=True, text=True,
+                          timeout=timeout, check=False)
+    result: dict = {}
+    for line in proc.stdout.splitlines():
+        try:
+            msg = json.loads(line)
+        except ValueError:
+            continue
+        if msg.get("type") == "result":
+            result = msg
+    if not result:
+        raise RuntimeError(f"ThunderTalk CLI exited {proc.returncode}: {proc.stderr.strip()[-500:]}")
+    if not result.get("ok"):
+        raise RuntimeError(f"{result.get('code', 'failed')}: {result.get('error', '')}")
+    return result
+
+
+@mcp.tool()
+def transcribe_file(file_path: str, output_path: str, engine: str = "auto",
+                    language: str = "auto") -> dict:
+    """Transcribe an audio/video file locally to txt, srt, vtt or json (chosen by
+    output_path's extension). Subtitle cues are at most ~7 s and two lines.
+
+    Args:
+        file_path: Audio or video file.
+        output_path: Where to write the transcript (.txt / .srt / .vtt / .json).
+        engine: "auto" (the dictation model, else Apple), "apple", or a model id.
+        language: "auto", "zh", "en", …
+
+    Returns:
+        The CLI result: output, format, engine, duration, seconds, entries.
+    """
+    return _cli("transcribe", str(Path(file_path).expanduser()), "--out",
+                str(Path(output_path).expanduser()), "--engine", engine, "--language", language)
+
+
+@mcp.tool()
+def speak_text(text: str, output_path: str, engine: str = "auto", voice: str = "",
+               speed: float = 1.0) -> dict:
+    """Synthesize speech locally with ThunderTalk's Speak engines (including the
+    built-in Apple system voices) to .m4a, .wav or .mp3.
+
+    Args:
+        text: Text to read (Chinese, English or mixed).
+        output_path: Output audio file (.m4a / .wav / .mp3).
+        engine: "auto", "apple", "kokoro", "voxcpm2" or "indextts".
+        voice: A voice id from list_local_voices (empty = engine default).
+        speed: 0.5 – 2.0.
+    """
+    args = ["speak", "--text", text, "--out", str(Path(output_path).expanduser()),
+            "--engine", engine, "--speed", str(speed)]
+    if voice:
+        args += ["--voice", voice]
+    return _cli(*args)
+
+
+@mcp.tool()
+def list_local_voices(engine: str = "auto") -> list[dict]:
+    """List the voices ThunderTalk's local Speak engines can use right now."""
+    return _cli("voices", "--engine", engine, timeout=120).get("voices", [])
 
 
 if __name__ == "__main__":

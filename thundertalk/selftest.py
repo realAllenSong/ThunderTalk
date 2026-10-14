@@ -206,6 +206,39 @@ def check_translate() -> bool:
         eng.unload()
 
 
+def check_apple() -> bool:
+    """Built-in Apple engines: a system voice speaks zh and en, Apple recognition reads it back."""
+    from thundertalk.core import apple_speech, audio_io, speech, tts_verify
+    from thundertalk.core.tts_backends.apple import best_voice
+    apple_speech.PROMPT = False
+    status = apple_speech.authorization_status()
+    ok_all = True
+    for lang, text in (("chinese", "今天下午三点开会，请大家准时到会议室。"),
+                       ("english", "The meeting starts at three this afternoon, please be on time.")):
+        voice = best_voice(lang)
+        if voice is None:
+            ok_all &= _say(False, f"apple:{lang}", error="no system voice")
+            continue
+        t0 = time.monotonic()
+        r = speech.get_engine().synthesize(text, voice, language=lang, seed=7)
+        tts_s = time.monotonic() - t0
+        heard, err, asr_s = "", None, None
+        if apple_speech.on_device_locales():
+            t0 = time.monotonic()
+            got = apple_speech.AppleRecognizer().recognize(
+                audio_io.resample(r.audio, r.sample_rate, 16000), 16000,
+                [apple_speech.resolve_locale("zh" if lang == "chinese" else "en")])
+            asr_s = time.monotonic() - t0
+            heard = got.text
+            err = tts_verify.error_rate(text, heard, lang)
+        ok = r.duration > 1.0 and (err is None or err < 0.3)
+        ok_all &= _say(ok, f"apple:{lang}", voice=voice, permission=status,
+                       can_ask=apple_speech.can_request_permission(), seconds_audio=round(r.duration, 2),
+                       tts_seconds=round(tts_s, 2), asr_seconds=None if asr_s is None else round(asr_s, 2),
+                       heard=heard, read_back_error=None if err is None else round(err, 3))
+    return ok_all
+
+
 def check_runtime() -> bool:
     from thundertalk.core import runtime
     runtime.install(lambda pct, msg: _say(True, "runtime-progress", percent=pct, message=msg), component="music")
@@ -242,6 +275,16 @@ def check_music(model: str = "turbo", project: str = "", dit: str = "mlx") -> bo
     project_root = Path(project) if project else music.project_root()
     if not (project_root / "checkpoints" / m.folder).is_dir():
         return _say(False, "music", error=f"Model not downloaded: {m.folder}")
+    catalog_downloaded = planner_downloaded = None
+    if not project:
+        catalog_downloaded = not music.missing(m, False)
+        planner_downloaded = not music.missing(m, True)
+        if not catalog_downloaded:
+            return _say(False, "music", error="Music catalog download receipts are missing")
+        if m.convert_bf16:
+            from thundertalk.core.music_checkpoint import converted
+            if not converted(project_root / "checkpoints" / m.folder):
+                return _say(False, "music", error="XL is not marked as converted to bf16")
     process = MusicProcess()
     events = []
     start = time.monotonic()
@@ -265,13 +308,15 @@ def check_music(model: str = "turbo", project: str = "", dit: str = "mlx") -> bo
               and 9 <= duration <= 11 and np.isfinite(x).all() and rms > 0.003 and 0 < audio_peak <= 1)
         return _say(bool(ok), "music", model=model, dit_backend=dit, wall_s=round(wall, 2), load_s=round(phase, 2),
                     generation_s=round(wall - phase, 2), peak_footprint_bytes=peak.peak,
+                    project_root=str(project_root), catalog_downloaded=catalog_downloaded,
+                    planner_downloaded=planner_downloaded,
                     duration=duration, sample_rate=sr, channels=x.shape[1], rms=rms,
                     audio_peak=audio_peak, child_exited=process.pid is None)
 
 
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "music", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "apple", "music", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
     ap.add_argument("--model", default="", help="ASR model id, or turbo | xl for music")
@@ -287,6 +332,8 @@ def run(argv: list[str]) -> int:
             ok &= check_tts(a.engine)
         if a.what == "asr":
             ok &= check_asr(a.file, a.model, a.model_dir)
+        if a.what == "apple":
+            ok &= check_apple()
         if a.what == "moss":
             ok &= check_moss(a.file)
         if a.what == "music":

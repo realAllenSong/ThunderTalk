@@ -65,12 +65,15 @@ def test_music_selftest_routes_model_and_isolated_root(monkeypatch, dit):
     assert seen == [('xl', '/isolated/music', dit)]
 
 
-def test_music_selftest_checks_audio_and_child_exit(monkeypatch, tmp_path, capsys):
+@pytest.mark.parametrize("explicit_root", [True, False])
+def test_music_selftest_checks_audio_and_child_exit(monkeypatch, tmp_path, capsys, explicit_root):
     import numpy as np
     import soundfile as sf
-    from thundertalk.core import music_process, runtime
+    from thundertalk.core import music, music_process, runtime
     (tmp_path / 'checkpoints/acestep-v15-turbo').mkdir(parents=True)
     monkeypatch.setattr(runtime, 'require', lambda component: None)
+    monkeypatch.setattr(music, 'project_root', lambda: tmp_path)
+    monkeypatch.setattr(music, 'missing', lambda model, planner: [])
 
     class Process:
         pid = None
@@ -86,8 +89,24 @@ def test_music_selftest_checks_audio_and_child_exit(monkeypatch, tmp_path, capsy
             return 'done'
 
     monkeypatch.setattr(music_process, 'MusicProcess', Process)
-    assert selftest.run(['music', '--model-dir', str(tmp_path)]) == 0
+    args = ['music', '--model-dir', str(tmp_path)] if explicit_root else ['music']
+    assert selftest.run(args) == 0
     out = capsys.readouterr().out
     assert '"child_exited": true' in out and 'SELFTEST PASS' in out
+    if not explicit_root:
+        assert '"catalog_downloaded": true' in out and '"planner_downloaded": true' in out
     Process.pid = 123
-    assert selftest.run(['music', '--model-dir', str(tmp_path)]) == 1
+    assert selftest.run(args) == 1
+
+
+@pytest.mark.parametrize("missing,converted", [(True, True), (False, False)])
+def test_default_music_selftest_requires_receipts_and_bf16(monkeypatch, tmp_path, capsys, missing, converted):
+    from thundertalk.core import music, music_checkpoint, runtime
+    (tmp_path / 'checkpoints' / music.XL.folder).mkdir(parents=True)
+    monkeypatch.setattr(runtime, 'require', lambda component: None)
+    monkeypatch.setattr(music, 'project_root', lambda: tmp_path)
+    monkeypatch.setattr(music, 'missing', lambda model, planner: [music.VAE] if missing else [])
+    monkeypatch.setattr(music_checkpoint, 'converted', lambda folder: converted)
+    assert selftest.run(['music', '--model', 'xl']) == 1
+    out = capsys.readouterr().out
+    assert ('receipts are missing' if missing else 'not marked as converted') in out

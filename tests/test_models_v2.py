@@ -16,7 +16,7 @@ from thundertalk.ui.model_facts import facts_text, language_tags
 def test_catalog_metadata():
     assert len({m.id for m in models.BUILTIN_MODELS}) == len(models.BUILTIN_MODELS)
     for m in models.BUILTIN_MODELS:
-        assert m.params
+        assert m.params or m.built_in                # Apple does not publish its model's size
         assert m.languages and len(m.languages) == len(set(m.languages))
         if m.languages_complete:
             assert m.language_count == len(m.languages)
@@ -35,7 +35,7 @@ def test_catalog_metadata():
         == "234M"
     )
     for b in speech.backends():
-        assert b.info.params and b.info.language_codes
+        assert (b.info.params or b.info.id == "apple") and b.info.language_codes
 
 
 @pytest.mark.parametrize("lang", ["en", "zh"])
@@ -200,7 +200,7 @@ def test_retired_speak_setting_falls_back(qapp, isolated_home, voice):
     assert tab._engine_id == speech.DEFAULT_CLONE_BACKEND
     assert tab._voice_id in tab._chips
     assert tab._needed_backend().info.id == speech.DEFAULT_CLONE_BACKEND
-    assert {bid for bid in speech.BACKEND_ORDER} == {"voxcpm2", "indextts", "kokoro"}
+    assert {bid for bid in speech.BACKEND_ORDER} == {"voxcpm2", "indextts", "kokoro", "apple"}
     tab.shutdown()
     tab.close()
 

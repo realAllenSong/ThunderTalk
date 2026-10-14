@@ -51,6 +51,11 @@ hidden_imports += collect_submodules("yt_dlp")
 hidden_imports += ["certifi"]
 hidden_imports += collect_submodules("pypinyin")
 
+# Apple Speech (recognition) and AVSpeechSynthesizer / NSSpeechSynthesizer
+# (system voices) through PyObjC; imported lazily, so name them.
+for _fw in ("Speech", "AVFoundation", "CoreMedia", "CoreAudio", "Foundation", "AppKit", "objc"):
+    hidden_imports += collect_submodules(_fw)
+
 
 # Optional wheels import stdlib modules PyInstaller can no longer discover
 # through torch. Bundle available stdlib modules and source for introspection.
@@ -62,9 +67,12 @@ _skip_stdlib = {"tkinter", "_tkinter", "turtle", "turtledemo", "idlelib", "test"
 for _name in sorted(_sys.stdlib_module_names - _skip_stdlib):
     if importlib.util.find_spec(_name) is not None:
         hidden_imports += collect_submodules(_name)
-custom_datas = [('assets', 'assets'), ('thundertalk/core/runtime_manifest.json', 'thundertalk/core'),
-                ('thundertalk/core/runtime_music_manifest.json', 'thundertalk/core'),
-                ('third_party/acestep', 'third_party/acestep')]
+# Hidden entries (a stray .venv, .DS_Store) must not ship: a nested app bundle breaks signing.
+custom_datas = [(str(_p), "assets" if _p.is_file() else f"assets/{_p.name}")
+                for _p in sorted(Path("assets").iterdir()) if not _p.name.startswith(".")]
+custom_datas += [('thundertalk/core/runtime_manifest.json', 'thundertalk/core'),
+                 ('thundertalk/core/runtime_music_manifest.json', 'thundertalk/core'),
+                 ('third_party/acestep', 'third_party/acestep')]
 for _file in _stdlib.rglob("*.py"):
     _rel = _file.relative_to(_stdlib)
     if not any(p in _skip_stdlib for p in _rel.parts):
@@ -155,6 +163,13 @@ app = BUNDLE(
     info_plist={
         'NSMicrophoneUsageDescription': 'ThunderTalk needs microphone access for voice-to-text transcription.',
         'NSAppleEventsUsageDescription': 'ThunderTalk needs accessibility access to paste transcribed text.',
+        # Asked once when the Apple (built-in) recognizer is first activated.
+        'NSSpeechRecognitionUsageDescription': 'ThunderTalk uses Apple speech recognition on this Mac, '
+                                               'when you choose the built-in Apple model, to turn your speech into text. '
+                                               'Audio is recognized on device and never leaves the Mac.',
+        # Other apps (Wemute) read this before running `--cli`, so an older
+        # ThunderTalk is never launched with arguments it would not understand.
+        'ThunderTalkCLIVersion': 1,
         'CFBundleShortVersionString': _APP_VERSION,
         'CFBundleVersion': _APP_VERSION,
         # Bundled libraries set the real floor: Qt needs macOS 13, onnxruntime 14,
