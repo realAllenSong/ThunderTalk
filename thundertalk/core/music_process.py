@@ -21,7 +21,7 @@ from thundertalk.core.memory_policy import managed
 from thundertalk.core.priority import DICTATION, EXTRA_MODEL
 
 ADMIT_FREE_PERCENT = 40
-ADMIT_LEFT_FRACTION = 0.20
+ADMIT_LEFT_FRACTION = 0.17  # abort line (15 %) plus a small margin, so a started take is not aborted
 WARN_FREE_PERCENT = 25
 ABORT_FREE_PERCENT = 15
 STALL_S = 180.0
