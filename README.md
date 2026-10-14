@@ -32,6 +32,11 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.11.1
+
+- **English numbers fixed:** "twelve point four billion" now becomes "12.4 billion" instead of "twelve point 4000000000". Decimals are read ("3.14", "version 2.0"), and whole millions, billions and trillions keep their word ("4 billion", "2 million").
+- **HTTP server fixed:** `python -m thundertalk.api.server --model <model id>` loads models again (it called a method that no longer existed), and the `language` field is applied.
+
 ## New in v1.11.0
 
 - **Studio ▸ Compose:** create original songs with vocals and background music, or instrumentals, on your Mac with ACE-Step 1.5 (MIT). Turbo is the fast default; optional XL gives clearer lyrics in our read-back tests and needs at least 32 GB RAM and plenty of free memory.

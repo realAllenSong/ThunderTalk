@@ -32,6 +32,11 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
+## v1.11.1 新功能
+
+- **修复英文数字：**"twelve point four billion" 现在转成 "12.4 billion"，而不是 "twelve point 4000000000"。能识别小数（"3.14"、"version 2.0"），整百万、十亿、万亿会保留单位词（"4 billion"、"2 million"）。
+- **修复 HTTP 服务：**`python -m thundertalk.api.server --model <模型 ID>` 可以重新加载模型（之前调用了已删除的方法），`language` 字段也会生效。
+
 ## v1.11.0 新功能
 
 - **工作室 ▸ 作曲（Compose）：**使用 ACE-Step 1.5（MIT）在 Mac 上创作带人声和伴奏的原创歌曲，也可生成纯音乐。turbo 是快速的默认模型；可选 XL 在回读测试中歌词更清晰，需要至少 32 GB 内存及充足的空闲内存。
