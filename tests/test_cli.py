@@ -160,3 +160,35 @@ def test_errors_are_json_with_exit_1(args, code):
     rc, msgs, _ = _cli(*args)
     assert rc == 1
     assert msgs[-1]["ok"] is False and msgs[-1]["code"] == code and msgs[-1]["error"]
+
+
+# ── --engine best, --speakers, md (for files and for language models) ─────
+
+def test_best_engine_picks_most_accurate_downloaded(monkeypatch):
+    from thundertalk import cli
+    from thundertalk.core import models
+    have = {"qwen3-asr-06b-int8", "qwen3-asr-17b-mlx", "apple-speech"}
+    monkeypatch.setattr(models, "is_downloaded", lambda mid: mid in have)
+    assert cli.resolve_asr("best", {"active_model_id": "qwen3-asr-06b-int8"}) == "qwen3-asr-17b-mlx"
+    assert cli.resolve_asr("auto", {"active_model_id": "qwen3-asr-06b-int8"}) == "qwen3-asr-06b-int8"
+    have.discard("qwen3-asr-17b-mlx")
+    assert cli.resolve_asr("best", {"active_model_id": ""}) == "qwen3-asr-06b-int8"
+
+
+def test_mixed_text_detection():
+    from thundertalk.cli import _mixed
+    assert _mixed("本季度 Apple 的 iPhone 销量超出预期")
+    assert not _mixed("本季度营收同比增长百分之十八")
+    assert not _mixed("Revenue grew eighteen percent this quarter")
+
+
+def test_transcribe_markdown_with_best_engine(tmp_path):
+    if not ZH_CLIP.is_file():
+        pytest.skip("test clip not downloaded")
+    out = tmp_path / "t.md"
+    code, msgs, _ = _cli("transcribe", str(ZH_CLIP), "--engine", "best", "--out", str(out))
+    if code and msgs[-1].get("code") == "no_model":
+        pytest.skip("no ASR model downloaded")
+    assert code == 0, msgs[-1]
+    text = out.read_text(encoding="utf-8")
+    assert text.startswith("# ") and "`0:00`" in text

@@ -169,7 +169,8 @@ app = BUNDLE(
                                                'Audio is recognized on device and never leaves the Mac.',
         # Other apps (Wemute) read this before running `--cli`, so an older
         # ThunderTalk is never launched with arguments it would not understand.
-        'ThunderTalkCLIVersion': 1,
+        # 2: transcribe --engine best / --speakers / md, speak --engine best.
+        'ThunderTalkCLIVersion': 2,
         'CFBundleShortVersionString': _APP_VERSION,
         'CFBundleVersion': _APP_VERSION,
         # Bundled libraries set the real floor: Qt needs macOS 13, onnxruntime 14,

@@ -31,8 +31,18 @@ import time
 from pathlib import Path
 from typing import Optional
 
-FORMATS = ("txt", "srt", "vtt", "json")
-TTS_ENGINES = ("auto", "apple", "kokoro", "voxcpm2", "indextts")
+FORMATS = ("txt", "md", "srt", "vtt", "json")
+TTS_ENGINES = ("auto", "best", "apple", "kokoro", "voxcpm2", "indextts")
+# `--engine best` for files, most accurate first. Dictation (`auto`) favours
+# latency; a recording or a call favours accuracy. Measured in docs/plans.
+ASR_QUALITY = (
+    "qwen3-asr-17b-mlx", "qwen3-asr-06b-mlx", "qwen3-asr-06b-int8", "funasr-nano-int8",
+    "sensevoice-small-int8", "parakeet-tdt-06b-v3-int8", "parakeet-tdt-06b-v2-int8",
+)
+DIARIZE_MODEL = "moss-transcribe-diarize-mlx"
+# Read-back error 0–3.4 % for IndexTTS and VoxCPM2 on zh/en/mixed; Kokoro is
+# as good on one language but 8–16 % on mixed text (2026-09-30-tts-engines.md).
+TTS_QUALITY = ("indextts", "voxcpm2", "kokoro")
 _LANG = {"zh": "chinese", "en": "english", "ja": "japanese", "ko": "korean"}
 
 
@@ -80,7 +90,10 @@ def _parser() -> argparse.ArgumentParser:
     tr.add_argument("input")
     tr.add_argument("--out", required=True)
     tr.add_argument("--format", choices=FORMATS, default=None, help="default: from --out's extension, else txt")
-    tr.add_argument("--engine", default="auto", help="auto | apple | a model id from the Models page")
+    tr.add_argument("--engine", default="auto",
+                    help="auto (dictation model) | best (most accurate downloaded) | apple | a model id")
+    tr.add_argument("--speakers", action="store_true",
+                    help="label who speaks (MOSS-Transcribe-Diarize, for calls and meetings)")
     tr.add_argument("--language", default="auto", help="auto | zh | en | ja | …")
     sp = sub.add_parser("speak", help="text → m4a / wav / mp3")
     src = sp.add_mutually_exclusive_group(required=True)
@@ -121,6 +134,11 @@ def resolve_asr(engine: str, settings) -> str:
     ids = {m.id for m in _asr_models()}
     if engine == "apple":
         engine = APPLE_SPEECH_ID
+    if engine == "best":
+        for model_id in ASR_QUALITY:
+            if model_id in ids and is_downloaded(model_id):
+                return model_id
+        engine = "auto"
     if engine != "auto":
         if engine not in ids:
             raise CliError("bad_args", f"Unknown engine '{engine}'. Use auto, apple or one of: {', '.join(sorted(ids))}")
@@ -163,6 +181,9 @@ def export_transcript(tr, fmt: str) -> tuple[str, int]:
     from thundertalk.core import transcribe as T
     if fmt == "txt":
         return tr.to_text() + "\n", len(tr.segments)
+    if fmt == "md":
+        # For language models: timestamps, and speakers when labelled.
+        return tr.to_markdown(), len(tr.segments)
     cues = T.timed_cues(tr)
     if fmt == "srt":
         return T.cues_to_srt(cues), len(cues)
@@ -192,7 +213,14 @@ def cmd_transcribe(a, out: _Out) -> dict:
     dest = Path(a.out).expanduser().resolve()
     fmt = a.format or (dest.suffix.lower().lstrip(".") if dest.suffix.lower().lstrip(".") in FORMATS else "txt")
     settings = _settings()
-    model_id = resolve_asr(a.engine, settings)
+    speakers = bool(getattr(a, "speakers", False))
+    if speakers:
+        from thundertalk.core.models import is_downloaded
+        if not is_downloaded(DIARIZE_MODEL):
+            raise CliError("no_model", "Speaker labels need MOSS-Transcribe-Diarize; download it on the Models page.")
+        model_id = DIARIZE_MODEL
+    else:
+        model_id = resolve_asr(a.engine, settings)
     info = next(m for m in BUILTIN_MODELS if m.id == model_id)
     out.stage("load_model")
     out.emit(type="stage", label="engine", engine=model_id)
@@ -214,7 +242,7 @@ def cmd_transcribe(a, out: _Out) -> dict:
             if pct >= 0:
                 out.progress(pct / 100 * 0.98)
 
-        tr = transcribe.transcribe_file(str(src), engine, progress=progress,
+        tr = transcribe.transcribe_file(str(src), engine, speakers=speakers, progress=progress,
                                         model_id="" if engine is not None else model_id)
         tr.model_id = model_id
     except apple_speech.AppleSpeechError as exc:
@@ -245,7 +273,34 @@ def _text(a) -> str:
     return p.read_text(encoding="utf-8")
 
 
-def resolve_voice(engine: str, voice: str, language: str, settings) -> str:
+def _mixed(text: str) -> bool:
+    """Chinese with English words in it (or the reverse)."""
+    import re
+    han = len(re.findall(r"[\u4e00-\u9fff]", text))
+    latin = len(re.findall(r"[A-Za-z]{2,}", text))
+    return han >= 4 and latin >= 2
+
+
+def _best_voice(language: str, mixed: bool, settings) -> str | None:
+    """The best ready engine's voice for ``language``; the Speak page's voice
+    first when it belongs to that engine and speaks the language."""
+    from thundertalk.core import speech
+    saved = settings.get("studio_voice") or ""
+    for bid in TTS_QUALITY:
+        if bid == "kokoro" and mixed:
+            continue
+        b = speech.backend(bid)
+        if not b.is_ready():
+            continue
+        voices = [v for v in b.voices() if v.language in (language, "multi")]
+        if not voices:
+            continue
+        chosen = next((v for v in voices if v.id == saved), voices[0])
+        return chosen.id
+    return None
+
+
+def resolve_voice(engine: str, voice: str, language: str, settings, mixed: bool = False) -> str:
     """A voice id for ``speak``. ``auto`` uses the Speak page's voice when its
     engine is downloaded and it speaks the text's language, else the best
     system voice for that language."""
@@ -263,6 +318,11 @@ def resolve_voice(engine: str, voice: str, language: str, settings) -> str:
         if not speech.backend(bid).is_ready():
             raise CliError("tts_missing", f"{bid} is not downloaded. Download it on ThunderTalk's Speak page.")
         return voice
+    if engine == "best":
+        best = _best_voice(language, mixed, settings)
+        if best is not None:
+            return best
+        engine = "apple"
     if engine == "auto":
         saved = settings.get("studio_voice") or ""
         try:
@@ -300,7 +360,7 @@ def cmd_speak(a, out: _Out) -> dict:
     if dest.suffix.lower() == ".mp3" and not audio_io.find_ffmpeg():
         raise CliError("ffmpeg_missing", "MP3 needs ffmpeg (brew install ffmpeg); use .m4a or .wav instead.")
     lang = _LANG.get(a.language) or tts.detect_language(text)
-    voice = resolve_voice(a.engine, a.voice, lang, _settings())
+    voice = resolve_voice(a.engine, a.voice, lang, _settings(), mixed=_mixed(text))
     out.emit(type="stage", label="engine", engine=speech.backend_id_for(voice), voice=voice)
     out.stage("load_model")
     eng = speech.get_engine()
@@ -339,7 +399,7 @@ def _voice_row(b, v) -> dict:
 
 def cmd_voices(a, out: _Out) -> dict:
     from thundertalk.core import speech
-    bs = speech.backends() if a.engine == "auto" else [speech.backend(a.engine)]
+    bs = speech.backends() if a.engine in ("auto", "best") else [speech.backend(a.engine)]
     return {"voices": [_voice_row(b, v) for b in bs for v in b.voices()]}
 
 
