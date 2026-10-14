@@ -786,7 +786,9 @@ class ComposeTab(QWidget):
     def _repaint_fits(self, model, backend):
         total = self._memory_gb * 1024
         need = music.ram_need_mb(model, False, dit_backend=backend, repaint=True)
-        return need <= total * (1 - ADMIT_LEFT_FRACTION)
+        # macOS and resident apps always hold some RAM: at most ~85 % is ever
+        # free, so a take is only offered if admission could actually pass.
+        return need <= total * (0.85 - ADMIT_LEFT_FRACTION)
 
     def _repaint_ready(self, row) -> bool:
         wav = Path(row.path)
