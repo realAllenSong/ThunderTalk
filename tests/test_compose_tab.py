@@ -108,12 +108,12 @@ def test_request_follows_the_form(make, isolated_home):
     assert w.started
     assert r.duration == 95 and r.bpm == 92 and r.seeds == [1000, 1001, 1002]
     assert r.lyrics.startswith("[verse]") and not r.instrumental and r.vocal_language == "en"
-    assert r.model_folder == music.XL.folder and r.steps == 50       # 36 GB Mac → XL recommended
+    assert r.model_folder == music.TURBO.folder and r.steps == music.TURBO.steps  # turbo is the default
     assert r.dit_backend == "mlx"
     assert r.job_dir.startswith(str(isolated_home / "Music" / "ThunderTalk"))
     assert r.project_root == str(isolated_home / ".thundertalk" / "models" / "ace-step")
-    assert w.ram_need_mb == music.ram_need_mb(music.XL, r.planner)
-    assert r.estimate_s == pytest.approx(music.estimate_take_s(music.XL, 95, r.planner))
+    assert w.ram_need_mb == music.ram_need_mb(music.TURBO, r.planner)
+    assert r.estimate_s == pytest.approx(music.estimate_take_s(music.TURBO, 95, r.planner))
 
 
 def test_background_music_sends_no_lyrics(make):
