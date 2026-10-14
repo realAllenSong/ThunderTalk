@@ -85,7 +85,7 @@ TURBO = _model(
     "acestep-v15-turbo", steps=8, ram_mb=14100, min_memory_gb=MIN_MEMORY_GB, rate=0.21, speed="music_turbo",
     mps_ram_mb=11900, mps_repaint_ram_mb=13200)
 
-MUSIC_MODELS: tuple[MusicModel, ...] = (XL, TURBO)
+MUSIC_MODELS: tuple[MusicModel, ...] = (TURBO, XL)
 
 
 def model(model_id: str) -> MusicModel:
@@ -128,7 +128,9 @@ def tier(memory_gb: float) -> Optional[Tier]:
     if gb < XL_MEMORY_GB:
         return Tier(models=(TURBO.info.id,), disabled=(XL.info.id,), recommended=TURBO.info.id, planner=True,
                     takes=2, max_seconds=MAX_SECONDS)
-    return Tier(models=(XL.info.id, TURBO.info.id), disabled=(), recommended=XL.info.id, planner=True,
+    # Turbo is the default everywhere: the user preferred its sound by ear, it
+    # is ~5x faster and needs far less free memory. XL stays as an option.
+    return Tier(models=(TURBO.info.id, XL.info.id), disabled=(), recommended=TURBO.info.id, planner=True,
                 takes=2, max_seconds=MAX_SECONDS)
 
 

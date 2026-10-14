@@ -40,8 +40,8 @@ def test_shared_checkpoint_folder_tracks_each_download(isolated_home, monkeypatc
     (16, ("acestep-turbo",), "acestep-turbo", False, 1, 240, "mps"),
     (18, ("acestep-turbo",), "acestep-turbo", False, 1, 240, "mps"),
     (24, ("acestep-turbo",), "acestep-turbo", True, 2, 600, "mlx"),
-    (36, ("acestep-xl", "acestep-turbo"), "acestep-xl", True, 2, 600, "mlx"),
-    (128, ("acestep-xl", "acestep-turbo"), "acestep-xl", True, 2, 600, "mlx"),
+    (36, ("acestep-turbo", "acestep-xl"), "acestep-turbo", True, 2, 600, "mlx"),
+    (128, ("acestep-turbo", "acestep-xl"), "acestep-turbo", True, 2, 600, "mlx"),
 ])
 def test_tiers(gb, offered, rec, planner, takes, max_s, backend):
     t = music.tier(gb)

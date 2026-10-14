@@ -144,8 +144,18 @@ def test_small_mac_tier(make):
     assert not tab._repaint_fits(music.TURBO, "mps")
 
 
+def _pick(tab, model_id):
+    tab._model_pick.set_current(model_id)
+    tab._on_model(model_id)
+
+
+def test_turbo_is_the_default_model(make):
+    assert make(memory_gb=64)._model_id == music.TURBO.info.id
+
+
 def test_xl_caps_the_default_length_and_turbo_allows_ten_minutes(make):
     tab = make(memory_gb=64)
+    _pick(tab, music.XL.info.id)
     assert tab._length.bounds()[1] == music.XL_DEFAULT_MAX_SECONDS
     tab._model_pick.set_current(music.TURBO.info.id)
     tab._on_model(music.TURBO.info.id)
@@ -388,6 +398,7 @@ def test_repaint_uses_saved_source_and_keeps_original(make, tmp_path, monkeypatc
 
 def test_xl_extended_length_requires_explicit_choice(make):
     tab = make()
+    _pick(tab, music.XL.info.id)
     tab._long.setChecked(True)
     assert tab._length.bounds()[1] == 600
     tab._length.set_value(570)

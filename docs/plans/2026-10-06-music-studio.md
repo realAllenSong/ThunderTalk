@@ -691,3 +691,5 @@ Full write-up and raw numbers: `docs/verification/2026-10-music-phase0.md`. Turb
   about 92.7% native free at launch); repaint cannot fit that tier and offers
   New take instead. This is a recorded capability limit, not a claim of testing
   on an actual 16 GiB Mac. Add packaged MPS selftest to close the backend path.
+
+**Update 2026-10-14 (user, after listening):** "turbo sample很不错，xl也还行" → turbo is the default and recommended model on every tier; XL stays as an optional higher-intelligibility choice (lyric read-back 23/24 vs 16/24) that needs ~71 % free memory to start.
