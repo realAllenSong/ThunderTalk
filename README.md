@@ -165,13 +165,15 @@ The app binary has a headless mode that never opens a window and can run while t
 TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # or: uv run python run.py
 "$TT" --cli transcribe talk.m4a --out talk.srt                   # also .vtt / .json / .txt; video files work
 "$TT" --cli transcribe talk.m4a --out talk.srt --engine apple    # or a model id from the Models page
+"$TT" --cli transcribe call.m4a --out call.md --speakers         # who said what, as Markdown
+"$TT" --cli transcribe talk.m4a --out talk.txt --engine best     # most accurate downloaded model
 "$TT" --cli speak --text "明天下午三点开会。" --out hi.m4a --engine apple   # .m4a / .wav / .mp3
 "$TT" --cli voices --engine apple
 "$TT" --cli status
 ```
 
 - **stdout** carries JSON lines only: `{"type": "stage", …}`, `{"type": "progress", "value": 0.42}`, then one `{"type": "result", "ok": true, …}`. Logs go to stderr. The exit code is 0 on success and 1 on error, and errors carry a stable `code` (`not_found`, `no_model`, `no_speech`, `permission_denied`, `bad_args`, …).
-- **`--engine auto`** (the default) transcribes with your dictation model and falls back to Apple if it isn't downloaded. For `speak`, `auto` uses the voice chosen on the Speak page if its engine is downloaded and it speaks the text's language, and otherwise the best system voice.
+- **`--engine auto`** (the default) transcribes with your dictation model and falls back to Apple if it isn't downloaded. **`--engine best`** uses the most accurate downloaded model instead (Qwen3-ASR 1.7B first), which suits recordings and calls better than the dictation model. **`--speakers`** labels who is speaking (MOSS-Transcribe-Diarize). For `speak`, `auto` uses the voice chosen on the Speak page if its engine is downloaded and it speaks the text's language, and otherwise the best system voice. `best` picks IndexTTS, then VoxCPM2, then Kokoro (skipped for mixed Chinese–English text), then Apple.
 - **Subtitles** are cut into cues of at most 7 seconds and two lines, in order and never overlapping. JSON also includes word times when the engine provides them (Apple does).
 - The CLI never asks for permissions. If Apple recognition hasn't been allowed yet, it still works from the packaged app on macOS 15. If access was denied, it returns `permission_denied`.
 - The MCP server (`python -m thundertalk.mcp.server`) exposes the same commands as `transcribe_file`, `speak_text` and `list_local_voices`. Set `THUNDERTALK_BIN` to the packaged binary to use it.
