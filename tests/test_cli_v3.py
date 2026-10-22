@@ -248,3 +248,84 @@ def test_models_catalog_download_activate(run, monkeypatch):
     assert cli._settings().active_model_id == mid
     rc, events = run("models", "download", "bogus")
     assert rc == 1 and events[-1]["code"] == "bad_args"
+
+
+@pytest.fixture
+def fake_music(monkeypatch):
+    from thundertalk.core import music, music_process
+    monkeypatch.setattr(music_process, "total_memory_mb", lambda: 36 * 1024)
+    monkeypatch.setattr(music, "missing", lambda *a: [])
+    monkeypatch.setattr(music, "supported", lambda *a: True)
+    requests = []
+    def run(self, request, event, cancel, **kw):
+        requests.append(request)
+        event(("phase", "plan", 0))
+        event(("tokens", 16, 32))
+        event(("phase", "compose", 0))
+        event(("step", 1, 8))
+        for i, seed in enumerate(request.seeds):
+            wav = Path(request.job_dir) / f"take-{i + 1}.wav"
+            wav.touch()
+            meta = dict(seed=seed, instrumental=request.instrumental, model=request.model_folder,
+                        duration=request.duration, caption=request.caption, lyrics=request.lyrics,
+                        shown_lyrics=request.shown_lyrics, vocal_language=request.vocal_language)
+            wav.with_suffix(".json").write_text(__import__("json").dumps(meta))
+            event(("take", i, str(wav), meta))
+        return "done"
+    monkeypatch.setattr(music_process.MusicProcess, "run", run)
+    return requests
+
+
+def test_compose_instrumental_progress_and_takes(run, fake_music, tmp_path):
+    rc, events = run("compose", "--instrumental", "--style", "jazz", "--length", "10", "--takes", "2",
+                     "--seed", "42", "--model", "turbo", "--planner", "off", "--out-dir", str(tmp_path / "takes"))
+    assert rc == 0, events
+    assert fake_music[0].seeds == [42, 43] and not fake_music[0].planner
+    assert any(e.get("label") == "planning" and e.get("done") == 16 for e in events)
+    assert any(e.get("label") == "diffusion" and e.get("total") == 8 for e in events)
+    takes = [e for e in events if e["type"] == "result" and "take" in e]
+    assert len(takes) == 2 and all(e["lyric_check"]["status"] == "instrumental" for e in takes)
+
+
+def test_compose_song_sung_overrides_and_warning(run, fake_music, monkeypatch, tmp_path):
+    from thundertalk import cli_music
+    monkeypatch.setattr(cli_music, "check_lyrics", lambda *a: dict(status="checked", clear=1, total=1))
+    lyrics = tmp_path / "lyrics.txt"
+    lyrics.write_text("[Verse]\nThunderTalk")
+    overrides = tmp_path / "sung.json"
+    overrides.write_text('{"ThunderTalk":"thunder talk"}')
+    rc, events = run("compose", "--style", "in the style of Adele", "--lyrics-file", str(lyrics),
+                     "--sung-lyrics", str(overrides), "--language", "en", "--length", "10")
+    assert rc == 0, events
+    req = fake_music[0]
+    assert "[Verse]" in req.lyrics and "thunder talk" in req.lyrics
+    assert req.artist_warnings and events[-1]["warning"]
+    assert events[-1]["takes"][0]["lyric_check"]["clear"] == 1
+
+
+@pytest.mark.parametrize("code", ["model_busy", "music:memory:38", "music:memory_low:14", "music:stalled",
+                                  "worker_stopped", "music:load_failed", "music:failed"])
+def test_compose_errors(run, fake_music, monkeypatch, code):
+    from thundertalk.core import music_process
+    def fail(*a, **kw):
+        raise music_process.MusicError(code, "detail")
+    monkeypatch.setattr(music_process.MusicProcess, "run", fail)
+    rc, events = run("compose", "--instrumental", "--style", "jazz", "--length", "10")
+    assert rc == 1 and events[-1]["code"] == code.split(":")[0] + (":" + code.split(":")[1] if code.startswith("music:") else ""), events
+
+
+def test_compose_validation_and_missing_model(run, fake_music, monkeypatch):
+    from thundertalk.core import music
+    for args in (["--length", "9"], ["--takes", "0"], ["--bpm", "1"], ["--language", "bogus"]):
+        rc, events = run("compose", "--instrumental", "--style", "jazz", *args)
+        assert rc == 1 and events[-1]["code"] == "bad_args", events
+    monkeypatch.setattr(music, "missing", lambda *a: ["weights"])
+    rc, events = run("compose", "--instrumental", "--style", "jazz")
+    assert rc == 1 and events[-1]["code"] == "no_model"
+
+
+def test_status_v3_capabilities(run):
+    rc, events = run("status")
+    assert rc == 0
+    assert events[-1]["cli_version"] == 3
+    assert {"notes", "compose", "burn", "translate", "history", "models"} <= set(events[-1]["capabilities"])

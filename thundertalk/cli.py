@@ -111,6 +111,8 @@ def _parser() -> argparse.ArgumentParser:
     from thundertalk import cli_library, cli_studio
     cli_library.add_parsers(sub, vo)
     cli_studio.add_parsers(sub)
+    from thundertalk.cli_music import add_parser
+    add_parser(sub)
     sub.add_parser("status", help="engines, downloaded models and permissions as JSON")
     return ap
 
@@ -438,7 +440,8 @@ def cmd_status(_a, out: _Out) -> dict:
     except Exception:                                          # noqa: BLE001
         mic = "unknown"
     return {
-        "version": thundertalk.__version__,
+        "version": thundertalk.__version__, "cli_version": 3,
+        "capabilities": ["transcribe", "batch", "notes", "burn", "translate", "speak", "voices", "compose", "history", "models"],
         "asr": {"downloaded": downloaded, "dictation_model": settings.get("active_model_id") or "",
                 "auto": resolve_asr("auto", settings) if downloaded else "",
                 "models": [{"id": m.id, "name": f"{m.name} {m.variant}", "downloaded": m.id in downloaded}
@@ -467,6 +470,8 @@ def error_result(exc):
         code = "decode"
     elif hasattr(exc, "code"):
         code = exc.code
+        if code.startswith(("music:memory:", "music:memory_low:")):
+            return dict(ok=False, code=code.rsplit(":", 1)[0], error=str(exc), free_percent=code.rsplit(":", 1)[1])
     elif isinstance(exc, FileNotFoundError):
         code = "not_found"
     elif isinstance(exc, PermissionError):
@@ -492,12 +497,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     apple_speech.PROMPT = False
     try:
         a = _parser().parse_args(argv)
-        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models"):
+        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose"):
             raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
         handler = COMMANDS.get(a.command)
         if handler is None:
-            from thundertalk import cli_library, cli_studio
-            handler = getattr(cli_studio if a.command in ("notes", "burn", "translate") else cli_library, "cmd_" + a.command)
+            from thundertalk import cli_library, cli_music, cli_studio
+            module = cli_music if a.command == "compose" else cli_studio if a.command in ("notes", "burn", "translate") else cli_library
+            handler = getattr(module, "cmd_" + a.command)
         result = handler(a, out)
         result.setdefault("ok", True)
         out.emit(type="result", **result)
