@@ -32,6 +32,11 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
+## v1.12.0 新功能
+
+- **Studio 的全部功能都能用命令行（CLI v3）：**`transcribe` 可以直接转写网页链接和多个文件；新增 `notes`（AI 会议纪要）、`burn`（把字幕烧进视频）、`translate`、`compose`（歌曲和背景音乐、歌词校对、重唱一句）、`voices add|list|remove`（你克隆的声音）、`history` 和 `models list|download|activate`。每个命令都输出 JSON 行和稳定的错误代码，MCP 服务也同样提供。见[命令行](#命令行)。
+- **哔哩哔哩链接恢复可用：**哔哩哔哩改版后 yt-dlp 无法读取（"Unable to extract initial state"）。ThunderTalk 现在通过哔哩哔哩播放器自己的接口获取音频，支持稍后再看与列表链接、`?p=` 分集和 b23.tv 短链接；需要登录或充电专属的视频会直接说明。
+
 ## v1.11.1 新功能
 
 - **修复英文数字：**"twelve point four billion" 现在转成 "12.4 billion"，而不是 "twelve point 4000000000"。能识别小数（"3.14"、"version 2.0"），整百万、十亿、万亿会保留单位词（"4 billion"、"2 million"）。

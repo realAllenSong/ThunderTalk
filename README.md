@@ -32,6 +32,11 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.12.0
+
+- **Everything in Studio from the command line (CLI v3):** `transcribe` takes web links as well as files, and several at once; plus `notes` (AI meeting notes), `burn` (subtitles into a video), `translate`, `compose` (songs and background music, lyric checks, repaint), `voices add|list|remove` (your cloned voices), `history` and `models list|download|activate`. Every command prints JSON lines and stable error codes, and the MCP server exposes them too. See [Command line](#command-line).
+- **Bilibili links work again:** Bilibili changed its site and yt-dlp could no longer read it ("Unable to extract initial state"). ThunderTalk now fetches Bilibili audio through the site's own player API, including watch-later and list links, `?p=` parts and b23.tv short links. Videos that need a login or are members-only say so.
+
 ## New in v1.11.1
 
 - **English numbers fixed:** "twelve point four billion" now becomes "12.4 billion" instead of "twelve point 4000000000". Decimals are read ("3.14", "version 2.0"), and whole millions, billions and trillions keep their word ("4 billion", "2 million").
