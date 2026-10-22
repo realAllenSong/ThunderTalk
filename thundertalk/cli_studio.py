@@ -68,7 +68,7 @@ def cmd_notes(a, out):
     # Check configuration before doing an expensive transcription.
     provider, model = notes_provider(a)
     out.stage("read_transcript")
-    if Path(a.input).suffix.lower() in (".txt", ".json", ".md"):
+    if Path(a.input).suffix.lower() in (".txt", ".json", ".md", ".srt", ".vtt"):
         tr = load_transcript(a.input)
     else:
         with source(a.input, out, a) as (path, title, url, _duration):

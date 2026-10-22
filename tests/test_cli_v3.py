@@ -27,7 +27,8 @@ class Events:
 @pytest.fixture
 def run(monkeypatch, tmp_path):
     monkeypatch.setenv("HOME", str(tmp_path))
-    from thundertalk.core import settings
+    from thundertalk.core import settings, asr
+    monkeypatch.setattr(asr.AsrEngine, "load_model", lambda *a, **kw: pytest.fail("Unexpected real model load"))
     monkeypatch.setattr(settings, "_PATH", tmp_path / ".thundertalk/settings.json")
     def invoke(*args):
         out = Events()
@@ -329,3 +330,178 @@ def test_status_v3_capabilities(run):
     assert rc == 0
     assert events[-1]["cli_version"] == 3
     assert {"notes", "compose", "burn", "translate", "history", "models"} <= set(events[-1]["capabilities"])
+
+
+def test_download_cleanup_after_decode_error_and_interrupt(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk.core import audio_io
+    for exc in (audio_io.AudioDecodeError("bad audio"), KeyboardInterrupt()):
+        work = tmp_path / "download"
+        work.mkdir()
+        path = work / "a.wav"
+        path.touch()
+        monkeypatch.setattr(links, "fetch_audio", lambda *a, **kw: links.Fetched(str(path), "title", 2, "url", str(work)))
+        def fail(*a, **kw):
+            raise exc
+        monkeypatch.setattr(transcribe, "transcribe_file", fail)
+        rc, events = run("transcribe", "https://example.com/video", "--out", str(tmp_path / "out.txt"))
+        assert rc == 1 and events[-1]["code"] in ("decode", "cancelled")
+        assert not work.exists()
+
+
+@pytest.mark.parametrize("name,content", [("x.json", "{}"), ("x.json", "[]"),
+                                         ("x.srt", "not subtitles"), ("x.txt", "")])
+def test_bad_transcript(run, monkeypatch, tmp_path, name, content):
+    from thundertalk import cli_studio
+    monkeypatch.setattr(cli_studio, "notes_provider", lambda *a: (SimpleNamespace(id="fake"), "model"))
+    path = tmp_path / name
+    path.write_text(content)
+    rc, events = run("notes", str(path), "--out", str(tmp_path / "notes.md"))
+    assert rc == 1 and events[-1]["code"] == "bad_transcript", events
+
+
+@pytest.mark.parametrize("code", ["empty", "too_long", "invalid", "failed", "no_provider"])
+def test_notes_failures(run, monkeypatch, tmp_path, code):
+    from thundertalk import cli_studio
+    from thundertalk.core import meeting_notes
+    monkeypatch.setattr(cli_studio, "notes_provider", lambda *a: (SimpleNamespace(id="fake"), "model"))
+    def fail(*a, **kw):
+        raise meeting_notes.NotesError(code)
+    monkeypatch.setattr(meeting_notes, "generate", fail)
+    path = tmp_path / "a.txt"
+    path.write_text("hello")
+    rc, events = run("notes", str(path), "--out", str(tmp_path / "notes.md"))
+    assert rc == 1 and events[-1]["code"] == code
+
+
+@pytest.mark.parametrize("code,expected", [("no_ffmpeg", "ffmpeg_missing"), ("no_video", "burn_no_video"), ("failed", "burn_failed")])
+def test_burn_failures_preserve_existing_output(run, monkeypatch, tmp_path, code, expected):
+    from thundertalk.core import audio_io, burn
+    monkeypatch.setattr(audio_io, "find_ffmpeg", lambda: "/ffmpeg")
+    def fail(*a, **kw):
+        raise burn.BurnError(code, "detail")
+    monkeypatch.setattr(burn, "burn", fail)
+    video, subs, dest = tmp_path / "v.mp4", tmp_path / "s.srt", tmp_path / "dest.mp4"
+    video.touch()
+    subs.write_text("1\n00:00:00,000 --> 00:00:01,000\nHello\n")
+    dest.write_bytes(b"keep me")
+    rc, events = run("burn", str(video), "--subtitles", str(subs), "--soft", "--out", str(dest))
+    assert rc == 1 and events[-1]["code"] == expected
+    assert dest.read_bytes() == b"keep me"
+
+
+@pytest.mark.parametrize("args", [[], ["--text", ""], ["--text", "hi", "--source-language", "bad"],
+                                  ["--text", "hi", "--source-language", "eng", "x.wav"]])
+def test_translation_bad_args(run, args, tmp_path):
+    rc, events = run("translate", *args, "--target", "cmn", "--out", str(tmp_path / "out.txt"))
+    assert rc == 1 and events[-1]["code"] == "bad_args"
+
+
+@pytest.mark.parametrize("action,args", [("add", []), ("add", ["missing.wav", "--name", "demo"]),
+                                          ("rename", ["bad", "--name", "x"]), ("edit", ["bad"]), ("remove", ["../bad"])])
+def test_voice_invalid_inputs(run, action, args):
+    rc, events = run("voices", action, *args)
+    assert rc == 1 and events[-1]["code"] in ("bad_args", "not_found")
+
+
+def test_voice_bad_reference(run, monkeypatch, tmp_path):
+    import numpy as np
+    from thundertalk.core import audio_io
+    monkeypatch.setattr(audio_io, "decode_audio", lambda *a: np.zeros(24000))
+    media = tmp_path / "silent.wav"
+    media.touch()
+    rc, events = run("voices", "add", str(media), "--name", "silent")
+    assert rc == 1 and events[-1]["code"] == "bad_reference"
+
+
+def test_compose_take_management_and_repaint(run, fake_music, tmp_path):
+    rc, events = run("compose", "--instrumental", "--style", "jazz", "--length", "10")
+    assert rc == 0
+    take = events[-1]["takes"][0]["output"]
+    wav = Path(take)
+    meta = __import__("json").loads(wav.with_suffix(".json").read_text())
+    meta["repaint_source_latents_file"] = wav.with_suffix(".latents.npy").name
+    meta["seed"] = 1
+    wav.with_suffix(".json").write_text(__import__("json").dumps(meta))
+    wav.with_suffix(".latents.npy").touch()
+    for action in ("show", "check", "export", "repaint"):
+        options = (["--out", str(tmp_path / "export.wav")] if action == "export" else
+                   ["--start", "1", "--end", "3"] if action == "repaint" else [])
+        rc, events = run("compose", action, take, *options)
+        assert rc == 0, events
+    assert fake_music[-1].task_type == "repaint"
+    assert fake_music[-1].src_audio == take
+    rc, events = run("compose", "list")
+    assert rc == 0 and take in events[-1]["takes"]
+    rc, events = run("compose", "delete", take)
+    assert rc == 0 and not wav.exists() and not wav.with_suffix(".json").exists()
+
+
+def test_compose_preserves_take_on_later_failure(run, fake_music, monkeypatch):
+    from thundertalk.core import music_process
+    original = music_process.MusicProcess.run
+    def fail(self, *a, **kw):
+        original(self, *a, **kw)
+        raise music_process.MusicError("music:failed", "later take failed")
+    monkeypatch.setattr(music_process.MusicProcess, "run", fail)
+    rc, events = run("compose", "--instrumental", "--style", "jazz", "--length", "10")
+    assert rc == 1 and events[-1]["code"] == "music:failed"
+    assert len(events[-1]["takes"]) == 1
+    assert Path(events[-1]["takes"][0]["output"]).is_file()
+
+
+def test_transcribe_batch_notes_and_multi_export(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk import cli_studio
+    from thundertalk.core import meeting_notes
+    monkeypatch.setattr(cli_studio, "notes_provider", lambda *a: (SimpleNamespace(id="fake"), "model"))
+    monkeypatch.setattr(meeting_notes, "generate", lambda *a, **kw: "## Summary\nMeeting summary")
+    media = tmp_path / "a.wav"
+    media.touch()
+    rc, events = run("transcribe", str(media), "--out-dir", str(tmp_path / "out"),
+                     "--formats", "md", "srt", "json", "--notes")
+    assert rc == 0, events
+    outputs = events[-1]["items"][0]["outputs"]
+    assert len(outputs) == 3
+    assert "Meeting summary" in Path(outputs[0]).read_text()
+    data = __import__("json").loads(Path(outputs[2]).read_text())
+    assert data["title"] == "a" and data["notes"].startswith("## Summary")
+
+
+def test_download_explicitly_enables_network_and_restores_environment(run, monkeypatch):
+    from thundertalk.core import models
+    monkeypatch.setenv("HF_HUB_OFFLINE", "1")
+    seen = []
+    def download(*a, **kw):
+        import os
+        from huggingface_hub import constants
+        seen.append((os.environ["HF_HUB_OFFLINE"], constants.HF_HUB_OFFLINE))
+    monkeypatch.setattr(models, "download_model", download)
+    rc, events = run("models", "download", "qwen3-asr-06b-int8")
+    assert rc == 0, events
+    assert seen == [("0", False)]
+    assert __import__("os").environ["HF_HUB_OFFLINE"] == "1"
+
+
+def test_notes_from_media_uses_url_context(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk import cli_studio
+    from thundertalk.core import meeting_notes
+    monkeypatch.setattr(cli_studio, "notes_provider", lambda *a: (SimpleNamespace(id="fake"), "model"))
+    monkeypatch.setattr(meeting_notes, "generate", lambda tr, *a, **kw: "## Summary\n" + tr.to_text())
+    media = tmp_path / "a.wav"
+    media.touch()
+    rc, events = run("notes", str(media), "--out", str(tmp_path / "notes.md"))
+    assert rc == 0 and events[-1]["title"] == "a", events
+
+
+def test_compose_sung_dictionary_and_another_take(run, fake_music):
+    rc, events = run("compose", "lyrics", "--lyrics", "[Verse]\nThunderTalk 很好", "--language", "zh",
+                     "--remember", "ThunderTalk=桑德托克")
+    assert rc == 0, events
+    assert "桑德托克" in events[-1]["sung_lyrics"]
+    rc, events = run("compose", "lyrics", "--forget", "ThunderTalk")
+    assert rc == 0 and "thundertalk" not in events[-1]["remembered"]
+    rc, events = run("compose", "--instrumental", "--style", "jazz", "--length", "10", "--seed", "12")
+    take = events[-1]["takes"][0]["output"]
+    rc, events = run("compose", "another", take)
+    assert rc == 0, events
+    assert fake_music[-1].task_type == "text2music" and fake_music[-1].caption == "jazz"
+    assert fake_music[-1].duration == 10 and fake_music[-1].instrumental

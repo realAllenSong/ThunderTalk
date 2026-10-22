@@ -182,25 +182,39 @@ Change the hotkey, press mode, microphone and language in **Settings**. Open **S
 
 ### Command line
 
-The app binary has a headless mode that never opens a window and can run while the app is open:
+**CLI v3** exposes Studio without opening a window, including URLs, mixed batches,
+meeting notes, hard/soft subtitles, speech/text translation, Compose, voice cloning,
+history and model setup. It can run while the app is open. From source, replace
+`"$TT"` with `PYTHONPATH=$PWD python -m thundertalk`. See the
+[complete command reference and Studio capability audit](docs/cli-v3.md).
 
 ```sh
-TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk      # or: uv run python run.py
-"$TT" --cli transcribe talk.m4a --out talk.srt                   # also .vtt / .json / .txt / .md; video files work
-"$TT" --cli transcribe talk.m4a --out talk.srt --engine apple    # or a model id from the Models page
-"$TT" --cli transcribe call.m4a --out call.md --speakers         # who said what, as Markdown
-"$TT" --cli transcribe talk.m4a --out talk.txt --engine best     # most accurate downloaded model
-"$TT" --cli speak --text "明天下午三点开会。" --out hi.m4a --engine apple   # .m4a / .wav / .mp3
-"$TT" --cli voices --engine apple
+TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
+"$TT" --cli transcribe 'https://www.bilibili.com/list/watchlater?oid=117449840266004&bvid=BV1X6JX6sEYJ' --out talk.md --engine best --max-seconds 120
+"$TT" --cli transcribe talk.m4a 'https://www.youtube.com/watch?v=jNQXAC9IVRw' --out-dir ./transcripts --formats md srt json --save-history
+"$TT" --cli notes talk.md --out notes.md
+"$TT" --cli burn video.mp4 --subtitles talk.srt --out subtitled.mp4 --soft
+"$TT" --cli translate --text 'Hello' --source-language eng --target cmn --out translated.txt
+"$TT" --cli compose --instrumental --style 'gentle piano, warm guitar' --length 10 --model turbo --planner off
+"$TT" --cli speak --text 'Hello 你好' --out hi.m4a --engine best
+"$TT" --cli voices add reference.wav --name Demo --transcript 'The words spoken in this clip.'
+"$TT" --cli voices list
+"$TT" --cli voices remove my:demo
+"$TT" --cli history list --query meeting
+"$TT" --cli history export TRANSCRIPT_ID --out meeting.md
+"$TT" --cli models list
+"$TT" --cli models download qwen3-asr-06b-int8
+"$TT" --cli models activate qwen3-asr-06b-int8
 "$TT" --cli status
 ```
 
-- **stdout** carries JSON lines only: `{"type": "stage", …}`, `{"type": "progress", "value": 0.42}`, then one `{"type": "result", "ok": true, …}`. Logs go to stderr. The exit code is 0 on success and 1 on error, and errors carry a stable `code` (`not_found`, `no_model`, `no_speech`, `permission_denied`, `bad_args`, …).
-- **`--engine auto`** (the default) transcribes with your dictation model and falls back to Apple if it isn't downloaded. **`--engine best`** uses the most accurate downloaded model instead (Qwen3-ASR 1.7B first), which suits recordings and calls better than the dictation model. **`--speakers`** labels who is speaking (MOSS-Transcribe-Diarize). For `speak`, `auto` uses the voice chosen on the Speak page if its engine is downloaded and it speaks the text's language, and otherwise the best system voice. `best` picks IndexTTS, then VoxCPM2, then Kokoro (skipped for mixed Chinese–English text), then Apple.
-- **Markdown** (`.md`) transcripts include timestamps and speaker labels when available.
-- **Subtitles** are cut into cues of at most 7 seconds and two lines, in order and never overlapping. JSON also includes word times when the engine provides them (Apple does).
-- The CLI never asks for permissions. If Apple recognition hasn't been allowed yet, it still works from the packaged app on macOS 15. If access was denied, it returns `permission_denied`.
-- The MCP server (`python -m thundertalk.mcp.server`) exposes the same commands as `transcribe_file`, `speak_text` and `list_local_voices`. Set `THUNDERTALK_BIN` to the packaged binary to use it.
+- **Protocol:** stdout is UTF-8 JSON lines: `stage`, `progress` (`value` 0…1, or `null` for unknown size), and `result` (`ok`, output fields or stable `code` + `error`). Logs go to stderr; exit 0 means success, exit 1 means failure. Batch events carry zero-based `item` and `input`; each item has a result and the final summary has `items`, `succeeded`, `failed`. Compose returns each `take` with `metadata` and `lyric_check`, then a summary with `takes`. Read until process exit; ignore unknown fields. `status` includes `cli_version: 3` and `capabilities`.
+- **Transcribe:** files and anything `links.fetch_audio` supports (YouTube, Bilibili video/watch-later/list/b23.tv). Downloads emit byte progress; results include title/source URL. Temporary media is removed on success/error/interruption. `--start`, `--end`, `--max-seconds` limit inference after downloading (require ffmpeg); timestamps are relative to the selected clip. `--engine auto` uses dictation then Apple; `best` chooses the most accurate downloaded ASR. `--speakers` uses MOSS; `--timestamps` adds TXT times; `--speaker-name S01=Name` renames speakers. Formats: txt/md/srt/vtt/json; `--notes` adds notes per input. History writes require `--save-history`.
+- **Notes/translation/burn:** notes use the ready AI Proofread provider/model or `--provider`/`--model`; input may be media/URL or txt/json/md. Translation uses local SeamlessM4T, with a file/URL or `--text`/`--text-file`. Burn transcribes first when `--subtitles` is omitted; default is burn-in, `--soft` adds a subtitle track; ffmpeg is required.
+- **Compose:** `--song --lyrics` or `--lyrics-file` with section tags; `--sung-lyrics` takes a JSON line-override map. Options include style, length, BPM, language, takes, seed, turbo/xl, planner on/off, and output root (default `~/Music/ThunderTalk`). Planning-token/diffusion-step events, advisory lyric checks, and nonblocking artist `warning` fields are returned. `compose lyrics/check/another/repaint/list/show/export/delete` expose the remaining processing actions. The app's hardware/memory guards apply; a v3 app's dictation has priority.
+- **Libraries:** `voices add/list/rename/edit/remove`; saved voices work with `speak --voice my:ID --engine voxcpm2` or `indextts`. `history list/show/export/rename/edit/delete`. `models list/download/activate` covers ASR/TTS/translation/music and optional runtimes; downloads alone enable networking for weights. Activation updates defaults for the app's next start.
+- **Errors:** common `bad_args`, `not_found`, `no_model`, `no_speech`, `decode`, `permission_denied`, `cancelled`, `tts_missing`, `ffmpeg_missing`, `no_provider`, `bad_transcript`, `bad_reference`, `transcript_required`, `model_busy`, `batch_failed`. Link codes remain `login` (membership/preview), `private`, `geo`, `unavailable`, `blocked`, `network`, `playlist`, `live`, `no_audio`, `missing`, `unsupported`, `other`. Compose uses `music:memory`, `music:memory_low`, `music:stalled`, `music:load_failed`, `music:failed`, `worker_stopped`. See the reference for the complete table.
+- **MCP:** local wrappers cover every command; `studio_command(command, arguments)` exposes every flag. Set `THUNDERTALK_BIN` for the packaged binary. Microphone recording, playback/preview, clipboard/dialog widgets and live queue editing remain GUI interactions; the [audit](docs/cli-v3.md#studio-capability-audit--工作室功能对照) gives their reasons and CLI data equivalents.
 
 ## Supported models
 

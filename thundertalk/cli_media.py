@@ -1,6 +1,8 @@
 """Media input lifetime, transcript import and batch transcription for CLI v3."""
 from __future__ import annotations
 
+import argparse
+import json
 import math
 import re
 import shutil
@@ -91,7 +93,7 @@ def load_transcript(value: str):
     try:
         text = path.read_text(encoding="utf-8-sig")
         if path.suffix.lower() == ".json":
-            data = __import__("json").loads(text)
+            data = json.loads(text)
             segments = [Segment(float(s["start"]), float(s["end"]), s["text"], s.get("speaker", ""), s.get("words", []))
                         for s in data["segments"]]
             tr = Transcript(segments, float(data["duration"]), data.get("engine", "import"),
@@ -143,6 +145,10 @@ def cmd_transcribe(a, out):
         raise CliError("bad_args", "Use --out for one input or --out-dir for a batch")
     if a.formats and not a.out_dir:
         raise CliError("bad_args", "--formats needs --out-dir")
+    notes = None
+    if a.notes:
+        from thundertalk.cli_studio import notes_provider
+        notes = notes_provider(a)
     results = []
     for i, value in enumerate(a.input):
         events = ItemOut(out, i, value) if a.out_dir else out
@@ -151,6 +157,7 @@ def cmd_transcribe(a, out):
                 dest = Path(a.out).expanduser().resolve() if a.out else None
                 fmt = a.format or (dest.suffix.lstrip(".").lower() if dest and dest.suffix.lstrip(".").lower() in FORMATS else "txt")
                 formats = a.formats or [fmt]
+                fmt = formats[0]
                 if dest and path.resolve() == dest:
                     raise CliError("bad_args", "Output must differ from input")
                 tr, result = _transcribe_path(a, events, path)
@@ -158,12 +165,20 @@ def cmd_transcribe(a, out):
                 tr.expected_duration = duration
                 if url and tr.is_partial and not (a.start or a.end is not None or a.max_seconds is not None):
                     raise CliError("login", "The site returned a preview; sign in for the complete media")
+                if notes:
+                    from thundertalk.core import meeting_notes
+                    from thundertalk.cli_studio import progress
+                    try:
+                        tr.notes = meeting_notes.generate(tr, *notes, progress=progress(events))
+                    except meeting_notes.NotesError as exc:
+                        raise CliError(str(exc), str(exc)) from exc
                 for speaker, name in a.speaker_name:
                     tr.rename_speaker(speaker, name)
                 if a.timestamps and fmt == "txt":
                     text = tr.to_text(timestamps=True) + "\n"
                 else:
                     text = export_transcript(tr, fmt)[0]
+                events.stage("write")
                 if a.out_dir:
                     folder = Path(a.out_dir).expanduser().resolve()
                     folder.mkdir(parents=True, exist_ok=True)
@@ -184,7 +199,7 @@ def cmd_transcribe(a, out):
                 if a.save_history:
                     from thundertalk.core.transcript_history import TranscriptHistory
                     result["history_id"] = TranscriptHistory().save(tr, value)
-                result.update(output=str(dest), outputs=paths, format=fmt, title=title, source_url=url,
+                result.update(output=str(dest), outputs=paths, format=fmt, formats=formats, title=title, source_url=url, source_duration=duration,
                               start=a.start, ok=True)
                 events.progress(1.0)
         except Exception as exc:
@@ -204,5 +219,5 @@ def cmd_transcribe(a, out):
 def speaker_pair(value):
     key, sep, name = value.partition("=")
     if not sep or not key.strip() or not name.strip():
-        raise __import__("argparse").ArgumentTypeError("Use SPEAKER=NAME")
+        raise argparse.ArgumentTypeError("Use SPEAKER=NAME")
     return key, name

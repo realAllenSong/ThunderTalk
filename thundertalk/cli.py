@@ -1,14 +1,11 @@
 """Headless command line for other apps: ``ThunderTalk --cli <command> …``.
 
-    ThunderTalk --cli transcribe talk.mp4 --out talk.srt [--format srt] [--engine auto|apple|<model-id>]
-                                          [--language auto|zh|en|…]
-    ThunderTalk --cli speak --text "你好" --out hi.m4a [--engine auto|apple|kokoro|voxcpm2|indextts]
-                            [--voice <id>] [--language auto|zh|en] [--speed 1.0]
-    ThunderTalk --cli voices [--engine …]
-    ThunderTalk --cli status
-
-Never opens a window and takes no lock, so it runs next to the app. Reads
-the app's settings and downloaded models; writes only ``--out``.
+CLI v3: transcribe, notes, burn, translate, compose, speak, voices, history,
+models and status. See docs/cli-v3.md for the complete command reference.
+Never opens a window or takes the GUI instance lock. Reads app settings and
+models; inference writes explicit output paths. Management commands and
+--save-history also persist their requested changes. Shared priority leases
+let a v3 app's dictation preempt CLI music jobs.
 
 stdout carries JSON lines and nothing else (engine logs and native libraries
 go to stderr):
@@ -28,6 +25,7 @@ import json
 import os
 import sys
 import time
+from contextlib import contextmanager
 from pathlib import Path
 from typing import Optional
 
@@ -96,6 +94,9 @@ def _parser() -> argparse.ArgumentParser:
     tr.add_argument("--timestamps", action="store_true")
     tr.add_argument("--speaker-name", type=speaker_pair, action="append", default=[])
     tr.add_argument("--save-history", action="store_true")
+    tr.add_argument("--notes", action="store_true", help="generate meeting notes for each transcript")
+    tr.add_argument("--provider")
+    tr.add_argument("--model")
     media_options(tr)
     sp = sub.add_parser("speak", help="text → m4a / wav / mp3")
     src = sp.add_mutually_exclusive_group(required=True)
@@ -170,9 +171,17 @@ def _apple_error(exc) -> CliError:
 
 def _write(path: Path, text: str) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
-    tmp = path.with_name(f".{path.name}.part")
-    tmp.write_text(text, encoding="utf-8")
-    os.replace(tmp, path)
+    import tempfile
+    tmp = None
+    try:
+        with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=f".{path.name}.",
+                                         suffix=".part", dir=path.parent, delete=False) as f:
+            tmp = Path(f.name)
+            f.write(text)
+        os.replace(tmp, path)
+    finally:
+        if tmp is not None:
+            tmp.unlink(missing_ok=True)
 
 
 def _one_line(text: str) -> str:
@@ -199,7 +208,8 @@ def export_transcript(tr, fmt: str) -> tuple[str, int]:
     words = [w for s in tr.segments for w in s.words]
     data = {
         "duration": round(tr.duration, 3), "engine": tr.engine, "model": tr.model_id,
-        "text": tr.to_text(),
+        "text": tr.to_text(), "title": tr.title, "source_url": tr.source_url,
+        "speaker_names": tr.speaker_names, "notes": tr.notes,
         "segments": [{"start": round(c.start, 3), "end": round(c.end, 3), "text": _one_line(c.text),
                       **({"speaker": c.speaker} if c.speaker else {})} for c in cues],
     }
@@ -224,6 +234,8 @@ def _transcribe_path(a, out: _Out, src: Path):
     else:
         model_id = resolve_asr(a.engine, settings)
     info = next(m for m in BUILTIN_MODELS if m.id == model_id)
+    from thundertalk.core.priority import DICTATION
+    DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
     out.stage("load_model")
     out.emit(type="stage", label="engine", engine=model_id)
     t0 = time.monotonic()
@@ -485,14 +497,35 @@ def error_result(exc):
     return dict(ok=False, code=code, error=str(exc) or code)
 
 
+@contextmanager
+def network_mode(download=False):
+    """Only the explicit setup command may fetch weights, even after HF was imported."""
+    keys = ("HF_HUB_OFFLINE", "TRANSFORMERS_OFFLINE")
+    saved = {key: os.environ.get(key) for key in keys}
+    hf = sys.modules.get("huggingface_hub.constants")
+    old_hf = getattr(hf, "HF_HUB_OFFLINE", None)
+    try:
+        for key in keys:
+            os.environ[key] = "0" if download else "1"
+        if hf is not None:
+            hf.HF_HUB_OFFLINE = not download
+        yield
+    finally:
+        for key, value in saved.items():
+            if value is None:
+                os.environ.pop(key, None)
+            else:
+                os.environ[key] = value
+        if hf is not None:
+            hf.HF_HUB_OFFLINE = old_hf
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] in (["-h"], ["--help"], []):
         _parser().print_help()
         return 0 if argv else 1
     out = _Out()
-    os.environ.setdefault("HF_HUB_OFFLINE", "0" if argv[:2] == ["models", "download"] else "1")          # use what is downloaded; never fetch
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "0" if argv[:2] == ["models", "download"] else "1")
     from thundertalk.core import apple_speech
     apple_speech.PROMPT = False
     try:
@@ -504,7 +537,8 @@ def main(argv: Optional[list[str]] = None) -> int:
             from thundertalk import cli_library, cli_music, cli_studio
             module = cli_music if a.command == "compose" else cli_studio if a.command in ("notes", "burn", "translate") else cli_library
             handler = getattr(module, "cmd_" + a.command)
-        result = handler(a, out)
+        with network_mode(a.command == "models" and a.action == "download"):
+            result = handler(a, out)
         result.setdefault("ok", True)
         out.emit(type="result", **result)
         return 0 if result["ok"] else 1

@@ -12,7 +12,7 @@ from thundertalk.cli import CliError, _settings
 
 def add_parser(sub):
     p = sub.add_parser("compose", help="song / instrumental, lyric checks, repaint and take files")
-    p.add_argument("action", nargs="?", default="generate", choices=("generate", "check", "repaint", "list", "show", "export", "delete"))
+    p.add_argument("action", nargs="?", default="generate", choices=("generate", "another", "lyrics", "check", "repaint", "list", "show", "export", "delete"))
     p.add_argument("input", nargs="?", help="take WAV (with its JSON sidecar)")
     mode = p.add_mutually_exclusive_group()
     mode.add_argument("--instrumental", action="store_true")
@@ -21,6 +21,9 @@ def add_parser(sub):
     lyrics = p.add_mutually_exclusive_group()
     lyrics.add_argument("--lyrics")
     lyrics.add_argument("--lyrics-file")
+    from thundertalk.cli_media import speaker_pair
+    p.add_argument("--remember", action="append", type=speaker_pair, default=[], help="lyrics: remember WORD=SUNG")
+    p.add_argument("--forget", action="append", default=[], help="lyrics: reset a remembered word")
     p.add_argument("--sung-lyrics", help="JSON file mapping shown lyric lines to sung text")
     p.add_argument("--length", type=int, help="10–600 seconds, within the hardware tier")
     p.add_argument("--bpm", type=int)
@@ -99,6 +102,14 @@ def cmd_compose(a, out):
     from thundertalk.core import music, music_lyrics, music_process, music_rules
     from thundertalk.core.model_metadata import ACESTEP_LANGUAGES
     from thundertalk.core.music_worker import MusicRequest, take_seeds
+    if a.action == "lyrics":
+        for word, sung in a.remember:
+            music_lyrics.remember(word, sung)
+        for word in a.forget:
+            music_lyrics.remember(word, "")
+        lyrics = Path(a.lyrics_file).expanduser().read_text(encoding="utf-8") if a.lyrics_file else a.lyrics or ""
+        return dict(shown_lyrics=lyrics, sung_lyrics=music_lyrics.sung_lyrics(lyrics, a.language or "en"),
+                    remembered=music_lyrics.load_user_dict())
     if a.action == "list":
         root = Path(a.out_dir).expanduser() if a.out_dir else music.takes_root()
         return dict(takes=[str(p.resolve()) for p in sorted(root.glob("*/take-*.wav"))])
@@ -131,9 +142,10 @@ def cmd_compose(a, out):
     if not music.supported(total_mb / 1024) or tier is None:
         raise CliError("unsupported", "Compose requires Apple Silicon and at least 16 GB memory")
     repaint = a.action == "repaint"
-    folder = meta.get("model") if repaint else None
+    reuse = a.action in ("another", "repaint")
+    folder = meta.get("model") if reuse else None
     selected = "acestep-" + a.model if a.model else (
-        next((m.info.id for m in music.MUSIC_MODELS if m.folder == folder), "") if repaint else
+        next((m.info.id for m in music.MUSIC_MODELS if m.folder == folder), "") if reuse else
         _settings().get("compose_model") or tier.recommended)
     if selected not in tier.models:
         raise CliError("unsupported", "This model needs more memory than this machine has")
@@ -141,22 +153,22 @@ def cmd_compose(a, out):
     planner = a.planner == "on" and not repaint
     if planner and not tier.planner:
         raise CliError("unsupported", "The planner requires at least 24 GB memory")
-    seconds = a.length if a.length is not None else int(meta["duration"]) if repaint else 30
+    seconds = a.length if a.length is not None else int(meta["duration"]) if reuse else 30
     if not music.MIN_SECONDS <= seconds <= tier.max_seconds:
         raise CliError("bad_args", f"--length must be between 10 and {tier.max_seconds}")
     if not 1 <= a.takes <= music.MAX_TAKES or total_mb < 24 * 1024 and a.takes != 1:
         raise CliError("bad_args", "Use 1–5 takes (one take below 24 GB)")
     if a.bpm is not None and not 30 <= a.bpm <= 300 or a.seed is not None and not 0 <= a.seed < 2**32:
         raise CliError("bad_args", "Require BPM 30–300 and seed 0–4294967295")
-    language = a.language or (meta.get("vocal_language") if repaint else "en") or "en"
+    language = a.language or (meta.get("vocal_language") if reuse else "en") or "en"
     if language not in (*ACESTEP_LANGUAGES, "unknown"):
         raise CliError("bad_args", "Unknown vocal language code")
     lyrics = a.lyrics or ""
     if a.lyrics_file:
         lyrics = Path(a.lyrics_file).expanduser().read_text(encoding="utf-8")
-    elif repaint and a.lyrics is None:
+    elif reuse and a.lyrics is None:
         lyrics = meta.get("shown_lyrics") or meta.get("lyrics") or ""
-    style = a.style or (meta.get("caption", "") if repaint else "")
+    style = a.style or (meta.get("caption", "") if reuse else "")
     instrumental = a.instrumental or bool(meta and meta.get("instrumental"))
     if not style.strip() and not lyrics.strip() or not instrumental and not music_lyrics.lyric_lines(lyrics):
         raise CliError("bad_args", "Supply a style for an instrumental or lyrics for a song")
