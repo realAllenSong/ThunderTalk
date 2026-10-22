@@ -108,6 +108,9 @@ def _parser() -> argparse.ArgumentParser:
     sp.add_argument("--speed", type=float, default=1.0)
     vo = sub.add_parser("voices", help="list voices")
     vo.add_argument("--engine", choices=TTS_ENGINES, default="auto", help="auto = every engine")
+    from thundertalk import cli_library, cli_studio
+    cli_library.add_parsers(sub, vo)
+    cli_studio.add_parsers(sub)
     sub.add_parser("status", help="engines, downloaded models and permissions as JSON")
     return ap
 
@@ -358,8 +361,27 @@ def cmd_speak(a, out: _Out) -> dict:
     if dest.suffix.lower() == ".mp3" and not audio_io.find_ffmpeg():
         raise CliError("ffmpeg_missing", "MP3 needs ffmpeg (brew install ffmpeg); use .m4a or .wav instead.")
     lang = _LANG.get(a.language) or tts.detect_language(text)
-    voice = resolve_voice(a.engine, a.voice, lang, _settings(), mixed=_mixed(text))
-    out.emit(type="stage", label="engine", engine=speech.backend_id_for(voice), voice=voice)
+    clone_backend = None
+    voice_id = a.voice
+    if a.voice.startswith("my:"):
+        from thundertalk.core.voices import VoiceLibrary
+        lib = VoiceLibrary()
+        saved = lib.get(a.voice[3:])
+        if saved is None:
+            raise CliError("not_found", f"Saved voice not found: {a.voice}")
+        clone_backend = a.engine if a.engine not in ("auto", "best") else (_settings().get("studio_engine") or speech.DEFAULT_CLONE_BACKEND)
+        if clone_backend not in ("voxcpm2", "indextts"):
+            raise CliError("bad_args", "Cloned voices need voxcpm2 or indextts")
+        if not speech.backend(clone_backend).is_ready():
+            raise CliError("tts_missing", f"Download {clone_backend} first")
+        if not saved.ref_text.strip():
+            raise CliError("transcript_required", "Add the reference transcript with voices edit --transcript")
+        voice = lib.prompt(saved.id)
+        bid = clone_backend
+    else:
+        voice = resolve_voice(a.engine, a.voice, lang, _settings(), mixed=_mixed(text))
+        voice_id, bid = voice, speech.backend_id_for(voice)
+    out.emit(type="stage", label="engine", engine=bid, voice=voice_id)
     out.stage("load_model")
     eng = speech.get_engine()
     t0 = time.monotonic()
@@ -370,7 +392,7 @@ def cmd_speak(a, out: _Out) -> dict:
         out.progress(0.95 * i / max(1, n))
 
     try:
-        r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress)
+        r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend)
     except tts.TtsModelMissing as exc:
         raise CliError("tts_missing", str(exc)) from exc
     finally:
@@ -382,7 +404,7 @@ def cmd_speak(a, out: _Out) -> dict:
     except audio_io.AudioDecodeError as exc:
         raise CliError("ffmpeg_missing" if str(exc) == "ffmpeg_missing" else "failed", str(exc)) from exc
     out.progress(1.0)
-    return {"output": str(dest), "engine": speech.backend_id_for(voice), "voice": voice, "language": lang,
+    return {"output": str(dest), "engine": bid, "voice": voice_id, "language": lang,
             "duration": round(r.duration, 2), "seconds": round(time.monotonic() - t0, 2),
             "sample_rate": r.sample_rate, "warnings": r.warnings}
 
@@ -396,9 +418,8 @@ def _voice_row(b, v) -> dict:
 
 
 def cmd_voices(a, out: _Out) -> dict:
-    from thundertalk.core import speech
-    bs = speech.backends() if a.engine in ("auto", "best") else [speech.backend(a.engine)]
-    return {"voices": [_voice_row(b, v) for b in bs for v in b.voices()]}
+    from thundertalk.cli_library import cmd_voices as run
+    return run(a, out)
 
 
 def cmd_status(_a, out: _Out) -> dict:
@@ -434,8 +455,13 @@ COMMANDS = {"transcribe": cmd_transcribe, "speak": cmd_speak, "voices": cmd_voic
 
 
 def error_result(exc):
-    from thundertalk.core import audio_io, links, transcribe
-    if isinstance(exc, (links.LinkCancelled, transcribe.TranscribeCancelled)):
+    from thundertalk.core import audio_io, burn, links, models, transcribe, tts
+    from thundertalk.core.llm_providers import CompletionCancelled
+    if isinstance(exc, burn.BurnError):
+        code = "ffmpeg_missing" if exc.code == "no_ffmpeg" else "burn_" + exc.code
+    elif isinstance(exc, (burn.BurnCancelled, models.DownloadCancelled, tts.TtsCancelled, CompletionCancelled)):
+        code = "cancelled"
+    elif isinstance(exc, (links.LinkCancelled, transcribe.TranscribeCancelled)):
         code = "cancelled"
     elif isinstance(exc, audio_io.AudioDecodeError):
         code = "decode"
@@ -460,15 +486,19 @@ def main(argv: Optional[list[str]] = None) -> int:
         _parser().print_help()
         return 0 if argv else 1
     out = _Out()
-    os.environ.setdefault("HF_HUB_OFFLINE", "1")          # use what is downloaded; never fetch
-    os.environ.setdefault("TRANSFORMERS_OFFLINE", "1")
+    os.environ.setdefault("HF_HUB_OFFLINE", "0" if argv[:2] == ["models", "download"] else "1")          # use what is downloaded; never fetch
+    os.environ.setdefault("TRANSFORMERS_OFFLINE", "0" if argv[:2] == ["models", "download"] else "1")
     from thundertalk.core import apple_speech
     apple_speech.PROMPT = False
     try:
         a = _parser().parse_args(argv)
-        if a.command not in COMMANDS:
+        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models"):
             raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
-        result = COMMANDS[a.command](a, out)
+        handler = COMMANDS.get(a.command)
+        if handler is None:
+            from thundertalk import cli_library, cli_studio
+            handler = getattr(cli_studio if a.command in ("notes", "burn", "translate") else cli_library, "cmd_" + a.command)
+        result = handler(a, out)
         result.setdefault("ok", True)
         out.emit(type="result", **result)
         return 0 if result["ok"] else 1
