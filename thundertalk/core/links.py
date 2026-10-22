@@ -195,6 +195,19 @@ def fetch_audio(
             raise LinkCancelled()
 
     try:
+        native_error: Optional[LinkError] = None
+        from thundertalk.core import bilibili
+        if bilibili.is_bilibili(url):
+            # yt-dlp's Bilibili extractor broke when the site stopped embedding
+            # its page state; the signed web API used by the player still works.
+            try:
+                path, title, duration = bilibili.fetch(url, workdir, progress, cancel, on_title)
+                return Fetched(path, title, duration, url, workdir)
+            except bilibili.BilibiliError as exc:
+                if exc.code == "cancelled":
+                    raise LinkCancelled() from None
+                print(f"[Link] Bilibili API: {exc}; trying yt-dlp")
+                native_error = LinkError(exc.code, exc.detail)
         for attempt in range(2):
             try:
                 with yt_dlp.YoutubeDL(_ydl_options(workdir, hook)) as ydl:
@@ -215,6 +228,9 @@ def fetch_audio(
                 if code == "blocked" and attempt == 0 and not (cancel is not None and cancel.is_set()):
                     time.sleep(2.0)
                     continue
+                # For Bilibili the API's reason (login, unavailable, …) is the useful one.
+                if native_error is not None and native_error.code in ("login", "unavailable", "geo", "no_audio"):
+                    raise native_error from None
                 raise LinkError(code, _short(str(exc))) from None
         check()
         path = _downloaded_file(info, workdir)
