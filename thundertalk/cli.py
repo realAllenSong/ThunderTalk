@@ -86,15 +86,17 @@ class _Parser(argparse.ArgumentParser):
 def _parser() -> argparse.ArgumentParser:
     ap = _Parser(prog="ThunderTalk --cli", description="ThunderTalk without a window.")
     sub = ap.add_subparsers(dest="command", parser_class=_Parser)
-    tr = sub.add_parser("transcribe", help="audio or video file → txt / srt / vtt / json")
-    tr.add_argument("input")
-    tr.add_argument("--out", required=True)
-    tr.add_argument("--format", choices=FORMATS, default=None, help="default: from --out's extension, else txt")
-    tr.add_argument("--engine", default="auto",
-                    help="auto (dictation model) | best (most accurate downloaded) | apple | a model id")
-    tr.add_argument("--speakers", action="store_true",
-                    help="label who speaks (MOSS-Transcribe-Diarize, for calls and meetings)")
-    tr.add_argument("--language", default="auto", help="auto | zh | en | ja | …")
+    from thundertalk.cli_media import media_options, speaker_pair
+    tr = sub.add_parser("transcribe", help="files / URLs → transcripts (one or a batch)")
+    tr.add_argument("input", nargs="+")
+    tr.add_argument("--out")
+    tr.add_argument("--out-dir")
+    tr.add_argument("--format", choices=FORMATS)
+    tr.add_argument("--formats", choices=FORMATS, nargs="+")
+    tr.add_argument("--timestamps", action="store_true")
+    tr.add_argument("--speaker-name", type=speaker_pair, action="append", default=[])
+    tr.add_argument("--save-history", action="store_true")
+    media_options(tr)
     sp = sub.add_parser("speak", help="text → m4a / wav / mp3")
     src = sp.add_mutually_exclusive_group(required=True)
     src.add_argument("--text")
@@ -203,15 +205,10 @@ def export_transcript(tr, fmt: str) -> tuple[str, int]:
 
 # ── commands ────────────────────────────────────────────────────────────
 
-def cmd_transcribe(a, out: _Out) -> dict:
+def _transcribe_path(a, out: _Out, src: Path):
     from thundertalk.core import apple_speech, audio_io, transcribe
     from thundertalk.core.asr import AsrEngine
     from thundertalk.core.models import BUILTIN_MODELS, get_model_path
-    src = Path(a.input).expanduser()
-    if not src.is_file():
-        raise CliError("not_found", f"Input file not found: {src}")
-    dest = Path(a.out).expanduser().resolve()
-    fmt = a.format or (dest.suffix.lower().lstrip(".") if dest.suffix.lower().lstrip(".") in FORMATS else "txt")
     settings = _settings()
     speakers = bool(getattr(a, "speakers", False))
     if speakers:
@@ -256,12 +253,13 @@ def cmd_transcribe(a, out: _Out) -> dict:
     finally:
         if engine is not None:
             engine.unload()
-    out.stage("write")
-    text, n = export_transcript(tr, fmt)
-    _write(dest, text)
-    out.progress(1.0)
-    return {"output": str(dest), "format": fmt, "engine": model_id, "duration": round(tr.duration, 2),
-            "seconds": round(time.monotonic() - t0, 2), "entries": n}
+    return tr, {"engine": model_id, "duration": round(tr.duration, 2),
+                "seconds": round(time.monotonic() - t0, 2), "entries": len(tr.segments)}
+
+
+def cmd_transcribe(a, out):
+    from thundertalk.cli_media import cmd_transcribe as run
+    return run(a, out)
 
 
 def _text(a) -> str:
@@ -435,6 +433,27 @@ def cmd_status(_a, out: _Out) -> dict:
 COMMANDS = {"transcribe": cmd_transcribe, "speak": cmd_speak, "voices": cmd_voices, "status": cmd_status}
 
 
+def error_result(exc):
+    from thundertalk.core import audio_io, links, transcribe
+    if isinstance(exc, (links.LinkCancelled, transcribe.TranscribeCancelled)):
+        code = "cancelled"
+    elif isinstance(exc, audio_io.AudioDecodeError):
+        code = "decode"
+    elif hasattr(exc, "code"):
+        code = exc.code
+    elif isinstance(exc, FileNotFoundError):
+        code = "not_found"
+    elif isinstance(exc, PermissionError):
+        code = "permission_denied"
+    elif isinstance(exc, RuntimeError) and str(exc) in ("no_speech", "no_model", "memory", "model_busy"):
+        code = str(exc)
+    elif isinstance(exc, OSError) and exc.errno == 28:
+        code = "disk_full"
+    else:
+        code = "failed"
+    return dict(ok=False, code=code, error=str(exc) or code)
+
+
 def main(argv: Optional[list[str]] = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     if argv[:1] in (["-h"], ["--help"], []):
@@ -450,14 +469,15 @@ def main(argv: Optional[list[str]] = None) -> int:
         if a.command not in COMMANDS:
             raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
         result = COMMANDS[a.command](a, out)
-        out.emit(type="result", ok=True, **result)
-        return 0
-    except CliError as exc:
-        out.emit(type="result", ok=False, error=str(exc), code=exc.code)
+        result.setdefault("ok", True)
+        out.emit(type="result", **result)
+        return 0 if result["ok"] else 1
     except KeyboardInterrupt:
         out.emit(type="result", ok=False, error="Interrupted", code="cancelled")
     except Exception as exc:                                   # noqa: BLE001
-        import traceback
-        traceback.print_exc()
-        out.emit(type="result", ok=False, error=f"{type(exc).__name__}: {exc}", code="failed")
+        result = error_result(exc)
+        if result["code"] == "failed":
+            import traceback
+            traceback.print_exc()
+        out.emit(type="result", **result)
     return 1
