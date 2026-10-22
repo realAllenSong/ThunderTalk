@@ -220,6 +220,20 @@ def export_transcript(tr, fmt: str) -> tuple[str, int]:
 
 # ── commands ────────────────────────────────────────────────────────────
 
+@contextmanager
+def model_slot(out, *, heavy=True, info=None):
+    """Share alternate-model admission with Studio and yield before loading."""
+    from contextlib import nullcontext
+    from thundertalk.core.priority import DICTATION, alternate_job
+    DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
+    with alternate_job() if heavy else nullcontext():
+        if info is not None and heavy:
+            from thundertalk.core.transcribe import _has_model_headroom
+            if not _has_model_headroom(info):
+                raise CliError("memory", "Not enough free memory to load this model safely")
+        yield
+
+
 def _transcribe_path(a, out: _Out, src: Path):
     from thundertalk.core import apple_speech, audio_io, transcribe
     from thundertalk.core.asr import AsrEngine
@@ -240,36 +254,37 @@ def _transcribe_path(a, out: _Out, src: Path):
     out.emit(type="stage", label="engine", engine=model_id)
     t0 = time.monotonic()
     engine = None
-    try:
-        if info.backend != "mlx-moss":
-            engine = AsrEngine()
-            engine.set_language(a.language)
-            if settings.hotwords:
-                engine.set_hotwords(settings.hotwords)
-            engine.load_model(get_model_path(model_id), info.family, info.backend,
-                              memory_mode=settings.memory_mode)
-        out.stage("transcribe")
+    with model_slot(out, heavy=not info.built_in, info=info):
+        try:
+            if info.backend != "mlx-moss":
+                engine = AsrEngine()
+                engine.set_language(a.language)
+                if settings.hotwords:
+                    engine.set_hotwords(settings.hotwords)
+                engine.load_model(get_model_path(model_id), info.family, info.backend,
+                                  memory_mode=settings.memory_mode)
+            out.stage("transcribe")
 
-        def progress(pct: int, msg: str) -> None:
-            if msg in ("decode", "load_moss", "diarize"):
-                out.stage(msg)
-            if pct >= 0:
-                out.progress(pct / 100 * 0.98)
+            def progress(pct: int, msg: str) -> None:
+                if msg in ("decode", "load_moss", "diarize"):
+                    out.stage(msg)
+                if pct >= 0:
+                    out.progress(pct / 100 * 0.98)
 
-        tr = transcribe.transcribe_file(str(src), engine, speakers=speakers, progress=progress,
-                                        model_id="" if engine is not None else model_id)
-        tr.model_id = model_id
-    except apple_speech.AppleSpeechError as exc:
-        raise _apple_error(exc) from exc
-    except audio_io.AudioDecodeError as exc:
-        raise CliError("decode", str(exc)) from exc
-    except RuntimeError as exc:
-        if str(exc) in ("no_speech", "no_model", "memory", "model_busy"):
-            raise CliError(str(exc), {"no_speech": "No speech was found in this file."}.get(str(exc), str(exc))) from exc
-        raise
-    finally:
-        if engine is not None:
-            engine.unload()
+            tr = transcribe.transcribe_file(str(src), engine, speakers=speakers, progress=progress,
+                                            model_id="" if engine is not None else model_id)
+            tr.model_id = model_id
+        except apple_speech.AppleSpeechError as exc:
+            raise _apple_error(exc) from exc
+        except audio_io.AudioDecodeError as exc:
+            raise CliError("decode", str(exc)) from exc
+        except RuntimeError as exc:
+            if str(exc) in ("no_speech", "no_model", "memory", "model_busy"):
+                raise CliError(str(exc), {"no_speech": "No speech was found in this file."}.get(str(exc), str(exc))) from exc
+            raise
+        finally:
+            if engine is not None:
+                engine.unload()
     return tr, {"engine": model_id, "duration": round(tr.duration, 2),
                 "seconds": round(time.monotonic() - t0, 2), "entries": len(tr.segments)}
 
@@ -383,7 +398,13 @@ def cmd_speak(a, out: _Out) -> dict:
         saved = lib.get(a.voice[3:])
         if saved is None:
             raise CliError("not_found", f"Saved voice not found: {a.voice}")
-        clone_backend = a.engine if a.engine not in ("auto", "best") else (_settings().get("studio_engine") or speech.DEFAULT_CLONE_BACKEND)
+        if a.engine == "best":
+            clone_backend = next((bid for bid in TTS_QUALITY if bid in ("voxcpm2", "indextts") and speech.backend(bid).is_ready()), speech.DEFAULT_CLONE_BACKEND)
+        elif a.engine == "auto":
+            preferred = _settings().get("studio_engine")
+            clone_backend = preferred if preferred in ("voxcpm2", "indextts") else speech.DEFAULT_CLONE_BACKEND
+        else:
+            clone_backend = a.engine
         if clone_backend not in ("voxcpm2", "indextts"):
             raise CliError("bad_args", "Cloned voices need voxcpm2 or indextts")
         if not speech.backend(clone_backend).is_ready():
@@ -401,16 +422,19 @@ def cmd_speak(a, out: _Out) -> dict:
     t0 = time.monotonic()
 
     def progress(i: int, n: int, _seg: str) -> None:
+        from thundertalk.core.priority import DICTATION
+        DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
         if i == 0:
             out.stage("speak")
         out.progress(0.95 * i / max(1, n))
 
-    try:
-        r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend)
-    except tts.TtsModelMissing as exc:
-        raise CliError("tts_missing", str(exc)) from exc
-    finally:
-        eng.unload()
+    with model_slot(out, heavy=bid not in ("apple", "kokoro")):
+        try:
+            r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend)
+        except tts.TtsModelMissing as exc:
+            raise CliError("tts_missing", str(exc)) from exc
+        finally:
+            eng.unload()
     out.stage("write")
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:

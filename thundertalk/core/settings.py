@@ -4,6 +4,8 @@ from __future__ import annotations
 
 import json
 import os
+import tempfile
+import threading
 from pathlib import Path
 from typing import Any
 
@@ -72,6 +74,7 @@ DEFAULTS: dict[str, Any] = {
     "compose_planner": None,        # None = pre-ticked by memory and disk space
 }
 
+_WRITE_LOCK = threading.RLock()
 _PATH = Path.home() / ".thundertalk" / "settings.json"
 
 
@@ -114,20 +117,34 @@ class Settings:
     def save(self) -> None:
         """Atomic write: a crash mid-save cannot corrupt the existing file."""
         _PATH.parent.mkdir(parents=True, exist_ok=True)
-        tmp = _PATH.with_suffix(_PATH.suffix + ".tmp")
-        with open(tmp, "w", encoding="utf-8") as f:
-            os.fchmod(f.fileno(), 0o600)  # optional API keys are private to this user
-            json.dump(self._data, f, indent=2, ensure_ascii=False)
-            f.flush()
-            os.fsync(f.fileno())
-        os.replace(tmp, _PATH)
+        tmp = None
+        try:
+            with tempfile.NamedTemporaryFile(mode="w", encoding="utf-8", prefix=".settings-",
+                                             suffix=".tmp", dir=_PATH.parent, delete=False) as f:
+                tmp = Path(f.name)
+                os.fchmod(f.fileno(), 0o600)
+                json.dump(self._data, f, indent=2, ensure_ascii=False)
+                f.flush()
+                os.fsync(f.fileno())
+            os.replace(tmp, _PATH)
+        finally:
+            if tmp is not None:
+                tmp.unlink(missing_ok=True)
 
     def get(self, key: str) -> Any:
         return self._data.get(key, DEFAULTS.get(key))
 
     def set(self, key: str, value: Any) -> None:
-        self._data[key] = value
-        self.save()
+        # The GUI keeps one instance alive while CLI management uses another.
+        # Merge from disk under one process/thread lock before changing a key.
+        import fcntl
+        with _WRITE_LOCK:
+            _PATH.parent.mkdir(parents=True, exist_ok=True)
+            with _PATH.with_suffix(".lock").open("a+") as lock:
+                fcntl.flock(lock, fcntl.LOCK_EX)
+                self.load()
+                self._data[key] = value
+                self.save()
 
     @property
     def hotkey(self) -> str:

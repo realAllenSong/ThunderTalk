@@ -3,8 +3,8 @@ from __future__ import annotations
 
 from pathlib import Path
 
-from thundertalk.cli import CliError, _settings, _text, _transcribe_path, _write
-from thundertalk.cli_media import load_transcript, media_options, source
+from thundertalk.cli import CliError, _settings, _text, _transcribe_path, _write, model_slot
+from thundertalk.cli_media import load_transcript, media_options, source, source_metadata
 
 _GUI = None
 
@@ -71,9 +71,9 @@ def cmd_notes(a, out):
     if Path(a.input).suffix.lower() in (".txt", ".json", ".md", ".srt", ".vtt"):
         tr = load_transcript(a.input)
     else:
-        with source(a.input, out, a) as (path, title, url, _duration):
+        with source(a.input, out, a) as (path, title, url, duration):
             tr, _ = _transcribe_path(a, out, path)
-            tr.title, tr.source_url = title, url
+            source_metadata(tr, title, url, duration, a)
     out.stage("notes")
     try:
         text = meeting_notes.generate(tr, provider, model, progress=progress(out))
@@ -129,29 +129,32 @@ def cmd_translate(a, out):
     mid = "seamless-m4t-v2-large"
     if not models.is_downloaded(mid):
         raise CliError("no_model", f"Run: ThunderTalk --cli models download {mid}")
-    engine = TranslationProcess()
-    title = ""
-    try:
-        out.stage("load_model")
-        engine.load_model(models.get_model_path(mid))
-        out.stage("translate")
-        if text is not None:
-            result = engine.translate_text(text, a.source_language, a.target)
-        else:
-            with source(a.input, out, a) as (path, title, _url, _duration):
-                samples = audio_io.decode_audio(str(path), 16000)
-                # Bounded units avoid feeding hours of audio to a single model call.
-                from thundertalk.core.priority import DICTATION
-                parts = []
-                for start in range(0, len(samples), 30 * 16000):
-                    DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
-                    result = engine.translate(samples[start:start + 30 * 16000], a.target, 16000)
-                    parts.append(result.text)
-                    out.progress(min(1, (start + 30 * 16000) / len(samples)))
-                text = "\n".join(parts)
-        translated = result.text if not a.input else text
-    finally:
-        engine.unload()
+    with model_slot(out):
+        engine = TranslationProcess()
+        title = ""
+        try:
+            out.stage("load_model")
+            engine.load_model(models.get_model_path(mid))
+            out.stage("translate")
+            if text is not None:
+                result = engine.translate_text(text, a.source_language, a.target)
+            else:
+                with source(a.input, out, a) as (path, title, url, duration):
+                    samples = audio_io.decode_audio(str(path), 16000)
+                    from thundertalk.core.transcribe import Transcript
+                    source_metadata(Transcript([], len(samples) / 16000, "translate"), title, url, duration, a)
+                    # Bounded units avoid feeding hours of audio to a single model call.
+                    from thundertalk.core.priority import DICTATION
+                    parts = []
+                    for start in range(0, len(samples), 30 * 16000):
+                        DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
+                        result = engine.translate(samples[start:start + 30 * 16000], a.target, 16000)
+                        parts.append(result.text)
+                        out.progress(min(1, (start + 30 * 16000) / len(samples)))
+                    text = "\n".join(parts)
+            translated = result.text if not a.input else text
+        finally:
+            engine.unload()
     if not translated.strip():
         raise CliError("no_speech", "No translatable speech was found")
     dest = Path(a.out).expanduser().resolve()

@@ -164,7 +164,9 @@ class TranslationWorker(QThread):
 
     def run(self) -> None:
         try:
-            result = self._engine.translate(self._samples, self._tgt_lang)
+            from thundertalk.core.priority import foreground_job
+            with foreground_job():
+                result = self._engine.translate(self._samples, self._tgt_lang)
             rtf = (result.inference_ms / 1000.0) / result.duration_secs \
                 if result.duration_secs > 0 else 0.0
             backend = f"seamless-torch:{result.tgt_lang}"
@@ -203,11 +205,13 @@ class TextTranslateWorker(QThread):
 
     def run(self) -> None:
         try:
-            result = self._engine.translate_text(
-                self._original_text,
-                src_lang=self._src_lang,
-                tgt_lang=self._tgt_lang,
-            )
+            from thundertalk.core.priority import foreground_job
+            with foreground_job():
+                result = self._engine.translate_text(
+                    self._original_text,
+                    src_lang=self._src_lang,
+                    tgt_lang=self._tgt_lang,
+                )
             self.done.emit(self._original_text, result.text, result.tgt_lang)
         except Exception as e:
             traceback.print_exc()

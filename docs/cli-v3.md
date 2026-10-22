@@ -51,8 +51,11 @@ complete; only decoding/inference is limited. Transcript times are relative to
 the selected clip, and the result's `start` records the offset. `transcribe`
 also accepts `--timestamps` for TXT, repeatable `--speaker-name S01=NAME`,
 `--save-history` (opt-in), and `--notes [--provider ID --model ID]` for each input.
+If notes fail after ASR, transcripts/history are retained; the result has
+`code: notes_failed`, `notes_error`, output paths and exit status 1.
 Without `--save-history`, CLI v2's no-history-write behavior is preserved.
 
+笔记失败时仍保留已完成文稿和历史，返回 `notes_failed` 及 `notes_error`。
 以上三个媒体命令可设置起止时间或最长秒数（需 ffmpeg）；下载仍为完整音频，字幕时间
 相对所选片段。转写还支持 TXT 时间戳、说话人改名、可选保存历史和逐项生成笔记。
 
@@ -140,7 +143,7 @@ No success is reported for a members-only preview served as a complete video.
 | `ffmpeg_missing`, `burn_no_video`, `burn_failed`, `bad_transcript` | Subtitle dependency, video, encoding or transcript import / 字幕依赖、视频、编码或文稿导入。 |
 | `bad_reference`, `transcript_required` | Unusable clone clip or missing reference text / 克隆参考音频或文稿问题。 |
 | `music:memory`, `music:memory_low`, `music:stalled`, `music:load_failed`, `music:failed`, `worker_stopped`, `bad_take` | Same Compose admission/abort causes as the app; memory errors include `free_percent` / 同应用的作曲准入和中止原因。 |
-| `batch_failed` | At least one item failed; inspect `items` / 至少一项失败，查看逐项结果。 |
+| `batch_failed`, `notes_failed` | At least one item or optional notes failed; inspect `items` / 至少一项失败，查看逐项结果。 |
 
 ## Studio capability audit / 工作室功能对照
 
@@ -169,6 +172,8 @@ in the GUI; their data is available to the CLI caller:
 | Add/remove/cancel/retry individual live queue rows during a running batch | Batch argv is a fixed job; rerun chosen inputs, or SIGINT the job. No interactive queue protocol. / 批处理输入固定，可重跑选定项或中止整个任务。 |
 | Warm-up/idle unload, elapsed/ETA display, persistent last UI choices | Workers unload on exit; stage/progress/timing fields let callers display status. CLI changes defaults only via explicit management. / 进程退出即卸载；调用方显示状态，显式管理才保存默认选择。 |
 
+Neural TTS and translation also use the shared core job lease and check free
+memory before loading. Resident GUI heaps still count against Compose admission.
 Shared dictation priority and alternate-model slots coordinate CLI v3 with an app
 running this version of the code. Older installed apps have no shared-priority
 signal; updating/restarting the app is required for cross-process yielding.
@@ -185,7 +190,8 @@ lock belongs to the test harness, not installed ThunderTalk.
 CLI wrappers: `transcribe_file` (also URLs), `transcribe_inputs`, `meeting_notes`,
 `subtitle_video`, `translate_local`, `compose_music`, `speak_text`,
 `list_local_voices`, `manage_local_voice`, `transcript_history`, `manage_models`,
-`local_status`. `studio_command(command, arguments)` exposes every CLI option
+`local_status`. Partial batch/Compose results are returned intact even when `ok` is false.
+`studio_command(command, arguments)` exposes every CLI option
 as an argv array without shell interpolation. Set `THUNDERTALK_BIN` to the app
 binary; otherwise the current Python interpreter is used.
 

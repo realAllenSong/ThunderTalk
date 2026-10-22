@@ -178,7 +178,7 @@ def _cli(*args: str, timeout: float = 3600) -> dict:
             result = msg
     if not result:
         raise RuntimeError(f"ThunderTalk CLI exited {proc.returncode}: {proc.stderr.strip()[-500:]}")
-    if not result.get("ok"):
+    if not result.get("ok") and not any(key in result for key in ("items", "takes", "notes_error")):
         raise RuntimeError(f"{result.get('code', 'failed')}: {result.get('error', '')}")
     return result
 

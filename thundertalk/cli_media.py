@@ -123,6 +123,21 @@ def load_transcript(value: str):
         raise CliError("bad_transcript", str(exc)) from exc
 
 
+def source_metadata(tr, title, url, duration, a):
+    tr.title, tr.source_url = title, url
+    start = getattr(a, "start", 0)
+    end = getattr(a, "end", None)
+    limit = getattr(a, "max_seconds", None)
+    expected = max(0, duration - start)
+    if end is not None:
+        expected = min(expected, end - start)
+    if limit is not None:
+        expected = min(expected, limit)
+    tr.expected_duration = expected
+    if url and tr.is_partial:
+        raise CliError("login", "The site returned a preview shorter than the requested media; sign in for full access")
+
+
 class ItemOut:
     def __init__(self, out, item, value):
         self.out, self.item, self.value = out, item, value
@@ -153,6 +168,9 @@ def cmd_transcribe(a, out):
     for i, value in enumerate(a.input):
         events = ItemOut(out, i, value) if a.out_dir else out
         try:
+            original = Path(value).expanduser()
+            if a.out and original.is_file() and original.resolve() == Path(a.out).expanduser().resolve():
+                raise CliError("bad_args", "Output must differ from the original input")
             with source(value, events, a) as (path, title, url, duration):
                 dest = Path(a.out).expanduser().resolve() if a.out else None
                 fmt = a.format or (dest.suffix.lstrip(".").lower() if dest and dest.suffix.lstrip(".").lower() in FORMATS else "txt")
@@ -161,19 +179,17 @@ def cmd_transcribe(a, out):
                 if dest and path.resolve() == dest:
                     raise CliError("bad_args", "Output must differ from input")
                 tr, result = _transcribe_path(a, events, path)
-                tr.title, tr.source_url = title, url
-                tr.expected_duration = duration
-                if url and tr.is_partial and not (a.start or a.end is not None or a.max_seconds is not None):
-                    raise CliError("login", "The site returned a preview; sign in for the complete media")
+                source_metadata(tr, title, url, duration, a)
+                for speaker, name in a.speaker_name:
+                    tr.rename_speaker(speaker, name)
+                notes_error = None
                 if notes:
                     from thundertalk.core import meeting_notes
                     from thundertalk.cli_studio import progress
                     try:
                         tr.notes = meeting_notes.generate(tr, *notes, progress=progress(events))
                     except meeting_notes.NotesError as exc:
-                        raise CliError(str(exc), str(exc)) from exc
-                for speaker, name in a.speaker_name:
-                    tr.rename_speaker(speaker, name)
+                        notes_error = dict(code=str(exc), error=str(exc))
                 if a.timestamps and fmt == "txt":
                     text = tr.to_text(timestamps=True) + "\n"
                 else:
@@ -201,6 +217,8 @@ def cmd_transcribe(a, out):
                     result["history_id"] = TranscriptHistory().save(tr, value)
                 result.update(output=str(dest), outputs=paths, format=fmt, formats=formats, title=title, source_url=url, source_duration=duration,
                               start=a.start, ok=True)
+                if notes_error:
+                    result.update(ok=False, code="notes_failed", error=notes_error["error"], notes_error=notes_error)
                 events.progress(1.0)
         except Exception as exc:
             if not a.out_dir:

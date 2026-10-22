@@ -124,7 +124,8 @@ def cmd_history(a, out):
 
 
 def catalog():
-    from thundertalk.core import models, music, speech
+    from thundertalk.core import models, music, music_process, speech
+    tier = music.tier(music_process.total_memory_mb() / 1024)
     entries = []
     for m in models.BUILTIN_MODELS:
         entries.append(dict(id=m.id, name=m.name, kind="translation" if m.backend == "seamless-torch" else "asr",
@@ -135,7 +136,7 @@ def catalog():
                             size_mb=b.info.size_mb))
     for m in music.MUSIC_MODELS:
         entries.append(dict(id=m.info.id, name=m.info.name, kind="music", ready=not music.missing(m, False),
-                            compatible=music.supported(__import__("thundertalk.core.music_process", fromlist=["total_memory_mb"]).total_memory_mb() / 1024),
+                            compatible=bool(tier and m.info.id in tier.models),
                             size_mb=m.info.size_mb))
     return entries
 

@@ -45,6 +45,15 @@ def locked(fn):
     return call
 
 
+def background(fn):
+    @wraps(fn)
+    def call(self, *args, **kwargs):
+        from thundertalk.core.priority import alternate_job
+        with alternate_job():
+            return fn(self, *args, **kwargs)
+    return call
+
+
 class TranslationProcess:
     def __init__(self):
         self._source = None
@@ -107,9 +116,14 @@ class TranslationProcess:
             raise RuntimeError(result)
         return result
 
+    @background
     @locked
     @managed(release="release_idle")
     def load_model(self, source):
+        from thundertalk.core.priority import foreground_active
+        if not self.is_loaded and not foreground_active():
+            from thundertalk.core.priority import background_headroom
+            background_headroom(6000)  # fp16 weights plus short-chunk activations
         self.prepare(source)
         self._call("load_model", source)
         self._loaded = True
@@ -121,12 +135,14 @@ class TranslationProcess:
         if not self.is_loaded:
             self.load_model(self._source)
 
+    @background
     @locked
     @managed(release="release_idle")
     def translate(self, samples, tgt_lang, sample_rate=16000):
         self._ensure()
         return self._call("translate", samples, tgt_lang, sample_rate)
 
+    @background
     @locked
     @managed(release="release_idle")
     def translate_text(self, text, src_lang, tgt_lang):

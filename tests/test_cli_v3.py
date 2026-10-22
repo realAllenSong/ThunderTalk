@@ -41,6 +41,7 @@ def run(monkeypatch, tmp_path):
 @pytest.fixture
 def fake_asr(monkeypatch):
     from thundertalk.core import asr
+    monkeypatch.setattr(transcribe, "_has_model_headroom", lambda *a: True)
     monkeypatch.setattr(cli, "resolve_asr", lambda *a: "qwen3-asr-06b-int8")
     monkeypatch.setattr(asr, "AsrEngine", lambda: SimpleNamespace(
         set_language=lambda *a: None, set_hotwords=lambda *a: None,
@@ -505,3 +506,172 @@ def test_compose_sung_dictionary_and_another_take(run, fake_music):
     assert rc == 0, events
     assert fake_music[-1].task_type == "text2music" and fake_music[-1].caption == "jazz"
     assert fake_music[-1].duration == 10 and fake_music[-1].instrumental
+
+
+def test_transcription_respects_shared_model_slot_and_headroom(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk.core.priority import EXTRA_MODEL
+    media = tmp_path / "a.wav"
+    media.touch()
+    assert EXTRA_MODEL.acquire(blocking=False)
+    try:
+        rc, events = run("transcribe", str(media), "--out", str(tmp_path / "o.txt"))
+        assert rc == 1 and events[-1]["code"] == "model_busy", events
+    finally:
+        EXTRA_MODEL.release()
+    monkeypatch.setattr(transcribe, "_has_model_headroom", lambda *a: False)
+    rc, events = run("transcribe", str(media), "--out", str(tmp_path / "o.txt"))
+    assert rc == 1 and events[-1]["code"] == "memory", events
+    assert EXTRA_MODEL.acquire(blocking=False)
+    EXTRA_MODEL.release()
+
+
+def test_music_model_catalog_reports_xl_hardware_requirement(run, monkeypatch):
+    from thundertalk.core import music_process
+    monkeypatch.setattr(music_process, "total_memory_mb", lambda: 16 * 1024)
+    rc, events = run("models", "list", "--kind", "music")
+    assert rc == 0
+    rows = {row["id"]: row for row in events[-1]["models"]}
+    assert rows["acestep-turbo"]["compatible"]
+    assert not rows["acestep-xl"]["compatible"]
+
+
+def test_trimming_never_overwrites_original(run, fake_asr, tmp_path):
+    path = tmp_path / "a.wav"
+    path.write_bytes(b"original")
+    rc, events = run("transcribe", str(path), "--max-seconds", "10", "--out", str(path))
+    assert rc == 1 and events[-1]["code"] == "bad_args", events
+    assert path.read_bytes() == b"original"
+
+
+def test_notes_failure_keeps_transcript_and_renamed_speakers(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk import cli_studio
+    from thundertalk.core import meeting_notes
+    monkeypatch.setattr(cli_studio, "notes_provider", lambda *a: (SimpleNamespace(id="fake"), "model"))
+    def fail(tr, *a, **kw):
+        assert tr.label("S01") == "Alice"
+        raise meeting_notes.NotesError("failed")
+    monkeypatch.setattr(meeting_notes, "generate", fail)
+    src, dest = tmp_path / "a.wav", tmp_path / "a.md"
+    src.touch()
+    rc, events = run("transcribe", str(src), "--out", str(dest), "--notes", "--save-history", "--speaker-name", "S01=Alice")
+    assert rc == 1 and dest.is_file(), events
+    assert events[-1]["notes_error"]["code"] == "failed"
+    assert events[-1]["history_id"] and events[-1]["output"] == str(dest)
+
+
+def test_clip_preview_detection_with_limits(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk import cli_media
+    from contextlib import contextmanager
+    @contextmanager
+    def preview(*a, **kw):
+        yield tmp_path / "preview.wav", "title", "https://example.com", 1800
+    monkeypatch.setattr(cli_media, "source", preview)
+    rc, events = run("transcribe", "https://example.com", "--out", str(tmp_path / "x.md"), "--max-seconds", "600")
+    assert rc == 1 and events[-1]["code"] == "login", events
+
+
+def test_settings_writers_merge_changes(run):
+    # The GUI's long-lived Settings instance must not revert a CLI activation.
+    first, second = cli._settings(), cli._settings()
+    first.set("active_model_id", "qwen3-asr-06b-int8")
+    second.set("studio_speed", 1.5)
+    saved = cli._settings()
+    assert saved.active_model_id == "qwen3-asr-06b-int8" and saved.get("studio_speed") == 1.5
+
+
+def test_translate_text_obeys_shared_model_slot(run, monkeypatch, tmp_path):
+    from thundertalk.core import models, translate_process
+    from thundertalk.core.priority import EXTRA_MODEL
+    monkeypatch.setattr(models, "is_downloaded", lambda *a: True)
+    monkeypatch.setattr(translate_process, "TranslationProcess", lambda: pytest.fail("Must not load while busy"))
+    assert EXTRA_MODEL.acquire(blocking=False)
+    try:
+        rc, events = run("translate", "--text", "hi", "--source-language", "eng", "--target", "cmn", "--out", str(tmp_path / "x.txt"))
+        assert rc == 1 and events[-1]["code"] == "model_busy", events
+    finally:
+        EXTRA_MODEL.release()
+
+
+def test_clone_auto_and_best_ignore_noncloning_preference(run, monkeypatch, tmp_path):
+    from thundertalk.core import speech, voices, tts
+    import numpy as np
+    cli._settings().set("studio_engine", "kokoro")
+    saved = SimpleNamespace(id="demo", ref_text="hello")
+    monkeypatch.setattr(voices.VoiceLibrary, "get", lambda *a: saved)
+    monkeypatch.setattr(voices.VoiceLibrary, "prompt", lambda *a: tts.ClonePrompt(np.zeros(24000), "hello"))
+    monkeypatch.setattr(speech, "backend", lambda bid: SimpleNamespace(is_ready=lambda: True))
+    used = []
+    def synth(*a, **kw):
+        used.append(kw["clone_backend"])
+        return SimpleNamespace(audio=np.zeros(24000), sample_rate=24000, duration=1, warnings=[])
+    monkeypatch.setattr(speech, "get_engine", lambda: SimpleNamespace(synthesize=synth, unload=lambda: None))
+    for engine in ("auto", "best"):
+        rc, events = run("speak", "--text", "hello", "--voice", "my:demo", "--engine", engine, "--out", str(tmp_path / "o.wav"))
+        assert rc == 0, events
+    assert used == ["voxcpm2", "indextts"]
+
+
+def test_tts_music_model_downloads_progress_and_activation(run, monkeypatch):
+    from thundertalk import cli_library
+    from thundertalk.core import music, speech
+    rows = [dict(id="voxcpm2", kind="tts", ready=True, compatible=True),
+            dict(id="acestep-turbo", kind="music", ready=True, compatible=True)]
+    monkeypatch.setattr(cli_library, "catalog", lambda: rows)
+    downloaded = []
+    def download(info, progress=None, **kw):
+        downloaded.append(info)
+        progress(25, "Downloading")
+    monkeypatch.setattr(speech, "download_backend", download)
+    for mid in ("voxcpm2", "acestep-turbo"):
+        rc, events = run("models", "download", mid, *(["--planner"] if mid.startswith("acestep") else []))
+        assert rc == 0 and any(e.get("value") == .25 for e in events), events
+        rc, events = run("models", "activate", mid)
+        assert rc == 0, events
+    assert music.PLANNER in downloaded[-1].downloads
+    assert cli._settings().get("studio_engine") == "voxcpm2"
+    assert cli._settings().get("compose_model") == "acestep-turbo"
+
+
+@pytest.mark.parametrize("kind", ["cancelled", "disk_full", "failed"])
+def test_model_download_failures_are_coded(run, monkeypatch, kind):
+    from thundertalk.core import models
+    def fail(*a, **kw):
+        if kind == "cancelled":
+            raise models.DownloadCancelled()
+        if kind == "disk_full":
+            raise OSError(28, "Disk full")
+        raise RuntimeError("network failure")
+    monkeypatch.setattr(models, "download_model", fail)
+    rc, events = run("models", "download", "qwen3-asr-06b-int8")
+    assert rc == 1 and events[-1]["code"] == kind
+
+
+def test_burn_transcribes_first(run, fake_asr, monkeypatch, tmp_path):
+    from thundertalk.core import audio_io, burn
+    monkeypatch.setattr(audio_io, "find_ffmpeg", lambda: "/ffmpeg")
+    src = tmp_path / "v.mp4"
+    src.touch()
+    def fake(src, tr, dest, **kw):
+        assert tr.to_text() == "Hello world"
+        Path(dest).touch()
+        return burn.BurnResult(dest, 1, 1, 1)
+    monkeypatch.setattr(burn, "burn", fake)
+    rc, events = run("burn", str(src), "--soft", "--out", str(tmp_path / "out.mp4"))
+    assert rc == 0, events
+
+
+def test_clone_requires_text_and_available_engine(run, monkeypatch, tmp_path):
+    from thundertalk.core import voices, speech
+    monkeypatch.setattr(voices.VoiceLibrary, "get", lambda *a: SimpleNamespace(id="demo", ref_text=""))
+    for ready, expected in ((False, "tts_missing"), (True, "transcript_required")):
+        monkeypatch.setattr(speech, "backend", lambda *a: SimpleNamespace(is_ready=lambda: ready))
+        rc, events = run("speak", "--text", "hello", "--voice", "my:demo", "--engine", "voxcpm2", "--out", str(tmp_path / "x.wav"))
+        assert rc == 1 and events[-1]["code"] == expected
+
+
+def test_compose_unavailable_check_is_advisory(run, fake_music, monkeypatch):
+    from thundertalk.core import models
+    monkeypatch.setattr(models, "is_downloaded", lambda *a: False)
+    rc, events = run("compose", "--lyrics", "[Verse]\nHello world", "--style", "pop", "--length", "10")
+    assert rc == 0, events
+    assert events[-1]["takes"][0]["lyric_check"] == dict(status="unavailable", code="music:no_asr")

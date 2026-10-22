@@ -177,3 +177,56 @@ class ModelSlot:
 
 
 EXTRA_MODEL = ModelSlot(_shared_path("extra-model.lock"))
+
+
+_JOB = threading.local()
+
+
+@contextmanager
+def alternate_job(cancel=None):
+    """Nested core calls in one job borrow its outer lease; unrelated jobs fail fast."""
+    if foreground_active():
+        yield
+        return
+    depth = getattr(_JOB, "depth", 0)
+    if depth == 0:
+        DICTATION.wait_clear(cancel)
+        if cancel is not None and cancel.is_set():
+            raise RuntimeError("cancelled")
+        if not EXTRA_MODEL.acquire(blocking=False):
+            raise RuntimeError("model_busy")
+    _JOB.depth = depth + 1
+    try:
+        yield
+    finally:
+        _JOB.depth = depth
+        if depth == 0:
+            EXTRA_MODEL.release()
+
+
+def background_headroom(need_mb: int) -> None:
+    """Check immediately before allocating a new background model's heap."""
+    if need_mb <= 0:
+        return
+    from thundertalk.core import memory_policy
+    from thundertalk.core.music_process import ADMIT_LEFT_FRACTION, total_memory_mb
+    free, total = memory_policy.free_percent(), total_memory_mb()
+    if free is not None and (free < 40 or total > 0 and total * free / 100 - need_mb < total * ADMIT_LEFT_FRACTION):
+        raise RuntimeError("memory")
+
+
+def foreground_active() -> bool:
+    return bool(getattr(_JOB, "foreground", False))
+
+
+@contextmanager
+def foreground_job():
+    """Dictation translation is the priority owner, never its own waiter."""
+    previous = foreground_active()
+    _JOB.foreground = True
+    DICTATION.begin()
+    try:
+        yield
+    finally:
+        DICTATION.end()
+        _JOB.foreground = previous

@@ -347,7 +347,14 @@ class SpeechEngine:
             if cancel is not None and cancel.is_set():
                 raise TtsCancelled()
         try:
-            yield
+            from thundertalk.core.priority import alternate_job
+            try:
+                with alternate_job(cancel):
+                    yield
+            except RuntimeError as exc:
+                if str(exc) == "cancelled":
+                    raise TtsCancelled() from exc
+                raise
         finally:
             self._swap.release()
 
@@ -384,6 +391,9 @@ class SpeechEngine:
                             backend(other).unload()
                             self._forget(other)
                     with GPU_LOCK:
+                        if bid not in self._loaded:
+                            from thundertalk.core.priority import background_headroom
+                            background_headroom(getattr(b.info, "size_mb", 0))
                         b.load()
                 else:
                     b.load()
@@ -510,6 +520,8 @@ class SpeechEngine:
         pauses: list[float] = []
         state = {"off": False}
         for idx, (seg, pause) in enumerate(plan):
+            from thundertalk.core.priority import DICTATION
+            DICTATION.wait_clear(cancel)
             if cancel is not None and cancel.is_set():
                 raise TtsCancelled()
             if progress:

@@ -30,3 +30,15 @@ def test_new_mcp_tools_delegate_to_cli(monkeypatch, function, kwargs, command):
     getattr(server, function)(**kwargs)
     assert len(calls) == 1 and calls[0][0] == command
     assert all(isinstance(arg, str) for arg in calls[0])
+
+
+@pytest.mark.parametrize("summary", [
+    {"type": "result", "ok": False, "code": "batch_failed", "items": [{"ok": True, "output": "a.md"}]},
+    {"type": "result", "ok": False, "code": "music:failed", "takes": [{"output": "take.wav"}]},
+])
+def test_mcp_preserves_partial_success_summaries(monkeypatch, summary):
+    import json
+    from types import SimpleNamespace
+    import subprocess
+    monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=1, stdout=json.dumps(summary), stderr=""))
+    assert server._cli("transcribe", "a.wav") == summary
