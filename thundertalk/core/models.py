@@ -587,8 +587,14 @@ def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) ->
 _MLX_ALLOW = ["*.json", "*.safetensors", "*.txt", "*.model"]
 
 
+def hf_snapshot_has(repo_id: str, files) -> bool:
+    """True when a cached snapshot of ``repo_id`` has every file in ``files``."""
+    snap = hf_snapshot_dir(repo_id)
+    return bool(snap) and all((snap / f).exists() for f in files)
+
+
 def download_repo(repo_id: str, ready=None, progress_cb=None,
-                  cancel: "threading.Event | None" = None) -> None:
+                  cancel: "threading.Event | None" = None, allow=None) -> None:
     """Fetch a whole MLX repo into the shared HuggingFace cache with real byte
     progress and instant cancel. ``ready`` is an optional predicate that says
     whether the repo is already complete (defaults to the weights check)."""
@@ -596,7 +602,7 @@ def download_repo(repo_id: str, ready=None, progress_cb=None,
         if progress_cb:
             progress_cb(100, "Done")
         return
-    _hf_snapshot(repo_id, None, _MLX_ALLOW, None, progress_cb, cancel)
+    _hf_snapshot(repo_id, None, list(allow) if allow else _MLX_ALLOW, None, progress_cb, cancel)
     if progress_cb:
         progress_cb(100, "Done")
 

@@ -144,7 +144,9 @@ def download_backend(info: BackendInfo, progress: Optional[Callable[[int, str], 
         if cancel is not None and cancel.is_set():
             raise models.DownloadCancelled()
         if d.kind == "hf":
-            models.download_repo(d.source, None, sub(d), cancel)
+            ready = (lambda repo, files=d.required: models.hf_snapshot_has(repo, files)) if d.required else None
+            allow = (*models._MLX_ALLOW, *d.allow) if d.allow else None
+            models.download_repo(d.source, ready, sub(d), cancel, allow=allow)
         elif d.kind == "hf-dir":
             _download_hf_dir(d, sub(d), cancel)
         elif d.kind in ("tar", "file"):
@@ -202,6 +204,8 @@ def download_ready(d: Download) -> bool:
     from thundertalk.core import models
     target = models.get_models_dir() / d.dest
     if d.kind == "hf":
+        if d.required:
+            return models.hf_snapshot_has(d.source, d.required)
         return models._hf_cache_has(d.source)
     if d.kind == "hf-dir":
         return (target / _hf_dir_marker(d)).is_file()

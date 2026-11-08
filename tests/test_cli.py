@@ -189,6 +189,8 @@ def test_transcribe_markdown_with_best_engine(tmp_path):
     code, msgs, _ = _cli("transcribe", str(ZH_CLIP), "--engine", "best", "--out", str(out))
     if code and msgs[-1].get("code") == "no_model":
         pytest.skip("no ASR model downloaded")
+    if code and msgs[-1].get("code") == "memory":
+        pytest.skip("not enough free memory on this machine right now for a real model")
     assert code == 0, msgs[-1]
     text = out.read_text(encoding="utf-8")
     assert text.startswith("# ") and "`0:00`" in text

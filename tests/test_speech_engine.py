@@ -185,7 +185,7 @@ def test_download_backend_reports_combined_progress(fakes, monkeypatch):
                        downloads=(Download("hf", "org/a", size_mb=300), Download("hf", "org/b", size_mb=100)))
     got = []
 
-    def fake_repo(repo, ready, cb, cancel):
+    def fake_repo(repo, ready, cb, cancel, **kw):
         cb(50, "half")
         cb(100, "done")
 

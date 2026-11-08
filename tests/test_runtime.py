@@ -125,7 +125,7 @@ def test_index_download_installs_runtime_first(monkeypatch):
     from thundertalk.core import speech
     seen = []
     monkeypatch.setattr(runtime, "install", lambda *args: seen.append("runtime"))
-    monkeypatch.setattr(models, "download_repo", lambda *args: seen.append("model"))
+    monkeypatch.setattr(models, "download_repo", lambda *args, **kw: seen.append("model"))
     speech.download_backend(speech.backend("indextts").info)
     assert seen == ["runtime", "model", "model"]
 
@@ -152,7 +152,7 @@ def test_combined_index_progress_never_finishes_before_models(monkeypatch):
     def install(progress, cancel):
         progress(0, "component")
         progress(100, "component")
-    def model(repo, ready, progress, cancel):
+    def model(repo, ready, progress, cancel, **kw):
         progress(0, "model")
         progress(100, "model")
     monkeypatch.setattr(runtime, "install", install)

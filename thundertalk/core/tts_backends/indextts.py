@@ -29,8 +29,13 @@ REPO = "vanch007/mlx-indextts2-2.5-8bit"
 W2V_REPO = "facebook/w2v-bert-2.0"          # semantic front-end, fetched by the port via transformers
 SR = 22050
 _LANG = {"chinese": "zh", "english": "en", "japanese": "ja", "spanish": "es", "arabic": "ar"}
+# Everything the vendored port reads at load time. The generic MLX download
+# filter (json/safetensors/txt/model) used to skip the yaml, .pt and tiktoken
+# files, so fresh installs never became ready.
 _NEEDED = ("config.yaml", "gpt.safetensors", "s2mel.safetensors", "bigvgan.safetensors",
-           "codec.safetensors", "model_manifest.json", "wav2vec2bert_stats.pt")
+           "codec.safetensors", "model_manifest.json", "wav2vec2bert_stats.pt",
+           "feat1.pt", "feat2.pt", "multilingual_zh_ja_yue_char_del.tiktoken")
+_EXTRA_FILES = ("*.yaml", "*.pt", "*.tiktoken")
 _W2V_NEEDED = ("config.json", "preprocessor_config.json", "model.safetensors")
 
 
@@ -54,8 +59,8 @@ class IndexTTSBackend(TtsBackend):
         supports_presets=True,
         supports_clone=True,
         needs_gpu=True,
-        downloads=(Download(kind="hf", source=REPO, size_mb=1720),
-                   Download(kind="hf", source=W2V_REPO, size_mb=2320)),
+        downloads=(Download(kind="hf", source=REPO, size_mb=1720, allow=_EXTRA_FILES, required=_NEEDED),
+                   Download(kind="hf", source=W2V_REPO, size_mb=2320, required=_W2V_NEEDED)),
         components=("torch",),
     )
     sample_rate = SR
