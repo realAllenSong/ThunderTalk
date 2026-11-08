@@ -32,6 +32,10 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.12.1
+
+- **IndexTTS-2.5 works after downloading:** the download skipped a few files the engine needs, so it never became ready and **Generate speech** stayed disabled. If this happened to you, choose IndexTTS-2.5 in Studio ▸ Speak and click Download again; only the missing files are fetched.
+
 ## New in v1.12.0
 
 - **Everything in Studio from the command line (CLI v3):** `transcribe` takes web links as well as files, and several at once; plus `notes` (AI meeting notes), `burn` (subtitles into a video), `translate`, `compose` (songs and background music, lyric checks, repaint), `voices add|list|remove` (your cloned voices), `history` and `models list|download|activate`. Every command prints JSON lines and stable error codes, and the MCP server exposes them too. See [Command line](#command-line).
