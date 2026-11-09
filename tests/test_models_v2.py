@@ -149,7 +149,7 @@ def test_model_row_live_language_change(qapp, isolated_home, monkeypatch):
     row = VariantRow(model, None, True, True)
     monkeypatch.setattr(i18n, "LANG", "zh")
     row.retranslate()
-    assert row._status_badge.text() == "测试模型"
+    assert row._status_badge.text() == "推荐"          # no longer a test model
     assert "0.8B" in row._facts.text()
     assert "热词" in [lb.text() for lb in row._tags.findChildren(QLabel)]
     row.close()
