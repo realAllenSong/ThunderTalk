@@ -239,6 +239,19 @@ def check_apple() -> bool:
     return ok_all
 
 
+def check_vad(path: str) -> bool:
+    """Bundled Silero VAD: hears the voice in --file, nothing in white noise."""
+    import numpy as np
+    from thundertalk.core import audio_io, speech_gate
+    from thundertalk.core.itn import normalize_numbers
+    speech = speech_gate.speech_seconds(audio_io.decode_audio(path, 16000)) if path else None
+    noise = speech_gate.speech_seconds(np.random.default_rng(0).normal(0, .05, 16000 * 5).astype(np.float32))
+    itn = normalize_numbers("一千三，一万三，两万五")
+    ok = noise is not None and noise < speech_gate.MIN_SPEECH_SECONDS and (not path or (speech or 0) > 1) \
+        and itn == "1300，13000，25000"
+    return _say(ok, "vad", model=speech_gate._model_path(), speech_s=speech, noise_s=noise, itn=itn)
+
+
 def check_runtime() -> bool:
     from thundertalk.core import runtime
     runtime.install(lambda pct, msg: _say(True, "runtime-progress", percent=pct, message=msg), component="music")
@@ -316,7 +329,7 @@ def check_music(model: str = "turbo", project: str = "", dit: str = "mlx") -> bo
 
 def run(argv: list[str]) -> int:
     ap = argparse.ArgumentParser(prog="ThunderTalk --selftest")
-    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "apple", "music", "all"])
+    ap.add_argument("what", choices=["audio", "tts", "asr", "moss", "clone", "link", "burn", "translate", "runtime", "apple", "music", "vad", "all"])
     ap.add_argument("--file", default="")
     ap.add_argument("--text", default="")
     ap.add_argument("--model", default="", help="ASR model id, or turbo | xl for music")
@@ -338,6 +351,8 @@ def run(argv: list[str]) -> int:
             ok &= check_moss(a.file)
         if a.what == "music":
             ok &= check_music(a.model or "turbo", a.model_dir, a.dit)
+        if a.what == "vad":
+            ok &= check_vad(a.file)
         if a.what == "runtime":
             ok &= check_runtime()
         if a.what == "translate":
