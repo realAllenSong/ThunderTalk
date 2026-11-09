@@ -290,6 +290,11 @@ class LivePreview(QObject):
         return join_text(self._committed_text, text)
 
     def _timed(self, samples: np.ndarray) -> str:
+        from thundertalk.core.speech_gate import has_speech
+        if not has_speech(samples, self._sr):
+            # Breathing or a fan: an LLM decoder would caption it anyway.
+            self.stats["no_speech"] = self.stats.get("no_speech", 0) + 1
+            return ""
         contended = STUDIO.active
         t0 = time.perf_counter()
         text = self._recognize(samples) or ""

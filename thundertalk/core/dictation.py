@@ -87,8 +87,17 @@ def recover_final(engine, samples: np.ndarray, preview: str = "", *, initial=Non
     erase the take. The app persists failed/preview takes and their source.
     """
     from thundertalk.core.asr import AsrResult
+    from thundertalk.core.speech_gate import has_speech
 
     t0 = time.perf_counter()
+    if initial is None and has_audio_energy(samples) and not has_speech(samples):
+        # Sound but no voice (fan, breathing, keys): LLM decoders invent a
+        # sentence for it, and so does the live preview, so neither is pasted.
+        # Digital silence keeps the old path (a preview of lost audio wins).
+        print("[Dictation] No speech detected (VAD); nothing to paste")
+        return AsrResult("", len(samples) / 16000, int((time.perf_counter() - t0) * 1000),
+                         getattr(engine, "current_model", None) or "unknown",
+                         getattr(engine, "active_backend", ""))
     try:
         result = initial if initial is not None else engine.recognize(samples)
     except Exception as exc:
@@ -101,7 +110,7 @@ def recover_final(engine, samples: np.ndarray, preview: str = "", *, initial=Non
                            getattr(result, "inference_ms", 0), getattr(result, "model", "unknown"),
                            getattr(result, "backend", ""), getattr(result, "rtf", 0),
                            truncated=bool(getattr(result, "truncated", False)))
-    speech = bool(preview.strip()) or has_audio_energy(samples)
+    speech = bool(preview.strip()) or has_speech(samples)
     if speech and (not result.text.strip() or getattr(result, "truncated", False)):
         limit = min(float(getattr(engine, "max_clip_seconds", 20)), 8.0)
         try:

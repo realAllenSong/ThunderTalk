@@ -22,6 +22,7 @@ from thundertalk.core.settings import Settings
 from thundertalk.core.text_merge import merge_preview_terms
 from thundertalk.core.recordings import new_recording_id, save_recording
 from thundertalk.core.dictation import has_audio_energy, recover_final
+from thundertalk.core.speech_gate import has_speech
 from thundertalk.core.i18n import t
 from thundertalk.core import state as st
 from thundertalk.core.state import AppState
@@ -629,7 +630,8 @@ def main() -> None:
         # built-in finished signal, after run() has returned.
         print(f'[ASR] Result: "{text}" ({ms}ms, backend={backend}, RTF={rtf:.3f})')
         reference = recording["preview"] if recording else ""
-        speech = bool(reference.strip()) or (recording is not None and has_audio_energy(recording["samples"]))
+        speech = recording is not None and (has_speech(recording["samples"]) or (
+            bool(reference.strip()) and not has_audio_energy(recording["samples"])))
         if (recording is not None and speech
                 and (not text.strip() or recording.get("truncated", False))
                 and not recording.get("recovery_attempted", False)):
@@ -729,7 +731,8 @@ def main() -> None:
             overlay.show_error(t("overlay.recognition_failed" if speech else "overlay.no_speech"))
 
     def _on_asr_error(msg: str, recording=None) -> None:
-        if recording is not None and (recording["preview"].strip() or has_audio_energy(recording["samples"])):
+        if recording is not None and (has_speech(recording["samples"]) or (
+                recording["preview"].strip() and not has_audio_energy(recording["samples"]))):
             _on_asr_done("", 0, len(recording["samples"]) / 16000,
                          pipe.asr.active_backend, 0, recording)
             return

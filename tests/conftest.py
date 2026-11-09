@@ -41,6 +41,14 @@ def _no_real_preload(monkeypatch):
 
 
 @pytest.fixture(autouse=True)
+def _energy_only_speech_gate(request, monkeypatch):
+    """Fake engines are fed synthetic tones that Silero VAD rightly calls
+    "not a voice"; tests see the old energy gate unless marked real_vad."""
+    if "real_vad" not in request.keywords:
+        monkeypatch.setattr("thundertalk.core.speech_gate.speech_seconds", lambda *a, **k: None)
+
+
+@pytest.fixture(autouse=True)
 def _isolated_audio_log(monkeypatch):
     """Fake audio sessions must not fill the user's real diagnostic log."""
     from thundertalk.core import audio_diagnostics as diag
@@ -78,3 +86,7 @@ def no_audio_hw(monkeypatch):
     from thundertalk.core.audio import AudioRecorder
     monkeypatch.setattr(AudioRecorder, "list_devices", staticmethod(lambda: []))
     monkeypatch.setattr(AudioRecorder, "refresh_devices", staticmethod(lambda: []))
+
+
+def pytest_configure(config):
+    config.addinivalue_line("markers", "real_vad: run the bundled Silero VAD speech gate")
