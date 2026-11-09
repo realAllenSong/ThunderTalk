@@ -308,6 +308,8 @@ def test_english_decimals_and_large_scales(spoken, written):
         ("一千三一个月", "1300一个月"),
         # 零 keeps the place value
         ("一千零三", "1003"),
+        ("我们需要一千零三个", "我们需要1003个"),
+        ("一百零五块", "105块"),
         ("一万零三", "10003"),
         ("一百零五", "105"),
         # full forms unchanged

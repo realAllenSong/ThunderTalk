@@ -72,7 +72,8 @@ def _has_digit_only_adjacency(s: str) -> bool:
     integer parser silently mangles.
     """
     for i in range(len(s) - 1):
-        if s[i] in _ZH_DIGITS and s[i + 1] in _ZH_DIGITS:
+        # 零X is how a skipped place is spoken (一千零三), not adjacency
+        if s[i] in _ZH_DIGITS and s[i + 1] in _ZH_DIGITS and s[i] not in "零〇":
             return True
     return False
 
