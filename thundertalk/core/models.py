@@ -210,7 +210,7 @@ BUILTIN_MODELS: list[ModelInfo] = [
     ),
     ModelInfo(
         max_clip_seconds=20.0, max_hotword_bytes=64,
-        id="funasr-nano-int8", experimental=True, family="Fun-ASR-Nano", name="Fun-ASR-Nano-2512",
+        id="funasr-nano-int8", family="Fun-ASR-Nano", name="Fun-ASR-Nano-2512",
         variant="ONNX int8", backend="onnx", size_mb=842,
         params="0.8B", languages=['zh', 'en', 'ja'], language_count=3,
         accuracy_stars=0, hotword_support=True,

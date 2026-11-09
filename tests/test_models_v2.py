@@ -205,7 +205,7 @@ def test_retired_speak_setting_falls_back(qapp, isolated_home, voice):
     tab.close()
 
 
-def test_retained_preferences_and_experimental_funasr(isolated_home):
+def test_retained_preferences_and_funasr(isolated_home):
     import json
     from thundertalk.core import settings
 
@@ -214,4 +214,4 @@ def test_retained_preferences_and_experimental_funasr(isolated_home):
     prefs = settings.Settings()
     assert all(prefs.get(k) == v for k, v in values.items())
     model = next(m for m in models.BUILTIN_MODELS if m.id == prefs.active_model_id)
-    assert model.experimental and model.hotword_support
+    assert not model.experimental and model.hotword_support

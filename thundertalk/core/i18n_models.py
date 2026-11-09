@@ -58,8 +58,8 @@ MODELS = {
         "zh": "约实时速度 · Apple 芯片",
     },
     "model.blurb.funasr-nano-int8": {
-        "en": "Chinese, English and Japanese, with hotwords. Studio uses sentence-span timestamps.",
-        "zh": "支持中英日语及热词。Studio 提供句段时间戳。",
+        "en": "Chinese, English and Japanese, with hotwords. Faster and lighter; best when people talk nearby. Studio uses sentence-span timestamps.",
+        "zh": "支持中英日语及热词。更快更省内存，旁边有人说话时最准。Studio 提供句段时间戳。",
     },
     "models.backbone_params": {
         "en": "~0.8B backbone parameters",

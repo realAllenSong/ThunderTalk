@@ -32,6 +32,13 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.13.0
+
+- **No more invented sentences from background noise:** a small on-device voice detector (Silero VAD) now checks every take. A fan, typing, rain or a vacuum is no longer turned into a made-up sentence, and the live preview stays empty until you speak.
+- **Quiet voices are no longer dropped:** speech from a far-away or low-gain microphone used to be treated as silence and discarded without being recognized. Quiet recordings are now raised to a normal level first, in dictation and in Studio.
+- **Spoken numbers come out right:** 一千三 is 1300, 一万三 is 13000, 两万五 is 25000 and 一百五 is 150, the way people say them (not 1003 or 10003). 一千零三个 becomes 1003个.
+- **Fun-ASR-Nano is no longer a test model:** across 6,000+ decodes of real speech it was as accurate as Qwen3-ASR overall, about 30% faster with 0.6 GB less memory, and much better when other people are talking nearby. Qwen3-ASR-0.6B stays the default: it is more accurate on Chinese–English mixed speech and invents less from non-speech sounds.
+
 ## New in v1.12.1
 
 - **IndexTTS-2.5 works after downloading:** the download skipped a few files the engine needs, so it never became ready and **Generate speech** stayed disabled. If this happened to you, choose IndexTTS-2.5 in Studio ▸ Speak and click Download again; only the missing files are fetched.
@@ -238,7 +245,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | MOSS-Transcribe-Diarize 0.9B | ~1.8 GB | MLX (Metal GPU) | 50+ | ★★★★★ | No |
 | Parakeet-TDT 0.6B v3 | 640 MB | ONNX (CPU) | 25 (European) | ★★★★★ | No |
 | Parakeet-TDT 0.6B v2 | 640 MB | ONNX (CPU) | English | ★★★★★ | No |
-| Fun-ASR-Nano-2512 (experimental) | 842 MB | ONNX (CPU) | Chinese, English, Japanese | ★★★★★ | Yes |
+| Fun-ASR-Nano-2512 | 842 MB | ONNX (CPU) | Chinese, English, Japanese | ★★★★★ | Yes |
 | Apple · Built in | 0 MB (part of macOS) | Speech framework (CPU / Neural Engine) | Dictation languages installed on the Mac | ★★☆☆☆ | Yes |
 
 > **MOSS-Transcribe-Diarize** ([OpenMOSS](https://github.com/OpenMOSS/MOSS-Transcribe-Diarize), first place in the 2nd MLC-SLM Challenge at INTERSPEECH 2026) is a multi-speaker model. In dictation it pastes clean text (there is an optional S01:/S02: speaker-label toggle on its model card), and it powers Studio's Label speakers option, with speaker labels and timestamps for recordings up to about 90 minutes in a single pass.
