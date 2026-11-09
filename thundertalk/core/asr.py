@@ -591,12 +591,14 @@ class AsrEngine:
         if len(samples) == 0:
             raise ValueError("Empty audio")
 
-        rms = float(np.sqrt(np.mean(samples ** 2)))
-        if rms < 0.003:
+        from thundertalk.core.audio_level import is_digital_silence, normalize_quiet
+        if is_digital_silence(samples):
             duration = len(samples) / sample_rate
-            print(f"[ASR] Audio too quiet (rms={rms:.5f}), skipping inference")
+            print("[ASR] Digital silence, skipping inference")
             return AsrResult(text="", duration_secs=duration, inference_ms=0,
                              model=self._model_id or "unknown", backend=self._active_backend)
+        # A quiet voice (far or low-gain mic) is raised, not skipped.
+        samples = normalize_quiet(samples, sample_rate)
 
         if self._apple is not None:
             return self._recognize_apple(samples, sample_rate, preview)

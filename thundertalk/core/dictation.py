@@ -87,9 +87,11 @@ def recover_final(engine, samples: np.ndarray, preview: str = "", *, initial=Non
     erase the take. The app persists failed/preview takes and their source.
     """
     from thundertalk.core.asr import AsrResult
+    from thundertalk.core.audio_level import normalize_quiet
     from thundertalk.core.speech_gate import has_speech
 
     t0 = time.perf_counter()
+    samples = normalize_quiet(samples)
     if initial is None and has_audio_energy(samples) and not has_speech(samples):
         # Sound but no voice (fan, breathing, keys): LLM decoders invent a
         # sentence for it, and so does the live preview, so neither is pasted.

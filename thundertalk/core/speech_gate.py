@@ -91,9 +91,13 @@ def speech_seconds(samples: np.ndarray, sr: int = SAMPLE_RATE) -> Optional[float
 
 def has_speech(samples: np.ndarray, sr: int = SAMPLE_RATE) -> bool:
     """True unless the clip is quiet or Silero hears no voice in it."""
+    from thundertalk.core.audio_level import normalize_quiet
     from thundertalk.core.dictation import has_audio_energy
 
-    if samples is None or not has_audio_energy(samples, sr):
+    if samples is None:
+        return False
+    samples = normalize_quiet(samples, sr)
+    if not has_audio_energy(samples, sr):
         return False
     seconds = speech_seconds(samples, sr)
     return True if seconds is None else seconds >= MIN_SPEECH_SECONDS

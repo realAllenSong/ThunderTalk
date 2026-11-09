@@ -76,3 +76,28 @@ def test_gate_is_cheap():
     t0 = time.perf_counter()
     speech_gate.speech_seconds(x)
     assert time.perf_counter() - t0 < 1.5
+
+
+def test_quiet_voice_is_raised_and_decoded():
+    # A far / low-gain microphone: the same sentence at -40 dB (rms ~0.002).
+    x = decode_audio(str(SPEECH), SR) * .01
+    engine = Engine()
+    r = recover_final(engine, x)
+    assert engine.calls == 1 and r.text
+
+
+def test_quiet_noise_is_still_rejected():
+    engine = Engine()
+    r = recover_final(engine, noises()["pink"] * .01)
+    assert (r.text, engine.calls) == ("", 0)
+
+
+def test_level_rules():
+    from thundertalk.core.audio_level import loudness, normalize_quiet
+    loud = decode_audio(str(SPEECH), SR)
+    assert normalize_quiet(loud) is loud                      # normal level untouched
+    silent = np.zeros(SR, np.float32)
+    assert normalize_quiet(silent) is silent                  # digital silence untouched
+    raised = normalize_quiet(loud * .01)
+    assert .03 <= loudness(raised) <= .06 and np.abs(raised).max() <= .95
+    assert np.abs(normalize_quiet(loud * 1e-5)).max() < 1e-3   # gain is capped (+40 dB)

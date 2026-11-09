@@ -416,6 +416,8 @@ def segment_speech(x: np.ndarray, sr: int = SR, target: float = 15.0, max_len: f
     The silence threshold adapts to the recording (noise floor × 4) so quiet
     phone memos and loud studio audio are both handled. Long stretches with no
     pause are cut at their quietest moment instead of at a hard boundary."""
+    from thundertalk.core.audio_level import normalize_quiet
+    x = normalize_quiet(x, sr)          # a quiet file is judged at speaking level
     n_total = len(x) / sr
     if n_total <= max_len:
         return [(0.0, n_total)] if keep_all or _has_speech(x, sr) else []
@@ -479,6 +481,8 @@ def segment_speech(x: np.ndarray, sr: int = SR, target: float = 15.0, max_len: f
 def _has_speech(x: np.ndarray, sr: int = SR) -> bool:
     if len(x) < int(0.15 * sr):
         return False
+    from thundertalk.core.audio_level import normalize_quiet
+    x = normalize_quiet(x, sr)
     frame = int(0.02 * sr)
     n = len(x) // frame
     if n == 0:
