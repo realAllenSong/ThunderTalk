@@ -150,7 +150,8 @@ def test_unit_plus_bare_digit_idiom_not_converted(
         ("十六还是六十四", "16还是64"),
         # And longer compounds still work
         ("一万", "10000"),
-        ("一万一", "10001"),  # preserves existing behavior
+        ("一万一", "11000"),  # spoken shorthand: 一万一千
+        ("一万零一", "10001"),
     ],
 )
 def test_ten_family_and_compounds_still_convert(
@@ -285,3 +286,36 @@ def test_counter_and_compounds_unchanged(
 ])
 def test_english_decimals_and_large_scales(spoken, written):
     assert normalize_numbers(spoken) == written
+
+
+# ── Spoken shorthand drops the last unit (user report: 一千三 → 1003) ──
+
+@pytest.mark.parametrize(
+    "spoken, expected",
+    [
+        ("一千三", "1300"),
+        ("一万三", "13000"),
+        ("一万三千", "13000"),
+        ("一千三百", "1300"),
+        ("两万五", "25000"),
+        ("一百五", "150"),
+        ("五千二", "5200"),
+        ("一万三千五", "13500"),
+        ("十万八", "108000"),
+        ("一亿二", "120000000"),
+        ("三千五的预算", "3500的预算"),
+        ("这个月工资一万三，房租四千五", "这个月工资13000，房租4500"),
+        ("一千三一个月", "1300一个月"),
+        # 零 keeps the place value
+        ("一千零三", "1003"),
+        ("一万零三", "10003"),
+        ("一百零五", "105"),
+        # full forms unchanged
+        ("三十五", "35"),
+        ("一百一十五", "115"),
+        ("三千五百万", "35000000"),
+        ("一千二百三十四", "1234"),
+    ],
+)
+def test_spoken_shorthand_numbers(spoken: str, expected: str) -> None:
+    assert normalize_numbers(spoken) == expected

@@ -243,8 +243,10 @@ def _parse_zh_integer(s: str) -> int | None:
     current = 0
     yi_part = 0
     wan_part = 0
+    prev = ""
 
     for ch in s:
+        prev_ch, prev = prev, ch
         if ch in _ZH_DIGITS:
             current = _ZH_DIGITS[ch]
         elif ch == "十" or ch == "拾":
@@ -270,6 +272,11 @@ def _parse_zh_integer(s: str) -> int | None:
             result = 0
             current = 0
 
+    # Spoken shorthand drops the last unit: 一千三 = 1300, 两万五 = 25000,
+    # 一百五 = 150, 一亿二 = 1.2亿. A final digit right after a unit (no 零
+    # between) counts in the next unit down; 一千零三 stays 1003.
+    if current and prev_ch in _ZH_UNITS and len(s) >= 3:
+        current *= _ZH_UNITS[prev_ch] // 10 if _ZH_UNITS[prev_ch] > 10 else 1
     result += current
     return yi_part + wan_part + result
 
@@ -572,6 +579,18 @@ def normalize_numbers(text: str) -> str:
     title_ranges = _build_title_ranges(result)
 
     def _zh_replacer(m: re.Match) -> str:
+        # "一千三一个月": the regex swallows the 一 of 一个月, and the 三一
+        # adjacency then reads as an idiom. Convert the number, keep the 一.
+        core = m.group()
+        nxt = result[m.end()] if m.end() < len(result) else ""
+        if (len(core) >= 3 and core[-1] == "一" and core[-2] in _ZH_DIGITS
+                and any(c in _ZH_UNIT_CHARS for c in core[:-1])
+                and not _has_digit_only_adjacency(core[:-1])
+                and (nxt in _ZH_NO_CONVERT_SUFFIXES or nxt in _ZH_MEASURE_WORDS)
+                and not _in_title(m.start(), title_ranges)):
+            head = _ZH_NUM_RE.fullmatch(core[:-1])
+            if head is not None:
+                return _convert_zh_number(head, result) + "一"
         if _should_convert_zh(m, result, title_ranges):
             return _convert_zh_number(m, result)
         return m.group()
