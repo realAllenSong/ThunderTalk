@@ -32,6 +32,10 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.13.1
+
+- **Hold to Record:** Settings ▸ Activation Mode now offers **Hold to Record** next to Toggle. Hold the hotkey while you speak and release it to finish; a quick tap still works like Toggle ([#11](https://github.com/realAllenSong/ThunderTalk/issues/11)).
+
 ## New in v1.13.0
 
 - **No more invented sentences from background noise:** a small on-device voice detector (Silero VAD) now checks every take. A fan, typing, rain or a vacuum is no longer turned into a made-up sentence, and the live preview stays empty until you speak.
