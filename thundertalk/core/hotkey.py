@@ -68,8 +68,10 @@ if _SYSTEM == "Darwin":
     from AppKit import NSEvent, NSKeyDownMask, NSKeyUpMask, NSFlagsChangedMask
 
     class HotkeyListener:
-        def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4") -> None:
+        def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
+                     on_release: Optional[Callable[[], None]] = None) -> None:
             self._on_toggle = on_toggle
+            self._on_release_cb = on_release
             self._combo = _parse_combo(key_name)
             self._pressed_vks: set[int] = set()
             self._modifier_state: int = 0
@@ -165,6 +167,8 @@ if _SYSTEM == "Darwin":
                 if vk is None or vk not in self._pressed_vks:
                     print(f"[Hotkey] _fired reset ('{part}' released)")
                     self._fired = False
+                    if self._on_release_cb is not None:
+                        self._on_release_cb()       # hold-to-record: key up ends the take
                     return
 
         def _check_and_fire(self) -> None:
@@ -239,8 +243,10 @@ else:
         return [k for p in parts if (k := _resolve_key(p)) is not None]
 
     class HotkeyListener:
-        def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4") -> None:
+        def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
+                     on_release: Optional[Callable[[], None]] = None) -> None:
             self._on_toggle = on_toggle
+            self._on_release_cb = on_release
             self._combo = _parse_pynput_combo(key_name)
             self._pressed: set = set()
             self._listener_obj: Optional[keyboard.Listener] = None
@@ -300,6 +306,8 @@ else:
                 self._pressed.discard(self._normalize(key))
                 if self._fired and not self._check_combo():
                     self._fired = False
+                    if self._on_release_cb is not None:
+                        self._on_release_cb()
             except Exception:
                 pass
 

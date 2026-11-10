@@ -31,6 +31,10 @@ EXTRA: dict[str, dict[str, str]] = {
         "en": "Press {key} in any app, speak, then press it again. Your words land right at the cursor.",
         "zh": "在任意应用里按 {key}，说话，再按一次结束。文字会直接出现在光标处。",
     },
+    "home.hero.ready.sub.hold": {
+        "en": "Hold {key} in any app while you speak, then release. Your words land right at the cursor.",
+        "zh": "在任意应用里按住 {key} 说话，松开即结束。文字会直接出现在光标处。",
+    },
     "home.hero.nomodel.title": {"en": "Download a model to get started", "zh": "下载一个模型，马上开始"},
     "home.hero.nomodel.sub": {
         "en": "ThunderTalk runs 100% on your device — your voice never leaves it. Pick a speech model; it takes about a minute.",
@@ -46,6 +50,7 @@ EXTRA: dict[str, dict[str, str]] = {
     "home.hero.error.cta": {"en": "Open Models", "zh": "打开模型页"},
     "home.hero.rec.title": {"en": "Listening…", "zh": "正在聆听…"},
     "home.hero.rec.sub": {"en": "Press {key} again to finish.", "zh": "再按一次 {key} 结束。"},
+    "home.hero.rec.sub.hold": {"en": "Release {key} to finish.", "zh": "松开 {key} 结束。"},
     "home.hero.trans.title": {"en": "Transcribing…", "zh": "正在转写…"},
     "home.hero.trans.sub": {"en": "Almost there.", "zh": "马上就好。"},
     "home.hero.try": {"en": "Try it in the box below", "zh": "在下方输入框里试一试"},

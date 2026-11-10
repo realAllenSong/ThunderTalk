@@ -309,8 +309,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Activation Mode", "zh": "激活模式",
     },
     "settings.section.activation_mode_desc": {
-        "en": "Choose between toggle (click to start/stop) or hold-to-record.",
-        "zh": "选择切换模式（按一次启停）或按住录音模式。",
+        "en": "Toggle: press to start, press again to stop. Hold: record while the key is held; a quick tap still toggles.",
+        "zh": "切换：按一次开始，再按一次结束。按住：按住时录音，松开结束；轻点一下仍按切换方式工作。",
     },
     "settings.section.input_device": {"en": "Input Device", "zh": "输入设备"},
     "settings.section.recording": {"en": "Recording", "zh": "录音"},

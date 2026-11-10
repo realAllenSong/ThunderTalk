@@ -346,10 +346,11 @@ class SettingsPage(QWidget):
         card.add_widget(self._hotkey_capture)
 
         self._mode_combo = self._combo(170)
-        self._mode_combo.addItem(t("settings.mode.toggle_click"))
-        # "Hold to record" stays hidden until it is stable; force toggle.
-        self._settings.set("press_mode", "toggle")
-        self._mode_combo.currentIndexChanged.connect(lambda i: self._set_mode("toggle"))
+        self._mode_combo.addItem(t("settings.mode.toggle_click"), "toggle")
+        self._mode_combo.addItem(t("settings.mode.hold_record"), "hold")
+        self._mode_combo.setCurrentIndex(1 if self._settings.get("press_mode") == "hold" else 0)
+        self._mode_combo.currentIndexChanged.connect(
+            lambda i: self._set_mode(self._mode_combo.itemData(i) or "toggle"))
         card.add_row("settings.section.activation_mode", "settings.section.activation_mode_desc",
                      self._mode_combo, sep=True)
 

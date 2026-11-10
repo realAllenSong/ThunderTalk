@@ -156,17 +156,22 @@ class _Hero(QWidget):
     def refresh(self) -> None:
         s = self._state
         key = hotkey_text(s.hotkey)
+        try:
+            from thundertalk.core.settings import Settings
+            hold = ".hold" if Settings().get("press_mode") == "hold" else ""
+        except Exception:
+            hold = ""
         self._keycaps.set_combo(s.hotkey)
         show_keys, cta_text, dot, spin, live = True, "", theme.SUCCESS, False, False
 
         if s.recording == st.REC_RECORDING:
-            eyebrow, title, sub = t("status.listening"), t("home.hero.rec.title"), t("home.hero.rec.sub").format(key=key)
+            eyebrow, title, sub = t("status.listening"), t("home.hero.rec.title"), t("home.hero.rec.sub" + hold).format(key=key)
             dot, live = theme.ACCENT_ORANGE, True
         elif s.recording == st.REC_TRANSCRIBING:
             eyebrow, title, sub = t("status.transcribing"), t("home.hero.trans.title"), t("home.hero.trans.sub")
             dot, spin, show_keys = theme.ACCENT_BLUE, True, False
         elif s.model_status == st.MODEL_READY:
-            eyebrow, title, sub = t("status.ready"), t("home.hero.ready.title"), t("home.hero.ready.sub").format(key=key)
+            eyebrow, title, sub = t("status.ready"), t("home.hero.ready.title"), t("home.hero.ready.sub" + hold).format(key=key)
         elif s.model_status == st.MODEL_LOADING:
             eyebrow, title, sub = t("status.loading"), t("home.hero.loading.title"), t("home.hero.loading.sub")
             dot, spin, show_keys = theme.WARNING, True, False
