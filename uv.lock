@@ -2354,7 +2354,6 @@ api = [
 indextts = [
     { name = "einops" },
     { name = "omegaconf" },
-    { name = "psutil" },
     { name = "torchaudio" },
     { name = "wetext" },
 ]
@@ -2367,6 +2366,7 @@ mlx = [
 translation = [
     { name = "mcp" },
     { name = "protobuf" },
+    { name = "psutil" },
     { name = "sentencepiece" },
     { name = "soundfile" },
     { name = "tiktoken" },
@@ -2393,7 +2393,7 @@ requires-dist = [
     { name = "numpy", specifier = ">=1.24" },
     { name = "omegaconf", marker = "extra == 'indextts'", specifier = ">=2.3" },
     { name = "protobuf", marker = "extra == 'translation'", specifier = ">=4.25" },
-    { name = "psutil", marker = "extra == 'indextts'", specifier = ">=5.9" },
+    { name = "psutil", marker = "extra == 'translation'", specifier = ">=5.9" },
     { name = "pyinstaller", specifier = ">=6.19.0" },
     { name = "pynput", specifier = ">=1.7" },
     { name = "pyobjc-framework-avfoundation", marker = "sys_platform == 'darwin'", specifier = ">=12.1" },
