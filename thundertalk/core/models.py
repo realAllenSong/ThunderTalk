@@ -256,6 +256,20 @@ BUILTIN_MODELS: list[ModelInfo] = [
 # Grouping & recommendation
 # ---------------------------------------------------------------------------
 
+def find(model_id: str) -> Optional[ModelInfo]:
+    """Catalog entry for a local model id or a cloud ``<provider>:<model>`` id."""
+    info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+    if info is None and model_id and ":" in model_id:
+        from thundertalk.core import cloud
+        info = cloud.model_info(model_id)
+    return info
+
+
+def is_cloud(model_id: str) -> bool:
+    from thundertalk.core import cloud
+    return cloud.is_cloud_id(model_id)
+
+
 def refresh_system_models() -> None:
     """Fill in what only this Mac can say about the built-in recognizer."""
     from thundertalk.core import apple_speech
@@ -349,6 +363,12 @@ def get_models_dir() -> Path:
 
 
 def is_downloaded(model_id: str) -> bool:
+    """Ready to load. For a cloud model: its provider has a key (and URL)."""
+    if model_id and ":" in model_id:
+        from thundertalk.core import cloud
+        pid, _model = cloud.split_id(model_id)
+        if pid:
+            return cloud.is_configured(pid)
     info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
     if info and info.built_in:
         # "Downloaded" = macOS has at least one on-device dictation language.
@@ -383,6 +403,8 @@ def is_downloaded(model_id: str) -> bool:
 
 
 def get_model_path(model_id: str) -> Optional[str]:
+    if is_cloud(model_id):
+        return model_id               # asr.py's cloud loader takes the id itself
     info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
     if info and info.built_in:
         return "apple://speech"

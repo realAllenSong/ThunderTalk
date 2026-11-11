@@ -73,6 +73,10 @@ DEFAULTS: dict[str, Any] = {
     "compose_takes": 0,             # 0 = the tier's default
     "compose_language": "",         # "" = the UI language
     "compose_planner": None,        # None = pre-ticked by memory and disk space
+    # Cloud engines (core/cloud.py): provider id -> {base_url, asr_model, tts_model, voice}.
+    # Never keys: those live in the Keychain.
+    "cloud": {},
+    "cloud_dictation_ok": False,    # the "audio leaves this Mac" notice was accepted
 }
 
 _WRITE_LOCK = threading.RLock()
@@ -102,17 +106,19 @@ class Settings:
 
     def _normalize_model_preferences(self) -> None:
         """Retired catalog IDs resolve to defaults on the next launch."""
+        from thundertalk.core import cloud
         from thundertalk.core.models import BUILTIN_MODELS, get_recommended_id
         from thundertalk.core.speech import BACKEND_ORDER, DEFAULT_CLONE_BACKEND
 
         active = self._data["active_model_id"]
-        if active and active not in {m.id for m in BUILTIN_MODELS}:
+        if active and active not in {m.id for m in BUILTIN_MODELS} and not cloud.is_cloud_id(active):
             self._data["active_model_id"] = get_recommended_id("Qwen3-ASR") or ""
         engine = self._data["studio_engine"]
-        if engine and engine not in BACKEND_ORDER:
+        if engine and engine not in BACKEND_ORDER and engine not in cloud.TTS_PROVIDERS:
             self._data["studio_engine"] = DEFAULT_CLONE_BACKEND
         voice = self._data["studio_voice"]
-        if voice and not voice.startswith("my:") and voice.split(":", 1)[0] not in BACKEND_ORDER:
+        if (voice and not voice.startswith("my:") and voice.split(":", 1)[0] not in BACKEND_ORDER
+                and voice.split(":", 1)[0] not in cloud.TTS_PROVIDERS):
             self._data["studio_voice"] = DEFAULTS["studio_voice"]
 
     def save(self) -> None:

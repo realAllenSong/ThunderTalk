@@ -30,7 +30,9 @@ from pathlib import Path
 from typing import Optional
 
 FORMATS = ("txt", "md", "srt", "vtt", "json")
-TTS_ENGINES = ("auto", "best", "apple", "kokoro", "voxcpm2", "indextts")
+# Cloud engines (openai, gemini, elevenlabs, custom) are used only when named.
+TTS_ENGINES = ("auto", "best", "apple", "kokoro", "voxcpm2", "indextts", "openai", "gemini", "elevenlabs", "custom")
+CLOUD_TTS = ("openai", "gemini", "elevenlabs", "custom")
 # `--engine best` for files, most accurate first. Dictation (`auto`) favours
 # latency; a recording or a call favours accuracy. Measured in docs/plans.
 ASR_QUALITY = (
@@ -115,6 +117,8 @@ def _parser() -> argparse.ArgumentParser:
     from thundertalk.cli_music import add_parser
     add_parser(sub)
     sub.add_parser("status", help="engines, downloaded models and permissions as JSON")
+    from thundertalk.cli_cloud import add_parser as add_cloud
+    add_cloud(sub)
     return ap
 
 
@@ -137,8 +141,21 @@ def _downloaded_asr() -> list[str]:
 
 def resolve_asr(engine: str, settings) -> str:
     """Model id for ``--engine``: ``auto`` is the app's dictation model when it
-    is downloaded, otherwise Apple's built-in recognizer."""
+    is downloaded, otherwise Apple's built-in recognizer. A cloud model
+    (``openai:gpt-transcribe``) is used only when named: ``auto``/``best``
+    never send audio off this Mac, even when dictation uses a cloud model."""
+    from thundertalk.core import cloud
     from thundertalk.core.models import APPLE_SPEECH_ID, is_downloaded
+    pid, model = cloud.split_id(engine)
+    if pid:
+        if not cloud.PROVIDERS[pid].asr_models:
+            raise CliError("cloud_unsupported", f"{cloud.PROVIDERS[pid].name} has no speech recognition")
+        if not cloud.is_configured(pid):
+            raise CliError("cloud_no_key", f"No API key for {cloud.PROVIDERS[pid].name}. "
+                           f"Run: thundertalk cloud set-key {pid} (reads the key from stdin)")
+        return f"{pid}:{model}"
+    if engine in cloud.PROVIDERS:
+        raise CliError("bad_args", f"Name the model too, e.g. --engine {engine}:{cloud.config(engine, settings)['asr_model']}")
     ids = {m.id for m in _asr_models()}
     if engine == "apple":
         engine = APPLE_SPEECH_ID
@@ -149,7 +166,8 @@ def resolve_asr(engine: str, settings) -> str:
         engine = "auto"
     if engine != "auto":
         if engine not in ids:
-            raise CliError("bad_args", f"Unknown engine '{engine}'. Use auto, apple or one of: {', '.join(sorted(ids))}")
+            raise CliError("bad_args", f"Unknown engine '{engine}'. Use auto, best, apple, <provider>:<model> "
+                           f"(cloud) or one of: {', '.join(sorted(ids))}")
         if not is_downloaded(engine):
             if engine == APPLE_SPEECH_ID:
                 raise CliError("locale_unsupported", "No dictation language is installed for on-device recognition "
@@ -157,7 +175,7 @@ def resolve_asr(engine: str, settings) -> str:
             raise CliError("no_model", f"Model '{engine}' is not downloaded. Download it on ThunderTalk's Models page.")
         return engine
     active = settings.get("active_model_id") or ""
-    if active in ids and is_downloaded(active):
+    if active in ids and is_downloaded(active):   # never a cloud id: those are not in ids
         return active
     if is_downloaded(APPLE_SPEECH_ID):
         return APPLE_SPEECH_ID
@@ -237,7 +255,7 @@ def model_slot(out, *, heavy=True, info=None):
 def _transcribe_path(a, out: _Out, src: Path):
     from thundertalk.core import apple_speech, audio_io, transcribe
     from thundertalk.core.asr import AsrEngine
-    from thundertalk.core.models import BUILTIN_MODELS, get_model_path
+    from thundertalk.core.models import find, get_model_path
     settings = _settings()
     speakers = bool(getattr(a, "speakers", False))
     if speakers:
@@ -247,14 +265,14 @@ def _transcribe_path(a, out: _Out, src: Path):
         model_id = DIARIZE_MODEL
     else:
         model_id = resolve_asr(a.engine, settings)
-    info = next(m for m in BUILTIN_MODELS if m.id == model_id)
+    info = find(model_id)
     from thundertalk.core.priority import DICTATION
     DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
     out.stage("load_model")
     out.emit(type="stage", label="engine", engine=model_id)
     t0 = time.monotonic()
     engine = None
-    with model_slot(out, heavy=not info.built_in, info=info):
+    with model_slot(out, heavy=not info.built_in and info.backend != "cloud", info=info):
         try:
             if info.backend != "mlx-moss":
                 engine = AsrEngine()
@@ -336,6 +354,8 @@ def resolve_voice(engine: str, voice: str, language: str, settings, mixed: bool 
     system voice for that language."""
     from thundertalk.core import speech
     from thundertalk.core.tts_backends import apple
+    if engine in CLOUD_TTS or (voice and voice.split(":", 1)[0] in CLOUD_TTS):
+        return _cloud_voice(engine, voice, settings)
     if voice:
         try:
             bid = speech.backend_id_for(voice)
@@ -375,6 +395,29 @@ def resolve_voice(engine: str, voice: str, language: str, settings, mixed: bool 
     if vid is None:
         raise CliError("bad_args", f"{engine} has no {language} voice")
     return vid
+
+
+def _cloud_voice(engine: str, voice: str, settings) -> str:
+    """``--engine openai [--voice openai:marin]``: any voice name the provider accepts."""
+    from thundertalk.core import cloud
+    pid = voice.split(":", 1)[0] if voice else engine
+    if engine not in ("auto", pid):
+        raise CliError("bad_args", f"Voice {voice} belongs to {pid}, not {engine}")
+    if not cloud.is_configured(pid, settings):
+        raise CliError("cloud_no_key", f"No API key for {cloud.PROVIDERS[pid].name}. "
+                       f"Run: thundertalk cloud set-key {pid} (reads the key from stdin)")
+    if voice:
+        if not cloud.split_id(voice)[0]:
+            raise CliError("bad_args", f"Use --voice {pid}:<voice name>")
+        return voice
+    p = cloud.PROVIDERS[pid]
+    name = cloud.config(pid, settings)["voice"] or (p.voices[0] if p.voices else "")
+    if not name:
+        rows = cloud.voices(pid, settings=settings)
+        if not rows:
+            raise CliError("bad_args", f"Choose a voice: thundertalk voices --engine {pid}")
+        return rows[0]["id"]
+    return f"{pid}:{name}"
 
 
 def cmd_speak(a, out: _Out) -> dict:
@@ -428,7 +471,7 @@ def cmd_speak(a, out: _Out) -> dict:
             out.stage("speak")
         out.progress(0.95 * i / max(1, n))
 
-    with model_slot(out, heavy=bid not in ("apple", "kokoro")):
+    with model_slot(out, heavy=bid not in ("apple", "kokoro", *CLOUD_TTS)):
         try:
             r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend)
         except tts.TtsModelMissing as exc:
@@ -477,7 +520,8 @@ def cmd_status(_a, out: _Out) -> dict:
         mic = "unknown"
     return {
         "version": thundertalk.__version__, "cli_version": 3,
-        "capabilities": ["transcribe", "batch", "notes", "burn", "translate", "speak", "voices", "compose", "history", "models"],
+        "capabilities": ["transcribe", "batch", "notes", "burn", "translate", "speak", "voices", "compose", "history", "models",
+                         "cloud"],
         "asr": {"downloaded": downloaded, "dictation_model": settings.get("active_model_id") or "",
                 "auto": resolve_asr("auto", settings) if downloaded else "",
                 "models": [{"id": m.id, "name": f"{m.name} {m.variant}", "downloaded": m.id in downloaded}
@@ -487,7 +531,13 @@ def cmd_status(_a, out: _Out) -> dict:
         "apple_speech": apple,
         "permissions": {"speech_recognition": apple_speech.authorization_status(), "microphone": mic},
         "ffmpeg": audio_io.find_ffmpeg() or "",
+        "cloud": [{"provider": r["provider"], "ready": r["ready"], "key": r["key"]} for r in _cloud_summary(settings)],
     }
+
+
+def _cloud_summary(settings) -> list[dict]:
+    from thundertalk.core import cloud
+    return cloud.summary(settings)
 
 
 COMMANDS = {"transcribe": cmd_transcribe, "speak": cmd_speak, "voices": cmd_voices, "status": cmd_status}
@@ -554,12 +604,13 @@ def main(argv: Optional[list[str]] = None) -> int:
     apple_speech.PROMPT = False
     try:
         a = _parser().parse_args(argv)
-        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose"):
+        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose", "cloud"):
             raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
         handler = COMMANDS.get(a.command)
         if handler is None:
-            from thundertalk import cli_library, cli_music, cli_studio
-            module = cli_music if a.command == "compose" else cli_studio if a.command in ("notes", "burn", "translate") else cli_library
+            from thundertalk import cli_cloud, cli_library, cli_music, cli_studio
+            module = (cli_music if a.command == "compose" else cli_cloud if a.command == "cloud"
+                      else cli_studio if a.command in ("notes", "burn", "translate") else cli_library)
             handler = getattr(module, "cmd_" + a.command)
         with network_mode(a.command == "models" and a.action == "download"):
             result = handler(a, out)

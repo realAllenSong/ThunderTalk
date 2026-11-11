@@ -49,7 +49,10 @@ def _has_model_headroom(info) -> bool:
 
     Use macOS's native gauge (including reclaimable pages) on Macs and
     psutil elsewhere. Leave 4 GiB after a 3x model-size allowance.
+    A cloud engine loads nothing, so it always fits.
     """
+    if getattr(info, "backend", "") == "cloud":
+        return True
     import psutil
     try:
         mem = psutil.virtual_memory()
@@ -505,6 +508,8 @@ def active_model_id(engine) -> str:
     if not getattr(engine, "is_loaded", False):
         return ""
     current = getattr(engine, "current_model", "") or ""
+    if getattr(engine, "is_cloud", False) is True:
+        return current
     path = getattr(engine, "_model_dir", "")
     for m in BUILTIN_MODELS:
         if current == m.id or path == m.download_url or Path(path).name == m.id:
@@ -518,12 +523,12 @@ def active_model_id(engine) -> str:
 def selected_engine(engine, model_id: str, progress=None):
     """Own an alternate engine for this job; never mutate dictation's engine."""
     from thundertalk.core.asr import AsrEngine
-    from thundertalk.core.models import BUILTIN_MODELS, get_model_path, is_downloaded
+    from thundertalk.core.models import find, get_model_path, is_downloaded
     if model_id == active_model_id(engine) or model_id == "moss-transcribe-diarize-mlx":
         # MOSS owns its model in diarize and releases Metal between tokens.
         yield engine
         return
-    info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+    info = find(model_id)
     if info is None or not is_downloaded(model_id):
         raise RuntimeError("no_model")
     slot = EXTRA_MODEL.acquire(blocking=False)

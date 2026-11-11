@@ -154,6 +154,7 @@ class AsrEngine:
         self._mlx_model = None           # pre-loaded mlx model object
         self._moss_model = None          # MOSS-Transcribe-Diarize (mlx-audio)
         self._apple = None               # Apple Speech framework (core/apple_speech.py)
+        self._cloud: Optional[str] = None  # cloud model id "<provider>:<model>" (core/cloud.py)
         self._language_code = "auto"     # settings code, before mapping to Qwen names
         self._model_id: Optional[str] = None
         self._hotwords: str = ""
@@ -177,7 +178,13 @@ class AsrEngine:
             or self._mlx_model is not None
             or self._moss_model is not None
             or self._apple is not None
+            or self._cloud is not None
         )
+
+    @property
+    def is_cloud(self) -> bool:
+        """Recognition sends audio to a provider (no live preview, no GPU)."""
+        return self._cloud is not None
 
     @property
     def word_timestamps(self) -> bool:
@@ -199,6 +206,9 @@ class AsrEngine:
 
     def _model_info(self):
         from thundertalk.core.models import BUILTIN_MODELS
+        if self._active_backend == "cloud":
+            from thundertalk.core import cloud
+            return cloud.model_info(self._model_id or "")
         return next((m for m in BUILTIN_MODELS
                      if m.family == self._model_family and m.backend == self._active_backend), None)
 
@@ -299,6 +309,7 @@ class AsrEngine:
         self._mlx_model = None
         self._moss_model = None
         self._apple = None
+        self._cloud = None
         from thundertalk.core import diarize
         diarize.unpin_model(self)
         self._model_id = None
@@ -348,6 +359,8 @@ class AsrEngine:
             self._load_mlx_moss(model_dir)
         elif backend == "apple":
             self._load_apple()
+        elif backend == "cloud":
+            self._load_cloud(model_dir)
         elif family == "SenseVoice":
             self._load_sherpa_sensevoice(model_dir, backend, memory_mode)
         elif family in ("Qwen3-ASR", "Qwen3-ASR-1.7B"):
@@ -420,6 +433,35 @@ class AsrEngine:
         self._model_id = "apple-speech"
         print(f"[ASR] Apple Speech ready  on-device={apple_speech.on_device_locales()}  "
               f"permission={apple_speech.authorization_status()}")
+
+    def _load_cloud(self, model_id: str) -> None:
+        """Nothing to load: check the provider is configured, keep the id."""
+        from thundertalk.core import cloud
+        pid, model = cloud.split_id(model_id)
+        if not pid:
+            raise ValueError(f"Unknown cloud model: {model_id}")
+        if not cloud.is_configured(pid):
+            raise cloud.CloudError("cloud_no_key", f"No API key for {cloud.PROVIDERS[pid].name}. "
+                                   "Add one on the Models page.")
+        self._cloud = f"{pid}:{model}"
+        self._model_id = self._cloud
+        print(f"[ASR] Cloud engine ready: {self._cloud} (audio is sent to {cloud.PROVIDERS[pid].name})")
+
+    def _recognize_cloud(self, samples: np.ndarray, sample_rate: int, preview: bool) -> AsrResult:
+        duration = len(samples) / sample_rate
+        if preview:
+            # Live previews would send (and bill) every partial clip; only finals go out.
+            return AsrResult(text="", duration_secs=duration, inference_ms=0,
+                             model=self._cloud or "", backend="cloud")
+        from thundertalk.core import cloud
+        t0 = time.perf_counter()
+        r = cloud.transcribe(self._cloud or "", samples, sample_rate, language=self._language_code,
+                             hotwords=[w for w in self._hotwords.split("/") if w])
+        ms = int((time.perf_counter() - t0) * 1000)
+        print(f"[ASR-Cloud] {duration:.1f}s → {len(r.text)} chars in {ms}ms ({self._cloud})")
+        return AsrResult(text=r.text, duration_secs=duration, inference_ms=ms, model=self._cloud or "",
+                         backend="cloud", rtf=ms / 1000 / duration if duration else 0.0,
+                         language=r.language)
 
     def _apple_locales(self) -> list[str]:
         from thundertalk.core import apple_speech
@@ -602,6 +644,9 @@ class AsrEngine:
 
         if self._apple is not None:
             return self._recognize_apple(samples, sample_rate, preview)
+
+        if self._cloud is not None:
+            return self._recognize_cloud(samples, sample_rate, preview)
 
         # MLX runs on the shared Metal queue; serialise with TTS / file jobs.
         if self._moss_model is not None:

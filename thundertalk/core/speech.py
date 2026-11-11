@@ -68,6 +68,10 @@ def _make(bid: str) -> TtsBackend:
     if bid == "apple":
         from thundertalk.core.tts_backends.apple import AppleBackend
         return AppleBackend()
+    from thundertalk.core import cloud
+    if bid in cloud.TTS_PROVIDERS:
+        from thundertalk.core.tts_backends.cloud import CloudBackend
+        return CloudBackend(bid)
     raise KeyError(bid)
 
 
@@ -80,8 +84,16 @@ def backend(bid: str) -> TtsBackend:
     return _BACKENDS[bid]
 
 
+def cloud_ids() -> tuple[str, ...]:
+    from thundertalk.core import cloud
+    return cloud.TTS_PROVIDERS
+
+
 def backends() -> list[TtsBackend]:
-    return [backend(b) for b in BACKEND_ORDER]
+    """Local engines, then cloud engines that have a key (never unconfigured ones)."""
+    from thundertalk.core import cloud
+    return [backend(b) for b in BACKEND_ORDER] + [backend(b) for b in cloud.TTS_PROVIDERS
+                                                  if cloud.is_configured(b)]
 
 
 def clone_backends() -> list[TtsBackend]:
@@ -92,7 +104,7 @@ def backend_id_for(voice: VoiceSel, clone_backend: Optional[str] = None) -> str:
     if isinstance(voice, ClonePrompt):
         return clone_backend or DEFAULT_CLONE_BACKEND
     bid = voice.split(":", 1)[0]
-    if bid not in BACKEND_ORDER:
+    if bid not in BACKEND_ORDER and bid not in cloud_ids():
         raise ValueError(f"Unknown voice: {voice}")
     return bid
 
@@ -510,7 +522,8 @@ class SpeechEngine:
     def _synthesize(self, b: TtsBackend, text: str, voice: VoiceSel, language: Optional[str], speed: float,
                     params: Optional[TtsParams], seed: Optional[int], progress: Optional[ProgressCB],
                     cancel: Optional[threading.Event], verifier: Optional[Verifier]) -> SynthResult:
-        if isinstance(voice, str) and voice not in {v.id for v in b.voices()}:
+        if (isinstance(voice, str) and not getattr(b, "open_voices", False)
+                and voice not in {v.id for v in b.voices()}):
             raise ValueError(f"Unknown voice: {voice}")
         params = params or TtsParams()
         lang = language if language and language != "auto" else detect_language(text)

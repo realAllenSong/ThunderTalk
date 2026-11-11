@@ -54,6 +54,9 @@ def preview_wanted(settings) -> bool:
     pasted text is another language, so the spoken words would mislead."""
     if not settings.get("live_preview"):
         return False
+    from thundertalk.core import cloud
+    if cloud.is_cloud_id(settings.get("active_model_id") or ""):
+        return False                    # each partial would be sent (and billed)
     tgt = settings.get("translation_target")
     mode = settings.get("translation_mode") or "direct"
     return not (tgt and tgt != "off" and mode == "direct")
