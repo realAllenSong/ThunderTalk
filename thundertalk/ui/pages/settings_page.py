@@ -279,6 +279,9 @@ class HotkeyCapture(QWidget):
 
 # ── SettingsPage ────────────────────────────────────────────────────────
 
+HOLD_DELAY_MIN_MS, HOLD_DELAY_MAX_MS = 50, 3000
+
+
 class SettingsPage(QWidget):
     hotkey_changed = Signal(str)
     settings_changed = Signal()
@@ -356,17 +359,52 @@ class SettingsPage(QWidget):
 
         # Hold to Record: how long the key must be held before recording starts,
         # so a quick tap of a modifier hotkey (⌃) never starts a take (#11).
-        self._hold_delay_combo = self._combo(170)
+        # Presets plus "Custom…", which reveals a field to type any value.
+        from PySide6.QtWidgets import QAbstractSpinBox, QDoubleSpinBox
+        self._hold_delay_combo = self._combo(130)
         for ms in (200, 300, 500, 800):
             self._hold_delay_combo.addItem(t("settings.hold_delay.value").format(s=ms / 1000), ms)
+        self._hold_delay_combo.addItem(t("settings.hold_delay.custom"), -1)
+        spin = QDoubleSpinBox()
+        spin.setRange(HOLD_DELAY_MIN_MS / 1000, HOLD_DELAY_MAX_MS / 1000)
+        spin.setDecimals(2)
+        spin.setSingleStep(0.05)
+        spin.setSuffix(t("settings.hold_delay.unit"))
+        spin.setButtonSymbols(QAbstractSpinBox.ButtonSymbols.NoButtons)
+        spin.setKeyboardTracking(False)          # save on Enter / focus out, not per keystroke
+        spin.setFixedSize(84, 38)
+        spin.setStyleSheet(theme.INPUT_QSS.replace("QLineEdit", "QDoubleSpinBox"))
+        self._hold_delay_spin = spin
         current = int(self._settings.get("hold_delay_ms") or 300)
+        spin.setValue(current / 1000)
         idx = self._hold_delay_combo.findData(current)
-        self._hold_delay_combo.setCurrentIndex(idx if idx >= 0 else 1)
-        self._hold_delay_combo.currentIndexChanged.connect(
-            lambda i: self._settings.set("hold_delay_ms", int(self._hold_delay_combo.itemData(i))))
-        card.add_row("settings.hold_delay", "settings.hold_delay_desc", self._hold_delay_combo)
+        self._hold_delay_combo.setCurrentIndex(idx if idx >= 0 else self._hold_delay_combo.count() - 1)
+        spin.setVisible(idx < 0)
+
+        def preset(i: int) -> None:
+            ms = int(self._hold_delay_combo.itemData(i))
+            custom = ms < 0
+            spin.setVisible(custom)
+            if custom:
+                spin.setFocus()
+                spin.selectAll()
+                ms = int(round(spin.value() * 1000))
+            else:
+                spin.setValue(ms / 1000)
+            self._settings.set("hold_delay_ms", ms)
+
+        self._hold_delay_combo.currentIndexChanged.connect(preset)
+        spin.valueChanged.connect(lambda v: self._settings.set("hold_delay_ms", int(round(v * 1000))))
+        ctl = QWidget()
+        ctl.setStyleSheet("background: transparent;")
+        ly = QHBoxLayout(ctl)
+        ly.setContentsMargins(0, 0, 0, 0)
+        ly.setSpacing(8)
+        ly.addWidget(spin)
+        ly.addWidget(self._hold_delay_combo)
+        card.add_row("settings.hold_delay", "settings.hold_delay_desc", ctl)
         name, desc, _, _ = card._rows[-1]
-        self._hold_delay_row = [w for w in (name, desc, self._hold_delay_combo) if w is not None]
+        self._hold_delay_row = [w for w in (name, desc, ctl) if w is not None]
         self._show_hold_delay(self._settings.get("press_mode") == "hold")
 
     def _on_hotkey_changed(self, key_name: str) -> None:

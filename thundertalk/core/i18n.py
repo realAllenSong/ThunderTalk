@@ -339,6 +339,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "zh": "按住快捷键达到这个时长才开始录音。快速轻点或 ⌃C 这类组合键都不会触发。",
     },
     "settings.hold_delay.value": {"en": "{s:g} s", "zh": "{s:g} 秒"},
+    "settings.hold_delay.custom": {"en": "Custom…", "zh": "自定义…"},
+    "settings.hold_delay.unit": {"en": " s", "zh": " 秒"},
     "settings.mic.auto": {
         "en": "Auto (System Default)", "zh": "自动（系统默认）",
     },

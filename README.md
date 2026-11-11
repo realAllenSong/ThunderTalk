@@ -34,7 +34,7 @@ The interface is deliberately quiet: warm paper background, near-black ink, one 
 
 ## New in v1.13.2
 
-- **Hold to Record ignores taps and shortcuts:** recording starts only after the hotkey has been held for a moment (0.3 s by default, adjustable in Settings ▸ Hold Before Recording). A quick tap of a modifier hotkey such as Left ⌃, or a shortcut like ⌃C, no longer starts a recording ([#11](https://github.com/realAllenSong/ThunderTalk/issues/11)).
+- **Hold to Record ignores taps and shortcuts:** recording starts only after the hotkey has been held for a moment (0.3 s by default; in Settings ▸ Hold Before Recording pick 0.2–0.8 s or choose Custom… and type any value up to 3 s). A quick tap of a modifier hotkey such as Left ⌃, or a shortcut like ⌃C, no longer starts a recording ([#11](https://github.com/realAllenSong/ThunderTalk/issues/11)).
 
 ## New in v1.13.1
 

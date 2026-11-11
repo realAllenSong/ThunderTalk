@@ -165,3 +165,30 @@ def test_listener_reports_chords_only_while_fired():
     hk._handle_event(Ev(11, 8))
     hk._handle_event(Ev(12, CTRL, 0))
     assert calls == ["down", "chord", "up"]
+
+
+def test_custom_hold_delay_is_typed_and_remembered(qapp, isolated_home):
+    from thundertalk.core.settings import Settings
+    from thundertalk.ui.pages.settings_page import SettingsPage
+    prefs = Settings()
+    page = SettingsPage(prefs)
+    page.show()
+    page._mode_combo.setCurrentIndex(1)
+    combo, spin = page._hold_delay_combo, page._hold_delay_spin
+    assert not spin.isVisible()                        # presets: no field
+    combo.setCurrentIndex(combo.findData(-1))          # Custom…
+    assert spin.isVisible()
+    spin.lineEdit().setText("0.45")
+    spin.interpretText()
+    spin.editingFinished.emit()
+    assert prefs.get("hold_delay_ms") == 450
+    page2 = SettingsPage(prefs)                        # reopening shows Custom with 0.45
+    page2.show()
+    assert page2._hold_delay_combo.currentData() == -1
+    assert page2._hold_delay_spin.isVisible() and abs(page2._hold_delay_spin.value() - .45) < 1e-9
+    spin.setValue(99)                                  # clamped to the 3 s maximum
+    assert prefs.get("hold_delay_ms") == 3000
+    combo.setCurrentIndex(combo.findData(500))         # back to a preset hides the field
+    assert not spin.isVisible() and prefs.get("hold_delay_ms") == 500
+    page.close()
+    page2.close()
