@@ -103,6 +103,12 @@ def recover_final(engine, samples: np.ndarray, preview: str = "", *, initial=Non
     try:
         result = initial if initial is not None else engine.recognize(samples)
     except Exception as exc:
+        from thundertalk.core.cloud import CloudError
+        if isinstance(exc, CloudError):
+            # A key, quota or network problem: retrying in chunks would only fail
+            # (and maybe bill) again. The caller shows the message; the take is kept.
+            print(f"[Dictation] Cloud decode failed: {exc.code}")
+            raise
         print(f"[Dictation] Final decode failed: {type(exc).__name__}")
         result = AsrResult("", len(samples) / 16000, 0,
                            getattr(engine, "current_model", None) or "unknown",

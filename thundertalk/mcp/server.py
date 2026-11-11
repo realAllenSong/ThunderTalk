@@ -94,7 +94,8 @@ def transcribe_file(file_path: str, output_path: str, engine: str = "auto",
                     max_seconds: float | None = None) -> str:
     """Speech-to-text / 转写 / 字幕 for one audio, video or URL (YouTube, Bilibili…).
     Format comes from output_path: .txt .md .srt .vtt .json.
-    engine: auto (dictation model) | best (most accurate downloaded) | apple | model id.
+    engine: auto (dictation model) | best (most accurate downloaded) | apple | model id |
+    <provider>:<model> cloud, only if the user asked (sends audio off this Mac).
     speakers=True labels who spoke (说话人). language: auto | zh | en | …"""
     args = _options(["transcribe", file_path], out=output_path, engine=engine,
                     language=language, max_seconds=max_seconds)
@@ -146,7 +147,8 @@ def translate_local(output_path: str, target: str, input_path: str | None = None
 def speak_text(text: str, output_path: str, engine: str = "auto", voice: str = "",
                speed: float = 1.0, language: str = "auto") -> str:
     """Text-to-speech / 配音 / 朗读 (zh, en, mixed) to .m4a .wav .mp3.
-    engine: auto | best | apple | kokoro | voxcpm2 | indextts. voice: id from
+    engine: auto | best | apple | kokoro | voxcpm2 | indextts, or cloud openai | gemini |
+    elevenlabs | custom only if the user asked. voice: id from
     list_local_voices, or my:<id> for a cloned voice (voxcpm2/indextts). speed 0.5–2."""
     args = ["speak", "--text", text, "--out", str(Path(output_path).expanduser()),
             "--engine", engine, "--speed", str(speed), "--language", language]
@@ -241,15 +243,19 @@ def local_status() -> str:
 
 
 _HEADLESS = ("transcribe", "notes", "burn", "translate", "compose", "speak", "voices",
-             "history", "models", "status")
+             "history", "models", "status", "cloud")
 
 
 @_tool
 def studio_command(command: str, arguments: list[str]) -> str:
     """Escape hatch: any `ThunderTalk --cli` v3 command with raw argv (e.g. --start/--end,
-    --save-history, compose lyrics --remember). Use `<command> --help` style args to learn flags."""
+    --save-history, compose lyrics --remember, cloud list|test). `<command> --help` lists flags."""
     if command not in _HEADLESS:
         raise ValueError("command must be one of: " + ", ".join(_HEADLESS))
+    if command == "cloud" and "set-key" in arguments:
+        # Keys must never pass through an agent's transcript.
+        raise ValueError("API keys are not accepted over MCP. Ask the user to add the key on ThunderTalk's "
+                         "Models page or run `thundertalk cloud set-key <provider>` in their own terminal.")
     return _compact(_cli(command, *arguments, timeout=7200))
 
 

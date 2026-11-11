@@ -563,11 +563,11 @@ def main() -> None:
         last_model = settings.active_model_id
         if not last_model:
             return
-        from thundertalk.core.models import get_model_path, is_downloaded, BUILTIN_MODELS
+        from thundertalk.core.models import find, get_model_path, is_downloaded
         if not is_downloaded(last_model):
             return
         path = get_model_path(last_model)
-        info = next((m for m in BUILTIN_MODELS if m.id == last_model), None)
+        info = find(last_model)
         if not (path and info):
             return
         # Translation engine models go through _maybe_load_translator instead.
@@ -748,6 +748,8 @@ def main() -> None:
             overlay.show_error(t("overlay.recognition_failed" if speech else "overlay.no_speech"))
 
     def _on_asr_error(msg: str, recording=None) -> None:
+        if getattr(pipe.asr, "is_cloud", False) is True:
+            window.show_toast(t("cloud.dictation_failed").format(err=msg[:180]), "error")
         if recording is not None and (has_speech(recording["samples"]) or (
                 recording["preview"].strip() and not has_audio_energy(recording["samples"]))):
             _on_asr_done("", 0, len(recording["samples"]) / 16000,
@@ -1274,6 +1276,7 @@ def main() -> None:
     window.models_page.model_download_completed.connect(
         _on_model_download_completed
     )
+    window.models_page.cloud_changed.connect(window.studio_page.speak_tab.reload_engines)
     window.models_page.download_failed.connect(
         lambda _mid, _msg: window.show_toast(t("toast.download_failed"), "error")
     )

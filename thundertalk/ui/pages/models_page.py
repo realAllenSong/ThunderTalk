@@ -719,6 +719,7 @@ class ModelsPage(QWidget):
     hardware_detected = Signal(object)
     download_started = Signal(str)                   # model_id
     download_progress = Signal(str, int, str)        # model_id, percent (-1 unknown), message
+    cloud_changed = Signal()                         # a cloud key / model / voice changed
 
     def __init__(self, settings=None) -> None:
         super().__init__()
@@ -768,6 +769,14 @@ class ModelsPage(QWidget):
             self._layout.addWidget(card)
             self._family_cards[family] = card
 
+        self._cloud_card = None
+        if self._settings is not None:
+            from thundertalk.ui.pages.cloud_card import CloudCard
+            self._cloud_card = CloudCard(self._settings)
+            self._cloud_card.use_for_dictation.connect(self._on_cloud_dictation)
+            self._cloud_card.changed.connect(self.cloud_changed)
+            self._layout.addWidget(self._cloud_card)
+
         self._layout.addStretch()
 
         self._hw_worker = _HardwareWorker()
@@ -777,6 +786,12 @@ class ModelsPage(QWidget):
     def wait_background(self, timeout_ms: int = 5000) -> None:
         """Block until the hardware probe thread has finished (tests / shutdown)."""
         self._hw_worker.wait(timeout_ms)
+        if self._cloud_card is not None:
+            self._cloud_card.wait()
+
+    def _on_cloud_dictation(self, model_id: str) -> None:
+        if not self.activate_model(model_id):
+            self._banner.show_message(t("cloud.not_ready"))
 
     # ── hardware ──
     def _on_hw_detected(self, hw) -> None:
@@ -816,6 +831,8 @@ class ModelsPage(QWidget):
     def set_active_model(self, model_id: Optional[str]) -> None:
         self._active_model = model_id
         self._refresh_all_rows()
+        if self._cloud_card is not None:
+            self._cloud_card.refresh(model_id)
         if self._mode_card is not None:
             self._mode_card.refresh_warning()
 
@@ -896,8 +913,10 @@ class ModelsPage(QWidget):
         self._on_cancel(model_id)
 
     def activate_model(self, model_id: str) -> bool:
-        """Load an already-downloaded model. Returns False if it isn't local."""
-        info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+        """Load an already-downloaded model (or a configured cloud model).
+        Returns False if it isn't ready."""
+        from thundertalk.core.models import find
+        info = find(model_id)
         if info is None or not is_downloaded(model_id):
             return False
         path = get_model_path(model_id)

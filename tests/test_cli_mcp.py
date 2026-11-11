@@ -93,3 +93,13 @@ def test_no_legacy_http_tools():
     names = {t.name for t in server.mcp._tool_manager.list_tools()}
     assert not names & {"transcribe_audio", "synthesize_speech", "get_asr_status", "get_tts_voices"}
     assert len(names) == 13
+
+
+def test_mcp_refuses_cloud_keys(monkeypatch):
+    calls = []
+    monkeypatch.setattr(server, "_cli", lambda *a, **kw: calls.append(a) or {"ok": True})
+    with pytest.raises(ValueError, match="not accepted over MCP"):
+        server.studio_command("cloud", ["set-key", "openai"])
+    assert not calls
+    server.studio_command("cloud", ["list"])
+    assert calls == [("cloud", "list")]

@@ -204,8 +204,8 @@ class HotwordsPage(QWidget):
         if s is None or s.model_status != st.MODEL_READY:
             self._info.hide()
             return
-        from thundertalk.core.models import BUILTIN_MODELS
-        info = next((m for m in BUILTIN_MODELS if m.id == s.model_id), None)
+        from thundertalk.core.models import find
+        info = find(s.model_id or "")
         if info is not None and not info.hotword_support:
             self._info.set_text(t("hotwords.unsupported").format(name=info.name))
             self._info.show()

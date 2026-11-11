@@ -443,6 +443,9 @@ class TranscribeTab(QWidget):
                 if not ready and info.id != active:
                     label += " · " + t("studio.download")
                 self._model_picker.addItem(label, info.id)
+        from thundertalk.core import cloud
+        for info in cloud.asr_models():          # only providers with a key; labelled as cloud
+            self._model_picker.addItem(f"{info.name} · {info.variant} · {t('cloud.group')}", info.id)
         index = self._model_picker.findData(selected)
         self._model_picker.setCurrentIndex(max(0, index))
         self._model_picker.blockSignals(False)

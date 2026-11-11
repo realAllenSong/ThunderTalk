@@ -489,3 +489,73 @@ def test_end_to_end_cli_against_local_server(local_server, tmp_path, monkeypatch
     assert {p[1] for p in posts} == {"/v1/audio/transcriptions", "/v1/audio/speech"}
     assert all(h[2].get("Authorization") == f"Bearer {SECRET}" for h in local_server)
     assert SECRET not in json.dumps(res)
+
+
+# ── Models page card ─────────────────────────────────────────────────────
+
+def test_cloud_card_use_for_dictation(qapp, monkeypatch, tmp_path):
+    from thundertalk.core import settings as settings_mod
+    monkeypatch.setattr(settings_mod, "_PATH", tmp_path / "settings.json")
+    monkeypatch.setenv("GROQ_API_KEY", SECRET)
+    s = settings_mod.Settings()
+    s.set("cloud_dictation_ok", True)
+    from thundertalk.ui.pages.cloud_card import CloudCard
+    card = CloudCard(s)
+    got = []
+    card.use_for_dictation.connect(got.append)
+    row = card.rows["groq"]
+    assert row._use.isEnabled() and not card.rows["openai"]._use.isEnabled()
+    row._use.click()
+    assert got == ["groq:whisper-large-v3-turbo"]
+    card.refresh("groq:whisper-large-v3-turbo")
+    assert not row._use.isEnabled()
+
+
+def test_cloud_card_never_shows_or_stores_key_in_settings(qapp, monkeypatch, tmp_path):
+    from thundertalk.core import settings as settings_mod
+    monkeypatch.setattr(settings_mod, "_PATH", tmp_path / "settings.json")
+    saved = {}
+    monkeypatch.setattr(cloud, "set_key", lambda pid, key: saved.setdefault(pid, key))
+    from thundertalk.ui.pages.cloud_card import CloudCard
+    card = CloudCard(settings_mod.Settings())
+    row = card.rows["openai"]
+    row._key.setText(SECRET)
+    row._save.click()
+    assert saved == {"openai": SECRET} and row._key.text() == ""
+    assert SECRET not in (tmp_path / "settings.json").read_text() if (tmp_path / "settings.json").exists() else True
+
+
+def test_models_page_hosts_cloud_card(qapp, monkeypatch, tmp_path):
+    from thundertalk.core import settings as settings_mod
+    monkeypatch.setattr(settings_mod, "_PATH", tmp_path / "settings.json")
+    from thundertalk.ui.pages.models_page import ModelsPage
+    page = ModelsPage(settings_mod.Settings())
+    try:
+        assert page._cloud_card is not None and set(page._cloud_card.rows) == set(cloud.PROVIDERS)
+        page.set_active_model("openai:gpt-transcribe")
+        assert page.activate_model("openai:gpt-transcribe") is False      # no key: refuse
+        monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+        loads = []
+        page.load_model_signal.connect(lambda *a: loads.append(a))
+        assert page.activate_model("openai:gpt-transcribe") is True
+        assert loads == [("openai:gpt-transcribe", "openai:gpt-transcribe", "Cloud-OpenAI", "cloud")]
+    finally:
+        page.wait_background()
+
+
+def test_dictation_does_not_retry_cloud_errors():
+    from thundertalk.core.dictation import recover_final
+
+    class Engine:
+        current_model, active_backend, max_clip_seconds = "openai:gpt-transcribe", "cloud", 600
+        calls = 0
+
+        def recognize(self, samples, sr=16000, **kw):
+            Engine.calls += 1
+            raise cloud.CloudError("cloud_quota", "OpenAI: rate limit or quota reached.")
+
+    t = np.arange(16000 * 2) / 16000
+    voice = (0.3 * np.sin(2 * np.pi * 180 * t) * (1 + np.sin(2 * np.pi * 3 * t))).astype(np.float32)
+    with pytest.raises(cloud.CloudError):
+        recover_final(Engine(), voice)
+    assert Engine.calls == 1

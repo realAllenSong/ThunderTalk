@@ -621,7 +621,7 @@ class SpeakTab(QWidget):
 
     def _initial_engine(self) -> str:
         saved = self._pref("studio_engine", "")
-        if saved in speech.BACKEND_ORDER:
+        if saved in speech.BACKEND_ORDER or saved in {b.info.id for b in speech.backends()}:
             self._engine_id = saved
         elif self._voice_id.startswith(MY_PREFIX):
             self._engine_id = speech.DEFAULT_CLONE_BACKEND
@@ -631,6 +631,17 @@ class SpeakTab(QWidget):
             except ValueError:
                 self._engine_id = speech.BACKEND_ORDER[0]
         return self._engine_id
+
+    def reload_engines(self) -> None:
+        """Cloud engines come and go with their API keys (Models ▸ Cloud APIs)."""
+        options = [(b.info.id, b.info.name) for b in speech.backends()]
+        self._engine_pick.set_options(options)
+        if self._engine_id not in {k for k, _ in options}:
+            self._on_engine(speech.BACKEND_ORDER[0])
+        else:
+            self._engine_pick.set_current(self._engine_id)
+            self._rebuild_voices()
+            self._refresh()
 
     @staticmethod
     def _default_for(b) -> str:

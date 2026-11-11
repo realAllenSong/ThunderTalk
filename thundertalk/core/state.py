@@ -27,8 +27,8 @@ def model_display_name(model_id: Optional[str]) -> str:
     """Friendly name for a model id ('Qwen3-ASR-0.6B · MLX fp16')."""
     if not model_id:
         return ""
-    from thundertalk.core.models import BUILTIN_MODELS
-    info = next((m for m in BUILTIN_MODELS if m.id == model_id), None)
+    from thundertalk.core.models import find
+    info = find(model_id)
     if info is None:
         return model_id
     return f"{info.name} · {info.variant}"
