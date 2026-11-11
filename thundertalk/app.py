@@ -325,7 +325,9 @@ class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
     toggle_signal = Signal()
+    press_signal = Signal()
     release_signal = Signal()
+    chord_signal = Signal()
     audio_ready = Signal(object)
     capture_ready = Signal(object)
     review_ready = Signal(str, str, str)    # original, translated, tgt_lang
@@ -359,13 +361,17 @@ class Pipeline(QObject):
         self._mic_device = None if mic == "auto" else mic
 
     def toggle(self) -> None:
-        self.pressed_at = time.monotonic()
         self.toggle_signal.emit()
 
+    # Hotkey events (listener thread) → main thread
+    def press(self) -> None:
+        self.press_signal.emit()
+
     def release(self) -> None:
-        """The hotkey was let go (listener thread)."""
-        self.held_s = time.monotonic() - getattr(self, "pressed_at", time.monotonic())
         self.release_signal.emit()
+
+    def chord(self) -> None:
+        self.chord_signal.emit()
 
     def stop_capture(self):
         """Quit owns the token even while a delayed microphone tail is pending."""
@@ -1052,21 +1058,18 @@ def main() -> None:
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 
-    # Hold to record: letting go of the hotkey ends the take. A quick tap
-    # (shorter than HOLD_MIN_S) keeps recording like toggle mode, so a tap
-    # never produces a uselessly short clip; the next press stops it.
-    HOLD_MIN_S = 0.35
-
-    @Slot()
-    def on_hotkey_release() -> None:
-        if settings.get("press_mode") != "hold" or not (pipe._recording or pipe._starting):
-            return
-        if getattr(pipe, "held_s", 0.0) < HOLD_MIN_S:
-            audio_diagnostic("hold_tap_keeps_recording", held_ms=int(1000 * pipe.held_s))
-            return
-        on_toggle()
-
-    pipe.release_signal.connect(on_hotkey_release, Qt.QueuedConnection)
+    # Hold to Record (#11): see core/hold.py.
+    from thundertalk.core.hold import HoldGate
+    hold_gate = HoldGate(
+        hold_mode=lambda: settings.get("press_mode") == "hold",
+        delay_ms=lambda: int(settings.get("hold_delay_ms") or 300),
+        busy=lambda: pipe._recording or pipe._starting,
+        toggle=on_toggle,
+        log=audio_diagnostic,
+    )
+    pipe.press_signal.connect(hold_gate.press, Qt.QueuedConnection)
+    pipe.release_signal.connect(hold_gate.release, Qt.QueuedConnection)
+    pipe.chord_signal.connect(hold_gate.chord, Qt.QueuedConnection)
 
     # --- Review overlay (translation confirm popup) -------------------
     # `review_started` fires the moment the original is pasted; popup
@@ -1141,7 +1144,8 @@ def main() -> None:
     get_watcher().start(recorder=pipe.recorder)
 
     # --- Hotkey --------------------------------------------------------
-    hotkey = HotkeyListener(on_toggle=pipe.toggle, key_name=settings.hotkey, on_release=pipe.release)
+    hotkey = HotkeyListener(on_toggle=pipe.press, key_name=settings.hotkey,
+                            on_release=pipe.release, on_chord=pipe.chord)
     hotkey.start()
 
     def _on_hotkey_setting_changed(key_name: str) -> None:

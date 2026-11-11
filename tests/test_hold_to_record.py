@@ -65,15 +65,103 @@ def test_settings_offers_hold_and_remembers_it(qapp, isolated_home):
     page2.close()
 
 
-def test_pipeline_measures_how_long_the_key_was_held(qapp, isolated_home):
+class Fake:
+    def __init__(self, mode="hold", delay=300):
+        self.mode, self.delay, self.recording, self.calls, self.logs = mode, delay, False, [], []
+
+    def toggle(self):
+        self.recording = not self.recording
+        self.calls.append("start" if self.recording else "stop")
+
+    def gate(self):
+        from thundertalk.core.hold import HoldGate
+        return HoldGate(hold_mode=lambda: self.mode == "hold", delay_ms=lambda: self.delay,
+                        busy=lambda: self.recording, toggle=self.toggle,
+                        log=lambda ev, **k: self.logs.append(ev))
+
+
+def wait(qapp, ms):
     import time
-    from thundertalk.app import Pipeline
+    end = time.monotonic() + ms / 1000
+    while time.monotonic() < end:
+        qapp.processEvents()
+        time.sleep(.005)
+
+
+def test_quick_tap_never_starts_a_take(qapp):
+    f = Fake(delay=300)
+    g = f.gate()
+    for _ in range(3):                                 # tap, tap, tap
+        g.press()
+        wait(qapp, 80)
+        g.release()
+    wait(qapp, 400)
+    assert f.calls == [] and f.logs.count("hold_tap_ignored") == 3
+
+
+def test_shortcut_with_the_hotkey_is_ignored(qapp):
+    f = Fake(delay=300)
+    g = f.gate()
+    g.press()                                          # ⌃ down
+    wait(qapp, 50)
+    g.chord()                                          # C down: ⌃C
+    wait(qapp, 400)                                    # still holding ⌃ past the delay
+    g.release()
+    assert f.calls == [] and "hold_chord_ignored" in f.logs
+
+
+def test_hold_past_the_delay_records_until_release(qapp):
+    f = Fake(delay=200)
+    g = f.gate()
+    g.press()
+    wait(qapp, 300)
+    assert f.calls == ["start"]
+    g.chord()                                          # other keys during a take don't stop it
+    wait(qapp, 100)
+    g.release()
+    assert f.calls == ["start", "stop"]
+
+
+def test_toggle_mode_is_unchanged(qapp):
+    f = Fake(mode="toggle")
+    g = f.gate()
+    g.press(); g.release(); g.press(); g.release()
+    assert f.calls == ["start", "stop"]
+
+
+def test_menu_bar_take_is_stopped_by_the_key(qapp):
+    f = Fake()
+    g = f.gate()
+    f.toggle()                                         # started from the menu bar
+    g.press()
+    g.release()                                        # release must not start a new take
+    wait(qapp, 400)
+    assert f.calls == ["start", "stop"]
+
+
+def test_settings_hold_delay_row(qapp, isolated_home):
     from thundertalk.core.settings import Settings
-    pipe = Pipeline(Settings())
-    pipe.toggle()
-    time.sleep(.4)
-    pipe.release()
-    assert .35 <= pipe.held_s < 1.5
-    pipe.toggle()
-    pipe.release()
-    assert pipe.held_s < .1                            # a tap
+    from thundertalk.ui.pages.settings_page import SettingsPage
+    prefs = Settings()
+    page = SettingsPage(prefs)
+    page.show()
+    assert not page._hold_delay_combo.isVisible()      # only in Hold mode
+    page._mode_combo.setCurrentIndex(1)
+    assert page._hold_delay_combo.isVisible()
+    assert page._hold_delay_combo.currentData() == 300
+    page._hold_delay_combo.setCurrentIndex(page._hold_delay_combo.findData(500))
+    assert prefs.get("hold_delay_ms") == 500
+    page.close()
+
+
+def test_listener_reports_chords_only_while_fired():
+    calls = []
+    hk = HotkeyListener(lambda: calls.append("down"), "ctrl_l", on_release=lambda: calls.append("up"),
+                        on_chord=lambda: calls.append("chord"))
+    hk._handle_event(Ev(10, 8))                        # C alone: nothing
+    hk._handle_event(Ev(11, 8))
+    hk._handle_event(Ev(12, CTRL, F_CTRL))             # ⌃ down → fired
+    hk._handle_event(Ev(10, 8))                        # C while ⌃ held → chord
+    hk._handle_event(Ev(11, 8))
+    hk._handle_event(Ev(12, CTRL, 0))
+    assert calls == ["down", "chord", "up"]

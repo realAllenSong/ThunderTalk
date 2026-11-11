@@ -354,13 +354,33 @@ class SettingsPage(QWidget):
         card.add_row("settings.section.activation_mode", "settings.section.activation_mode_desc",
                      self._mode_combo, sep=True)
 
+        # Hold to Record: how long the key must be held before recording starts,
+        # so a quick tap of a modifier hotkey (⌃) never starts a take (#11).
+        self._hold_delay_combo = self._combo(170)
+        for ms in (200, 300, 500, 800):
+            self._hold_delay_combo.addItem(t("settings.hold_delay.value").format(s=ms / 1000), ms)
+        current = int(self._settings.get("hold_delay_ms") or 300)
+        idx = self._hold_delay_combo.findData(current)
+        self._hold_delay_combo.setCurrentIndex(idx if idx >= 0 else 1)
+        self._hold_delay_combo.currentIndexChanged.connect(
+            lambda i: self._settings.set("hold_delay_ms", int(self._hold_delay_combo.itemData(i))))
+        card.add_row("settings.hold_delay", "settings.hold_delay_desc", self._hold_delay_combo)
+        name, desc, _, _ = card._rows[-1]
+        self._hold_delay_row = [w for w in (name, desc, self._hold_delay_combo) if w is not None]
+        self._show_hold_delay(self._settings.get("press_mode") == "hold")
+
     def _on_hotkey_changed(self, key_name: str) -> None:
         self._settings.set("hotkey", key_name)
         self.hotkey_changed.emit(key_name)
 
     def _set_mode(self, mode: str) -> None:
         self._settings.set("press_mode", mode)
+        self._show_hold_delay(mode == "hold")
         self.settings_changed.emit()
+
+    def _show_hold_delay(self, visible: bool) -> None:
+        for w in getattr(self, "_hold_delay_row", []):
+            w.setVisible(visible)
 
     # ── Audio ──
     def _build_audio(self) -> None:

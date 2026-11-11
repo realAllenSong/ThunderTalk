@@ -309,8 +309,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Activation Mode", "zh": "激活模式",
     },
     "settings.section.activation_mode_desc": {
-        "en": "Toggle: press to start, press again to stop. Hold: record while the key is held; a quick tap still toggles.",
-        "zh": "切换：按一次开始，再按一次结束。按住：按住时录音，松开结束；轻点一下仍按切换方式工作。",
+        "en": "Toggle: press to start, press again to stop. Hold: record while the key is held, release to finish.",
+        "zh": "切换：按一次开始，再按一次结束。按住：按住时录音，松开结束。",
     },
     "settings.section.input_device": {"en": "Input Device", "zh": "输入设备"},
     "settings.section.recording": {"en": "Recording", "zh": "录音"},
@@ -333,6 +333,12 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "settings.mode.toggle_click": {"en": "Toggle (Click)", "zh": "切换（点击）"},
     "settings.mode.hold_record": {"en": "Hold to Record", "zh": "按住录音"},
+    "settings.hold_delay": {"en": "Hold Before Recording", "zh": "按住多久开始录音"},
+    "settings.hold_delay_desc": {
+        "en": "Recording starts once the hotkey has been held this long. Quick taps and shortcuts like ⌃C are ignored.",
+        "zh": "按住快捷键达到这个时长才开始录音。快速轻点或 ⌃C 这类组合键都不会触发。",
+    },
+    "settings.hold_delay.value": {"en": "{s:g} s", "zh": "{s:g} 秒"},
     "settings.mic.auto": {
         "en": "Auto (System Default)", "zh": "自动（系统默认）",
     },

@@ -69,9 +69,11 @@ if _SYSTEM == "Darwin":
 
     class HotkeyListener:
         def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
-                     on_release: Optional[Callable[[], None]] = None) -> None:
+                     on_release: Optional[Callable[[], None]] = None,
+                     on_chord: Optional[Callable[[], None]] = None) -> None:
             self._on_toggle = on_toggle
             self._on_release_cb = on_release
+            self._on_chord_cb = on_chord
             self._combo = _parse_combo(key_name)
             self._pressed_vks: set[int] = set()
             self._modifier_state: int = 0
@@ -126,6 +128,7 @@ if _SYSTEM == "Darwin":
                 # 10 = NSKeyDown, 11 = NSKeyUp, 12 = NSFlagsChanged
                 if etype == 10:  # key down
                     self._pressed_vks.add(vk)
+                    self._check_chord(vk)
                     self._check_and_fire()
                 elif etype == 11:  # key up
                     self._pressed_vks.discard(vk)
@@ -135,6 +138,7 @@ if _SYSTEM == "Darwin":
                     is_pressed = self._is_modifier_pressed(vk, flags)
                     if is_pressed:
                         self._pressed_vks.add(vk)
+                        self._check_chord(vk)
                         self._check_and_fire()
                     else:
                         self._pressed_vks.discard(vk)
@@ -154,6 +158,16 @@ if _SYSTEM == "Darwin":
             if flag_bit is None:
                 return False
             return bool(flags & flag_bit)
+
+        def _combo_vks(self) -> set[int]:
+            return {(_MAC_MODIFIER_VK.get(p) if _is_modifier_name(p) else _MAC_VK_MAP.get(p))
+                    for p in self._combo} - {None}
+
+        def _check_chord(self, vk: int) -> None:
+            """Another key went down while the hotkey is held (⌃ then C):
+            the user is typing a shortcut, not asking to dictate."""
+            if self._fired and self._on_chord_cb is not None and vk not in self._combo_vks():
+                self._on_chord_cb()
 
         def _check_release(self) -> None:
             """Reset _fired when the combo is no longer fully held."""
@@ -244,9 +258,11 @@ else:
 
     class HotkeyListener:
         def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
-                     on_release: Optional[Callable[[], None]] = None) -> None:
+                     on_release: Optional[Callable[[], None]] = None,
+                     on_chord: Optional[Callable[[], None]] = None) -> None:
             self._on_toggle = on_toggle
             self._on_release_cb = on_release
+            self._on_chord_cb = on_chord
             self._combo = _parse_pynput_combo(key_name)
             self._pressed: set = set()
             self._listener_obj: Optional[keyboard.Listener] = None
@@ -290,7 +306,10 @@ else:
             try:
                 if key is None or not self._combo:
                     return
-                self._pressed.add(self._normalize(key))
+                key = self._normalize(key)
+                if self._fired and self._on_chord_cb is not None and key not in self._combo:
+                    self._on_chord_cb()
+                self._pressed.add(key)
                 if not self._enabled:
                     return
                 if not self._fired and self._check_combo():

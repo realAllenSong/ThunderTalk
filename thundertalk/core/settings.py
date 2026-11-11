@@ -12,6 +12,7 @@ from typing import Any
 DEFAULTS: dict[str, Any] = {
     "hotkey": "cmd_r",
     "press_mode": "toggle",
+    "hold_delay_ms": 300,     # Hold to Record: how long the hotkey must be held to start
     "microphone": "auto",
     "mute_speakers": True,
     "language": "en",
