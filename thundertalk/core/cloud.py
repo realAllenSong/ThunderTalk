@@ -161,8 +161,9 @@ def save_config(pid: str, settings=None, **values) -> dict:
 # ── keys ─────────────────────────────────────────────────────────────────
 
 _KEY_RE = re.compile(r"^[A-Za-z0-9._~+/=:\-]{8,512}$")
-_KEY_CACHE: dict[str, Optional[str]] = {}
+_KEY_CACHE: dict[str, tuple[float, Optional[str]]] = {}
 _KEY_LOCK = threading.Lock()
+_KEY_TTL = (30.0, 300.0)       # seconds a miss / a hit is trusted (another process may change it)
 
 
 def _keychain_available() -> bool:
@@ -194,8 +195,9 @@ def _env_key(pid: str) -> str:
 def get_key(pid: str) -> str:
     """The key for ``pid`` ("" if none): Keychain first, then the environment."""
     with _KEY_LOCK:
-        if pid in _KEY_CACHE:
-            cached = _KEY_CACHE[pid]
+        hit = _KEY_CACHE.get(pid)
+        if hit is not None and time.monotonic() - hit[0] < _KEY_TTL[1 if hit[1] else 0]:
+            cached = hit[1]
         else:
             cached = None
             if _keychain_available():
@@ -206,14 +208,14 @@ def get_key(pid: str) -> str:
                         cached = r.stdout.strip()
                 except (OSError, subprocess.TimeoutExpired):
                     cached = None
-            _KEY_CACHE[pid] = cached
+            _KEY_CACHE[pid] = (time.monotonic(), cached)
     return cached or _env_key(pid)
 
 
 def key_source(pid: str) -> str:
     """"keychain" | "env" | "" (no key)."""
     get_key(pid)
-    if _KEY_CACHE.get(pid):
+    if (_KEY_CACHE.get(pid) or (0.0, None))[1]:
         return "keychain"
     return "env" if _env_key(pid) else ""
 
@@ -231,7 +233,7 @@ def set_key(pid: str, key: str) -> None:
     if r.returncode != 0 or "error" in (r.stderr or "").lower():
         raise CloudError("cloud_unsupported", "Could not save the key to the Keychain.")
     with _KEY_LOCK:
-        _KEY_CACHE[pid] = key
+        _KEY_CACHE[pid] = (time.monotonic(), key)
 
 
 def remove_key(pid: str) -> bool:
@@ -583,10 +585,17 @@ def synthesize(pid: str, text: str, voice: str, *, model: str = "", timeout: flo
 _VOICE_CACHE: dict[str, tuple[float, list[dict]]] = {}
 
 
-def voices(pid: str, refresh: bool = False, settings=None) -> list[dict]:
+def _in_gui() -> bool:
+    """True inside the app's Qt process: never block it on the network."""
+    qt = sys.modules.get("PySide6.QtWidgets")
+    return bool(qt is not None and qt.QApplication.instance() is not None)
+
+
+def voices(pid: str, refresh: bool = False, settings=None, blocking: Optional[bool] = None) -> list[dict]:
     """[{"id": "<pid>:<voice>", "name", "language", "gender"}]. Built-in lists for
     OpenAI and Gemini; ElevenLabs asks the account (cached 10 min); custom offers
-    the configured voice (any name is accepted)."""
+    the configured voice (any name is accepted). In the app (``blocking`` unset)
+    ElevenLabs answers from the cache and refreshes it in the background."""
     p = PROVIDERS[pid]
     if p.voices:
         return [{"id": f"{pid}:{v}", "name": v, "language": "multi", "gender": ""} for v in p.voices]
@@ -599,6 +608,13 @@ def voices(pid: str, refresh: bool = False, settings=None) -> list[dict]:
             return hit[1]
         if not is_configured(pid, settings):
             return []
+        if blocking is False or (blocking is None and _in_gui()):
+            _prefetch_voices(pid)
+            stale = hit[1] if hit else []
+            chosen = config(pid, settings)["voice"]
+            if chosen and not any(r["id"] == f"elevenlabs:{chosen}" for r in stale):
+                stale = [{"id": f"elevenlabs:{chosen}", "name": chosen, "language": "multi", "gender": ""}, *stale]
+            return stale
         data = _json(_request(pid, config(pid, settings)["base_url"] + "/voices", timeout=15), pid)
         rows = []
         for v in data.get("voices") or []:
@@ -611,6 +627,26 @@ def voices(pid: str, refresh: bool = False, settings=None) -> list[dict]:
         _VOICE_CACHE[pid] = (time.monotonic(), rows)
         return rows
     return []
+
+
+_PREFETCHING: set[str] = set()
+
+
+def _prefetch_voices(pid: str) -> None:
+    with _KEY_LOCK:
+        if pid in _PREFETCHING:
+            return
+        _PREFETCHING.add(pid)
+
+    def run() -> None:
+        try:
+            voices(pid, refresh=True, blocking=True)
+        except CloudError as exc:
+            print(f"[Cloud] {pid} voices: {exc}")
+        finally:
+            with _KEY_LOCK:
+                _PREFETCHING.discard(pid)
+    threading.Thread(target=run, name=f"cloud-voices-{pid}", daemon=True).start()
 
 
 # ── checks ───────────────────────────────────────────────────────────────

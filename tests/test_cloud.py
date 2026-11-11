@@ -559,3 +559,34 @@ def test_dictation_does_not_retry_cloud_errors():
     with pytest.raises(cloud.CloudError):
         recover_final(Engine(), voice)
     assert Engine.calls == 1
+
+
+def test_key_cache_expires(monkeypatch):
+    calls = []
+    monkeypatch.setattr(cloud, "_keychain_available", lambda: True)
+
+    class R:
+        returncode, stdout = 1, ""
+    monkeypatch.setattr(cloud.subprocess, "run", lambda *a, **kw: calls.append(a) or R())
+    clock = [1000.0]
+    monkeypatch.setattr(cloud.time, "monotonic", lambda: clock[0])
+    assert cloud.get_key("openai") == "" and cloud.get_key("openai") == ""
+    assert len(calls) == 1                      # a miss is cached briefly...
+    clock[0] += 31
+    cloud.get_key("openai")
+    assert len(calls) == 2                      # ...then asked again (another process may have set it)
+
+
+def test_elevenlabs_voices_never_block_the_gui(qapp, monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", SECRET)
+    started = []
+    monkeypatch.setattr(cloud, "_prefetch_voices", lambda pid: started.append(pid))
+    monkeypatch.setattr(cloud.urllib.request, "urlopen", lambda *a, **kw: pytest.fail("network on the UI thread"))
+    assert cloud.voices("elevenlabs") == [] and started == ["elevenlabs"]
+
+
+def test_elevenlabs_voices_blocking_for_cli(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", SECRET)
+    _use(monkeypatch, _Capture({"voices": [{"voice_id": "v1", "name": "Rachel", "labels": {"gender": "female"}}]}))
+    assert cloud.voices("elevenlabs", blocking=True) == [
+        {"id": "elevenlabs:v1", "name": "Rachel", "language": "multi", "gender": "f"}]
