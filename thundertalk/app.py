@@ -392,6 +392,10 @@ def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         from thundertalk import cli
         sys.exit(cli.main(sys.argv[2:]))
+    if len(sys.argv) > 1 and sys.argv[1] == "--mcp":
+        from thundertalk.mcp import server  # stdio MCP server; tools run --cli
+        server.main()
+        sys.exit(0)
     if len(sys.argv) > 1 and sys.argv[1] == "--selftest":
         from thundertalk import selftest
         sys.exit(selftest.run(sys.argv[2:]))

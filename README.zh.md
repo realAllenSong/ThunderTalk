@@ -237,7 +237,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 - **作曲：** `--song --lyrics` 或 `--lyrics-file` 支持段落标签，`--sung-lyrics` 读取 JSON 整行演唱覆盖。可设风格、时长、BPM、语言、版本数、种子、turbo/xl、规划开关和输出根目录（默认 `~/Music/ThunderTalk`）。返回规划 token/扩散步数进度、建议性歌词检查和不阻塞的艺人名 `warning`。`compose lyrics/check/another/repaint/list/show/export/delete` 提供其余操作，沿用内存保护；v3 应用听写优先。
 - **资源库：** `voices add/list/rename/edit/remove`；`speak --voice my:ID --engine voxcpm2` 或 `indextts` 可用保存的声音。`history list/show/export/rename/edit/delete`；`models list/download/activate` 覆盖识别、朗读、翻译、作曲及可选运行组件。只有显式下载会联网获取权重；激活保存为应用下次启动的默认配置。
 - **错误码：** 常见 `bad_args`、`not_found`、`no_model`、`no_speech`、`decode`、`permission_denied`、`cancelled`、`tts_missing`、`ffmpeg_missing`、`no_provider`、`bad_transcript`、`bad_reference`、`transcript_required`、`model_busy`、`batch_failed`。网址沿用 `login`（会员/预览）、`private`、`geo`、`unavailable`、`blocked`、`network`、`playlist`、`live`、`no_audio`、`missing`、`unsupported`、`other`。作曲使用 `music:memory`、`music:memory_low`、`music:stalled`、`music:load_failed`、`music:failed`、`worker_stopped`，完整错误表见参考。
-- **MCP：** 每个命令都有本地包装，`studio_command(command, arguments)` 可传全部参数；`THUNDERTALK_BIN` 指定打包程序。麦克风录制、播放/预听、剪贴板/对话框控件及运行中队列编辑保留在 GUI，原因和命令行替代数据见[功能对照](docs/cli-v3.md#studio-capability-audit--工作室功能对照)。
+- **MCP：** `ThunderTalk --mcp` 在应用内启动 stdio MCP 服务，Claude Code、Codex、Cursor 等智能体在任何项目里都能用：`claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`。13 个工具覆盖所有命令，`studio_command(command, arguments)` 可传其余参数。结果是单行紧凑 JSON，省 token。麦克风录制、播放/预听、剪贴板/对话框控件及运行中队列编辑保留在 GUI，原因和命令行替代数据见[功能对照](docs/cli-v3.md#studio-capability-audit--工作室功能对照)。
 
 ## 支持的模型
 

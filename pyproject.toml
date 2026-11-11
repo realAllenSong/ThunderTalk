@@ -1,6 +1,6 @@
 [project]
 name = "thundertalk"
-version = "1.13.2"
+version = "1.13.3"
 description = "Lightning-fast voice-to-text for every desktop"
 license = "MIT"
 requires-python = ">=3.12"
@@ -34,9 +34,6 @@ api = [
     "uvicorn>=0.29",
     "python-multipart>=0.0.9",
 ]
-mcp = [
-    "mcp>=1.0",
-]
 indextts = [
     # IndexTTS-2.5 via third_party/mlx_indextts (torch comes from `translation`)
     "torchaudio>=2.4",
@@ -52,6 +49,7 @@ translation = [
     "tiktoken>=0.7",
     "protobuf>=4.25",
     "soundfile>=0.12",
+    "mcp>=1.0,<2",                # `ThunderTalk --mcp`; 2.x renamed FastMCP
 ]
 
 [project.scripts]

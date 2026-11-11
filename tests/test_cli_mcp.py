@@ -42,3 +42,54 @@ def test_mcp_preserves_partial_success_summaries(monkeypatch, summary):
     import subprocess
     monkeypatch.setattr(subprocess, "run", lambda *a, **kw: SimpleNamespace(returncode=1, stdout=json.dumps(summary), stderr=""))
     assert server._cli("transcribe", "a.wav") == summary
+
+
+def test_results_are_compact_json_without_envelope(monkeypatch):
+    import json
+    monkeypatch.setattr(server, "_cli", lambda *a, **kw: {"type": "result", "ok": True, "output": "a.srt", "x": None})
+    text = server.transcribe_file("a.wav", "a.srt")
+    assert "\n" not in text and ": " not in text
+    assert json.loads(text) == {"ok": True, "output": "a.srt"}
+
+
+def test_voices_are_trimmed_and_filtered(monkeypatch):
+    import json
+    voices = [
+        {"id": "kokoro:zf", "name": "Z", "language": "chinese", "gender": "f", "ready": True, "description": "long"},
+        {"id": "kokoro:af", "name": "A", "language": "english", "gender": "f", "ready": True, "description": "long"},
+    ]
+    monkeypatch.setattr(server, "_cli", lambda *a, **kw: {"ok": True, "voices": voices, "my_voices": []})
+    out = json.loads(server.list_local_voices(language="Chinese"))
+    assert out["voices"] == [{"id": "kokoro:zf", "name": "Z", "language": "chinese", "gender": "f", "ready": True}]
+
+
+def test_status_summary_drops_model_catalog(monkeypatch):
+    import json
+    status = {"type": "result", "ok": True, "version": "1", "asr": {"downloaded": ["a"], "auto": "a",
+              "models": [{"id": "a", "downloaded": True}, {"id": "b", "downloaded": False}]},
+              "tts": [{"engine": "kokoro", "name": "Kokoro", "ready": True, "voices": 3}],
+              "apple_speech": {"available": True, "supported_locales": 63}}
+    monkeypatch.setattr(server, "_cli", lambda *a, **kw: status)
+    out = json.loads(server.local_status())
+    assert out["asr"] == {"downloaded": ["a"], "auto": "a", "not_downloaded": ["b"]}
+    assert out["tts"] == [{"engine": "kokoro", "ready": True, "voices": 3}]
+    assert out["apple_speech"] == {"available": True}
+
+
+def test_frozen_app_runs_itself(monkeypatch):
+    import sys
+    import subprocess
+    from types import SimpleNamespace
+    seen = []
+    monkeypatch.delenv("THUNDERTALK_BIN", raising=False)
+    monkeypatch.setattr(sys, "frozen", True, raising=False)
+    monkeypatch.setattr(subprocess, "run", lambda cmd, **kw: seen.append(cmd) or SimpleNamespace(
+        returncode=0, stdout='{"type":"result","ok":true}', stderr=""))
+    server._cli("status")
+    assert seen[0] == [sys.executable, "--cli", "status"]
+
+
+def test_no_legacy_http_tools():
+    names = {t.name for t in server.mcp._tool_manager.list_tools()}
+    assert not names & {"transcribe_audio", "synthesize_speech", "get_asr_status", "get_tts_voices"}
+    assert len(names) == 13

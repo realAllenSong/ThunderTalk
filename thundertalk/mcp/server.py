@@ -1,158 +1,46 @@
-"""ThunderTalk MCP server.
+"""ThunderTalk MCP server: the installed app's local speech tools for any agent.
 
-Exposes ASR transcription (via ASR API at :8765) and TTS synthesis
-(via mlx-tts-server at :8000) as MCP tools.
+Every tool runs ``ThunderTalk --cli …`` (CLI v3) in a subprocess, so nothing
+needs to be running and the GUI may stay open. Results are compact JSON text
+(no duplicate structured copy) to keep agents' token use low.
 
-Usage:
-    # Register with Claude Code:
-    claude mcp add thundertalk -- python -m thundertalk.mcp.server
-
-    # Run directly (stdio transport):
-    python -m thundertalk.mcp.server
+    ThunderTalk --mcp                       # packaged app, stdio
+    python -m thundertalk.mcp.server        # from a checkout
+    claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp
 """
 
 from __future__ import annotations
 
 import json
 import os
-import urllib.request
+import sys
 from pathlib import Path
 
 try:
     from mcp.server.fastmcp import FastMCP
-except ImportError:
-    raise SystemExit("Install MCP SDK: uv pip install mcp")
+except ImportError:  # mcp 2.x renamed FastMCP; ThunderTalk pins mcp<2
+    raise SystemExit("ThunderTalk MCP needs the MCP SDK 1.x: uv pip install 'mcp>=1.0,<2'")
 
-_ASR_BASE = "http://127.0.0.1:8765"
-_TTS_BASE = "http://localhost:8000"
-
-mcp = FastMCP("thundertalk")
-
-
-# ── ASR tool ──────────────────────────────────────────────────────────────────
-
-@mcp.tool()
-def transcribe_audio(file_path: str) -> str:
-    """Transcribe an audio or video file to text using the ThunderTalk ASR engine.
-
-    Args:
-        file_path: Absolute path to the audio/video file to transcribe.
-
-    Returns:
-        The transcribed text.
-    """
-    path = Path(file_path).expanduser().resolve()
-    if not path.exists():
-        raise FileNotFoundError(f"File not found: {path}")
-
-    with open(path, "rb") as f:
-        audio_bytes = f.read()
-
-    boundary = "----ThunderTalkBoundary"
-    name = path.name
-    body = (
-        f"--{boundary}\r\n"
-        f'Content-Disposition: form-data; name="file"; filename="{name}"\r\n'
-        f"Content-Type: application/octet-stream\r\n\r\n"
-    ).encode() + audio_bytes + f"\r\n--{boundary}--\r\n".encode()
-
-    req = urllib.request.Request(
-        f"{_ASR_BASE}/v1/audio/transcriptions",
-        data=body,
-        headers={"Content-Type": f"multipart/form-data; boundary={boundary}"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=600) as resp:
-            result = json.loads(resp.read())
-            return result.get("text", "")
-    except urllib.error.URLError as e:
-        raise RuntimeError(
-            f"Cannot reach ASR API at {_ASR_BASE}. "
-            "Start it with: python -m thundertalk.api.server --model <path>"
-        ) from e
+mcp = FastMCP(
+    "thundertalk",
+    instructions=(
+        "Local, offline, free speech tools on this Mac (no API key): transcribe audio/video/URLs "
+        "to txt/md/srt/vtt/json, speaker labels, meeting notes, burn subtitles, translate, "
+        "text-to-speech with cloned voices, compose music. Prefer these over cloud ASR/TTS. "
+        "Inputs and outputs are file paths; results are short JSON."
+    ),
+)
 
 
-@mcp.tool()
-def get_asr_status() -> dict:
-    """Get the current status of the ThunderTalk ASR API server.
-
-    Returns:
-        A dict with 'status' ('ok' or 'offline') and 'model' name.
-    """
-    try:
-        with urllib.request.urlopen(f"{_ASR_BASE}/health", timeout=3) as resp:
-            return json.loads(resp.read())
-    except Exception:
-        return {"status": "offline", "model": ""}
+# Plain text results only: a structured copy would double every result's tokens.
+_tool = mcp.tool(structured_output=False)
 
 
-# ── TTS tools ─────────────────────────────────────────────────────────────────
-
-@mcp.tool()
-def synthesize_speech(
-    text: str,
-    output_path: str,
-    voice: str = "ryan",
-    speed: float = 1.0,
-    instruct: str = "",
-) -> str:
-    """Synthesize speech from text using mlx-tts-server and save to a WAV file.
-
-    Args:
-        text: The text to synthesize.
-        output_path: Where to save the output WAV file (absolute or ~-relative path).
-        voice: Voice name (ryan, serena, vivian, aiden, eric, dylan, sohee, uncle_fu, ono_anna).
-        speed: Speech speed multiplier (0.25 – 4.0).
-        instruct: Optional speaking style instruction (e.g. "speak warmly and slowly").
-
-    Returns:
-        The absolute path to the saved WAV file.
-    """
-    payload: dict = {
-        "model": "tts-1",
-        "input": text,
-        "voice": voice,
-        "response_format": "wav",
-        "speed": speed,
-    }
-    if instruct.strip():
-        payload["instruct"] = instruct.strip()
-
-    req = urllib.request.Request(
-        f"{_TTS_BASE}/v1/audio/speech",
-        data=json.dumps(payload).encode(),
-        headers={"Content-Type": "application/json"},
-        method="POST",
-    )
-    try:
-        with urllib.request.urlopen(req, timeout=120) as resp:
-            wav_bytes = resp.read()
-    except urllib.error.URLError as e:
-        raise RuntimeError(
-            f"Cannot reach mlx-tts-server at {_TTS_BASE}. "
-            "Start it with: mlx-tts-server"
-        ) from e
-
-    out = Path(output_path).expanduser().resolve()
-    out.parent.mkdir(parents=True, exist_ok=True)
-    out.write_bytes(wav_bytes)
-    return str(out)
-
-
-@mcp.tool()
-def get_tts_voices() -> list[str]:
-    """Get the list of available voices from the mlx-tts-server.
-
-    Returns:
-        A list of voice name strings, or a default list if the server is offline.
-    """
-    try:
-        with urllib.request.urlopen(f"{_TTS_BASE}/v1/audio/speech/voices", timeout=3) as resp:
-            data = json.loads(resp.read())
-            return data.get("voices", [])
-    except Exception:
-        return ["ryan", "serena", "vivian", "aiden", "eric", "dylan", "sohee", "uncle_fu", "ono_anna"]
+def _compact(result) -> str:
+    """One-line JSON without the CLI's event envelope."""
+    if isinstance(result, dict):
+        result = {k: v for k, v in result.items() if k != "type" and v is not None}
+    return json.dumps(result, ensure_ascii=False, separators=(",", ":"))
 
 
 # ── Local CLI tools (no server needed) ────────────────────────────────────────
@@ -162,10 +50,14 @@ def _cli(*args: str, timeout: float = 3600) -> dict:
     THUNDERTALK_BIN may point at the packaged binary
     (…/ThunderTalk.app/Contents/MacOS/ThunderTalk); otherwise this Python is used."""
     import subprocess
-    import sys
 
     exe = os.environ.get("THUNDERTALK_BIN")
-    cmd = [exe] if exe else [sys.executable, "-m", "thundertalk"]
+    if exe:
+        cmd = [exe]
+    elif getattr(sys, "frozen", False):     # `ThunderTalk --mcp` inside the app bundle
+        cmd = [sys.executable]
+    else:
+        cmd = [sys.executable, "-m", "thundertalk"]
     proc = subprocess.run([*cmd, "--cli", *args], capture_output=True, text=True,
                           timeout=timeout, check=False)
     result: dict = {}
@@ -183,55 +75,6 @@ def _cli(*args: str, timeout: float = 3600) -> dict:
     return result
 
 
-@mcp.tool()
-def transcribe_file(file_path: str, output_path: str, engine: str = "auto",
-                    language: str = "auto", speakers: bool = False,
-                    max_seconds: float | None = None) -> dict:
-    """Transcribe an audio/video file locally to txt, srt, vtt or json (chosen by
-    output_path's extension). Subtitle cues are at most ~7 s and two lines.
-
-    Args:
-        file_path: Audio or video file.
-        output_path: Where to write the transcript (.txt / .srt / .vtt / .json).
-        engine: "auto" (the dictation model, else Apple), "apple", or a model id.
-        language: "auto", "zh", "en", …
-
-    Returns:
-        The CLI result: output, format, engine, duration, seconds, entries.
-    """
-    args = _options(["transcribe", file_path], out=output_path, engine=engine, language=language, max_seconds=max_seconds)
-    return _cli(*args, *(["--speakers"] if speakers else []))
-
-
-@mcp.tool()
-def speak_text(text: str, output_path: str, engine: str = "auto", voice: str = "",
-               speed: float = 1.0, language: str = "auto") -> dict:
-    """Synthesize speech locally with ThunderTalk's Speak engines (including the
-    built-in Apple system voices) to .m4a, .wav or .mp3.
-
-    Args:
-        text: Text to read (Chinese, English or mixed).
-        output_path: Output audio file (.m4a / .wav / .mp3).
-        engine: "auto", "apple", "kokoro", "voxcpm2" or "indextts".
-        voice: A voice id from list_local_voices (empty = engine default).
-        speed: 0.5 – 2.0.
-    """
-    args = ["speak", "--text", text, "--out", str(Path(output_path).expanduser()),
-            "--engine", engine, "--speed", str(speed), "--language", language]
-    if voice:
-        args += ["--voice", voice]
-    return _cli(*args)
-
-
-@mcp.tool()
-def list_local_voices(engine: str = "auto") -> list[dict]:
-    """List the voices ThunderTalk's local Speak engines can use right now."""
-    return _cli("voices", "--engine", engine, timeout=120).get("voices", [])
-
-
-
-
-
 def _options(args: list[str], **options) -> list[str]:
     for key, value in options.items():
         if value is not None:
@@ -239,107 +82,199 @@ def _options(args: list[str], **options) -> list[str]:
     return args
 
 
-@mcp.tool()
+def _flag(on: bool, name: str) -> list[str]:
+    return [name] if on else []
+
+
+# ── Transcription 转写 ────────────────────────────────────────────────────────
+
+@_tool
+def transcribe_file(file_path: str, output_path: str, engine: str = "auto",
+                    language: str = "auto", speakers: bool = False,
+                    max_seconds: float | None = None) -> str:
+    """Speech-to-text / 转写 / 字幕 for one audio, video or URL (YouTube, Bilibili…).
+    Format comes from output_path: .txt .md .srt .vtt .json.
+    engine: auto (dictation model) | best (most accurate downloaded) | apple | model id.
+    speakers=True labels who spoke (说话人). language: auto | zh | en | …"""
+    args = _options(["transcribe", file_path], out=output_path, engine=engine,
+                    language=language, max_seconds=max_seconds)
+    return _compact(_cli(*args, *_flag(speakers, "--speakers")))
+
+
+@_tool
 def transcribe_inputs(inputs: list[str], output_dir: str, engine: str = "auto",
                       language: str = "auto", format: str = "md", speakers: bool = False,
-                      max_seconds: float | None = None) -> dict:
-    """Transcribe a batch of files/URLs, continuing on errors. Returns per-item results."""
+                      max_seconds: float | None = None) -> str:
+    """Batch-transcribe many files/URLs into output_dir (format txt|md|srt|vtt|json); continues on errors."""
     args = _options(["transcribe", *inputs], out_dir=output_dir, engine=engine,
                     language=language, format=format, max_seconds=max_seconds)
-    return _cli(*args, *(["--speakers"] if speakers else []))
+    return _compact(_cli(*args, *_flag(speakers, "--speakers")))
 
 
-@mcp.tool()
+@_tool
 def meeting_notes(input_path: str, output_path: str, provider: str | None = None,
-                  model: str | None = None, engine: str = "auto", speakers: bool = False) -> dict:
-    """Media/URL or an existing txt/json/md transcript → Markdown meeting notes.
-    Defaults to the provider/model configured on AI Proofread. No provider login is attempted.
-    """
+                  model: str | None = None, engine: str = "auto", speakers: bool = False) -> str:
+    """Meeting notes / 会议纪要 (Markdown) from media, a URL or an existing transcript.
+    Uses the LLM set on the app's AI Proofread page unless provider/model given."""
     args = _options(["notes", input_path], out=output_path, provider=provider, model=model, engine=engine)
-    return _cli(*args, *(["--speakers"] if speakers else []))
+    return _compact(_cli(*args, *_flag(speakers, "--speakers")))
 
 
-@mcp.tool()
+@_tool
 def subtitle_video(video_path: str, output_path: str, subtitles: str | None = None,
-                   soft: bool = False, engine: str = "auto") -> dict:
-    """Burn subtitles into video, or add a selectable track. Transcribe first if subtitles omitted."""
+                   soft: bool = False, engine: str = "auto") -> str:
+    """Burn subtitles into a video (烧字幕), or soft=True for a selectable track.
+    Transcribes first unless subtitles (.srt/.vtt/.json) is given. Needs ffmpeg."""
     args = _options(["burn", video_path], out=output_path, subtitles=subtitles, engine=engine)
-    return _cli(*args, *(["--soft"] if soft else []))
+    return _compact(_cli(*args, *_flag(soft, "--soft")))
 
 
-@mcp.tool()
+@_tool
 def translate_local(output_path: str, target: str, input_path: str | None = None,
                     text: str | None = None, text_file: str | None = None,
-                    source_language: str | None = None) -> dict:
-    """SeamlessM4T speech (file/URL) or text translation. Languages are ISO-639-3 (eng, cmn)."""
+                    source_language: str | None = None) -> str:
+    """Translate speech (file/URL) or text to text / 翻译, offline (SeamlessM4T).
+    Languages are ISO-639-3: eng, cmn, jpn, kor, fra…"""
     args = ["translate", *([input_path] if input_path is not None else [])]
-    return _cli(*_options(args, out=output_path, target=target, text=text,
-                          text_file=text_file, source_language=source_language))
+    return _compact(_cli(*_options(args, out=output_path, target=target, text=text,
+                                   text_file=text_file, source_language=source_language)))
 
 
-@mcp.tool()
+# ── Speech 朗读 / TTS ─────────────────────────────────────────────────────────
+
+@_tool
+def speak_text(text: str, output_path: str, engine: str = "auto", voice: str = "",
+               speed: float = 1.0, language: str = "auto") -> str:
+    """Text-to-speech / 配音 / 朗读 (zh, en, mixed) to .m4a .wav .mp3.
+    engine: auto | best | apple | kokoro | voxcpm2 | indextts. voice: id from
+    list_local_voices, or my:<id> for a cloned voice (voxcpm2/indextts). speed 0.5–2."""
+    args = ["speak", "--text", text, "--out", str(Path(output_path).expanduser()),
+            "--engine", engine, "--speed", str(speed), "--language", language]
+    if voice:
+        args += ["--voice", voice]
+    return _compact(_cli(*args))
+
+
+_VOICE_KEYS = ("id", "name", "language", "gender", "ready")
+
+
+@_tool
+def list_local_voices(engine: str = "auto", language: str = "") -> str:
+    """Voice ids for speak_text (built-in and saved my:<id>). language filters, e.g. chinese, english."""
+    result = _cli("voices", "--engine", engine, timeout=120)
+    want = language.strip().lower()
+
+    def keep(v: dict) -> bool:
+        return not want or want in str(v.get("language", "")).lower()
+
+    return _compact({
+        "voices": [{k: v[k] for k in _VOICE_KEYS if k in v} for v in result.get("voices", []) if keep(v)],
+        "my_voices": [{k: v[k] for k in ("id", "name", "engine") if k in v}
+                      for v in result.get("my_voices", []) or []],
+    })
+
+
+@_tool
+def manage_local_voice(action: str, input_path: str | None = None, name: str | None = None,
+                       transcript: str | None = None, transcript_file: str | None = None,
+                       engine: str = "auto") -> str:
+    """Saved/cloned voices (声音克隆): add (3–20 s audio + transcript) | list | remove | rename | edit; ids are my:<id>."""
+    args = ["voices", action, *([input_path] if input_path is not None else [])]
+    return _compact(_cli(*_options(args, name=name, transcript=transcript,
+                                   transcript_file=transcript_file, engine=engine)))
+
+
+@_tool
 def compose_music(style: str = "", instrumental: bool = False, lyrics: str | None = None,
                   lyrics_file: str | None = None, sung_lyrics: str | None = None,
                   length: int = 30, bpm: int | None = None, language: str = "en", takes: int = 1,
                   seed: int | None = None, model: str = "turbo", planner: bool = False,
                   output_dir: str | None = None, action: str = "generate", input_path: str | None = None,
-                  start: float | None = None, end: float | None = None, output_path: str | None = None) -> dict:
-    """Compose song/instrumental takes, with progress and lyric checks in the CLI.
-    Also supports check/repaint/list/show/export/delete; repaint needs a take WAV and start/end.
-    Each take has WAV + JSON metadata. The memory guard and dictation priority apply.
-    """
+                  start: float | None = None, end: float | None = None, output_path: str | None = None) -> str:
+    """Compose a song or instrumental / 作曲 (WAV + JSON per take). action: generate | another |
+    lyrics | check | repaint (take WAV + start/end) | list | show | export | delete."""
     args = ["compose", action, *([input_path] if input_path is not None else [])]
     args = _options(args, style=style, lyrics=lyrics, lyrics_file=lyrics_file, sung_lyrics=sung_lyrics,
                     length=length if action == "generate" else None, bpm=bpm, language=language,
                     takes=takes, seed=seed, model=model if action == "generate" else None,
                     planner="on" if planner else "off", out_dir=output_dir, start=start, end=end, out=output_path)
-    return _cli(*args, *(["--instrumental"] if instrumental else []), timeout=7200)
+    return _compact(_cli(*args, *_flag(instrumental, "--instrumental"), timeout=7200))
 
 
-@mcp.tool()
-def manage_local_voice(action: str, input_path: str | None = None, name: str | None = None,
-                       transcript: str | None = None, transcript_file: str | None = None,
-                       engine: str = "auto") -> dict:
-    """Saved voices: add/list/remove/rename/edit. Add takes audio; other actions use my:<id>."""
-    args = ["voices", action, *([input_path] if input_path is not None else [])]
-    return _cli(*_options(args, name=name, transcript=transcript, transcript_file=transcript_file, engine=engine))
+# ── App data 历史与模型 ───────────────────────────────────────────────────────
 
-
-@mcp.tool()
+@_tool
 def transcript_history(action: str, entry_id: str | None = None, output_path: str | None = None,
-                       query: str = "", offset: int = 0, limit: int = 50, title: str | None = None,
-                       speaker_names: dict[str, str] | None = None, notes_file: str | None = None) -> dict:
-    """Studio history: list/search/show/export/delete/rename/edit (speaker names and notes)."""
+                       query: str = "", offset: int = 0, limit: int = 20, title: str | None = None,
+                       speaker_names: dict[str, str] | None = None, notes_file: str | None = None) -> str:
+    """The app's saved Studio transcripts: list (query searches) | show | export | delete | rename | edit."""
     args = ["history", action, *([entry_id] if entry_id is not None else [])]
     args = _options(args, out=output_path, query=query, offset=offset, limit=limit, title=title, notes_file=notes_file)
     for key, value in (speaker_names or {}).items():
         args += ["--speaker-name", key + "=" + value]
-    return _cli(*args)
+    return _compact(_cli(*args))
 
 
-@mcp.tool()
+@_tool
 def manage_models(action: str, model_id: str | None = None, kind: str | None = None,
-                  planner: bool = False) -> dict:
-    """List/download/activate ASR, translation, TTS or music models. Downloads include runtime components."""
+                  planner: bool = False) -> str:
+    """ASR/translation/TTS/music models: list | download | activate. kind: asr|translation|tts|music."""
     args = _options(["models", action, *([model_id] if model_id is not None else [])], kind=kind)
-    return _cli(*args, *(["--planner"] if planner else []), timeout=7200)
+    return _compact(_cli(*args, *_flag(planner, "--planner"), timeout=7200))
 
 
-@mcp.tool()
-def local_status() -> dict:
-    """CLI version, capabilities, model readiness, engines, permissions and ffmpeg (no server needed)."""
-    return _cli("status", timeout=120)
+def _status_summary(result: dict) -> dict:
+    asr = dict(result.get("asr") or {})
+    models = asr.pop("models", None) or []
+    asr["not_downloaded"] = [m["id"] for m in models if not m.get("downloaded")]
+    tts = [{k: e[k] for k in ("engine", "ready", "voices", "clone") if k in e}
+           for e in result.get("tts") or []]
+    apple = result.get("apple_speech") or {}
+    return {**result, "asr": asr, "tts": tts,
+            "apple_speech": {k: apple[k] for k in ("available", "on_device_locales") if k in apple}}
 
 
-@mcp.tool()
-def studio_command(command: str, arguments: list[str]) -> dict:
-    """Full CLI v3 escape hatch for every flag, e.g. compose lyrics --remember WORD=SUNG.
-    Arguments are passed directly as an argv array, without a shell. The command must be headless.
-    """
-    if command not in ("transcribe", "notes", "burn", "translate", "compose", "speak", "voices", "history", "models", "status"):
-        raise ValueError("Unknown headless command")
-    return _cli(command, *arguments, timeout=7200)
+@_tool
+def local_status() -> str:
+    """Version, capabilities, downloaded models, TTS engines, permissions, ffmpeg."""
+    return _compact(_status_summary(_cli("status", timeout=120)))
+
+
+_HEADLESS = ("transcribe", "notes", "burn", "translate", "compose", "speak", "voices",
+             "history", "models", "status")
+
+
+@_tool
+def studio_command(command: str, arguments: list[str]) -> str:
+    """Escape hatch: any `ThunderTalk --cli` v3 command with raw argv (e.g. --start/--end,
+    --save-history, compose lyrics --remember). Use `<command> --help` style args to learn flags."""
+    if command not in _HEADLESS:
+        raise ValueError("command must be one of: " + ", ".join(_HEADLESS))
+    return _compact(_cli(command, *arguments, timeout=7200))
+
+
+def _lean(schema):
+    """Drop pydantic's auto titles and `anyOf: [X, null]` from advertised schemas
+    (arguments are still validated by each tool's own model)."""
+    if isinstance(schema, list):
+        return [_lean(v) for v in schema]
+    if not isinstance(schema, dict):
+        return schema
+    out = {k: _lean(v) for k, v in schema.items() if k != "title"}
+    any_of = out.get("anyOf")
+    if isinstance(any_of, list) and len(any_of) == 2 and {"type": "null"} in any_of:
+        out.pop("anyOf")
+        out.update(next(v for v in any_of if v != {"type": "null"}))
+    return out
+
+
+for _t in mcp._tool_manager.list_tools():
+    _t.parameters = _lean(_t.parameters)
+
+
+def main() -> None:
+    mcp.run()
 
 
 if __name__ == "__main__":
-    mcp.run()
+    main()

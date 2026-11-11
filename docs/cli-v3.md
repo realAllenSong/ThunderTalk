@@ -186,14 +186,22 @@ lock belongs to the test harness, not installed ThunderTalk.
 
 ## MCP
 
-`python -m thundertalk.mcp.server` retains existing API tools and adds thin local
-CLI wrappers: `transcribe_file` (also URLs), `transcribe_inputs`, `meeting_notes`,
+`ThunderTalk --mcp` (packaged app) or `python -m thundertalk --mcp` (checkout) runs a
+stdio server whose 13 tools are thin CLI wrappers: `transcribe_file` (also URLs), `transcribe_inputs`, `meeting_notes`,
 `subtitle_video`, `translate_local`, `compose_music`, `speak_text`,
 `list_local_voices`, `manage_local_voice`, `transcript_history`, `manage_models`,
 `local_status`. Partial batch/Compose results are returned intact even when `ok` is false.
 `studio_command(command, arguments)` exposes every CLI option
-as an argv array without shell interpolation. Set `THUNDERTALK_BIN` to the app
-binary; otherwise the current Python interpreter is used.
+as an argv array without shell interpolation. Inside the app the server runs the
+app binary itself; elsewhere set `THUNDERTALK_BIN` or the current Python is used.
+Tools return one line of compact JSON with no structured duplicate; `local_status`
+and `list_local_voices` (optional `language` filter) are trimmed to keep agents'
+token use low. The old HTTP tools for the :8765 ASR API and mlx-tts-server
+(`transcribe_audio`, `synthesize_speech`, `get_asr_status`, `get_tts_voices`)
+were removed. Register once for every project:
 
-MCP 保留原 API 工具，新增本地 CLI 包装；`studio_command` 可传递所有命令参数，
-不经过 shell。`THUNDERTALK_BIN` 可指定打包程序，默认使用当前 Python。
+    claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp
+
+MCP 由 `ThunderTalk --mcp` 启动，13 个工具都是 CLI 薄包装；`studio_command` 可传递所有
+命令参数，不经过 shell。结果为单行紧凑 JSON，状态和声音列表已精简以节省 token；
+旧的 :8765 / mlx-tts-server HTTP 工具已移除。

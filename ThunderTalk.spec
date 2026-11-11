@@ -48,6 +48,8 @@ hidden_imports += ["scipy._external.array_api_compat.numpy.fft", "scipy._externa
 # yt-dlp (Studio ▸ transcribe from a link). Its own PyInstaller hook adds the
 # networking extras; extractors are listed here too so none can go missing.
 hidden_imports += collect_submodules("yt_dlp")
+# `ThunderTalk --mcp`: the MCP SDK is imported lazily from thundertalk.mcp.server.
+hidden_imports += ["thundertalk.mcp.server"] + collect_submodules("mcp")
 hidden_imports += ["certifi"]
 hidden_imports += collect_submodules("pypinyin")
 
@@ -95,6 +97,7 @@ custom_datas += collect_data_files("pypinyin")
 custom_datas += copy_metadata("requests")
 custom_datas += copy_metadata("filelock")
 custom_datas += copy_metadata("numpy")
+custom_datas += copy_metadata("mcp")
 
 custom_binaries = []
 custom_binaries += collect_dynamic_libs("mlx")
@@ -171,6 +174,7 @@ app = BUNDLE(
         # ThunderTalk is never launched with arguments it would not understand.
         # 2: transcribe --engine best / --speakers / md, speak --engine best.
         'ThunderTalkCLIVersion': 3,
+        'ThunderTalkMCP': 1,          # `ThunderTalk --mcp` (stdio MCP server)
         'CFBundleShortVersionString': _APP_VERSION,
         'CFBundleVersion': _APP_VERSION,
         # Bundled libraries set the real floor: Qt needs macOS 13, onnxruntime 14,
