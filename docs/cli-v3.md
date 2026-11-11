@@ -33,7 +33,19 @@ and `capabilities`. `--help` is available on every command.
 | `models list [--kind asr\|translation\|tts\|music]` | Catalog IDs, readiness, compatibility, download size. / 模型目录、可用状态、兼容性和大小。 |
 | `models download ID [--planner]` | Explicit online download, including optional runtime components; progress events. Planner is for music. / 显式联网下载，含所需运行组件；作曲可含规划模型。 |
 | `models activate ID` | Persist the ASR, Speak engine/voice or Compose default; already-running GUI picks settings up on restart. The single translation model is usable immediately by `translate`. / 保存默认模型；已打开的 GUI 重启后读取。翻译只有一个固定模型，CLI 可直接使用。 |
-| `status` | App/CLI versions, capabilities, models, TTS engines, permissions, ffmpeg. / 版本、能力、模型、权限及 ffmpeg。 |
+| `status` | App/CLI versions, capabilities, models, TTS engines, permissions, ffmpeg, cloud providers (key present, never the key). / 版本、能力、模型、权限、ffmpeg 及云端服务商。 |
+| `cloud list` | Providers, whether a key is set (`keychain`/`env`/`none`), base URL, models. / 服务商、是否有密钥、接口地址、模型。 |
+| `cloud set-key PROVIDER` | Reads the key from stdin (never argv) and stores it in the macOS Keychain. Refused over MCP. / 从标准输入读取密钥并存入钥匙串；MCP 不接受。 |
+| `cloud remove-key PROVIDER` · `cloud test PROVIDER` | Delete the key; one cheap authenticated call. / 删除密钥；一次低成本的验证调用。 |
+| `cloud set PROVIDER [--base-url URL --asr-model M --tts-model M --voice V]` | Non-secret settings; `custom` needs `--base-url`. / 非机密设置；`custom` 需要接口地址。 |
+
+Cloud engines are opt-in: ASR `--engine PROVIDER:MODEL` (`openai:gpt-transcribe`,
+`gemini:gemini-3.8-flash`, `groq:whisper-large-v3-turbo`, `elevenlabs:scribe_v2`,
+`custom:<model>`), TTS `--engine openai|gemini|elevenlabs|custom --voice PROVIDER:VOICE`.
+`auto` and `best` never pick one. Errors: `cloud_no_key`, `cloud_auth`, `cloud_quota`,
+`cloud_network`, `cloud_timeout`, `cloud_too_large`, `cloud_bad_request`,
+`cloud_bad_response`, `cloud_unsupported`; messages never contain a key.
+云端引擎需显式指定，`auto`/`best` 不会选择；错误信息不含密钥。
 
 ASR commands accept `--engine auto|best|apple|MODEL_ID`, `--language auto|zh|en|…`,
 and `--speakers` (MOSS). `auto` uses the dictation setting then Apple; `best`

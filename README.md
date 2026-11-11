@@ -7,7 +7,7 @@
 <p align="center">
   Free, open-source voice input for macOS.<br/>
   Press a key, speak, and the text appears at your cursor.<br/>
-  Speech recognition runs on your own Mac: no account, no subscription, no cloud.
+  Speech recognition runs on your own Mac: no account, no subscription, no cloud needed.
 </p>
 
 <p align="center">
@@ -28,9 +28,14 @@
 
 ---
 
-ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere. It is MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
+ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere unless you choose an optional cloud engine with your own API key. It is MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
+
+## New in v1.14.0
+
+- **Cloud engines, bring your own key (optional):** use OpenAI, Google Gemini, Groq, ElevenLabs or any OpenAI-compatible server for transcription, dictation and Studio ▸ Speak. Add a key under **Models ▸ Cloud APIs**; it is stored in the macOS Keychain. ThunderTalk stays fully offline until you pick a cloud engine, and `auto`/`best` never choose one. See [Cloud engines](#cloud-engines-optional).
+- **For AI agents:** `ThunderTalk --mcp` (from v1.13.3) and the CLI take the cloud engines too, e.g. `--engine openai:gpt-transcribe`. Agents cannot set keys over MCP.
 
 ## New in v1.13.2
 
@@ -289,6 +294,24 @@ Downloads are one-time; both models share the VAE and text encoder. Runtime comp
 | SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | Speech and text translation in **Direct** and **Review** modes |
 
 Translation and IndexTTS share an optional **90 MB PyTorch component**. Downloading either engine from the app also installs this component into `~/.thundertalk/runtime/`; restart once if prompted. Dictation, Studio transcription, VoxCPM2 and Kokoro need no component. Transformers and SciPy remain bundled because MLX speech uses them too. Model weights are downloaded separately from the **Models** page or the Studio engine card and stored in `~/.thundertalk/models/` or the Hugging Face cache.
+
+### Cloud engines (optional)
+
+Bring your own API key. Nothing is sent anywhere unless you choose one of these.
+
+| Provider | Speech to text | Text to speech |
+|----------|----------------|----------------|
+| OpenAI | `gpt-transcribe`, `whisper-1` | `gpt-4o-mini-tts`, `tts-1-hd`, `tts-1` (13 voices) |
+| Google Gemini | `gemini-3.8-flash` | `gemini-3.8-flash-tts`, `gemini-3.8-flash-lite-tts` (30 voices) |
+| Groq | `whisper-large-v3-turbo`, `whisper-large-v3` | — |
+| ElevenLabs | `scribe_v2` | `eleven_multilingual_v2` (your account's voices) |
+| OpenAI-compatible | any model on your server (`/v1/audio/transcriptions`) | any model on your server (`/v1/audio/speech`) |
+
+- **Setup:** Models ▸ Cloud APIs: paste the key and press **Test**. A self-hosted server needs only its base URL. Model and voice names are editable, so a renamed model works without an app update. OpenAI has announced that `whisper-1` and its current TTS models will be retired in early 2027.
+- **Keys** are stored in the macOS Keychain (service “ThunderTalk Cloud”), never in settings or logs. Headless use can set `THUNDERTALK_OPENAI_API_KEY` (or `OPENAI_API_KEY`, `GEMINI_API_KEY`, `GROQ_API_KEY`, `ELEVENLABS_API_KEY`).
+- **Dictation** through a cloud engine asks once before audio leaves your Mac. Live preview is off for cloud engines, so only the finished recording is sent. If a request fails (key, quota, network), you see the provider's message and the recording is kept.
+- **Long files** are sent in pieces cut at pauses (at most 10 minutes each, FLAC), so they stay under upload limits. Subtitle timing comes from ThunderTalk's own speech detection.
+- **Command line:** `thundertalk cloud set-key openai` (reads the key from stdin), `cloud list`, `cloud test openai`, `cloud set custom --base-url http://127.0.0.1:8000/v1`; then `transcribe talk.mp4 --out talk.srt --engine openai:gpt-transcribe` or `speak --text … --out a.m4a --engine gemini --voice gemini:Kore`.
 
 ## System requirements
 

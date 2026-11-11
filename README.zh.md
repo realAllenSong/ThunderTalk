@@ -7,7 +7,7 @@
 <p align="center">
   免费开源的 macOS 语音输入应用。<br/>
   按下快捷键、开口说话，文字就出现在光标处。<br/>
-  语音识别在你自己的 Mac 上完成：无需账号，无需订阅，没有云端。
+  语音识别在你自己的 Mac 上完成：无需账号，无需订阅，不依赖云端。
 </p>
 
 <p align="center">
@@ -28,9 +28,14 @@
 
 ---
 
-ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方。它以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
+ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方，除非你主动选择使用自己 API 密钥的可选云端引擎。它以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
+
+## v1.14.0 新功能
+
+- **云端引擎，使用你自己的密钥（可选）：**转写、听写和「工作室 ▸ 朗读」可以使用 OpenAI、Google Gemini、Groq、ElevenLabs 或任何兼容 OpenAI 的服务。在「模型 ▸ 云端接口」添加密钥，密钥保存在 macOS 钥匙串中。在你选择云端引擎之前，ThunderTalk 完全离线；`auto`/`best` 永远不会选择云端引擎。详见[云端引擎](#云端引擎可选)。
+- **给 AI 智能体：**`ThunderTalk --mcp`（v1.13.3 起）和命令行同样支持云端引擎，例如 `--engine openai:gpt-transcribe`。智能体无法通过 MCP 设置密钥。
 
 ## v1.13.2 新功能
 
@@ -287,6 +292,24 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | SeamlessM4T v2 Large | ~9 GB | PyTorch + MPS / CPU | 100+ | 在“直译”“审阅”模式下进行语音与文本翻译 |
 
 翻译和 IndexTTS 共用一个按需下载的 **90 MB PyTorch 组件**。在应用内下载这两个引擎时，组件会安装到 `~/.thundertalk/runtime/`；出现提示后请重启一次。听写、工作室转写、VoxCPM2 和 Kokoro 无需该组件。MLX 语音也使用 Transformers 和 SciPy，因此这两个库仍内置。模型权重从“模型”页面或工作室引擎卡片另行下载，存放在 `~/.thundertalk/models/` 或 Hugging Face 缓存中。
+
+### 云端引擎（可选）
+
+使用你自己的 API 密钥。除非你选择其中之一，否则不会发送任何数据。
+
+| 服务商 | 语音转文字 | 文字转语音 |
+|--------|------------|------------|
+| OpenAI | `gpt-transcribe`、`whisper-1` | `gpt-4o-mini-tts`、`tts-1-hd`、`tts-1`（13 种声音） |
+| Google Gemini | `gemini-3.8-flash` | `gemini-3.8-flash-tts`、`gemini-3.8-flash-lite-tts`（30 种声音） |
+| Groq | `whisper-large-v3-turbo`、`whisper-large-v3` | — |
+| ElevenLabs | `scribe_v2` | `eleven_multilingual_v2`（你账户中的声音） |
+| 兼容 OpenAI 的服务 | 服务上的任意模型（`/v1/audio/transcriptions`） | 服务上的任意模型（`/v1/audio/speech`） |
+
+- **设置：**在「模型 ▸ 云端接口」粘贴密钥并点击**测试**。自建服务只需填写接口地址。模型名和声音名都可以修改，服务商改名后无需更新应用。OpenAI 已宣布 `whisper-1` 和现有 TTS 模型将于 2027 年初停用。
+- **密钥**保存在 macOS 钥匙串（服务名 “ThunderTalk Cloud”），不会写入设置或日志。无界面使用时可设置 `THUNDERTALK_OPENAI_API_KEY`（或 `OPENAI_API_KEY`、`GEMINI_API_KEY`、`GROQ_API_KEY`、`ELEVENLABS_API_KEY`）。
+- **听写**首次使用云端引擎时会先确认，因为录音会离开你的 Mac。云端引擎不使用实时预览，只发送完整录音。请求失败（密钥、额度、网络）时会显示服务商的提示，录音会保留。
+- **长文件**会在停顿处切成多段发送（每段最长 10 分钟，FLAC 格式），不会超过上传限制。字幕时间来自 ThunderTalk 自己的语音检测。
+- **命令行：**`thundertalk cloud set-key openai`（从标准输入读取密钥）、`cloud list`、`cloud test openai`、`cloud set custom --base-url http://127.0.0.1:8000/v1`；之后可用 `transcribe talk.mp4 --out talk.srt --engine openai:gpt-transcribe` 或 `speak --text … --out a.m4a --engine gemini --voice gemini:Kore`。
 
 ## 系统要求
 
