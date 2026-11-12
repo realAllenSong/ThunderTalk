@@ -35,7 +35,14 @@ The interface is deliberately quiet: warm paper background, near-black ink, one 
 ## New in v1.14.0
 
 - **Cloud engines, bring your own key (optional):** use OpenAI, Google Gemini, Groq, ElevenLabs or any OpenAI-compatible server for transcription, dictation and Studio ▸ Speak. Add a key under **Models ▸ Cloud APIs**; it is stored in the macOS Keychain. ThunderTalk stays fully offline until you pick a cloud engine, and `auto`/`best` never choose one. See [Cloud engines](#cloud-engines-optional).
-- **For AI agents:** `ThunderTalk --mcp` (from v1.13.3) and the CLI take the cloud engines too, e.g. `--engine openai:gpt-transcribe`. Agents cannot set keys over MCP.
+- **Cloud dictation transcribes while you speak:** each finished stretch of speech goes to your cloud model as you talk, so the live preview is that model's own text and the result is ready almost as soon as you stop. Every second of audio is sent once, so it costs the same as one request.
+- **Pick, don't type:** each provider lists the models and voices it offers (an OpenAI-compatible server's own list after **Test**), marked *recommended* or with the date a model is retired. Each provider shows this month's usage with a list-price estimate; add an OpenAI admin key to see the real spend, and ElevenLabs shows your plan's quota.
+- **Your hotwords reach the cloud too,** and Mandarin from Whisper comes back in Simplified Chinese.
+- **Built-in AI & tech vocabulary:** about 80 names people dictate every day (Claude Code, ChatGPT, Codex, MCP, GitHub, DeepSeek, 豆包…) are spelled right in every model's output and given as hints to cloud models and Apple Speech (Hotwords page, on by default).
+- **Remove fillers and restarts:** "um", "呃" and restarted phrases ("你可以你可以你可以") are dropped from dictated text (Settings, on by default; Studio transcripts stay word for word).
+- **Apple Speech follows a language switch:** start in Chinese and continue in English, and the English part is now recognized as English (long English recordings: 56% → 23% token errors). Its live preview no longer stops partway through long recordings (kept up on 8 of 8 long test recordings, was 5 of 8).
+- **`thundertalk eval`, a standard benchmark for every local model:** short and long recordings in Chinese, English and mixed Chinese–English with human reference transcripts, a replay of the live preview, and `--recent` to score your own cloud dictations at no cost.
+- **For AI agents:** `ThunderTalk --mcp` (from v1.13.3) and the CLI take the cloud engines too, e.g. `--engine openai:gpt-transcribe`, plus `thundertalk cloud usage` and `thundertalk eval`. Agents cannot set keys over MCP.
 
 ## New in v1.13.2
 
