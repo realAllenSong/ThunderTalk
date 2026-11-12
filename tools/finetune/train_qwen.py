@@ -44,6 +44,48 @@ def to_qwen(src: Path, dst: Path, limit: int = 0, max_seconds: float = 15.0) -> 
     return n
 
 
+def add_concat(dst: Path, per_lang: int, seed: int = 0) -> int:
+    """Append multi-sentence clips (2–3 read sentences joined, 15–30 s) to
+    ``dst``. Single-sentence training alone taught the model to stop after one
+    sentence: on 20 s chunks of long recordings it dropped or repeated
+    sentences (long English 8.0% → 12.3% token errors in the first run)."""
+    import random
+
+    import numpy as np
+    import soundfile as sf
+    rng = random.Random(seed)
+    out_dir = PREP / "concat"
+    out_dir.mkdir(exist_ok=True)
+    rows = [json.loads(line) for line in open(PREP / "train.jsonl", encoding="utf-8")]
+    n = 0
+    with open(dst, "a", encoding="utf-8") as fout:
+        for lang in ("zh", "en"):
+            pool = [r for r in rows if r["source"] == "fleurs" and r["lang"] == lang and r["seconds"] <= 14]
+            for k in range(per_lang):
+                parts, total = [], 0.0
+                while total < 15 and len(parts) < 3:
+                    r = rng.choice(pool)
+                    if total + r["seconds"] > 29:
+                        break
+                    parts.append(r)
+                    total += r["seconds"] + 0.4
+                if len(parts) < 2:
+                    continue
+                wav = out_dir / f"{lang}-{seed}-{k:04d}.wav"
+                if not wav.exists():
+                    gap = np.zeros(int(0.4 * 16000), dtype=np.float32)
+                    audio = []
+                    for r in parts:
+                        x, _sr = sf.read(r["audio"], dtype="float32")
+                        audio += [x, gap]
+                    sf.write(wav, np.concatenate(audio[:-1]), 16000, subtype="PCM_16")
+                text = ("" if lang == "zh" else " ").join(r["text"] for r in parts)
+                fout.write(json.dumps({"audio": str(wav), "text": f"language {LANG[lang]}<asr_text>{text}"},
+                                      ensure_ascii=False) + "\n")
+                n += 1
+    return n
+
+
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3-ASR-0.6B")
@@ -59,12 +101,19 @@ def main() -> None:
     ap.add_argument("--save-steps", type=int, default=65)
     ap.add_argument("--freeze-encoder", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="train lines (smoke tests)")
+    ap.add_argument("--concat", type=int, default=700, help="multi-sentence clips per language")
     ap.add_argument("--valid-limit", type=int, default=200, help="validation lines per eval")
     a = ap.parse_args()
     work = Path(a.out)
     work.mkdir(parents=True, exist_ok=True)
     n_train = to_qwen(PREP / "train.jsonl", work / "train.jsonl", a.limit)
     n_valid = to_qwen(PREP / "valid.jsonl", work / "valid.jsonl", a.valid_limit)
+    if a.concat and not a.limit:
+        import random
+        n_train += add_concat(work / "train.jsonl", a.concat)
+        lines = open(work / "train.jsonl", encoding="utf-8").read().splitlines()
+        random.Random(1).shuffle(lines)
+        (work / "train.jsonl").write_text("\n".join(lines) + "\n", encoding="utf-8")
     print(f"train {n_train} / valid {n_valid} lines", file=sys.stderr)
     cmd = [str(PY), str(Path(__file__).with_name("qwen3_asr_sft.py")),
            "--model_path", a.model, "--train_file", str(work / "train.jsonl"),
