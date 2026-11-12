@@ -172,17 +172,6 @@ def foreign_script(text: str, languages: list[str]) -> bool:
     return sum(not ok(c) for c in letters) > len(letters) * 0.3
 
 
-def on_device_preview_ready() -> bool:
-    """Can Apple Speech show a live preview for a cloud engine? Only when it is
-    already allowed (never prompts) and has an on-device language."""
-    try:
-        from thundertalk.core import apple_speech
-        return (apple_speech.available() and apple_speech.authorization_status() == "authorized"
-                and bool(apple_speech.on_device_locales()))
-    except Exception:                                 # noqa: BLE001
-        return False
-
-
 class AsrEngine:
     def __init__(self) -> None:
         self._state_lock = threading.RLock()
@@ -195,7 +184,8 @@ class AsrEngine:
         self._model_id: Optional[str] = None
         self._hotwords: str = ""
         self._builtin_terms = True       # core/terms.py: AI-era vocabulary + spelling fixes
-        self._preview_apple = None       # on-device preview while a cloud engine dictates
+        self._stream = None              # core/cloud_stream.CloudStream (cloud dictation)
+        self._streamed: Optional[tuple[str, int]] = None
         self._context_override: Optional[str] = None
         self._auto_languages: list[str] = ["zh", "en"]   # what "auto" may answer in
         self._hotword_set: set[str] = set()
@@ -505,34 +495,43 @@ class AsrEngine:
     def _recognize_cloud(self, samples: np.ndarray, sample_rate: int, preview: bool) -> AsrResult:
         duration = len(samples) / sample_rate
         if preview:
-            # Partial clips are never sent (each would be billed): the preview
-            # comes from Apple's on-device recognizer when it is allowed.
-            return self._preview_on_device(samples, sample_rate, duration)
+            # The cloud preview is core/cloud_stream.py (each piece sent once);
+            # re-sending growing windows here would bill the same audio again.
+            return AsrResult(text="", duration_secs=duration, inference_ms=0,
+                             model=self._cloud or "", backend="cloud")
         from thundertalk.core import cloud
         t0 = time.perf_counter()
-        from thundertalk.core.terms import BUILTIN_TERMS
-        r = cloud.transcribe(self._cloud or "", samples, sample_rate, language=self._language_code,
-                             hotwords=self._user_hotwords(),
-                             terms=list(BUILTIN_TERMS) if self._builtin_terms else None)
+        prefix, upto = self._streamed if self._streamed else ("", 0)
+        self._streamed = None
+        tail = samples[upto:]
+        if upto and (len(tail) < 0.3 * sample_rate):
+            r = cloud.Transcription(prefix)
+            print(f"[ASR-Cloud] final = streamed text ({upto / sample_rate:.1f}s already sent)")
+        else:
+            r = self.cloud_segment(tail, prefix, sample_rate)
+            if upto:
+                from thundertalk.core.live_preview import join_text
+                print(f"[ASR-Cloud] final: {upto / sample_rate:.1f}s streamed + {len(tail) / sample_rate:.1f}s tail")
+                r.text = join_text(prefix, r.text)
         ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-Cloud] {duration:.1f}s → {len(r.text)} chars in {ms}ms ({self._cloud})")
         return AsrResult(text=r.text, duration_secs=duration, inference_ms=ms, model=self._cloud or "",
                          backend="cloud", rtf=ms / 1000 / duration if duration else 0.0,
                          language=r.language)
 
-    def _preview_on_device(self, samples: np.ndarray, sample_rate: int, duration: float) -> AsrResult:
-        text = ""
-        if on_device_preview_ready():
-            from thundertalk.core import apple_speech
-            try:
-                if self._preview_apple is None:
-                    self._preview_apple = apple_speech.AppleRecognizer()
-                text = self._preview_apple.recognize_quick(samples, sample_rate, self._apple_locales(),
-                                                           contextual=self._user_hotwords()[:100]).text
-            except Exception as exc:                  # noqa: BLE001 — a preview is best effort
-                print(f"[ASR-Cloud] on-device preview off: {type(exc).__name__}")
-        return AsrResult(text=text, duration_secs=duration, inference_ms=0,
-                         model=self._cloud or "", backend="cloud")
+    def cloud_segment(self, samples: np.ndarray, previous: str = "", sample_rate: int = 16000):
+        """One cloud request for ``samples`` (a whole take or one streamed piece)."""
+        from thundertalk.core import cloud
+        from thundertalk.core.terms import BUILTIN_TERMS
+        return cloud.transcribe(self._cloud or "", samples, sample_rate, language=self._language_code,
+                                hotwords=self._user_hotwords(),
+                                terms=list(BUILTIN_TERMS) if self._builtin_terms else None,
+                                previous=previous)
+
+    def attach_stream(self, stream) -> None:
+        """Dictation with a cloud engine: ``recognize`` asks ``stream`` for the
+        part of the take it already transcribed (core/cloud_stream.py)."""
+        self._stream = stream
 
     def _apple_locales(self) -> list[str]:
         from thundertalk.core import apple_speech
@@ -687,7 +686,8 @@ class AsrEngine:
         ``cut_loops=False``: it re-decodes a looping span in pieces instead,
         which recovers the words a cut would lose."""
         with self._locked():
-            if not preview and len(samples) / sample_rate > self.max_clip_seconds:
+            self._take_stream(samples, preview)
+            if not preview and not self._streamed and len(samples) / sample_rate > self.max_clip_seconds:
                 from thundertalk.core.dictation import decode_chunks
                 r = decode_chunks(self._recognize_any, samples, sample_rate, self.max_clip_seconds)
             else:
@@ -703,6 +703,11 @@ class AsrEngine:
             from thundertalk.core.terms import normalize
             r.text = normalize(r.text)
         return r
+
+    def _take_stream(self, samples: np.ndarray, preview: bool) -> None:
+        self._streamed = None
+        if self._cloud is not None and not preview and self._stream is not None:
+            self._streamed = self._stream.take(samples)
 
     def _recognize_any(self, samples: np.ndarray, sample_rate: int,
                        *, preview: bool = False) -> AsrResult:

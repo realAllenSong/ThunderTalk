@@ -391,9 +391,11 @@ _STRINGS: dict[str, dict[str, str]] = {
     "settings.live_preview.desc": {
         "en": "Show the words recognized so far under the indicator while you speak. "
               "The pasted text is still recognized from the full recording. With a cloud model "
-              "the preview comes from Apple's on-device recognizer (nothing extra is sent or billed).",
+              "the preview is that model's own text: each stretch of speech is sent once while you talk, "
+              "so the final arrives almost as soon as you stop, at no extra cost.",
         "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字仍按完整录音识别。"
-              "使用云端模型时，预览由 Apple 本机识别提供（不会额外发送或计费）。",
+              "使用云端模型时，预览就是该云端模型的结果：边说边把每段话发送一次，"
+              "松开后几乎立刻出结果，不额外计费。",
     },
     "settings.tidy.label": {"en": "Remove fillers and restarts", "zh": "去掉语气词和重复"},
     "settings.tidy.desc": {

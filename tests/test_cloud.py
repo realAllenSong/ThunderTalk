@@ -295,35 +295,106 @@ def test_long_audio_is_split_under_the_upload_limit(monkeypatch):
     assert all(len(c.data) < 25 * 1024 * 1024 for c in cap.calls)
 
 
-def test_live_preview_for_cloud_only_on_device(monkeypatch):
-    from thundertalk.core import asr
+def test_live_preview_off_for_cloud_dictation():
     from thundertalk.core.live_preview import preview_wanted
     assert preview_wanted(dict(live_preview=True, active_model_id="qwen3-asr-06b-int8"))
-    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: False)
     assert not preview_wanted(dict(live_preview=True, active_model_id="openai:gpt-transcribe"))
-    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: True)
-    assert preview_wanted(dict(live_preview=True, active_model_id="openai:gpt-transcribe"))
 
 
-def test_cloud_preview_never_calls_the_network(monkeypatch):
-    from thundertalk.core import asr
+def _speech_take(seconds):
+    sr = 16000
+    t = np.arange(sr * seconds) / sr
+    return (0.3 * np.sin(2 * np.pi * 220 * t) * ((t % 6) < 5)).astype(np.float32)   # 1 s pause every 6 s
+
+
+def test_cloud_stream_sends_each_piece_once_and_final_only_the_tail(monkeypatch, qapp):
+    import time as _t
+    from thundertalk.core import cloud_stream
     from thundertalk.core.asr import AsrEngine
     monkeypatch.setenv("OPENAI_API_KEY", SECRET)
-    cap = _Capture({"text": "final"})
-    _use(monkeypatch, cap)
+    monkeypatch.setattr(cloud_stream, "TICK_S", 0.01)
+    sent = []
+
+    def fake_transcribe(model_id, samples, sr=16000, **kw):
+        sent.append((len(samples) / sr, kw.get("previous", "")))
+        return cloud.Transcription(f"part{len(sent)}")
+    monkeypatch.setattr(cloud, "transcribe", fake_transcribe)
+    sr, take = 16000, _speech_take(30)
     eng = AsrEngine()
     eng.load_model("openai:gpt-transcribe", "Cloud-OpenAI", "cloud")
+    cur = {"n": 0}
+    stream = cloud_stream.CloudStream(lambda: take[:cur["n"]], lambda x, prev: eng.cloud_segment(x, prev).text)
+    eng.attach_stream(stream)
+    stream.start()
+    for n in range(0, len(take) + 1, sr // 2):               # half a second at a time
+        cur["n"] = n
+        _t.sleep(0.03)
+    stream.stop()
+    assert stream.segments >= 2
+    r = eng.recognize(take)
+    assert abs(sum(s for s, _p in sent) - 30.0) < 0.05     # every second sent exactly once
+    assert sent[-1][0] < 12 and sent[-1][1].startswith("part1")   # tail only, with the text so far
+    assert r.text.startswith("part1") and r.text.endswith(f"part{len(sent)}")
+    eng.recognize(take)                                      # one-shot: a retry sends it all
+    assert sent[-1][0] == 30.0
 
-    class FakeApple:
-        def recognize_quick(self, samples, sr, locales, contextual=()):
-            return type("R", (), {"text": "预览"})()
-    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: True)
-    eng._preview_apple = FakeApple()
-    assert eng.recognize(_tone(), preview=True).text == "预览"
-    assert cap.calls == []                                  # partials never leave the Mac
-    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: False)
-    assert eng.recognize(_tone(), preview=True).text == ""
-    assert cap.calls == []
+
+def test_cloud_stream_failure_falls_back_to_whole_take(monkeypatch, qapp):
+    import time as _t
+    from thundertalk.core import cloud_stream
+    from thundertalk.core.asr import AsrEngine
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    monkeypatch.setattr(cloud_stream, "TICK_S", 0.01)
+    calls = []
+
+    def flaky(model_id, samples, sr=16000, **kw):
+        calls.append(len(samples) / sr)
+        if len(calls) == 1:
+            raise cloud.CloudError("cloud_network", "down")
+        return cloud.Transcription("all of it")
+    monkeypatch.setattr(cloud, "transcribe", flaky)
+    take = _speech_take(20)
+    eng = AsrEngine()
+    eng.load_model("openai:gpt-transcribe", "Cloud-OpenAI", "cloud")
+    stream = cloud_stream.CloudStream(lambda: take, lambda x, prev: eng.cloud_segment(x, prev).text)
+    eng.attach_stream(stream)
+    stream.start()
+    _t.sleep(0.3)
+    stream.stop()
+    assert eng.recognize(take).text == "all of it" and calls[-1] == 20.0
+
+
+def test_stream_never_leaks_into_another_clip(monkeypatch, qapp):
+    """Studio transcribes files with the same engine: a streamed prefix must
+    only be used for the take it followed."""
+    import time as _t
+    from thundertalk.core import cloud_stream
+    from thundertalk.core.asr import AsrEngine
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    monkeypatch.setattr(cloud_stream, "TICK_S", 0.01)
+    sent = []
+    monkeypatch.setattr(cloud, "transcribe",
+                        lambda m, x, sr=16000, **kw: sent.append(len(x) / sr) or cloud.Transcription("t"))
+    take, other = _speech_take(20), _speech_take(20) * 0.5
+    eng = AsrEngine()
+    eng.load_model("openai:gpt-transcribe", "Cloud-OpenAI", "cloud")
+    stream = cloud_stream.CloudStream(lambda: take, lambda x, prev: eng.cloud_segment(x, prev).text)
+    eng.attach_stream(stream)
+    stream.start()
+    _t.sleep(0.3)
+    stream.stop()
+    eng.recognize(other)
+    assert sent[-1] == 20.0
+
+
+def test_previous_text_reaches_the_prompt(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    cap = _Capture({"text": "x"})
+    _use(monkeypatch, cap)
+    cloud.transcribe("openai:whisper-1", _tone(), previous="前面说的话")
+    assert _fields(cap.calls[0])["prompt"][0].decode().endswith("前面说的话")
+    cloud.transcribe("openai:gpt-transcribe", _tone(), previous="earlier words")
+    assert _fields(cap.calls[1])["prompt"][0].decode().endswith("earlier words")
 
 
 def test_cli_auto_and_best_never_pick_cloud(monkeypatch):

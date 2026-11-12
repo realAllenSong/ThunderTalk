@@ -511,12 +511,12 @@ def _whisper_prompt(words: list[str], simplified: bool, limit: int = 400) -> str
 
 def transcribe(model_id: str, samples: np.ndarray, sr: int = 16000, *, language: str = "auto",
                hotwords: Optional[list[str]] = None, terms: Optional[list[str]] = None,
-               timeout: Optional[float] = None, settings=None) -> Transcription:
+               timeout: Optional[float] = None, settings=None, previous: str = "") -> Transcription:
     """One request: ``samples`` (mono float32) → text. The caller chunks long audio.
     ``hotwords`` are the user's; ``terms`` the built-in vocabulary, added where
     it costs nothing extra (ElevenLabs bills keyterms, so only the user's go there)."""
     r = _transcribe(model_id, samples, sr, language=language, hotwords=hotwords, terms=terms,
-                    timeout=timeout, settings=settings)
+                    timeout=timeout, settings=settings, previous=(previous or "").strip()[-200:])
     if _wants_simplified(language, settings):
         r.text = to_simplified(r.text)
     from thundertalk.core import cloud_usage
@@ -526,7 +526,7 @@ def transcribe(model_id: str, samples: np.ndarray, sr: int = 16000, *, language:
 
 def _transcribe(model_id: str, samples: np.ndarray, sr: int, *, language: str,
                 hotwords: Optional[list[str]], terms: Optional[list[str]],
-                timeout: Optional[float], settings) -> Transcription:
+                timeout: Optional[float], settings, previous: str = "") -> Transcription:
     pid, model = split_id(model_id)
     if not pid:
         raise CloudError("cloud_unsupported", f"Not a cloud model: {model_id}")
@@ -547,12 +547,16 @@ def _transcribe(model_id: str, samples: np.ndarray, sr: int, *, language: str,
             if lang:
                 fields.append(("languages[]", lang))
             fields += [("keywords[]", w) for w in words]
-            if simplified:
-                fields.append(("prompt", _ZH_STYLE))
+            head = (_ZH_STYLE if simplified else "") + previous
+            if head:
+                fields.append(("prompt", head))
         else:
             if lang:
                 fields.append(("language", lang))
             prompt = _whisper_prompt(words, simplified)
+            if previous:
+                # Whisper reads the prompt as the text before this audio.
+                prompt = (prompt + " " + previous).strip()[-450:] if prompt else previous
             if prompt:
                 fields.append(("prompt", prompt))
         body, ct = _multipart(fields, [("file", filename, blob, ctype)])
@@ -588,6 +592,8 @@ def _transcribe(model_id: str, samples: np.ndarray, sr: int, *, language: str,
         prompt += f" The speech is in {_LANG_NAMES.get(lang, lang)}."
     if simplified:
         prompt += " Write Mandarin in Simplified Chinese characters."
+    if previous:
+        prompt += f" The audio continues this transcript (do not repeat it): «{previous}»."
     if words:
         prompt += " Spell these terms exactly when they occur: " + ", ".join(words) + "."
     payload = {"model": model, "input": [

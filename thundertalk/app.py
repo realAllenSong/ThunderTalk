@@ -474,6 +474,16 @@ def main() -> None:
                        lambda s: pipe.asr.recognize(s, preview=True).text)
     live.text_changed.connect(lambda text: overlay.set_preview_text(text))
 
+    # --- Cloud dictation: each finished stretch of speech goes to the selected
+    # cloud model while recording (sent once), so the preview is that model's
+    # own text and the final only has to send the last few seconds.
+    from thundertalk.core.cloud_stream import GROQ_SEGMENT_S, SEGMENT_S, CloudStream
+    cloud_live = CloudStream(pipe.recorder.snapshot,
+                             lambda x, prev: pipe.asr.cloud_segment(x, prev).text)
+    pipe.asr.attach_stream(cloud_live)
+    cloud_live.text_changed.connect(
+        lambda text: overlay.set_preview_text(text) if settings.get("live_preview") else None)
+
     # --- Model loading helpers -----------------------------------------
     def _clear_load_worker() -> None:
         # Runs on QThread's built-in finished signal, AFTER run() has fully
@@ -873,6 +883,7 @@ def main() -> None:
             # ---- STOP recording ----
             t_stop = time.perf_counter()
             live.stop()             # no new preview decodes; final takes priority
+            cloud_live.stop()       # no new segments; the final takes what was sent
             print(f"[Toggle] Stop requested, capturing {TAIL_GRACE_MS}ms tail...")
             overlay.show_transcribing()
             state.set_recording(st.REC_TRANSCRIBING)
@@ -903,7 +914,8 @@ def main() -> None:
                     overlay.show_error(t("overlay.too_short"))
                     return
 
-                recording = {"samples": samples, "preview": live.last_clean_text(),
+                recording = {"samples": samples,
+                             "preview": cloud_live.text if pipe.asr.is_cloud else live.last_clean_text(),
                              "preview_stats": live.stats,
                              "model": settings.active_model_id or pipe.asr.current_model or "unknown",
                              "language": settings.transcription_language,
@@ -1038,7 +1050,10 @@ def main() -> None:
         pipe._recording = True
         state.set_recording(st.REC_RECORDING)
         live.reset()
-        if preview_wanted(settings):
+        if pipe.asr.is_cloud:
+            mid = pipe.asr.current_model or ""
+            cloud_live.start(GROQ_SEGMENT_S if mid.startswith("groq:") else SEGMENT_S)
+        elif preview_wanted(settings):
             live.start()
         print("[Toggle] Recording started")
         return True
