@@ -500,6 +500,10 @@ class SettingsPage(QWidget):
         card2.add_row("settings.live_preview.label", "settings.live_preview.desc",
                       self._live_toggle, sep=True)
 
+        self._tidy_toggle = theme.ToggleSwitch(self._settings.get("tidy_dictation") is not False)
+        self._tidy_toggle.toggled_signal.connect(lambda v: self._settings.set("tidy_dictation", v))
+        card2.add_row("settings.tidy.label", "settings.tidy.desc", self._tidy_toggle, sep=True)
+
         self._recordings_toggle = theme.ToggleSwitch(self._settings.get("keep_recent_recordings"))
         self._recordings_toggle.toggled_signal.connect(
             lambda v: self._settings.set("keep_recent_recordings", v))

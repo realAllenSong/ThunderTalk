@@ -390,8 +390,16 @@ _STRINGS: dict[str, dict[str, str]] = {
     },
     "settings.live_preview.desc": {
         "en": "Show the words recognized so far under the indicator while you speak. "
-              "The pasted text is still recognized from the full recording.",
-        "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字仍按完整录音识别。",
+              "The pasted text is still recognized from the full recording. With a cloud model "
+              "the preview comes from Apple's on-device recognizer (nothing extra is sent or billed).",
+        "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字仍按完整录音识别。"
+              "使用云端模型时，预览由 Apple 本机识别提供（不会额外发送或计费）。",
+    },
+    "settings.tidy.label": {"en": "Remove fillers and restarts", "zh": "去掉语气词和重复"},
+    "settings.tidy.desc": {
+        "en": "Drop “um”, “uh”, “呃” and phrases you restart (“你可以你可以你可以”) from dictated text. "
+              "Studio transcripts stay word for word.",
+        "zh": "从听写结果中去掉“呃”“嗯”“um”等语气词和重复起头（“你可以你可以你可以”）。Studio 转写保持逐字。",
     },
     "settings.keep_recent_recordings.label": {
         "en": "Keep recent recordings", "zh": "保留最近录音",

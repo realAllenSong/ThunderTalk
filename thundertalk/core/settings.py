@@ -21,6 +21,8 @@ DEFAULTS: dict[str, Any] = {
     "transcription_language": "auto",
     "save_to_clipboard": True,
     "hotwords": [],
+    "builtin_terms": True,
+    "tidy_dictation": True,
     "active_model_id": "",
     "translation_target": "off",
     "translation_mode": "direct",  # "direct" (S2TT) or "review" (Pipeline + popup)

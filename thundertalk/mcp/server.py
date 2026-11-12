@@ -243,13 +243,13 @@ def local_status() -> str:
 
 
 _HEADLESS = ("transcribe", "notes", "burn", "translate", "compose", "speak", "voices",
-             "history", "models", "status", "cloud")
+             "history", "models", "status", "cloud", "eval")
 
 
 @_tool
 def studio_command(command: str, arguments: list[str]) -> str:
     """Escape hatch: any `ThunderTalk --cli` v3 command with raw argv (e.g. --start/--end,
-    --save-history, compose lyrics --remember, cloud list|test). `<command> --help` lists flags."""
+    --save-history, compose lyrics --remember, cloud list|test|usage, eval --recent). `<command> --help` lists flags."""
     if command not in _HEADLESS:
         raise ValueError("command must be one of: " + ", ".join(_HEADLESS))
     if command == "cloud" and "set-key" in arguments:

@@ -117,6 +117,8 @@ def _parser() -> argparse.ArgumentParser:
     from thundertalk.cli_music import add_parser
     add_parser(sub)
     sub.add_parser("status", help="engines, downloaded models and permissions as JSON")
+    from thundertalk.cli_eval import add_parser as add_eval
+    add_eval(sub)
     from thundertalk.cli_cloud import add_parser as add_cloud
     add_cloud(sub)
     return ap
@@ -177,6 +179,11 @@ def resolve_asr(engine: str, settings) -> str:
     active = settings.get("active_model_id") or ""
     if active in ids and is_downloaded(active):   # never a cloud id: those are not in ids
         return active
+    if cloud.is_cloud_id(active):
+        # Dictation goes to the cloud, but auto stays on this Mac: the best local model.
+        for model_id in ASR_QUALITY:
+            if model_id in ids and is_downloaded(model_id):
+                return model_id
     if is_downloaded(APPLE_SPEECH_ID):
         return APPLE_SPEECH_ID
     raise CliError("no_model", "No speech model is downloaded and Apple recognition is unavailable.")
@@ -279,6 +286,7 @@ def _transcribe_path(a, out: _Out, src: Path):
                 engine.set_language(a.language)
                 if settings.hotwords:
                     engine.set_hotwords(settings.hotwords)
+                engine.set_builtin_terms(settings.get("builtin_terms") is not False)
                 engine.load_model(get_model_path(model_id), info.family, info.backend,
                                   memory_mode=settings.memory_mode)
             out.stage("transcribe")
@@ -604,12 +612,14 @@ def main(argv: Optional[list[str]] = None) -> int:
     apple_speech.PROMPT = False
     try:
         a = _parser().parse_args(argv)
-        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose", "cloud"):
+        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose", "cloud",
+                             "eval"):
             raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
         handler = COMMANDS.get(a.command)
         if handler is None:
-            from thundertalk import cli_cloud, cli_library, cli_music, cli_studio
+            from thundertalk import cli_cloud, cli_eval, cli_library, cli_music, cli_studio
             module = (cli_music if a.command == "compose" else cli_cloud if a.command == "cloud"
+                      else cli_eval if a.command == "eval"
                       else cli_studio if a.command in ("notes", "burn", "translate") else cli_library)
             handler = getattr(module, "cmd_" + a.command)
         with network_mode(a.command == "models" and a.action == "download"):

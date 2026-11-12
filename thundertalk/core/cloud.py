@@ -93,13 +93,19 @@ PROVIDERS: dict[str, Provider] = {p.id: p for p in (
     Provider("groq", "Groq", "openai", "https://api.groq.com/openai/v1",
              asr_models=("whisper-large-v3-turbo", "whisper-large-v3"), env=("GROQ_API_KEY",)),
     Provider("elevenlabs", "ElevenLabs", "elevenlabs", "https://api.elevenlabs.io/v1",
-             asr_models=("scribe_v2",), tts_models=("eleven_multilingual_v2",),
-             env=("ELEVENLABS_API_KEY",), hotwords=False),
+             asr_models=("scribe_v2",), tts_models=("eleven_multilingual_v2", "eleven_flash_v2_5"),
+             env=("ELEVENLABS_API_KEY",)),
     Provider("custom", "OpenAI-compatible", "openai", "",
              asr_models=("whisper-1",), tts_models=("tts-1",), key_required=False,
              clip_seconds=300.0, upload="wav"),
 )}
 ASR_PROVIDERS = tuple(p for p in PROVIDERS if PROVIDERS[p].asr_models)
+# Keychain accounts that are not providers: an optional OpenAI admin key, used
+# only to read the organization's spend (GET /v1/organization/costs).
+ADMIN_ACCOUNTS = {"openai-admin": "openai"}
+# Announced shutdown dates (shown next to the model; the app keeps working until then).
+RETIRING = {"openai:whisper-1": "2027-02-26", "openai:gpt-4o-mini-tts": "2027-01-06",
+            "openai:tts-1": "2027-01-06", "openai:tts-1-hd": "2027-01-06"}
 TTS_PROVIDERS = tuple(p for p in PROVIDERS if PROVIDERS[p].tts_models)
 
 
@@ -115,6 +121,31 @@ def split_id(item_id: str) -> tuple[str, str]:
 
 def is_cloud_id(item_id: str) -> bool:
     return bool(split_id(item_id)[0])
+
+
+def model_choices(pid: str, kind: str, settings=None) -> list[str]:
+    """The models offered for ``kind`` ("asr" | "tts"): the provider's own list,
+    or for an OpenAI-compatible server the ids its /models returned on Test."""
+    p = PROVIDERS[pid]
+    base = list(p.asr_models if kind == "asr" else p.tts_models)
+    if pid != "custom":
+        return base
+    stored = ((settings or _settings()).get("cloud") or {}).get(pid) or {}
+    found = [m for m in stored.get("models") or [] if isinstance(m, str)]
+    if found:
+        audio = [m for m in found if _looks_like(m, kind)]
+        base = audio or found
+    current = config(pid, settings)["asr_model" if kind == "asr" else "tts_model"]
+    if current and current not in base:
+        base.insert(0, current)
+    return base
+
+
+def _looks_like(model: str, kind: str) -> bool:
+    m = model.lower()
+    if kind == "asr":
+        return any(k in m for k in ("whisper", "transcribe", "asr", "stt", "sensevoice", "paraformer", "parakeet"))
+    return any(k in m for k in ("tts", "speech", "voice", "kokoro", "piper"))
 
 
 # ── settings (non-secret) ────────────────────────────────────────────────
@@ -186,7 +217,11 @@ def _service() -> str:
 
 
 def _env_key(pid: str) -> str:
-    for name in (f"THUNDERTALK_{pid.upper()}_API_KEY", *PROVIDERS[pid].env):
+    if pid in ADMIN_ACCOUNTS:
+        names: tuple[str, ...] = ("THUNDERTALK_OPENAI_ADMIN_KEY", "OPENAI_ADMIN_KEY")
+    else:
+        names = (f"THUNDERTALK_{pid.upper()}_API_KEY", *PROVIDERS[pid].env)
+    for name in names:
         if os.environ.get(name, "").strip():
             return os.environ[name].strip()
     return ""
@@ -220,8 +255,14 @@ def key_source(pid: str) -> str:
     return "env" if _env_key(pid) else ""
 
 
+def _account_name(pid: str) -> str:
+    if pid in ADMIN_ACCOUNTS:
+        return PROVIDERS[ADMIN_ACCOUNTS[pid]].name + " admin"
+    return PROVIDERS[pid].name
+
+
 def set_key(pid: str, key: str) -> None:
-    if pid not in PROVIDERS:
+    if pid not in PROVIDERS and pid not in ADMIN_ACCOUNTS:
         raise CloudError("cloud_unsupported", f"Unknown provider: {pid}")
     key = (key or "").strip()
     if not _KEY_RE.match(key):
@@ -229,7 +270,7 @@ def set_key(pid: str, key: str) -> None:
     if not _keychain_available():
         raise CloudError("cloud_unsupported", f"No Keychain on this system; set THUNDERTALK_{pid.upper()}_API_KEY instead.")
     r = _keychain(f"add-generic-password -U -s {_quote(_service())} -a {_quote(pid)} "
-                  f"-l {_quote('ThunderTalk ' + PROVIDERS[pid].name)} -w {_quote(key)}")
+                  f"-l {_quote('ThunderTalk ' + _account_name(pid))} -w {_quote(key)}")
     if r.returncode != 0 or "error" in (r.stderr or "").lower():
         raise CloudError("cloud_unsupported", "Could not save the key to the Keychain.")
     with _KEY_LOCK:
@@ -237,7 +278,7 @@ def set_key(pid: str, key: str) -> None:
 
 
 def remove_key(pid: str) -> bool:
-    if pid not in PROVIDERS:
+    if pid not in PROVIDERS and pid not in ADMIN_ACCOUNTS:
         raise CloudError("cloud_unsupported", f"Unknown provider: {pid}")
     removed = False
     if _keychain_available():
@@ -291,8 +332,9 @@ def _headers(pid: str, key: str) -> dict:
 
 
 def _request(pid: str, url: str, *, data: Optional[bytes] = None, content_type: str = "",
-             timeout: float = 60.0, extra: Optional[dict] = None, method: str = "") -> bytes:
-    key = get_key(pid)
+             timeout: float = 60.0, extra: Optional[dict] = None, method: str = "",
+             account: str = "") -> bytes:
+    key = get_key(account or pid)
     if PROVIDERS[pid].key_required and not key:
         raise CloudError("cloud_no_key", f"No API key for {PROVIDERS[pid].name}. Add one on the Models page "
                          f"or run: thundertalk cloud set-key {pid}")
@@ -409,21 +451,82 @@ _LANG_NAMES = {"zh": "Chinese", "en": "English", "ja": "Japanese", "ko": "Korean
                "de": "German", "es": "Spanish", "it": "Italian", "pt": "Portuguese", "ru": "Russian"}
 
 
-def _clean_hotwords(words: list[str], limit: int = 40) -> list[str]:
-    out = []
+def _clean_hotwords(words: list[str], limit: int = 40, max_len: int = 60, max_words: int = 0) -> list[str]:
+    out, seen = [], set()
     for w in words or []:
         w = re.sub(r"[<>\r\n]", " ", str(w)).strip()
-        if w and w not in out:
-            out.append(w[:60])
+        if not w or w.lower() in seen or len(w) > max_len or (max_words and len(w.split()) > max_words):
+            continue
+        seen.add(w.lower())
+        out.append(w)
         if len(out) >= limit:
             break
     return out
 
 
+def _wants_simplified(language: str, settings=None) -> bool:
+    """Mandarin should come back in Simplified characters: the dictation language
+    says so, or it is auto and the app itself is in Chinese."""
+    lang = (language or "auto").strip().lower()
+    if lang in ("zh", "zh-cn", "zh-hans", "cmn"):
+        return True
+    if lang not in ("", "auto"):
+        return False
+    try:
+        return str((settings or _settings()).get("language") or "").startswith("zh")
+    except Exception:                             # noqa: BLE001
+        return False
+
+
+_KANA = re.compile(r"[\u3040-\u30ff]")
+
+
+def to_simplified(text: str) -> str:
+    """Traditional → Simplified Chinese with the system's ICU transform
+    (Whisper sometimes answers Mandarin in Traditional). Japanese is left alone."""
+    if not text or _KANA.search(text) or not re.search(r"[\u4e00-\u9fff]", text):
+        return text
+    try:
+        from Foundation import NSString
+        out = NSString.stringWithString_(text).stringByApplyingTransform_reverse_("Hant-Hans", False)
+        return str(out) if out else text
+    except Exception:                             # noqa: BLE001
+        return text
+
+
+_ZH_STYLE = "以下是普通话和英文混合的句子，使用简体中文和标点符号。"
+
+
+def _whisper_prompt(words: list[str], simplified: bool, limit: int = 400) -> str:
+    """A Whisper-style prompt (it reads it as preceding text, up to 224 tokens)."""
+    head = _ZH_STYLE if simplified else ""
+    out = head
+    for w in words:
+        piece = ("" if out == head else ", ") + w
+        if len(out) + len(piece) > limit:
+            break
+        out += piece
+    return out.strip()
+
+
 def transcribe(model_id: str, samples: np.ndarray, sr: int = 16000, *, language: str = "auto",
-               hotwords: Optional[list[str]] = None, timeout: Optional[float] = None,
-               settings=None) -> Transcription:
-    """One request: ``samples`` (mono float32) → text. The caller chunks long audio."""
+               hotwords: Optional[list[str]] = None, terms: Optional[list[str]] = None,
+               timeout: Optional[float] = None, settings=None) -> Transcription:
+    """One request: ``samples`` (mono float32) → text. The caller chunks long audio.
+    ``hotwords`` are the user's; ``terms`` the built-in vocabulary, added where
+    it costs nothing extra (ElevenLabs bills keyterms, so only the user's go there)."""
+    r = _transcribe(model_id, samples, sr, language=language, hotwords=hotwords, terms=terms,
+                    timeout=timeout, settings=settings)
+    if _wants_simplified(language, settings):
+        r.text = to_simplified(r.text)
+    from thundertalk.core import cloud_usage
+    cloud_usage.record(model_id, seconds=len(samples) / sr if sr else 0.0)
+    return r
+
+
+def _transcribe(model_id: str, samples: np.ndarray, sr: int, *, language: str,
+                hotwords: Optional[list[str]], terms: Optional[list[str]],
+                timeout: Optional[float], settings) -> Transcription:
     pid, model = split_id(model_id)
     if not pid:
         raise CloudError("cloud_unsupported", f"Not a cloud model: {model_id}")
@@ -435,18 +538,23 @@ def transcribe(model_id: str, samples: np.ndarray, sr: int = 16000, *, language:
     timeout = timeout or min(300.0, 25.0 + duration * 0.6)
     blob, filename, ctype = _encode(samples, sr, p.upload)
     lang = _lang(language)
-    words = _clean_hotwords(hotwords or []) if p.hotwords else []
+    simplified = _wants_simplified(language, settings)
+    user = list(hotwords or []) if p.hotwords else []
+    words = _clean_hotwords(user + list(terms or []), limit=100) if p.hotwords else []
     if p.kind == "openai":
         fields = [("model", model), ("response_format", "json")]
         if model.startswith("gpt-transcribe"):
             if lang:
                 fields.append(("languages[]", lang))
             fields += [("keywords[]", w) for w in words]
+            if simplified:
+                fields.append(("prompt", _ZH_STYLE))
         else:
             if lang:
                 fields.append(("language", lang))
-            if words:
-                fields.append(("prompt", ", ".join(words)[:400]))
+            prompt = _whisper_prompt(words, simplified)
+            if prompt:
+                fields.append(("prompt", prompt))
         body, ct = _multipart(fields, [("file", filename, blob, ctype)])
         data = _json(_request(pid, cfg["base_url"] + "/audio/transcriptions", data=body,
                               content_type=ct, timeout=timeout), pid)
@@ -460,6 +568,8 @@ def transcribe(model_id: str, samples: np.ndarray, sr: int = 16000, *, language:
         fields = [("model_id", model), ("tag_audio_events", "false")]
         if lang:
             fields.append(("language_code", lang))
+        # Keyterms add 20% to the price, so only the user's own hotwords go here.
+        fields += [("keyterms", w) for w in _clean_hotwords(user, limit=100, max_len=49, max_words=5)]
         body, ct = _multipart(fields, [("file", filename, blob, ctype)])
         data = _json(_request(pid, cfg["base_url"] + "/speech-to-text", data=body,
                               content_type=ct, timeout=timeout), pid)
@@ -476,6 +586,8 @@ def transcribe(model_id: str, samples: np.ndarray, sr: int = 16000, *, language:
               "If there is no speech, output nothing.")
     if lang:
         prompt += f" The speech is in {_LANG_NAMES.get(lang, lang)}."
+    if simplified:
+        prompt += " Write Mandarin in Simplified Chinese characters."
     if words:
         prompt += " Spell these terms exactly when they occur: " + ", ".join(words) + "."
     payload = {"model": model, "input": [
@@ -542,6 +654,14 @@ def _decode_audio(blob: bytes, mime: str, rate: int = TTS_RATE) -> np.ndarray:
 def synthesize(pid: str, text: str, voice: str, *, model: str = "", timeout: float = 90.0,
                settings=None) -> np.ndarray:
     """One request: ``text`` (a sentence or a few) → mono float32 at 24 kHz."""
+    audio = _synthesize(pid, text, voice, model=model, timeout=timeout, settings=settings)
+    from thundertalk.core import cloud_usage
+    cloud_usage.record(f"{pid}:{model or config(pid, settings)['tts_model']}", kind="tts",
+                       chars=len(text), seconds=len(audio) / TTS_RATE)
+    return audio
+
+
+def _synthesize(pid: str, text: str, voice: str, *, model: str, timeout: float, settings) -> np.ndarray:
     if pid not in PROVIDERS or not PROVIDERS[pid].tts_models:
         raise CloudError("cloud_unsupported", f"{pid} has no text-to-speech")
     p = PROVIDERS[pid]
@@ -660,9 +780,24 @@ def test(pid: str, settings=None) -> dict:
     t0 = time.monotonic()
     if p.kind == "elevenlabs":
         _request(pid, cfg["base_url"] + "/voices", timeout=15)
-    else:
-        _request(pid, cfg["base_url"] + "/models", timeout=15)
-    return {"provider": pid, "ok": True, "seconds": round(time.monotonic() - t0, 2)}
+        return {"provider": pid, "ok": True, "seconds": round(time.monotonic() - t0, 2)}
+    raw = _request(pid, cfg["base_url"] + "/models", timeout=15)
+    out = {"provider": pid, "ok": True, "seconds": round(time.monotonic() - t0, 2)}
+    if pid == "custom":
+        # Remember what the server offers so the model pickers can list it.
+        try:
+            ids = [str(m["id"]) for m in json.loads(raw.decode("utf-8")).get("data") or []
+                   if isinstance(m, dict) and m.get("id")]
+        except (ValueError, UnicodeDecodeError, AttributeError):
+            ids = []
+        s = settings or _settings()
+        stored = dict(s.get("cloud") or {})
+        entry = dict(stored.get(pid) or {})
+        entry["models"] = ids[:200]
+        stored[pid] = entry
+        s.set("cloud", stored)
+        out["models"] = len(ids)
+    return out
 
 
 def summary(settings=None) -> list[dict]:
@@ -672,9 +807,10 @@ def summary(settings=None) -> list[dict]:
         cfg = config(pid, settings)
         rows.append({"provider": pid, "name": p.name, "key": key_source(pid) or "none",
                      "ready": is_configured(pid, settings), "base_url": cfg["base_url"],
-                     "asr_models": list(p.asr_models) if pid != "custom" else [cfg["asr_model"]],
-                     "tts_models": list(p.tts_models) if pid != "custom" else [cfg["tts_model"]],
-                     "asr_model": cfg["asr_model"], "tts_model": cfg["tts_model"]})
+                     "asr_models": model_choices(pid, "asr", settings) if p.asr_models else [],
+                     "tts_models": model_choices(pid, "tts", settings) if p.tts_models else [],
+                     "asr_model": cfg["asr_model"], "tts_model": cfg["tts_model"],
+                     "retiring": {m: d for m, d in RETIRING.items() if m.startswith(pid + ":")}})
     return rows
 
 
@@ -701,7 +837,7 @@ def asr_models(settings=None, only_ready: bool = True) -> list:
         if only_ready and not is_configured(pid, settings):
             continue
         cfg = config(pid, settings)
-        names = list(PROVIDERS[pid].asr_models) if pid != "custom" else []
+        names = model_choices(pid, "asr", settings)
         if cfg["asr_model"] and cfg["asr_model"] not in names:
             names.insert(0, cfg["asr_model"])
         out += [model_info(f"{pid}:{m}", settings) for m in names]

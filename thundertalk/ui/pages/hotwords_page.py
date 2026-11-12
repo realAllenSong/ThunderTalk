@@ -116,6 +116,7 @@ class _InfoStrip(theme.Card):
 
 class HotwordsPage(QWidget):
     hotwords_changed = Signal(list)
+    builtin_terms_changed = Signal(bool)
     word_added = Signal(str)
 
     def __init__(self, settings: "Settings", state: Optional["AppState"] = None) -> None:
@@ -191,6 +192,27 @@ class HotwordsPage(QWidget):
             f"color: {theme.TEXT_MUTED}; font-size: 13px; background: transparent; padding: 22px 0;")
         wc.addWidget(self._empty)
         self._layout.addWidget(words_card)
+
+        # Built-in vocabulary card (core/terms.py)
+        terms_card = theme.Card()
+        tc = QVBoxLayout(terms_card)
+        tc.setContentsMargins(24, 18, 24, 18)
+        tc.setSpacing(8)
+        trow = QHBoxLayout()
+        self._sec_terms = QLabel(t("hotwords.builtin_title"))
+        self._sec_terms.setFont(theme.font_serif(17))
+        self._sec_terms.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
+        trow.addWidget(self._sec_terms)
+        trow.addStretch()
+        self._terms_toggle = theme.ToggleSwitch(self._settings.get("builtin_terms") is not False)
+        self._terms_toggle.toggled_signal.connect(self._on_terms_toggled)
+        trow.addWidget(self._terms_toggle)
+        tc.addLayout(trow)
+        self._terms_note = QLabel(t("hotwords.builtin_note"))
+        self._terms_note.setWordWrap(True)
+        self._terms_note.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 12px; background: transparent;")
+        tc.addWidget(self._terms_note)
+        self._layout.addWidget(terms_card)
         self._layout.addStretch()
 
         if self._state is not None:
@@ -211,6 +233,10 @@ class HotwordsPage(QWidget):
             self._info.show()
         else:
             self._info.hide()
+
+    def _on_terms_toggled(self, on: bool) -> None:
+        self._settings.set("builtin_terms", bool(on))
+        self.builtin_terms_changed.emit(bool(on))
 
     # ── words ──
     def _rebuild_chips(self) -> None:
@@ -274,5 +300,7 @@ class HotwordsPage(QWidget):
         self._add_hint.setText(t("hotwords.add_hint2"))
         self._sec_vocab.setText(t("hotwords.custom_vocab"))
         self._empty.setText(t("hotwords.empty"))
+        self._sec_terms.setText(t("hotwords.builtin_title"))
+        self._terms_note.setText(t("hotwords.builtin_note"))
         self._rebuild_chips()
         self._update_info()

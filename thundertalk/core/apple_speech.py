@@ -370,13 +370,36 @@ class AppleRecognizer:
             except OSError:
                 pass
 
+    def recognize_quick(self, samples: np.ndarray, sample_rate: int, locales: Sequence[str], *,
+                        contextual: Sequence[str] = ()) -> AppleResult:
+        """Live preview: exactly one decode, in the language last chosen. A
+        wrong-language decode is 4–7× slower, so trying both in one tick is
+        what made long previews stall; instead a result that looks like the
+        other language (Latin letters from zh-CN, or an unsure English one)
+        flips the language for the next tick, and the final decides properly."""
+        if not locales:
+            raise AppleSpeechError("locale_unsupported", "No on-device Apple speech language is installed.")
+        loc = self._last_locale if self._last_locale in locales else locales[0]
+        r = self._recognize_chunk(samples, sample_rate, loc, contextual, True)
+        cjk = loc.startswith(("zh", "ja", "ko", "yue"))
+        from thundertalk.core.transcribe import _cjk_heavy
+        suspicious = bool(r.text.strip()) and (not _cjk_heavy(r.text) if cjk else r.confidence < CONFIDENT * 0.6)
+        if len(locales) > 1 and suspicious:
+            self._last_locale = next(o for o in locales if o != loc)
+        elif r.text.strip():
+            self._last_locale = loc
+        return r
+
     def recognize(self, samples: np.ndarray, sample_rate: int, locales: Sequence[str], *,
                   contextual: Sequence[str] = (), dictation: bool = False) -> AppleResult:
         """Recognise ``samples`` in pieces of at most ``CHUNK_MAX_S`` cut at
         pauses. With several ``locales`` (auto) the language is chosen on the
         first piece: the last winner is tried first and kept when it is
         confident, otherwise the others are tried and one replaces it only when
-        clearly more confident; the choice holds for the rest."""
+        clearly more confident. Later pieces keep that language unless their
+        result says the speaker switched (Chinese recognition answering in
+        Latin letters, or an unsure English one): then the other language is
+        tried on that piece and wins when it is plausible, and stays."""
         from thundertalk.core.transcribe import _cjk_heavy, _has_speech, segment_speech
         if not locales:
             raise AppleSpeechError("locale_unsupported", "No on-device Apple speech language is installed.")
@@ -396,6 +419,17 @@ class AppleRecognizer:
                 r = again
             return r
 
+        def is_cjk(loc: str) -> bool:
+            return loc.startswith(("zh", "ja", "ko", "yue"))
+
+        def cjk_out(t: AppleResult) -> bool:
+            return is_cjk(t.locale) and _cjk_heavy(t.text)
+
+        def latin_from_cjk(t: AppleResult) -> bool:
+            # zh-CN writes English speech as Latin letters: mostly-Latin text
+            # from a Chinese recognizer means the speech is English.
+            return is_cjk(t.locale) and bool(t.text.strip()) and not _cjk_heavy(t.text)
+
         order = sorted(locales, key=lambda loc: loc != self._last_locale)
         locale, results = order[0], []
         for i, (a, b) in enumerate(spans):
@@ -408,11 +442,9 @@ class AppleRecognizer:
                 # characters out of it mean the audio is Chinese.
                 probe = x if len(x) <= PROBE_MAX_S * sample_rate else x[:int(PROBE_S * sample_rate)]
 
-                def cjk_out(t: AppleResult) -> bool:
-                    return t.locale.startswith(("zh", "ja", "ko", "yue")) and _cjk_heavy(t.text)
-
                 tries = [once(probe, order[0])]
-                if not (tries[0].text.strip() and (tries[0].confidence >= CONFIDENT or cjk_out(tries[0]))):
+                if not (tries[0].text.strip() and not latin_from_cjk(tries[0])
+                        and (tries[0].confidence >= CONFIDENT or cjk_out(tries[0]))):
                     tries += [once(probe, loc) for loc in order[1:]]
                 # A wrong locale still returns words (Chinese through en-US),
                 # at a confidence ≥ 0.2 below the right one's; switch only on
@@ -423,6 +455,7 @@ class AppleRecognizer:
                 other = next((t for t in spoken if cjk_out(t)), None) or max(
                     spoken, key=lambda t: t.confidence, default=None)
                 if other is not None and (not r.text.strip() or cjk_out(other)
+                                          or (latin_from_cjk(r) and other.confidence >= CONFIDENT * 0.8)
                                           or other.confidence >= max(r.confidence + SWITCH_MARGIN, SWITCH_MARGIN)):
                     r = other
                 spent = sum(t.seconds for t in tries)
@@ -435,6 +468,20 @@ class AppleRecognizer:
                     self._last_locale = locale
             else:
                 r = once(x, locale)
+                if len(order) > 1 and r.text.strip() and (
+                        latin_from_cjk(r) or (not is_cjk(locale) and r.confidence < CONFIDENT)):
+                    # The speaker may have switched language mid-recording.
+                    for loc in [o for o in order if o != locale]:
+                        alt = once(x, loc)
+                        better = (cjk_out(alt) if is_cjk(loc) else
+                                  bool(alt.text.strip()) and (alt.confidence >= CONFIDENT * 0.8
+                                                              or alt.confidence > r.confidence))
+                        if better:
+                            alt.seconds += r.seconds
+                            r, locale = alt, loc
+                            self._last_locale = loc
+                            break
+                        r.seconds += alt.seconds
             offset = max(0.0, a - pad / sample_rate)
             for w in r.words:
                 w.start += offset

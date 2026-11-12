@@ -20,9 +20,21 @@ FAKE_PORT = 18765
 SECRET = "sk-test-SECRET-0123456789abcdef"
 
 
+class _MemSettings(dict):
+    def set(self, k, v):
+        self[k] = v
+
+
 @pytest.fixture(autouse=True)
-def _isolated_keys(monkeypatch):
+def _isolated_keys(monkeypatch, tmp_path):
     monkeypatch.setenv("THUNDERTALK_KEYCHAIN_SERVICE", "ThunderTalk Cloud TEST")
+    monkeypatch.setenv("THUNDERTALK_CLOUD_USAGE", str(tmp_path / "cloud_usage.json"))
+    monkeypatch.delenv("OPENAI_ADMIN_KEY", raising=False)
+    monkeypatch.delenv("THUNDERTALK_OPENAI_ADMIN_KEY", raising=False)
+    mem = _MemSettings(language="en")
+    monkeypatch.setattr(cloud, "_settings", lambda: mem)
+    from thundertalk.core import cloud_usage
+    cloud_usage._BILLING_CACHE.clear()
     for pid, p in cloud.PROVIDERS.items():
         monkeypatch.delenv(f"THUNDERTALK_{pid.upper()}_API_KEY", raising=False)
         for name in p.env:
@@ -151,7 +163,9 @@ def test_whisper_style_uses_language_and_prompt(monkeypatch):
     cloud.transcribe("groq:whisper-large-v3-turbo", _tone(), language="zh", hotwords=["闪电说"])
     f = _fields(cap.calls[0])
     assert cap.calls[0].full_url.startswith("https://api.groq.com/openai/v1/")
-    assert f["language"] == [b"zh"] and f["prompt"] == ["闪电说".encode()]
+    assert f["language"] == [b"zh"]
+    prompt = f["prompt"][0].decode()
+    assert prompt.startswith("以下是") and prompt.endswith("闪电说")   # Simplified + hotword
 
 
 def test_auto_language_sends_no_hint(monkeypatch):
@@ -281,10 +295,35 @@ def test_long_audio_is_split_under_the_upload_limit(monkeypatch):
     assert all(len(c.data) < 25 * 1024 * 1024 for c in cap.calls)
 
 
-def test_live_preview_off_for_cloud_dictation():
+def test_live_preview_for_cloud_only_on_device(monkeypatch):
+    from thundertalk.core import asr
     from thundertalk.core.live_preview import preview_wanted
     assert preview_wanted(dict(live_preview=True, active_model_id="qwen3-asr-06b-int8"))
+    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: False)
     assert not preview_wanted(dict(live_preview=True, active_model_id="openai:gpt-transcribe"))
+    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: True)
+    assert preview_wanted(dict(live_preview=True, active_model_id="openai:gpt-transcribe"))
+
+
+def test_cloud_preview_never_calls_the_network(monkeypatch):
+    from thundertalk.core import asr
+    from thundertalk.core.asr import AsrEngine
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    cap = _Capture({"text": "final"})
+    _use(monkeypatch, cap)
+    eng = AsrEngine()
+    eng.load_model("openai:gpt-transcribe", "Cloud-OpenAI", "cloud")
+
+    class FakeApple:
+        def recognize_quick(self, samples, sr, locales, contextual=()):
+            return type("R", (), {"text": "预览"})()
+    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: True)
+    eng._preview_apple = FakeApple()
+    assert eng.recognize(_tone(), preview=True).text == "预览"
+    assert cap.calls == []                                  # partials never leave the Mac
+    monkeypatch.setattr(asr, "on_device_preview_ready", lambda: False)
+    assert eng.recognize(_tone(), preview=True).text == ""
+    assert cap.calls == []
 
 
 def test_cli_auto_and_best_never_pick_cloud(monkeypatch):
@@ -445,6 +484,8 @@ def test_end_to_end_cli_against_local_server(local_server, tmp_path, monkeypatch
     from thundertalk import cli
     from thundertalk.core import settings as settings_mod
     monkeypatch.setenv("HOME", str(tmp_path))
+    from thundertalk.core.settings import Settings
+    monkeypatch.setattr(cloud, "_settings", lambda: Settings())     # the real file under HOME
     monkeypatch.setattr(settings_mod, "_PATH", tmp_path / ".thundertalk/settings.json")
     monkeypatch.setenv("THUNDERTALK_CUSTOM_API_KEY", SECRET)
 
@@ -590,3 +631,238 @@ def test_elevenlabs_voices_blocking_for_cli(monkeypatch):
     _use(monkeypatch, _Capture({"voices": [{"voice_id": "v1", "name": "Rachel", "labels": {"gender": "female"}}]}))
     assert cloud.voices("elevenlabs", blocking=True) == [
         {"id": "elevenlabs:v1", "name": "Rachel", "language": "multi", "gender": "f"}]
+
+
+# ── terms, Simplified Chinese, keyterms ──────────────────────────────────
+
+def test_terms_normalize_only_fixes_spelling():
+    from thundertalk.core.terms import normalize
+    assert normalize("我用ios和chat gpt写github的api") == "我用iOS和ChatGPT写GitHub的API"
+    assert normalize("用mcp连接claude code") == "用MCP连接Claude Code"
+    assert normalize("rapid apigee") == "rapid apigee"            # inside words: untouched
+    assert normalize("qwen3-asr-06b at github.com/x") == "qwen3-asr-06b at github.com/x"
+    assert normalize("I use github.") == "I use GitHub."
+    assert normalize("纯中文") == "纯中文"
+
+
+def test_terms_merged_user_first():
+    from thundertalk.core.terms import merged
+    out = merged(["闪电说", "claude code"])
+    assert out[:2] == ["闪电说", "claude code"] and "Claude Code" not in out and "ChatGPT" in out
+    assert merged(["a"], include_builtin=False) == ["a"]
+
+
+def test_engine_sends_builtin_terms_and_normalizes(monkeypatch):
+    from thundertalk.core.asr import AsrEngine
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    cap = _Capture({"text": "open ai 的 mcp"})
+    _use(monkeypatch, cap)
+    eng = AsrEngine()
+    eng.set_hotwords(["闪电说"])
+    eng.load_model("openai:gpt-transcribe", "Cloud-OpenAI", "cloud")
+    assert eng.recognize(_tone()).text == "OpenAI 的 MCP"
+    kw = [v.decode() for v in _fields(cap.calls[0])["keywords[]"]]
+    assert kw[0] == "闪电说" and "Claude Code" in kw
+    eng.set_builtin_terms(False)
+    eng.recognize(_tone())
+    assert [v.decode() for v in _fields(cap.calls[1])["keywords[]"]] == ["闪电说"]
+
+
+def test_elevenlabs_keyterms_are_only_user_words(monkeypatch):
+    monkeypatch.setenv("ELEVENLABS_API_KEY", SECRET)
+    cap = _Capture({"text": "x", "words": []})
+    _use(monkeypatch, cap)
+    cloud.transcribe("elevenlabs:scribe_v2", _tone(), hotwords=["闪电说", "a b c d e f"],
+                     terms=["ChatGPT"])
+    assert [v.decode() for v in _fields(cap.calls[0])["keyterms"]] == ["闪电说"]   # ≤5 words, no built-ins
+
+
+def test_traditional_becomes_simplified_for_mandarin(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    _use(monkeypatch, _Capture({"text": "刪掉就完事了"}))
+    assert cloud.transcribe("openai:whisper-1", _tone(), language="zh").text == "删掉就完事了"
+    _use(monkeypatch, _Capture({"text": "刪掉就完事了"}))
+    assert cloud.transcribe("openai:whisper-1", _tone(), language="en").text == "刪掉就完事了"
+    assert cloud.to_simplified("会話を話す") == "会話を話す"                  # Japanese untouched
+
+
+def test_auto_language_follows_app_language(monkeypatch):
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    cap = _Capture({"text": "這個"})
+    _use(monkeypatch, cap)
+    zh = _MemSettings(language="zh")
+    assert cloud.transcribe("openai:gpt-transcribe", _tone(), settings=zh).text == "这个"
+    assert _fields(cap.calls[0])["prompt"][0].decode().startswith("以下是")
+
+
+# ── usage and billing ─────────────────────────────────────────────────────
+
+def test_usage_is_metered_and_priced(monkeypatch):
+    from thundertalk.core import cloud_usage
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    monkeypatch.setenv("GROQ_API_KEY", SECRET)
+    _use(monkeypatch, _Capture({"text": "x"}))
+    cloud.transcribe("openai:gpt-transcribe", _tone(60.0))
+    cloud.transcribe("groq:whisper-large-v3-turbo", _tone(1.0))      # billed as 10 s
+    o = cloud_usage.provider_summary("openai")
+    assert o["minutes"] == 1.0 and o["usd"] == pytest.approx(0.0045) and not o["unpriced"]
+    g = [r for r in cloud_usage.month_rows() if r["model"].startswith("groq:")][0]
+    assert g["seconds"] == 10.0
+    assert cloud_usage.provider_summary("gemini")["requests"] == 0
+
+
+def test_usage_tts_chars(monkeypatch):
+    from thundertalk.core import cloud_usage
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    _use(monkeypatch, _Capture(_wav(1.0), ctype="audio/wav"))
+    cloud.synthesize("openai", "hello world", "marin", model="tts-1")
+    row = [r for r in cloud_usage.month_rows() if r["kind"] == "tts"][0]
+    assert row["chars"] == 11 and row["usd"] == pytest.approx(11 / 1e6 * 15, abs=1e-6)
+
+
+def test_openai_spend_needs_admin_key(monkeypatch):
+    from thundertalk.core import cloud_usage
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    assert cloud_usage.billing("openai", refresh=True) is None           # project key: no spend API
+    monkeypatch.setenv("OPENAI_ADMIN_KEY", "sk-admin-0123456789abcdef")
+    cloud.forget_cached_keys()
+    cap = _Capture({"data": [{"results": [{"amount": {"value": 1.25, "currency": "usd"}}]},
+                             {"results": [{"amount": {"value": 0.5, "currency": "usd"}}]}],
+                    "has_more": False})
+    _use(monkeypatch, cap)
+    b = cloud_usage.billing("openai", refresh=True)
+    assert b == {"kind": "spend", "month_usd": 1.75, "currency": "usd", "scope": "organization"}
+    req = cap.calls[0]
+    assert "/organization/costs?start_time=" in req.full_url
+    assert req.headers["Authorization"] == "Bearer sk-admin-0123456789abcdef"
+
+
+def test_elevenlabs_quota(monkeypatch):
+    from thundertalk.core import cloud_usage
+    monkeypatch.setenv("ELEVENLABS_API_KEY", SECRET)
+    _use(monkeypatch, _Capture({"character_count": 1200, "character_limit": 30000, "tier": "starter"}))
+    b = cloud_usage.billing("elevenlabs", refresh=True)
+    assert b["kind"] == "quota" and b["used"] == 1200 and b["limit"] == 30000
+
+
+# ── model pickers ─────────────────────────────────────────────────────────
+
+def test_custom_models_come_from_the_server(monkeypatch):
+    s = _MemSettings()
+    cloud.save_config("custom", s, base_url="http://127.0.0.1:9/v1")
+    assert cloud.model_choices("custom", "asr", s) == ["whisper-1"]
+    _use(monkeypatch, _Capture({"data": [{"id": "llama-3"}, {"id": "whisper-large-v3"}, {"id": "kokoro"}]}))
+    assert cloud.test("custom", s)["models"] == 3
+    assert cloud.model_choices("custom", "asr", s)[:2] == ["whisper-1", "whisper-large-v3"]
+    assert "kokoro" in cloud.model_choices("custom", "tts", s)
+    assert cloud.model_choices("openai", "asr", s) == ["gpt-transcribe", "whisper-1"]
+
+
+def test_card_models_are_pick_only(qapp, monkeypatch):
+    from thundertalk.ui.pages.cloud_card import ProviderRow, _combo_value
+    monkeypatch.setenv("OPENAI_API_KEY", SECRET)
+    s = _MemSettings(language="en")
+    row = ProviderRow("openai", s)
+    assert not row._asr.isEditable() and not row._tts.isEditable() and not row._voice.isEditable()
+    labels = [row._asr.itemText(i) for i in range(row._asr.count())]
+    from thundertalk.core.i18n import t
+    assert t("cloud.recommended") in labels[0] and "2027-02" in labels[1]
+    row._asr.setCurrentIndex(1)
+    assert _combo_value(row._asr) == "whisper-1" and cloud.config("openai", s)["asr_model"] == "whisper-1"
+    row._voice.setCurrentIndex(row._voice.findData("cedar"))
+    assert cloud.config("openai", s)["voice"] == "cedar"
+    custom = ProviderRow("custom", s)
+    assert custom._asr.isEditable()                 # unknown server until Test lists its models
+
+
+def test_cli_cloud_usage_and_model_validation(monkeypatch):
+    from types import SimpleNamespace
+    from thundertalk import cli_cloud
+    from thundertalk.cli import CliError
+    from thundertalk.core import cloud_usage
+    cloud_usage.record("openai:gpt-transcribe", seconds=120)
+    out = SimpleNamespace(stage=lambda *a: None)
+    res = cli_cloud.cmd_cloud(SimpleNamespace(action="usage", provider=None, month=None), out)
+    row = [p for p in res["providers"] if p["provider"] == "openai"][0]
+    assert row["minutes"] == 2.0 and row["usd"] == pytest.approx(0.009) and "reported" not in row
+    with pytest.raises(CliError):
+        cli_cloud.cmd_cloud(SimpleNamespace(action="set", provider="openai", base_url=None,
+                                            asr_model="made-up", tts_model=None, voice=None), out)
+    with pytest.raises(CliError):
+        cli_cloud.cmd_cloud(SimpleNamespace(action="test", provider="openai-admin"), out)
+
+
+def test_tidy_is_conservative():
+    from thundertalk.core.tidy import tidy
+    assert tidy("它就没有呃之前那些 local model") == "它就没有之前那些 local model"
+    assert tidy("就是你可以你可以你可以 fetch") == "就是你可以 fetch"
+    assert tidy("挺好用的，呃，但是呢") == "挺好用的，但是呢"
+    assert tidy("um, I think uh we should") == "I think we should"
+    for keep in ("好啊，嗯嗯好的", "你看看，谢谢，试试", "可以可以", "嗯。", "就就这个"):
+        assert tidy(keep) == keep
+
+
+def test_eval_scores_ignore_style(tmp_path):
+    from thundertalk.cli_eval import latin_terms, score
+    s = score("然后你要making sure,就是我们的CLI", "然后你要 making sure 对吧，就是呃我们的 CLI")
+    assert s["terms"] == 2 and s["terms_hit"] == 2           # "making", "CLI" ("sure" is everyday)
+    assert s["tidy_errors"] < s["errors"]
+    assert latin_terms("the API and Claude Code") == ["API", "Claude", "Code"]
+
+
+# ── Apple: a language switch mid-recording ────────────────────────────────
+
+def _apple_fake(monkeypatch, spoken):
+    """Pieces are 10 s each; piece i is filled at amplitude 0.1·(i+1), which
+    tells the fake recognizer which language was "spoken" there."""
+    from thundertalk.core import transcribe
+    from thundertalk.core.apple_speech import AppleRecognizer, AppleResult
+    n = len(spoken)
+    monkeypatch.setattr(transcribe, "segment_speech",
+                        lambda *a, **k: [(10.0 * i, 10.0 * (i + 1)) for i in range(n)])
+    monkeypatch.setattr(transcribe, "_has_speech", lambda *a, **k: True)
+    calls = []
+
+    def chunk(self, x, sr, loc, contextual, dictation):
+        lang = spoken[min(n - 1, int(round(float(np.median(np.abs(x))) * 10)) - 1)]
+        calls.append((lang, loc))
+        if loc.startswith("zh"):
+            text, conf = ("我们先说中文然后", 0.9) if lang == "zh" else ("That's he can not just take", 0.7)
+        else:
+            text, conf = ("ni men xian", 0.2) if lang == "zh" else ("so I switch to English now", 0.85)
+        return AppleResult(text, [], loc, conf, 0.1)
+    monkeypatch.setattr(AppleRecognizer, "_recognize_chunk", chunk)
+    x = np.concatenate([np.full(160000, 0.1 * (i + 1), dtype=np.float32) for i in range(n)])
+    return AppleRecognizer(), x, calls
+
+
+def test_apple_follows_a_switch_to_english(monkeypatch):
+    rec, x, calls = _apple_fake(monkeypatch, ["zh", "en", "en"])
+    r = rec.recognize(x, 16000, ["zh-CN", "en-US"])
+    assert "我们先说中文" in r.text and r.text.count("so I switch to English now") == 2
+    assert "That's he" not in r.text
+    assert rec._last_locale == "en-US"
+    # piece 3 starts in English directly: no extra decode once switched
+    assert calls[-1] == ("en", "en-US") and calls.count(("en", "zh-CN")) == 1
+
+
+def test_apple_switch_back_to_chinese(monkeypatch):
+    rec, x, _calls = _apple_fake(monkeypatch, ["en", "zh"])
+    r = rec.recognize(x, 16000, ["en-US", "zh-CN"])
+    assert "so I switch" in r.text and "我们先说中文" in r.text and "ni men" not in r.text
+
+
+def test_apple_one_language_costs_one_decode_per_piece(monkeypatch):
+    rec, x, calls = _apple_fake(monkeypatch, ["zh", "zh", "zh"])
+    rec.recognize(x, 16000, ["zh-CN", "en-US"])
+    assert len(calls) == 4          # 4 s language probe + the first piece, then one per piece
+
+
+def test_apple_preview_is_one_decode_and_flips_language(monkeypatch):
+    rec, x, calls = _apple_fake(monkeypatch, ["en"])
+    x = x[:160000]
+    r = rec.recognize_quick(x, 16000, ["zh-CN", "en-US"])
+    assert len(calls) == 1 and calls[0][1] == "zh-CN"          # one decode, even when wrong
+    assert rec._last_locale == "en-US"                          # …and the next tick is English
+    r = rec.recognize_quick(x, 16000, ["zh-CN", "en-US"])
+    assert r.text == "so I switch to English now" and len(calls) == 2

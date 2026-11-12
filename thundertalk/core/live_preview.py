@@ -56,7 +56,11 @@ def preview_wanted(settings) -> bool:
         return False
     from thundertalk.core import cloud
     if cloud.is_cloud_id(settings.get("active_model_id") or ""):
-        return False                    # each partial would be sent (and billed)
+        # Partials are never sent (each would be billed); Apple's on-device
+        # recognizer previews instead when it is allowed.
+        from thundertalk.core.asr import on_device_preview_ready
+        if not on_device_preview_ready():
+            return False
     tgt = settings.get("translation_target")
     mode = settings.get("translation_mode") or "direct"
     return not (tgt and tgt != "off" and mode == "direct")

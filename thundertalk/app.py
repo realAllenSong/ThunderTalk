@@ -455,6 +455,7 @@ def main() -> None:
 
     # --- Hotwords + Language → ASR engine ---
     pipe.asr.set_hotwords(settings.hotwords)
+    pipe.asr.set_builtin_terms(settings.get("builtin_terms") is not False)
     pipe.asr.set_language(settings.transcription_language)
     pipe.asr.set_speaker_labels(settings.get("moss_speaker_labels"))
     window.models_page.speaker_labels_toggled.connect(pipe.asr.set_speaker_labels)
@@ -672,10 +673,17 @@ def main() -> None:
             return
         source = recording.get("recovery_source", "final") if recording else "final"
         raw_text = "" if source == "preview" else text
-        if not backend.startswith("seamless-torch"):
+        if not backend.startswith("seamless-torch") and backend != "cloud":
+            # (a cloud final is not merged with the on-device preview: it is the better reading)
             text = merge_preview_terms(text, reference)
             if text != raw_text:
                 print(f"[DictationMerge] {raw_text!r} → {text!r} (preview={reference!r})")
+        if settings.get("tidy_dictation") is not False and text:
+            from thundertalk.core.tidy import tidy
+            tidied = tidy(text)
+            if tidied != text:
+                print(f"[DictationTidy] {len(text)} → {len(tidied)} chars")
+                text = tidied
 
         def _remember(pasted):
             _save_recent_recording(recording, raw_text, pasted,
@@ -1177,6 +1185,7 @@ def main() -> None:
                 _start_model_load(mid or "", md, mf, be)
 
     window.hotwords_page.hotwords_changed.connect(_on_hotwords_changed)
+    window.hotwords_page.builtin_terms_changed.connect(pipe.asr.set_builtin_terms)
 
     # --- Language setting → ASR engine ---
     def _on_settings_changed() -> None:

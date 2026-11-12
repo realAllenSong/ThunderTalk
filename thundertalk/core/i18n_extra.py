@@ -199,6 +199,14 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "当前模型（{name}）不使用热词。请在“模型”页切换到 Qwen3-ASR 模型后再生效。",
     },
     "hotwords.remove": {"en": "Remove", "zh": "移除"},
+    "hotwords.builtin_title": {"en": "Built-in AI & tech terms", "zh": "内置 AI 与科技词汇"},
+    "hotwords.builtin_note": {
+        "en": "About 80 names people dictate every day (Claude Code, ChatGPT, Codex, MCP, GitHub, "
+              "DeepSeek, 豆包…). Their spelling is fixed in every model's output, and cloud models "
+              "and Apple Speech also get them as hints after your own words.",
+        "zh": "约 80 个日常会说的名称（Claude Code、ChatGPT、Codex、MCP、GitHub、DeepSeek、豆包…）。"
+              "所有模型的结果都会修正这些词的写法；云端模型和 Apple 语音还会在你的热词之后把它们作为提示。",
+    },
     "hotwords.add_hint2": {
         "en": "Press Enter to add. Separate several words with commas or new lines.",
         "zh": "按回车添加。多个词可用逗号或换行分隔。",
