@@ -1,7 +1,7 @@
 """``ThunderTalk --cli eval``: measure local models against a cloud reference.
 
     eval [INPUT …] [--recent] [--suite standard] [--reference openai:gpt-transcribe]
-         [--engines best,apple,…] [--per-category N] [--preview] [--limit N] [--out report.md]
+         [--engines best,apple,qwen-mlx:/path/to/checkpoint,…] [--per-category N] [--preview] [--limit N] [--out report.md]
 
 ``--suite standard`` is the fixed benchmark: short and long clips in Chinese,
 English and mixed Chinese-English, with human reference transcripts (FLEURS
@@ -236,6 +236,12 @@ def cmd_eval(a, out) -> dict:
     for name in [e.strip() for e in a.engines.split(",") if e.strip()]:
         if cloud.is_cloud_id(name):
             raise CliError("bad_args", "--engines are local models; the cloud one goes in --reference")
+        if name.startswith("qwen-mlx:"):
+            # A fine-tuned checkpoint folder (tools/finetune): Qwen3-ASR weights, MLX runtime.
+            if not Path(name.split(":", 1)[1]).expanduser().is_dir():
+                raise CliError("not_found", f"No checkpoint folder: {name}")
+            engines.append(name)
+            continue
         mid = resolve_asr(name, settings)
         if mid not in engines:
             engines.append(mid)
@@ -268,7 +274,8 @@ def cmd_eval(a, out) -> dict:
     # 2. local engines, one at a time
     report = []
     for mid in engines:
-        info = find(mid)
+        ckpt = mid.split(":", 1)[1] if mid.startswith("qwen-mlx:") else ""
+        info = find("qwen3-asr-06b-mlx" if ckpt else mid)
         out.stage("load_model")
         out.emit(type="stage", label="engine", engine=mid)
         with model_slot(out, heavy=not info.built_in, info=info):
@@ -280,7 +287,8 @@ def cmd_eval(a, out) -> dict:
                 eng._context_override = " ".join(BUILTIN_TERMS) if a.context == "terms" else a.context
             eng.set_builtin_terms(settings.get("builtin_terms") is not False)
             eng.set_auto_languages(settings.get("auto_languages") or ["zh", "en"])
-            eng.load_model(get_model_path(mid), info.family, info.backend, memory_mode=settings.memory_mode)
+            eng.load_model(str(Path(ckpt).expanduser()) if ckpt else get_model_path(mid), info.family,
+                           info.backend, memory_mode=settings.memory_mode)
             out.stage("transcribe")
             from thundertalk.core.dictation import recover_final
             rows, t0 = [], time.monotonic()
