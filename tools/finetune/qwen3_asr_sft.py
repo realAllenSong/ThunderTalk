@@ -136,18 +136,19 @@ class DataCollatorForQwen3ASRFinetuning:
             padding=True,
             truncation=False,
         )
-        prefix_inputs = self.processor(
-            text=prefix_texts,
-            audio=audios,
-            return_tensors="pt",
-            padding=True,
-            truncation=False,
-        )
-
-        prefix_lens = prefix_inputs["attention_mask"].sum(dim=1).tolist()
+        # Labels start right after the last "<|im_start|>assistant\n". (Upstream
+        # measured the prefix by processing it a second time, which is only
+        # right for the longest audio in a batch: shorter clips got their audio
+        # placeholders and the system prompt as training targets.)
+        tok = self.processor.tokenizer
+        im_start = tok.convert_tokens_to_ids("<|im_start|>")
+        head = len(tok("<|im_start|>assistant\n", add_special_tokens=False)["input_ids"])
         labels = full_inputs["input_ids"].clone()
-        for i, pl in enumerate(prefix_lens):
-            labels[i, :pl] = -100
+        for i in range(labels.shape[0]):
+            starts = (labels[i] == im_start).nonzero(as_tuple=True)[0]
+            if len(starts) == 0:
+                raise RuntimeError("no assistant turn in a training example")
+            labels[i, : int(starts[-1]) + head] = -100
 
         pad_id = self.processor.tokenizer.pad_token_id
         if pad_id is not None:
@@ -290,6 +291,7 @@ def main():
     training_args = TrainingArguments(
         output_dir=args_cli.output_dir,
         per_device_train_batch_size=args_cli.batch_size,
+        per_device_eval_batch_size=2,
         gradient_accumulation_steps=args_cli.grad_acc,
         learning_rate=args_cli.lr,
         num_train_epochs=args_cli.epochs,
@@ -304,6 +306,7 @@ def main():
         save_steps=args_cli.save_steps,
         save_total_limit=args_cli.save_total_limit,
         save_safetensors=True,
+        save_only_model=True,          # no optimizer state: 3.6 GB per checkpoint instead of 7.4
         eval_strategy="steps",
         eval_steps=args_cli.save_steps,
         do_eval=bool(args_cli.eval_file),

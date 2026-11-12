@@ -28,13 +28,15 @@ PY = ROOT / "venv-qwen" / "bin" / "python"
 LANG = {"zh": "Chinese", "mixed": "Chinese", "en": "English"}
 
 
-def to_qwen(src: Path, dst: Path, limit: int = 0) -> int:
+def to_qwen(src: Path, dst: Path, limit: int = 0, max_seconds: float = 15.0) -> int:
     n = 0
     with open(src, encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
         for line in fin:
             if limit and n >= limit:
                 break
             r = json.loads(line)
+            if r["seconds"] > max_seconds:      # long clips blow up MPS memory in a batch
+                continue
             fout.write(json.dumps({"audio": r["audio"],
                                    "text": f"language {LANG[r['lang']]}<asr_text>{r['text']}"},
                                   ensure_ascii=False) + "\n")
@@ -46,11 +48,11 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3-ASR-0.6B")
     ap.add_argument("--out", default=str(ROOT / "runs" / "qwen06b"))
-    ap.add_argument("--batch", type=int, default=8)
-    ap.add_argument("--grad-acc", type=int, default=4)
+    ap.add_argument("--batch", type=int, default=4)
+    ap.add_argument("--grad-acc", type=int, default=8)
     ap.add_argument("--lr", type=float, default=1e-5)
     ap.add_argument("--epochs", type=float, default=1.0)
-    ap.add_argument("--save-steps", type=int, default=100)
+    ap.add_argument("--save-steps", type=int, default=65)
     ap.add_argument("--freeze-encoder", action="store_true")
     ap.add_argument("--limit", type=int, default=0, help="train lines (smoke tests)")
     ap.add_argument("--valid-limit", type=int, default=200, help="validation lines per eval")
@@ -64,9 +66,9 @@ def main() -> None:
            "--model_path", a.model, "--train_file", str(work / "train.jsonl"),
            "--eval_file", str(work / "valid.jsonl"), "--output_dir", str(work),
            "--batch_size", str(a.batch), "--grad_acc", str(a.grad_acc), "--lr", str(a.lr),
-           "--epochs", str(a.epochs), "--save_steps", str(a.save_steps), "--save_total_limit", "12",
+           "--epochs", str(a.epochs), "--save_steps", str(a.save_steps), "--save_total_limit", "6",
            "--num_workers", "0", "--pin_memory", "0", "--persistent_workers", "0",
-           "--freeze_encoder", "1" if a.freeze_encoder else "0", "--resume", "1"]
+           "--freeze_encoder", "1" if a.freeze_encoder else "0", "--resume", "0"]
     env = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="1", TOKENIZERS_PARALLELISM="false")
     sys.exit(subprocess.call(cmd, env=env))
 
