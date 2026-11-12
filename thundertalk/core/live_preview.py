@@ -154,6 +154,7 @@ class LivePreview(QObject):
         self._last_text = ""
         self._too_slow = False
         self._slow_ticks = 0
+        self._rtf = 0.0                  # measured decode time ÷ audio length (kept across takes)
         self.stats: dict = {}
 
         self._timer = QTimer(self)
@@ -293,10 +294,14 @@ class LivePreview(QObject):
         if len(tail) < MIN_AUDIO_S * self._sr:
             return None
 
+        # A slow model (Qwen3-ASR 1.7B: ~0.4× real time) never gets a piece it
+        # cannot decode within the cut-off; the preview then trails the
+        # speaker by a few seconds instead of switching itself off.
+        cap = int(self._piece_cap_s() * self._sr)
         if len(tail) > self._window * self._sr:
             # Fold the older part of the tail into the committed text at a
             # pause, so later ticks only re-decode the newest speech.
-            cut = find_commit_point(tail, self._sr)
+            cut = find_commit_point(tail[:cap] if len(tail) > cap else tail, self._sr)
             if cut > MIN_AUDIO_S * self._sr:
                 piece = self._timed(tail[:cut])
                 if self._stale(gen):
@@ -306,8 +311,15 @@ class LivePreview(QObject):
                 tail = tail[cut:]
                 self.stats["commits"] += 1
 
+        if len(tail) > cap:
+            return self._committed_text       # still catching up: commit more next tick
         text = self._timed(tail) if len(tail) >= MIN_AUDIO_S * self._sr else ""
         return join_text(self._committed_text, text)
+
+    def _piece_cap_s(self) -> float:
+        if self._rtf <= 0:
+            return 3600.0                     # speed not measured yet: no cap
+        return max(MIN_WINDOW_S, 0.7 * MAX_DECODE_S / self._rtf)
 
     def _timed(self, samples: np.ndarray) -> str:
         from thundertalk.core.audio_level import normalize_quiet
@@ -338,6 +350,8 @@ class LivePreview(QObject):
         """Slow models decode less audio per tick (and _run stretches the
         interval), so the preview keeps up and the GPU stays mostly free."""
         rtf = decode_s / audio_s if audio_s > 0 else 0.0
+        if rtf > 0 and audio_s >= 1.0:
+            self._rtf = rtf if self._rtf <= 0 else max(rtf, 0.6 * self._rtf + 0.4 * rtf)
         if rtf > 0:
             self._window = max(MIN_WINDOW_S, min(self._max_window, TARGET_DECODE_S / rtf))
 

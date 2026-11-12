@@ -28,10 +28,12 @@ PY = ROOT / "venv-qwen" / "bin" / "python"
 LANG = {"zh": "Chinese", "mixed": "Chinese", "en": "English"}
 
 
-def to_qwen(src: Path, dst: Path) -> int:
+def to_qwen(src: Path, dst: Path, limit: int = 0) -> int:
     n = 0
     with open(src, encoding="utf-8") as fin, open(dst, "w", encoding="utf-8") as fout:
         for line in fin:
+            if limit and n >= limit:
+                break
             r = json.loads(line)
             fout.write(json.dumps({"audio": r["audio"],
                                    "text": f"language {LANG[r['lang']]}<asr_text>{r['text']}"},
@@ -50,11 +52,13 @@ def main() -> None:
     ap.add_argument("--epochs", type=float, default=1.0)
     ap.add_argument("--save-steps", type=int, default=100)
     ap.add_argument("--freeze-encoder", action="store_true")
+    ap.add_argument("--limit", type=int, default=0, help="train lines (smoke tests)")
+    ap.add_argument("--valid-limit", type=int, default=200, help="validation lines per eval")
     a = ap.parse_args()
     work = Path(a.out)
     work.mkdir(parents=True, exist_ok=True)
-    n_train = to_qwen(PREP / "train.jsonl", work / "train.jsonl")
-    n_valid = to_qwen(PREP / "valid.jsonl", work / "valid.jsonl")
+    n_train = to_qwen(PREP / "train.jsonl", work / "train.jsonl", a.limit)
+    n_valid = to_qwen(PREP / "valid.jsonl", work / "valid.jsonl", a.valid_limit)
     print(f"train {n_train} / valid {n_valid} lines", file=sys.stderr)
     cmd = [str(PY), str(Path(__file__).with_name("qwen3_asr_sft.py")),
            "--model_path", a.model, "--train_file", str(work / "train.jsonl"),
