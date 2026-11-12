@@ -257,14 +257,18 @@ def test_slow_model_backs_off(qapp, monkeypatch):
 
 def test_model_too_slow_turns_preview_off_for_the_recording(qapp, monkeypatch):
     monkeypatch.setattr(lp, "MAX_DECODE_S", 0.1)
+    monkeypatch.setattr(lp, "MAX_INTERVAL_MS", 50)      # back-off between slow ticks, kept short here
     rec, asr = FakeRecorder(_speech(10)), FakeAsr(delay=0.2)
     rec.feed(2.0)
     p, got = _preview(rec, asr, interval_ms=20)
     p.start()
     assert _until(lambda: bool(got))
     rec.feed(3.0)
-    _pump(400)
-    assert len(asr.calls) == 1 and got == ["w0 w1"]   # what was shown stays
+    assert _until(lambda: p._too_slow)                            # off after 3 slow ticks in a row
+    n = len(asr.calls)
+    _pump(300)
+    assert len(asr.calls) == n and n >= lp.SLOW_TICKS_OFF        # …and no more decodes
+    assert got and got[0] == "w0 w1"                              # what was shown stays
     p.stop()
     asr.delay = 0.0
     p.start()                                         # next recording tries again
@@ -285,9 +289,25 @@ def test_slow_first_preview_during_studio_does_not_disable_preview(qapp, monkeyp
     assert p.stats["contended"] == 1 and not p._too_slow
     assert p.stats["uncontended_decode_s"] == []
     assert p.window_s == p._max_window
-    # The next uncontended decode still detects a genuinely slow model.
-    p._run(p._gen)
-    assert p._too_slow and len(p.stats["uncontended_decode_s"]) == 1
+    # Uncontended slow decodes still detect a genuinely slow model (3 in a row).
+    for _ in range(lp.SLOW_TICKS_OFF):
+        p._run(p._gen)
+    assert p._too_slow and len(p.stats["uncontended_decode_s"]) == lp.SLOW_TICKS_OFF
+    p.stop()
+
+
+def test_one_slow_tick_shrinks_the_window_but_keeps_the_preview(qapp, monkeypatch):
+    monkeypatch.setattr(lp, "MAX_DECODE_S", 0.05)
+    rec, asr = FakeRecorder(_speech(10)), FakeAsr(delay=0.08)
+    rec.feed(4.0)
+    p, _ = _preview(rec, asr)
+    p.start()
+    p._timer.stop()
+    p._run(p._gen)                                    # slow: window and interval back off
+    assert not p._too_slow and p.window_s == lp.MIN_WINDOW_S and p.interval_ms == lp.MAX_INTERVAL_MS
+    asr.delay = 0.0
+    p._run(p._gen)                                    # fast again: the count resets
+    assert p._slow_ticks == 0 and not p._too_slow
     p.stop()
 
 

@@ -47,6 +47,11 @@ KEEP_TAIL_S = 1.0            # never commit the last second (words still forming
 # cancels between a commit and its tail decode, not inside one), so the
 # preview stops for the rest of the recording (the text shown so far stays).
 MAX_DECODE_S = 2.0
+# One slow decode (a long commit piece, or a Studio job on the GPU) only
+# shrinks the window and stretches the interval; the preview turns off after
+# this many slow ticks in a row. Measured 2026-11-11: with an immediate cut-off
+# Qwen3-ASR 1.7B lost the preview on 8 of 8 long recordings (27–172 s in).
+SLOW_TICKS_OFF = 3
 
 
 def preview_wanted(settings) -> bool:
@@ -148,6 +153,7 @@ class LivePreview(QObject):
         self._committed_upto = 0         # samples already folded into committed text
         self._last_text = ""
         self._too_slow = False
+        self._slow_ticks = 0
         self.stats: dict = {}
 
         self._timer = QTimer(self)
@@ -194,6 +200,7 @@ class LivePreview(QObject):
         self._committed_upto = 0
         self._last_text = ""
         self._too_slow = False
+        self._slow_ticks = 0
         self._interval = self._base_interval
         self._window = self._max_window
         self.stats = {"ran": 0, "skipped_busy": 0, "skipped_lock": 0, "errors": 0,
@@ -254,12 +261,7 @@ class LivePreview(QObject):
                 self._lock.release()
             dt = time.perf_counter() - t_tick
             if text is not None and not self._stale(gen):
-                # Interval follows the whole tick (a commit adds a second decode).
-                self._interval = int(max(self._base_interval, min(MAX_INTERVAL_MS, dt * 2500)))
-                if slowest > MAX_DECODE_S:
-                    self._too_slow = True
-                    print(f"[Preview] {slowest:.1f}s per decode is too slow; preview off "
-                          "for the rest of this recording")
+                self._after_tick(dt, slowest)
                 self.stats["latency_s"].append(dt)
                 self._result.emit(gen, text)
         except Exception as exc:          # a preview must never break dictation
@@ -267,6 +269,21 @@ class LivePreview(QObject):
             print(f"[Preview] decode failed: {exc}")
         finally:
             self._idle.set()
+
+    def _after_tick(self, dt: float, slowest: float) -> None:
+        """Pace the next tick from this one (shared with cli_eval's replay)."""
+        # Interval follows the whole tick (a commit adds a second decode).
+        self._interval = int(max(self._base_interval, min(MAX_INTERVAL_MS, dt * 2500)))
+        if slowest > MAX_DECODE_S:
+            self._slow_ticks += 1
+            self._window = MIN_WINDOW_S
+            self._interval = MAX_INTERVAL_MS
+            if self._slow_ticks >= SLOW_TICKS_OFF:
+                self._too_slow = True
+                print(f"[Preview] {SLOW_TICKS_OFF} decodes in a row over {MAX_DECODE_S:.0f}s; "
+                      "preview off for the rest of this recording")
+        elif slowest:
+            self._slow_ticks = 0
 
     def _decode(self, gen: int) -> Optional[str]:
         audio = self._snapshot()

@@ -358,6 +358,7 @@ def simulate_preview(recognize, x, sr: int = 16000) -> dict:
     from thundertalk.core import live_preview as lp_mod
     cur = {"n": 0}
     lp = lp_mod.LivePreview(lambda: x[:cur["n"]], recognize, lock=threading.Lock())
+    lp._slow_ticks, lp._too_slow = 0, False
     lp.stats = {"ran": 0, "skipped_busy": 0, "skipped_lock": 0, "errors": 0, "decode_s": [],
                 "uncontended_decode_s": [], "contended": 0, "latency_s": [], "commits": 0, "loops": 0}
     t, total, off_at, text, slowest = lp_mod.FIRST_TICK_MS / 1000, len(x) / sr, None, "", 0.0
@@ -371,11 +372,11 @@ def simulate_preview(recognize, x, sr: int = 16000) -> dict:
         slowest = max(slowest, tick_max)
         if r is not None:
             text = r
-        if tick_max > lp_mod.MAX_DECODE_S:
+            lp._after_tick(dt, tick_max)               # the app's own pacing and cut-off
+        if lp._too_slow:
             off_at = round(t, 1)
             break
-        interval = max(lp._base_interval, min(lp_mod.MAX_INTERVAL_MS, dt * 2500)) / 1000
-        t += max(interval, dt)
+        t += max(lp._interval / 1000, dt)
     return {"off_at": off_at, "max_decode_s": round(slowest, 2), "ticks": lp.stats["ran"],
             "commits": lp.stats["commits"], "chars": len(text)}
 

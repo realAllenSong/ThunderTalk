@@ -147,6 +147,7 @@ class AsrResult:
 # AsrEngine
 # ---------------------------------------------------------------------------
 
+MOSS_DICTATION_SPAN_S = 60.0     # longest piece MOSS decodes in one pass while dictating
 _QWEN_LANG = {"en": "English", "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "ru": "Russian"}
 # Unicode ranges each language may write in (Latin is always allowed: names and terms).
 _SCRIPTS = {
@@ -780,8 +781,22 @@ class AsrEngine:
         duration_secs = len(samples) / sample_rate
         print(f"[ASR-MOSS] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s)...")
         t0 = time.perf_counter()
-        segs = diarize.transcribe(samples.astype(np.float32),
-                                  max_tokens=diarize.dictation_max_tokens(duration_secs))
+        x = samples.astype(np.float32)
+        if duration_secs <= MOSS_DICTATION_SPAN_S:
+            segs = diarize.transcribe(x, max_tokens=diarize.dictation_max_tokens(duration_secs))
+        else:
+            # One pass over a long take makes MOSS stop early and skip whole
+            # sentences (measured: 172 s of English → 8 segments, half the
+            # words missing). Dictation decodes it in pieces cut at pauses.
+            from thundertalk.core.transcribe import segment_speech
+            segs = []
+            for a, b in segment_speech(x, sample_rate, target=MOSS_DICTATION_SPAN_S * 0.75,
+                                       max_len=MOSS_DICTATION_SPAN_S, keep_all=True):
+                piece = x[int(a * sample_rate): int(b * sample_rate)]
+                for seg in diarize.transcribe(piece, max_tokens=diarize.dictation_max_tokens(b - a)):
+                    seg.start += a
+                    seg.end += a
+                    segs.append(seg)
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MOSS] Transcribe done in {inference_ms}ms ({len(segs)} segments)")
         mx.clear_cache()
