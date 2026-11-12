@@ -23,6 +23,7 @@ DEFAULTS: dict[str, Any] = {
     "hotwords": [],
     "builtin_terms": True,
     "tidy_dictation": True,
+    "auto_languages": ["zh", "en"],
     "active_model_id": "",
     "translation_target": "off",
     "translation_mode": "direct",  # "direct" (S2TT) or "review" (Pipeline + popup)

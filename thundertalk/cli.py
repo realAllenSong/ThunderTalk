@@ -287,6 +287,7 @@ def _transcribe_path(a, out: _Out, src: Path):
                 if settings.hotwords:
                     engine.set_hotwords(settings.hotwords)
                 engine.set_builtin_terms(settings.get("builtin_terms") is not False)
+                engine.set_auto_languages(settings.get("auto_languages") or ["zh", "en"])
                 engine.load_model(get_model_path(model_id), info.family, info.backend,
                                   memory_mode=settings.memory_mode)
             out.stage("transcribe")

@@ -456,6 +456,7 @@ def main() -> None:
     # --- Hotwords + Language → ASR engine ---
     pipe.asr.set_hotwords(settings.hotwords)
     pipe.asr.set_builtin_terms(settings.get("builtin_terms") is not False)
+    pipe.asr.set_auto_languages(settings.get("auto_languages") or ["zh", "en"])
     pipe.asr.set_language(settings.transcription_language)
     pipe.asr.set_speaker_labels(settings.get("moss_speaker_labels"))
     window.models_page.speaker_labels_toggled.connect(pipe.asr.set_speaker_labels)

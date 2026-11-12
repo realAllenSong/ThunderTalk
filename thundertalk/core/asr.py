@@ -147,6 +147,31 @@ class AsrResult:
 # AsrEngine
 # ---------------------------------------------------------------------------
 
+_QWEN_LANG = {"en": "English", "zh": "Chinese", "ja": "Japanese", "ko": "Korean", "ru": "Russian"}
+# Unicode ranges each language may write in (Latin is always allowed: names and terms).
+_SCRIPTS = {
+    "zh": [(0x4E00, 0x9FFF), (0x3400, 0x4DBF), (0x3000, 0x303F), (0xFF00, 0xFFEF)],
+    "en": [],
+    "ja": [(0x3040, 0x30FF), (0x4E00, 0x9FFF), (0x3000, 0x303F), (0xFF00, 0xFFEF)],
+    "ko": [(0xAC00, 0xD7AF), (0x1100, 0x11FF), (0x3130, 0x318F), (0x4E00, 0x9FFF)],
+    "ru": [(0x0400, 0x04FF)],
+}
+LANG_HINTS = {("zh", "en"): "中文或英文（Chinese or English）。", ("en", "zh"): "English or Chinese（中文或英文）。"}
+
+
+def foreign_script(text: str, languages: list[str]) -> bool:
+    """True when most letters of ``text`` are in a script none of ``languages``
+    writes (Hangul or Thai from a Chinese/English speaker)."""
+    allowed = [r for code in languages for r in _SCRIPTS.get(code, [])]
+    letters = [c for c in text or "" if c.isalpha()]
+    if not letters:
+        return False
+    def ok(c: str) -> bool:
+        cp = ord(c)
+        return c.isascii() or 0x00C0 <= cp <= 0x024F or any(a <= cp <= b for a, b in allowed)
+    return sum(not ok(c) for c in letters) > len(letters) * 0.3
+
+
 def on_device_preview_ready() -> bool:
     """Can Apple Speech show a live preview for a cloud engine? Only when it is
     already allowed (never prompts) and has an on-device language."""
@@ -171,6 +196,8 @@ class AsrEngine:
         self._hotwords: str = ""
         self._builtin_terms = True       # core/terms.py: AI-era vocabulary + spelling fixes
         self._preview_apple = None       # on-device preview while a cloud engine dictates
+        self._context_override: Optional[str] = None
+        self._auto_languages: list[str] = ["zh", "en"]   # what "auto" may answer in
         self._hotword_set: set[str] = set()
         self._model_dir: str = ""
         self._model_family: str = ""
@@ -252,6 +279,12 @@ class AsrEngine:
         """Store hotwords. Does NOT reload the model — caller must handle reload."""
         self._hotwords = "/".join(w.strip() for w in words if w.strip())
         self._hotword_set = {w.strip().lower() for w in words if w.strip()}
+
+    def set_auto_languages(self, codes: list[str]) -> None:
+        """Languages the user speaks; with auto-detect, output in any other
+        script is decoded again (see foreign_script)."""
+        codes = [c for c in (codes or []) if c in _SCRIPTS]
+        self._auto_languages = codes or ["zh", "en"]
 
     def set_builtin_terms(self, enabled: bool) -> None:
         """Built-in AI-era terms (Claude Code, ChatGPT, MCP…): appended after the
@@ -792,6 +825,8 @@ class AsrEngine:
 
         duration_secs = len(samples) / sample_rate
         context = self._prompt_hotwords().replace(",", " ")
+        if self._context_override is not None:          # eval experiments (cli_eval --context)
+            context = self._context_override
         # Dictated speech stays well under 12 tokens/s; 32 covers the language
         # tag. Final decodes get twice that, so a repetition loop ends within
         # a second or two instead of running to the old 4096-token limit.
@@ -801,14 +836,23 @@ class AsrEngine:
         lang_info = f", lang={self._language}" if self._language else ""
         print(f"[ASR-MLX] Starting transcribe ({len(samples)} samples, {duration_secs:.1f}s{lang_info})...")
         t0 = time.perf_counter()
-        result = mlx_qwen3_asr.transcribe(
-            (samples, sample_rate),
-            model=self._mlx_model,
-            context=context,
-            language=self._language,
-            max_new_tokens=max_new_tokens,
-        )
-        mx.eval(result.text) if hasattr(result.text, '__mlx_array__') else None
+        def decode(ctx: str, language):
+            r = mlx_qwen3_asr.transcribe((samples, sample_rate), model=self._mlx_model, context=ctx,
+                                         language=language, max_new_tokens=max_new_tokens)
+            mx.eval(r.text) if hasattr(r.text, '__mlx_array__') else None
+            return r
+
+        result = decode(context, self._language)
+        if self._language is None and not preview and foreign_script(result.text, self._auto_languages):
+            # Auto-detect picked a language this user does not speak (measured:
+            # English speech → Korean or Thai on Qwen3-0.6B). Ask again with the
+            # expected languages named, then force the first of them.
+            hint = LANG_HINTS.get(tuple(self._auto_languages), "")
+            again = decode((context + " " + hint).strip(), None)
+            if foreign_script(again.text, self._auto_languages):
+                again = decode(context, _QWEN_LANG.get(self._auto_languages[-1]))
+            print(f"[ASR-MLX] Off-language output redone: {result.text[:40]!r} → {again.text[:40]!r}")
+            result = again
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MLX] Transcribe done in {inference_ms}ms")
 

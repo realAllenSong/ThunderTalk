@@ -44,7 +44,7 @@ def fake_asr(monkeypatch):
     monkeypatch.setattr(transcribe, "_has_model_headroom", lambda *a: True)
     monkeypatch.setattr(cli, "resolve_asr", lambda *a: "qwen3-asr-06b-int8")
     monkeypatch.setattr(asr, "AsrEngine", lambda: SimpleNamespace(
-        set_language=lambda *a: None, set_hotwords=lambda *a: None, set_builtin_terms=lambda *a: None,
+        set_language=lambda *a: None, set_hotwords=lambda *a: None, set_builtin_terms=lambda *a: None, set_auto_languages=lambda *a: None,
         load_model=lambda *a, **kw: None, unload=lambda: None))
     def fake(path, engine, **kw):
         kw["progress"](50, "decode")

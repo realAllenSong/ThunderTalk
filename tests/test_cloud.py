@@ -806,7 +806,7 @@ def test_eval_scores_ignore_style(tmp_path):
     from thundertalk.cli_eval import latin_terms, score
     s = score("然后你要making sure,就是我们的CLI", "然后你要 making sure 对吧，就是呃我们的 CLI")
     assert s["terms"] == 2 and s["terms_hit"] == 2           # "making", "CLI" ("sure" is everyday)
-    assert s["tidy_errors"] < s["errors"]
+    assert s["errors"] == 2                   # "对吧" only: fillers are not errors
     assert latin_terms("the API and Claude Code") == ["API", "Claude", "Code"]
 
 
@@ -866,3 +866,9 @@ def test_apple_preview_is_one_decode_and_flips_language(monkeypatch):
     assert rec._last_locale == "en-US"                          # …and the next tick is English
     r = rec.recognize_quick(x, 16000, ["zh-CN", "en-US"])
     assert r.text == "so I switch to English now" and len(calls) == 2
+
+
+def test_foreign_script_guard():
+    from thundertalk.core.asr import foreign_script
+    assert foreign_script("이 보시면 돌려내.", ["zh", "en"]) and foreign_script("สั่งอาหาร", ["zh", "en"])
+    assert not foreign_script("我们的CLI和café", ["zh", "en"]) and not foreign_script("こんにちは", ["ja", "en"])

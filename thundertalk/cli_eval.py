@@ -48,6 +48,10 @@ def add_parser(sub) -> None:
     p.add_argument("--suite", choices=("standard",), help="the fixed benchmark (short/long × zh/en/mixed)")
     p.add_argument("--per-category", type=int, default=12, help="short clips per language in the suite")
     p.add_argument("--preview", action="store_true", help="replay long clips through the live preview")
+    p.add_argument("--split", choices=("test", "dev"), default="test",
+                   help="suite split: test (fixed, report) or dev (other clips, for tuning)")
+    p.add_argument("--hotwords", action="store_true", help="suite: also load the user's hotwords")
+    p.add_argument("--context", help="experiment: Qwen3-ASR context prompt ('terms' = built-in terms)")
     p.add_argument("--reference", default="", help="cloud model for clips without a reference, "
                    "e.g. openai:gpt-transcribe (sends the audio; billed)")
     p.add_argument("--engines", default="best", help="comma-separated local engines (default: best)")
@@ -66,9 +70,21 @@ their them then there these they this to too up us very was we were what when wh
 will with would yeah yes you your all any get got one two make sure maybe""".split())
 
 
+_SCORE_FILLERS = {"um", "uh", "erm", "hmm", "mm", "uhm", "呃", "嗯", "额", "哼"}
+
+
 def tokens(text: str) -> list[str]:
+    """Scoring tokens. Normalised so a reference's conventions are not counted
+    as errors: Traditional→Simplified, Chinese numbers → digits (the app's ITN),
+    fillers and [UNK] dropped, spelled-out letters joined ("i s m" = "ISM")."""
     from thundertalk.core.cloud import to_simplified
-    return [t.lower() for t in _TOKEN.findall(to_simplified(text or ""))]
+    from thundertalk.core.itn import normalize_numbers
+    text = re.sub(r"\[unk\]|<unk>", " ", text or "", flags=re.IGNORECASE)
+    # Spelled-out letters first ("i s m" → "ism"), before ITN touches spacing.
+    text = re.sub(r"(?<![A-Za-z])[A-Za-z](?:\s+[A-Za-z](?![A-Za-z]))+",
+                  lambda m: re.sub(r"\s+", "", m.group(0)), text)
+    raw = [t.lower() for t in _TOKEN.findall(normalize_numbers(to_simplified(text)))]
+    return [t for t in raw if t not in _SCORE_FILLERS]
 
 
 def edit_distance(a: list[str], b: list[str]) -> int:
@@ -124,22 +140,30 @@ def _category(seconds: float, lang: str) -> str:
     return ("long" if seconds >= 30 else "short") + "-" + lang
 
 
-def _suite_clips(per_category: int) -> list[dict]:
+def _suite_clips(per_category: int, split: str = "test") -> list[dict]:
     from thundertalk.cli import CliError
     root = corpus_root()
     try:
         manifest = json.loads((root / "manifest.json").read_text(encoding="utf-8"))
     except (OSError, ValueError):
         raise CliError("not_found", f"No eval corpus at {root} (set THUNDERTALK_EVAL_CORPUS)") from None
+    # test = the first per_category short clips per language + the long clips;
+    # dev = the next 3×per_category short clips (never scored in a report).
+    lo, hi = (0, per_category) if split == "test" else (per_category, 4 * per_category)
+    in_long = {part for r in manifest if r.get("group") == "long" for part in r.get("parts") or []}
     picked, counts = [], Counter()
     for r in manifest:
         lang, group = r.get("lang") or "", r.get("group")
+        if split == "dev" and r.get("id") in in_long:
+            continue                                    # no test audio in dev
         if lang not in ("zh", "en", "mixed") or group not in ("clean", "long"):
             continue
+        if group == "long" and split == "dev":
+            continue
         if group == "clean":
-            if counts[lang] >= per_category:
-                continue
             counts[lang] += 1
+            if not lo < counts[lang] <= hi:
+                continue
         picked.append({"path": str(root / r["path"]), "reference": r["reference"],
                        "reference_by": "human", "language": "auto",
                        "category": ("long-" if group == "long" else "short-") + lang})
@@ -199,7 +223,7 @@ def cmd_eval(a, out) -> dict:
     from thundertalk.core.asr import AsrEngine
     from thundertalk.core.models import find, get_model_path
     settings = _settings()
-    clips = ((_suite_clips(a.per_category) if a.suite else []) + (_recent_clips() if a.recent else [])
+    clips = ((_suite_clips(a.per_category, a.split) if a.suite else []) + (_recent_clips() if a.recent else [])
              + _input_clips(a.inputs))
     if not clips:
         raise CliError("bad_args", "No clips: pass audio files/folders, --recent or --suite standard")
@@ -249,9 +273,13 @@ def cmd_eval(a, out) -> dict:
         out.emit(type="stage", label="engine", engine=mid)
         with model_slot(out, heavy=not info.built_in, info=info):
             eng = AsrEngine()
-            if settings.hotwords:
+            if settings.hotwords and (a.hotwords or not a.suite):
                 eng.set_hotwords(settings.hotwords)
+            if a.context:
+                from thundertalk.core.terms import BUILTIN_TERMS
+                eng._context_override = " ".join(BUILTIN_TERMS) if a.context == "terms" else a.context
             eng.set_builtin_terms(settings.get("builtin_terms") is not False)
+            eng.set_auto_languages(settings.get("auto_languages") or ["zh", "en"])
             eng.load_model(get_model_path(mid), info.family, info.backend, memory_mode=settings.memory_mode)
             out.stage("transcribe")
             from thundertalk.core.dictation import recover_final
@@ -294,6 +322,13 @@ def cmd_eval(a, out) -> dict:
         path = Path(a.out).expanduser()
         path.write_text(_markdown(result, report, usable), encoding="utf-8")
         result["report"] = str(path)
+        # Every clip's reference and hypothesis, for rescoring and A/B diffs.
+        refs = {Path(c["path"]).name: c["reference"] for c in usable}
+        with open(path.with_suffix(".rows.jsonl"), "w", encoding="utf-8") as fh:
+            for r in report:
+                for row in r["_rows"]:
+                    fh.write(json.dumps({"engine": r["engine"], "reference": refs.get(row["clip"], ""), **row},
+                                        ensure_ascii=False) + "\n")
     return result
 
 
