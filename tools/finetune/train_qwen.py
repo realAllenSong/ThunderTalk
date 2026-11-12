@@ -48,9 +48,13 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--model", default="Qwen/Qwen3-ASR-0.6B")
     ap.add_argument("--out", default=str(ROOT / "runs" / "qwen06b"))
-    ap.add_argument("--batch", type=int, default=4)
-    ap.add_argument("--grad-acc", type=int, default=8)
-    ap.add_argument("--lr", type=float, default=1e-5)
+    ap.add_argument("--batch", type=int, default=2)
+    ap.add_argument("--grad-acc", type=int, default=16)
+    ap.add_argument("--lr", type=float, default=1e-4)
+    ap.add_argument("--lora-r", type=int, default=32, help="0 = full fine-tune (needs far more memory)")
+    ap.add_argument("--lora-mlp", action="store_true")
+    ap.add_argument("--mps-cap", type=float, default=0.4,
+                    help="share of RAM the GPU may use; beyond it training stops instead of swapping")
     ap.add_argument("--epochs", type=float, default=1.0)
     ap.add_argument("--save-steps", type=int, default=65)
     ap.add_argument("--freeze-encoder", action="store_true")
@@ -68,8 +72,11 @@ def main() -> None:
            "--batch_size", str(a.batch), "--grad_acc", str(a.grad_acc), "--lr", str(a.lr),
            "--epochs", str(a.epochs), "--save_steps", str(a.save_steps), "--save_total_limit", "6",
            "--num_workers", "0", "--pin_memory", "0", "--persistent_workers", "0",
-           "--freeze_encoder", "1" if a.freeze_encoder else "0", "--resume", "0"]
-    env = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="1", TOKENIZERS_PARALLELISM="false")
+           "--freeze_encoder", "1" if a.freeze_encoder else "0", "--resume", "0",
+           "--lora_r", str(a.lora_r), "--lora_mlp", "1" if a.lora_mlp else "0"]
+    env = dict(os.environ, PYTORCH_ENABLE_MPS_FALLBACK="1", TOKENIZERS_PARALLELISM="false",
+               PYTORCH_MPS_HIGH_WATERMARK_RATIO=str(a.mps_cap),
+               PYTORCH_MPS_LOW_WATERMARK_RATIO=str(round(a.mps_cap * 0.8, 2)))
     sys.exit(subprocess.call(cmd, env=env))
 
 

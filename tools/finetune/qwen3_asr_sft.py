@@ -189,6 +189,18 @@ def copy_required_hf_files_for_qwen_asr(src_dir: str, dst_dir: str):
             shutil.copy2(src, os.path.join(dst_dir, fn))
 
 
+class FreeMpsCacheCallback(TrainerCallback):
+    """MPS keeps a block per tensor shape; batches of different lengths make
+    the cache grow until it hits the cap. Release it after every step."""
+
+    def on_step_end(self, args, state, control, **kwargs):
+        if torch.backends.mps.is_available():
+            torch.mps.empty_cache()
+        return control
+
+    on_substep_end = on_step_end
+
+
 class MakeEveryCheckpointInferableCallback(TrainerCallback):
     def __init__(self, base_model_path: str):
         self.base_model_path = base_model_path
@@ -241,6 +253,8 @@ def parse_args():
     p.add_argument("--resume_from", type=str, default="")
     p.add_argument("--resume", type=int, default=0)
     p.add_argument("--freeze_encoder", type=int, default=0)
+    p.add_argument("--lora_r", type=int, default=0)
+    p.add_argument("--lora_mlp", type=int, default=0)
 
     return p.parse_args()
 
@@ -270,6 +284,17 @@ def main():
 
     patch_outer_forward(model)
     model.generation_config = GenerationConfig.from_model_config(model.config)
+    if args_cli.lora_r > 0:
+        # LoRA on the language model's attention (and MLP) projections only: a
+        # full fine-tune's gradients and optimizer state do not fit next to a
+        # user's apps on a 36 GB Mac. Merged back afterwards (merge_lora.py),
+        # so the tuned model is exactly as fast as the base.
+        from peft import LoraConfig, get_peft_model
+        mods = "q_proj|k_proj|v_proj|o_proj" + ("|gate_proj|up_proj|down_proj" if args_cli.lora_mlp else "")
+        model = get_peft_model(model, LoraConfig(
+            r=args_cli.lora_r, lora_alpha=args_cli.lora_r, lora_dropout=0.05, bias="none",
+            target_modules=rf"thinker\.model\.layers\.\d+\.(self_attn|mlp)\.({mods})"))
+        model.print_trainable_parameters()
 
     raw_ds = load_dataset(
         "json",
@@ -324,7 +349,8 @@ def main():
         eval_dataset=ds.get("validation", None),
         data_collator=collator,
         tokenizer=processor.tokenizer,
-        callbacks=[MakeEveryCheckpointInferableCallback(base_model_path=args_cli.model_path)],
+        callbacks=[MakeEveryCheckpointInferableCallback(base_model_path=args_cli.model_path),
+                   FreeMpsCacheCallback()],
     )
 
     resume_from = (args_cli.resume_from or "").strip()
