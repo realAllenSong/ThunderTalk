@@ -371,15 +371,15 @@ def _local_mlx_dir(model_id: str) -> Optional[Path]:
     return d if (d / "model.safetensors").is_file() and (d / "config.json").is_file() else None
 
 
-# ThunderTalk's fine-tune of Qwen3-ASR-0.6B (tools/finetune). Its weights are
-# not published yet, so it is listed only where the folder has been installed
-# by hand; nobody else sees a model they cannot download.
-if _local_mlx_dir(TUNED_QWEN_ID) is not None:
-    _base = next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-mlx")
-    from dataclasses import replace as _replace
-    BUILTIN_MODELS.insert(BUILTIN_MODELS.index(_base) + 1, _replace(
-        _base, id=TUNED_QWEN_ID, name="Qwen3-ASR-0.6B Tuned", variant="MLX fp16 · ThunderTalk",
-        download_url="", notes="Fine-tuned for Chinese–English mixed and short dictation · same speed"))
+# ThunderTalk's fine-tune of Qwen3-ASR-0.6B (tools/finetune; model card at
+# huggingface.co/Oulasong/Qwen3-ASR-0.6B-ThunderTalk). Optional: the base model
+# stays the default.
+_base = next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-mlx")
+from dataclasses import replace as _replace  # noqa: E402
+BUILTIN_MODELS.insert(BUILTIN_MODELS.index(_base) + 1, _replace(
+    _base, id=TUNED_QWEN_ID, name="Qwen3-ASR-0.6B Tuned", variant="MLX fp16 · ThunderTalk",
+    download_url="hf://Oulasong/Qwen3-ASR-0.6B-ThunderTalk",
+    notes="Fine-tuned for short and mixed Chinese–English dictation · same speed"))
 
 
 def is_downloaded(model_id: str) -> bool:

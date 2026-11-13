@@ -32,6 +32,12 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.14.1
+
+- **Qwen3-ASR-0.6B Tuned (optional model):** ThunderTalk's own fine-tune of Qwen3-ASR-0.6B for short and mixed Chinese–English dictation. On the standard test set it makes fewer errors at the same speed (8.7% → 8.0% token errors; short Chinese 6.9% → 5.0%, short English 20.2% → 17.2%, short mixed 16.1% → 14.7%). Download it on the Models page; the original model stays the default. [Model card](https://huggingface.co/Oulasong/Qwen3-ASR-0.6B-ThunderTalk).
+- **MOSS-Transcribe-Diarize no longer skips sentences in long dictations:** takes over a minute are decoded in pieces cut at pauses (long English recordings: 33.8% → 18.0% token errors).
+- **The live preview stays on with slower models:** one slow update no longer switches the preview off for the rest of a recording. With Qwen3-ASR-1.7B it now lasts to the end on 5 of 8 long test recordings (was 0 of 8), and a further limit on how much audio each update decodes is included.
+
 ## New in v1.14.0
 
 - **Cloud engines, bring your own key (optional):** use OpenAI, Google Gemini, Groq, ElevenLabs or any OpenAI-compatible server for transcription, dictation and Studio ▸ Speak. Add a key under **Models ▸ Cloud APIs**; it is stored in the macOS Keychain. ThunderTalk stays fully offline until you pick a cloud engine, and `auto`/`best` never choose one. See [Cloud engines](#cloud-engines-optional).
