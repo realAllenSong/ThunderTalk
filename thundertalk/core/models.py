@@ -362,6 +362,26 @@ def get_models_dir() -> Path:
     return base
 
 
+TUNED_QWEN_ID = "qwen3-asr-06b-tuned-mlx"
+
+
+def _local_mlx_dir(model_id: str) -> Optional[Path]:
+    """A complete MLX model folder under ~/.thundertalk/models, if present."""
+    d = Path.home() / ".thundertalk" / "models" / model_id
+    return d if (d / "model.safetensors").is_file() and (d / "config.json").is_file() else None
+
+
+# ThunderTalk's fine-tune of Qwen3-ASR-0.6B (tools/finetune). Its weights are
+# not published yet, so it is listed only where the folder has been installed
+# by hand; nobody else sees a model they cannot download.
+if _local_mlx_dir(TUNED_QWEN_ID) is not None:
+    _base = next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-mlx")
+    from dataclasses import replace as _replace
+    BUILTIN_MODELS.insert(BUILTIN_MODELS.index(_base) + 1, _replace(
+        _base, id=TUNED_QWEN_ID, name="Qwen3-ASR-0.6B Tuned", variant="MLX fp16 · ThunderTalk",
+        download_url="", notes="Fine-tuned for Chinese–English mixed and short dictation · same speed"))
+
+
 def is_downloaded(model_id: str) -> bool:
     """Ready to load. For a cloud model: its provider has a key (and URL)."""
     if model_id and ":" in model_id:
@@ -382,7 +402,9 @@ def is_downloaded(model_id: str) -> bool:
         # mlx-qwen3-asr resolves them). This used to return True
         # unconditionally, so a fresh install showed "Activate" and the
         # multi-GB download happened invisibly inside load_model().
-        return _hf_cache_has(info.download_url[len("hf://"):])
+        if _local_mlx_dir(model_id) is not None:
+            return True
+        return bool(info.download_url) and _hf_cache_has(info.download_url[len("hf://"):])
     if info and info.backend == "mlx-moss":
         d = get_models_dir() / model_id
         if d.is_dir() and any(f.suffix == ".safetensors" for f in d.iterdir()):
@@ -409,7 +431,8 @@ def get_model_path(model_id: str) -> Optional[str]:
     if info and info.built_in:
         return "apple://speech"
     if info and info.backend == "mlx":
-        return info.download_url  # "hf://Qwen/Qwen3-ASR-0.6B" — resolved by asr.py
+        local = _local_mlx_dir(model_id)
+        return str(local) if local else info.download_url  # "hf://Qwen/Qwen3-ASR-0.6B" — resolved by asr.py
     if info and info.backend == "mlx-moss":
         d = get_models_dir() / model_id
         if d.is_dir():

@@ -153,6 +153,12 @@ EXTRA: dict[str, dict[str, str]] = {
         "en": "30 languages and 22 Chinese dialects.",
         "zh": "支持 30 种语言及 22 种中文方言。",
     },
+    "model.blurb.qwen3-asr-06b-tuned-mlx": {
+        "en": "ThunderTalk's fine-tune of Qwen3-ASR-0.6B: fewer errors on short and mixed Chinese–English "
+              "dictation at the same speed (8.7% → 8.0% token errors on the standard test set).",
+        "zh": "ThunderTalk 微调的 Qwen3-ASR-0.6B：短句和中英混合听写更准，速度不变"
+              "（标准测试集错误率 8.7% → 8.0%）。",
+    },
     "model.blurb.qwen3-asr-06b-int8": {
         "en": "Runs on the CPU, at about the same speed as the GPU build.",
         "zh": "在 CPU 上运行，速度与 GPU 版相当。",

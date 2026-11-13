@@ -512,7 +512,7 @@ def active_model_id(engine) -> str:
         return current
     path = getattr(engine, "_model_dir", "")
     for m in BUILTIN_MODELS:
-        if current == m.id or path == m.download_url or Path(path).name == m.id:
+        if current == m.id or (m.download_url and path == m.download_url) or Path(path).name == m.id:
             return m.id
         if current == m.name and getattr(engine, "active_backend", "") == m.backend:
             return m.id
