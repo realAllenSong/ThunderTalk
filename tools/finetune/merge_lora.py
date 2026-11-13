@@ -20,6 +20,7 @@ def main() -> None:
     ap.add_argument("checkpoint")
     ap.add_argument("out")
     ap.add_argument("--base", default="Qwen/Qwen3-ASR-0.6B")
+    ap.add_argument("--scale", type=float, default=1.0, help="LoRA strength (1 = as trained)")
     a = ap.parse_args()
     from huggingface_hub import snapshot_download
     from peft import PeftModel
@@ -27,7 +28,13 @@ def main() -> None:
     from qwen3_asr_sft import copy_required_hf_files_for_qwen_asr
     base_dir = a.base if os.path.isdir(a.base) else snapshot_download(a.base)
     wrapper = Qwen3ASRModel.from_pretrained(base_dir, dtype=torch.float32, device_map=None)
-    merged = PeftModel.from_pretrained(wrapper.model, a.checkpoint).merge_and_unload()
+    peft_model = PeftModel.from_pretrained(wrapper.model, a.checkpoint)
+    if a.scale != 1.0:
+        # Weight-space interpolation between the base (0) and the tuned model (1).
+        for module in peft_model.modules():
+            if hasattr(module, "scale_layer"):
+                module.scale_layer(a.scale)
+    merged = peft_model.merge_and_unload()
     from transformers import GenerationConfig
     merged.generation_config = GenerationConfig.from_model_config(merged.config)   # base file is copied below
     os.makedirs(a.out, exist_ok=True)
