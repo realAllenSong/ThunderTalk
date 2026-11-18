@@ -56,6 +56,24 @@ def _parse_combo(combo_str: str) -> list[str]:
     return [p.strip().lower() for p in combo_str.split("+") if p.strip()]
 
 
+def input_activity() -> int:
+    """How many key presses, mouse clicks and scrolls the system has seen so
+    far (HID level, no extra permission). A shortcut taken over by another
+    app (Raycast/AltTab's ⌥Tab) never reaches our event monitor, but it still
+    moves this counter (#12). Modifiers alone don't count (they are
+    flags-changed events), and they never auto-repeat. 0 if unavailable."""
+    if _SYSTEM != "Darwin":
+        return 0
+    try:
+        import Quartz
+        st = Quartz.kCGEventSourceStateHIDSystemState
+        return sum(int(Quartz.CGEventSourceCounterForEventType(st, t)) for t in (
+            Quartz.kCGEventKeyDown, Quartz.kCGEventLeftMouseDown, Quartz.kCGEventRightMouseDown,
+            Quartz.kCGEventOtherMouseDown, Quartz.kCGEventScrollWheel))
+    except Exception:                              # noqa: BLE001
+        return 0
+
+
 def _is_modifier_name(name: str) -> bool:
     return name in _ALL_MODIFIER_NAMES
 

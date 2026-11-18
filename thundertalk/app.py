@@ -1095,6 +1095,7 @@ def main() -> None:
 
     # Hold to Record (#11): see core/hold.py.
     from thundertalk.core.hold import HoldGate
+    from thundertalk.core.hotkey import input_activity
     hold_gate = HoldGate(
         hold_mode=lambda: settings.get("press_mode") == "hold",
         delay_ms=lambda: int(settings.get("hold_delay_ms") or 300),
@@ -1102,6 +1103,7 @@ def main() -> None:
         toggle=on_toggle,
         log=audio_diagnostic,
         modifier_only=lambda: _hotkey_is_modifier_only(settings.hotkey),
+        activity=input_activity,
     )
     pipe.press_signal.connect(hold_gate.press, Qt.QueuedConnection)
     pipe.release_signal.connect(hold_gate.release, Qt.QueuedConnection)

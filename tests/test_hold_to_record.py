@@ -69,6 +69,7 @@ class Fake:
     def __init__(self, mode="hold", delay=300, modifier_only=False):
         self.mode, self.delay, self.recording, self.calls, self.logs = mode, delay, False, [], []
         self.modifier_only = modifier_only
+        self.counter = 0                               # system input counter (key/click/scroll)
 
     def toggle(self):
         self.recording = not self.recording
@@ -79,7 +80,7 @@ class Fake:
         return HoldGate(hold_mode=lambda: self.mode == "hold", delay_ms=lambda: self.delay,
                         busy=lambda: self.recording, toggle=self.toggle,
                         log=lambda ev, **k: self.logs.append(ev),
-                        modifier_only=lambda: self.modifier_only)
+                        modifier_only=lambda: self.modifier_only, activity=lambda: self.counter)
 
 
 def wait(qapp, ms):
@@ -272,3 +273,42 @@ def test_app_detects_modifier_only_hotkeys():
         return bool(parts) and all(_is_modifier_name(p) for p in parts)
     assert mod_only("alt_l") and mod_only("cmd_r") and mod_only("ctrl_l+alt_l")
     assert not mod_only("f4") and not mod_only("cmd_l+space") and not mod_only("")
+
+
+def test_option_tab_taken_by_another_app_still_does_not_toggle(qapp):
+    """Raycast/AltTab consume ⌥Tab before our monitor sees Tab: no chord
+    report arrives, but the system input counter moves."""
+    f = Fake(mode="toggle", modifier_only=True)
+    g = f.gate()
+    g.press()
+    f.counter += 1                                     # Tab, seen only by the system
+    g.release()
+    assert f.calls == [] and "toggle_chord_ignored" in f.logs
+    g.press(); g.release()                             # a clean tap still works
+    assert f.calls == ["start"]
+
+
+def test_hold_mode_modifier_shortcut_taken_by_another_app(qapp):
+    f = Fake(mode="hold", delay=100, modifier_only=True)
+    g = f.gate()
+    g.press()
+    f.counter += 1
+    wait(qapp, 200)
+    g.release()
+    assert f.calls == [] and "hold_chord_ignored" in f.logs
+
+
+def test_counter_is_ignored_for_function_keys(qapp):
+    f = Fake(mode="hold", delay=100, modifier_only=False)
+    g = f.gate()
+    g.press()
+    f.counter += 5                                     # F4 auto-repeat moves the counter
+    wait(qapp, 200)
+    assert f.calls == ["start"]
+    g.release()
+    assert f.calls == ["start", "stop"]
+
+
+def test_input_activity_reads_the_system_counter():
+    from thundertalk.core.hotkey import input_activity
+    assert isinstance(input_activity(), int) and input_activity() > 0
