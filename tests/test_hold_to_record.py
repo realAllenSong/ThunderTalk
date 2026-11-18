@@ -66,8 +66,9 @@ def test_settings_offers_hold_and_remembers_it(qapp, isolated_home):
 
 
 class Fake:
-    def __init__(self, mode="hold", delay=300):
+    def __init__(self, mode="hold", delay=300, modifier_only=False):
         self.mode, self.delay, self.recording, self.calls, self.logs = mode, delay, False, [], []
+        self.modifier_only = modifier_only
 
     def toggle(self):
         self.recording = not self.recording
@@ -77,7 +78,8 @@ class Fake:
         from thundertalk.core.hold import HoldGate
         return HoldGate(hold_mode=lambda: self.mode == "hold", delay_ms=lambda: self.delay,
                         busy=lambda: self.recording, toggle=self.toggle,
-                        log=lambda ev, **k: self.logs.append(ev))
+                        log=lambda ev, **k: self.logs.append(ev),
+                        modifier_only=lambda: self.modifier_only)
 
 
 def wait(qapp, ms):
@@ -192,3 +194,81 @@ def test_custom_hold_delay_is_typed_and_remembered(qapp, isolated_home):
     assert not spin.isVisible() and prefs.get("hold_delay_ms") == 500
     page.close()
     page2.close()
+
+
+# ── #12: Toggle with a modifier-only hotkey (Left ⌥) ─────────────────────
+
+ALT = 58
+F_ALT = 1 << 19
+TAB = 48
+
+
+def test_toggle_modifier_tap_toggles_on_release(qapp):
+    f = Fake(mode="toggle", modifier_only=True)
+    g = f.gate()
+    g.press()
+    assert f.calls == []                               # nothing while ⌥ is down
+    g.release()
+    assert f.calls == ["start"]
+    g.press(); g.release()
+    assert f.calls == ["start", "stop"]
+
+
+def test_toggle_modifier_with_tab_never_toggles(qapp):
+    f = Fake(mode="toggle", modifier_only=True)
+    g = f.gate()
+    g.press(); g.chord(); g.release()                  # ⌥Tab: switch windows
+    assert f.calls == [] and "toggle_chord_ignored" in f.logs
+    f.toggle()                                         # a take is running…
+    g.press(); g.chord(); g.release()                  # …⌥Tab does not stop it either
+    assert f.calls == ["start"]
+
+
+def test_toggle_modifier_long_press_is_not_a_tap(qapp, monkeypatch):
+    from thundertalk.core import hold
+    monkeypatch.setattr(hold, "TAP_MAX_MS", 50)
+    f = Fake(mode="toggle", modifier_only=True)
+    g = f.gate()
+    g.press()
+    wait(qapp, 120)
+    g.release()
+    assert f.calls == [] and "toggle_long_press_ignored" in f.logs
+
+
+def test_toggle_function_key_still_fires_on_press(qapp):
+    f = Fake(mode="toggle", modifier_only=False)
+    g = f.gate()
+    g.press()
+    assert f.calls == ["start"]                        # F4 / ⌘⇧Space: instant, as before
+
+
+def test_listener_option_tab_and_option_click_are_chords():
+    calls = []
+    hk = HotkeyListener(lambda: calls.append("down"), "alt_l", on_release=lambda: calls.append("up"),
+                        on_chord=lambda: calls.append("chord"))
+    hk._handle_event(Ev(12, ALT, F_ALT))
+    hk._handle_event(Ev(10, TAB))                      # ⌥Tab
+    hk._handle_event(Ev(11, TAB))
+    hk._handle_event(Ev(12, ALT, 0))
+    assert calls == ["down", "chord", "up"]
+
+    class Click:                                       # mouse events have no keyCode
+        def type(self):
+            return 1
+        def keyCode(self):
+            raise AssertionError("keyCode read on a mouse event")
+    calls.clear()
+    hk._handle_event(Click())                          # click without ⌥: nothing
+    hk._handle_event(Ev(12, ALT, F_ALT))
+    hk._handle_event(Click())                          # ⌥-click
+    hk._handle_event(Ev(12, ALT, 0))
+    assert calls == ["down", "chord", "up"]
+
+
+def test_app_detects_modifier_only_hotkeys():
+    from thundertalk.core.hotkey import _is_modifier_name, _parse_combo
+    def mod_only(c):
+        parts = _parse_combo(c)
+        return bool(parts) and all(_is_modifier_name(p) for p in parts)
+    assert mod_only("alt_l") and mod_only("cmd_r") and mod_only("ctrl_l+alt_l")
+    assert not mod_only("f4") and not mod_only("cmd_l+space") and not mod_only("")

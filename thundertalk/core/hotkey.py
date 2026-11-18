@@ -67,6 +67,11 @@ def _is_modifier_name(name: str) -> bool:
 if _SYSTEM == "Darwin":
     from AppKit import NSEvent, NSKeyDownMask, NSKeyUpMask, NSFlagsChangedMask
 
+    # Mouse buttons and the scroll wheel used together with a held hotkey
+    # (⌥-click, ⌘-scroll) make it a shortcut, like another key would (#12).
+    _MOUSE_EVENT_TYPES = {1, 3, 25, 22}       # left/right/other mouse down, scroll wheel
+    _MOUSE_MASK = (1 << 1) | (1 << 3) | (1 << 25) | (1 << 22)
+
     class HotkeyListener:
         def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
                      on_release: Optional[Callable[[], None]] = None,
@@ -89,7 +94,7 @@ if _SYSTEM == "Darwin":
                 self._fired = False
 
         def start(self) -> None:
-            mask = NSKeyDownMask | NSKeyUpMask | NSFlagsChangedMask
+            mask = NSKeyDownMask | NSKeyUpMask | NSFlagsChangedMask | _MOUSE_MASK
 
             # Global monitor: catches keys when OTHER apps are focused
             gm = NSEvent.addGlobalMonitorForEventsMatchingMask_handler_(
@@ -124,6 +129,10 @@ if _SYSTEM == "Darwin":
         def _handle_event(self, event) -> None:
             try:
                 etype = event.type()
+                if etype in _MOUSE_EVENT_TYPES:     # mouse events have no keyCode
+                    if self._fired and self._on_chord_cb is not None:
+                        self._on_chord_cb()
+                    return
                 vk = event.keyCode()
                 # 10 = NSKeyDown, 11 = NSKeyUp, 12 = NSFlagsChanged
                 if etype == 10:  # key down

@@ -309,8 +309,10 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Activation Mode", "zh": "激活模式",
     },
     "settings.section.activation_mode_desc": {
-        "en": "Toggle: press to start, press again to stop. Hold: record while the key is held, release to finish.",
-        "zh": "切换：按一次开始，再按一次结束。按住：按住时录音，松开结束。",
+        "en": "Toggle: press to start, press again to stop. Hold: record while the key is held, release to finish. "
+              "A modifier key such as Left ⌥ toggles when you let go, so shortcuts like ⌥Tab or ⌥-click don't start a recording.",
+        "zh": "切换：按一次开始，再按一次结束。按住：按住时录音，松开结束。"
+              "用 Left ⌥ 这类修饰键时，松开才切换，⌥Tab、⌥+点击等组合不会开始录音。",
     },
     "settings.section.input_device": {"en": "Input Device", "zh": "输入设备"},
     "settings.section.recording": {"en": "Recording", "zh": "录音"},

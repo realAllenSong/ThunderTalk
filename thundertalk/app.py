@@ -1088,6 +1088,11 @@ def main() -> None:
 
     pipe.toggle_signal.connect(on_toggle, Qt.QueuedConnection)
 
+    def _hotkey_is_modifier_only(combo: str) -> bool:
+        from thundertalk.core.hotkey import _is_modifier_name, _parse_combo
+        parts = _parse_combo(combo or "")
+        return bool(parts) and all(_is_modifier_name(p) for p in parts)
+
     # Hold to Record (#11): see core/hold.py.
     from thundertalk.core.hold import HoldGate
     hold_gate = HoldGate(
@@ -1096,6 +1101,7 @@ def main() -> None:
         busy=lambda: pipe._recording or pipe._starting,
         toggle=on_toggle,
         log=audio_diagnostic,
+        modifier_only=lambda: _hotkey_is_modifier_only(settings.hotkey),
     )
     pipe.press_signal.connect(hold_gate.press, Qt.QueuedConnection)
     pipe.release_signal.connect(hold_gate.release, Qt.QueuedConnection)
