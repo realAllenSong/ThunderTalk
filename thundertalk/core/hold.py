@@ -32,14 +32,14 @@ class HoldGate(QObject):
                  busy: Callable[[], bool], toggle: Callable[[], None],
                  log: Callable[..., None] = lambda *a, **k: None,
                  modifier_only: Callable[[], bool] = lambda: False,
-                 activity: Callable[[], int] = lambda: 0) -> None:
+                 activity: Callable[[], tuple[int, int]] = lambda: (0, 0)) -> None:
         super().__init__()
         self._hold_mode, self._delay_ms, self._busy = hold_mode, delay_ms, busy
         self._toggle, self._log, self._modifier_only = toggle, log, modifier_only
         self._take = False
         self._tap_since: float | None = None      # Toggle + modifier-only: pressed, not yet a tap
         self._activity = activity
-        self._activity_at_press = 0
+        self._activity_at_press = (0, 0)
         self._timer = QTimer(self)
         self._timer.setSingleShot(True)
         self._timer.timeout.connect(self._start)
@@ -48,11 +48,18 @@ class HoldGate(QObject):
     def armed(self) -> bool:
         return self._timer.isActive()
 
-    def _other_input_since_press(self) -> bool:
-        return self._modifier_only() and self._activity() != self._activity_at_press
+    def _other_input_since_press(self, own_flag_changes: int = 0) -> bool:
+        """Anything besides the hotkey since it went down: a key, click or
+        scroll, or more modifier/Caps Lock changes than the hotkey's own
+        (``own_flag_changes``: 1 when called on its release)."""
+        if not self._modifier_only():
+            return False
+        keys, flags = self._activity()
+        keys0, flags0 = self._activity_at_press
+        return keys != keys0 or flags - flags0 > own_flag_changes
 
     def press(self) -> None:
-        self._activity_at_press = self._activity() if self._modifier_only() else 0
+        self._activity_at_press = self._activity() if self._modifier_only() else (0, 0)
         if not self._hold_mode():
             if self._modifier_only():
                 self._tap_since = time.monotonic()
@@ -68,7 +75,7 @@ class HoldGate(QObject):
         if self._tap_since is not None:
             held_ms = (time.monotonic() - self._tap_since) * 1000
             self._tap_since = None
-            if self._other_input_since_press():
+            if self._other_input_since_press(own_flag_changes=1):
                 self._log("toggle_chord_ignored", source="system")
             elif held_ms <= TAP_MAX_MS:
                 self._toggle()

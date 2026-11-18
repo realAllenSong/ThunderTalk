@@ -70,6 +70,7 @@ class Fake:
         self.mode, self.delay, self.recording, self.calls, self.logs = mode, delay, False, [], []
         self.modifier_only = modifier_only
         self.counter = 0                               # system input counter (key/click/scroll)
+        self.flags = 0                                 # system modifier/Caps Lock changes
 
     def toggle(self):
         self.recording = not self.recording
@@ -80,7 +81,7 @@ class Fake:
         return HoldGate(hold_mode=lambda: self.mode == "hold", delay_ms=lambda: self.delay,
                         busy=lambda: self.recording, toggle=self.toggle,
                         log=lambda ev, **k: self.logs.append(ev),
-                        modifier_only=lambda: self.modifier_only, activity=lambda: self.counter)
+                        modifier_only=lambda: self.modifier_only, activity=lambda: (self.counter, self.flags))
 
 
 def wait(qapp, ms):
@@ -282,9 +283,10 @@ def test_option_tab_taken_by_another_app_still_does_not_toggle(qapp):
     g = f.gate()
     g.press()
     f.counter += 1                                     # Tab, seen only by the system
+    f.flags += 1                                       # ⌥ up
     g.release()
     assert f.calls == [] and "toggle_chord_ignored" in f.logs
-    g.press(); g.release()                             # a clean tap still works
+    g.press(); f.flags += 1; g.release()               # a clean tap: only ⌥'s own release
     assert f.calls == ["start"]
 
 
@@ -309,6 +311,30 @@ def test_counter_is_ignored_for_function_keys(qapp):
     assert f.calls == ["start", "stop"]
 
 
-def test_input_activity_reads_the_system_counter():
+def test_option_with_caps_lock_or_another_modifier_does_not_toggle(qapp):
+    f = Fake(mode="toggle", modifier_only=True)
+    g = f.gate()
+    for extra in (2, 1):                               # Caps Lock down+up / one edge only
+        g.press()
+        f.flags += extra                               # Caps Lock, Right ⌥ or ⌘ with Left ⌥ held
+        f.flags += 1                                   # Left ⌥ up
+        g.release()
+    assert f.calls == [] and f.logs.count("toggle_chord_ignored") == 2
+
+
+def test_listener_caps_lock_and_other_modifiers_are_chords():
+    CAPS, CMD, ALT_R = 57, 55, 61
+    for vk, flags in ((CAPS, F_ALT | (1 << 16)), (CMD, F_ALT | (1 << 20)), (ALT_R, F_ALT)):
+        calls = []
+        hk = HotkeyListener(lambda: calls.append("down"), "alt_l", on_release=lambda: calls.append("up"),
+                            on_chord=lambda: calls.append("chord"))
+        hk._handle_event(Ev(12, ALT, F_ALT))
+        hk._handle_event(Ev(12, vk, flags))
+        hk._handle_event(Ev(12, ALT, 0))
+        assert calls[:2] == ["down", "chord"] and "up" in calls, (vk, calls)
+
+
+def test_input_activity_reads_the_system_counters():
     from thundertalk.core.hotkey import input_activity
-    assert isinstance(input_activity(), int) and input_activity() > 0
+    keys, flags = input_activity()
+    assert keys > 0 and flags > 0

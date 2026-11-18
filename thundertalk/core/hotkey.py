@@ -56,22 +56,22 @@ def _parse_combo(combo_str: str) -> list[str]:
     return [p.strip().lower() for p in combo_str.split("+") if p.strip()]
 
 
-def input_activity() -> int:
-    """How many key presses, mouse clicks and scrolls the system has seen so
-    far (HID level, no extra permission). A shortcut taken over by another
-    app (Raycast/AltTab's ⌥Tab) never reaches our event monitor, but it still
-    moves this counter (#12). Modifiers alone don't count (they are
-    flags-changed events), and they never auto-repeat. 0 if unavailable."""
+def input_activity() -> tuple[int, int]:
+    """System-wide counts so far (HID level, no extra permission):
+    (key presses + mouse clicks + scrolls, modifier/Caps Lock changes).
+    A shortcut another app consumes (Raycast/AltTab's ⌥Tab) never reaches our
+    event monitor but still moves these counters (#12). (0, 0) if unavailable."""
     if _SYSTEM != "Darwin":
-        return 0
+        return (0, 0)
     try:
         import Quartz
         st = Quartz.kCGEventSourceStateHIDSystemState
-        return sum(int(Quartz.CGEventSourceCounterForEventType(st, t)) for t in (
-            Quartz.kCGEventKeyDown, Quartz.kCGEventLeftMouseDown, Quartz.kCGEventRightMouseDown,
-            Quartz.kCGEventOtherMouseDown, Quartz.kCGEventScrollWheel))
+        n = lambda t: int(Quartz.CGEventSourceCounterForEventType(st, t))   # noqa: E731
+        return (n(Quartz.kCGEventKeyDown) + n(Quartz.kCGEventLeftMouseDown) + n(Quartz.kCGEventRightMouseDown)
+                + n(Quartz.kCGEventOtherMouseDown) + n(Quartz.kCGEventScrollWheel),
+                n(Quartz.kCGEventFlagsChanged))
     except Exception:                              # noqa: BLE001
-        return 0
+        return (0, 0)
 
 
 def _is_modifier_name(name: str) -> bool:
@@ -162,6 +162,10 @@ if _SYSTEM == "Darwin":
                     self._check_release()
                 elif etype == 12:  # flags changed (modifiers)
                     flags = event.modifierFlags()
+                    if vk not in self._combo_vks() and self._fired and self._on_chord_cb is not None:
+                        # Caps Lock, Fn or another modifier with the hotkey held
+                        # (either edge: Caps Lock may report only one).
+                        self._on_chord_cb()
                     is_pressed = self._is_modifier_pressed(vk, flags)
                     if is_pressed:
                         self._pressed_vks.add(vk)
@@ -192,8 +196,10 @@ if _SYSTEM == "Darwin":
 
         def _check_chord(self, vk: int) -> None:
             """Another key went down while the hotkey is held (⌃ then C):
-            the user is typing a shortcut, not asking to dictate."""
-            if self._fired and self._on_chord_cb is not None and vk not in self._combo_vks():
+            the user is typing a shortcut, not asking to dictate. (Modifier
+            keys are reported from the flags-changed branch.)"""
+            if (self._fired and self._on_chord_cb is not None and vk not in self._combo_vks()
+                    and vk not in _MAC_MODIFIER_VK.values()):
                 self._on_chord_cb()
 
         def _check_release(self) -> None:
