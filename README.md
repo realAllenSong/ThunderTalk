@@ -32,6 +32,10 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.14.3
+
+- **Esc cancels a dictation:** press Esc while recording or transcribing and nothing is inserted; the bar shows "Cancelled". While a dictation is in progress, ThunderTalk keeps that Esc to itself, so it doesn't also stop Claude Code, take Vim out of insert mode or leave full screen; the rest of the time Esc works as usual. ⌘⌥Esc (Force Quit) and other Esc shortcuts are never touched. If "Keep recent recordings" is on, the cancelled take stays in History, marked as cancelled, so a slip of the finger can be recovered. Cancelled takes don't count toward your totals ([#13](https://github.com/realAllenSong/ThunderTalk/issues/13)).
+
 ## New in v1.14.2
 
 - **A modifier hotkey no longer fires inside shortcuts (Toggle mode):** with a hotkey such as Left ⌥, a recording starts or stops when you let go of it, and only if nothing else was pressed or clicked meanwhile. ⌥Tab, ⌥ plus a letter, ⌥ with Caps Lock, ⌘ or the other ⌥, and ⌥-click all leave dictation alone, including shortcuts that another app such as Raycast or AltTab takes over. Function keys like F4 and key combos still start the instant you press them ([#12](https://github.com/realAllenSong/ThunderTalk/issues/12)).

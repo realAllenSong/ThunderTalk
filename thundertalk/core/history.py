@@ -325,16 +325,20 @@ class HistoryStore:
 
     @property
     def total_duration_secs(self) -> float:
-        return sum(e.duration_secs for e in self._entries)
+        return sum(e.duration_secs for e in self._counted())
 
     @property
     def total_characters(self) -> int:
-        return sum(len(e.text) for e in self._entries)
+        return sum(len(e.text) for e in self._counted())
 
     @property
     def total_units(self) -> int:
-        return sum(count_units(e.text) for e in self._entries)
+        return sum(count_units(e.text) for e in self._counted())
 
     @property
     def session_count(self) -> int:
-        return len(self._entries)
+        return sum(1 for _ in self._counted())
+
+    def _counted(self):
+        """Takes cancelled with Esc (#13) stay listed but don't count."""
+        return (e for e in self._entries if e.recognition_source != "cancelled")

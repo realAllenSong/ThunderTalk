@@ -61,6 +61,7 @@ _STRINGS: dict[str, dict[str, str]] = {
     "home.preview_recovered": {"en": "Recovered from live preview", "zh": "已从实时预览恢复"},
     "home.recognition_failed": {"en": "Recognition failed — recording kept for retry", "zh": "识别失败，已保留录音以便重试"},
     "home.recognition_partial": {"en": "Partial recognition — recording kept for retry", "zh": "识别不完整，已保留录音以便重试"},
+    "home.cancelled": {"en": "Cancelled with Esc — not inserted", "zh": "已按 Esc 取消，未插入"},
     "home.open_recording": {"en": "Open recording folder", "zh": "打开录音所在文件夹"},
     "overlay.recognition_failed": {"en": "Recognition failed · audio kept in History", "zh": "识别失败 · 已在历史记录中保留录音"},
     "home.clear": {"en": "Clear", "zh": "清空"},
@@ -267,8 +268,8 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     "settings.hotkey": {"en": "Hotkey", "zh": "快捷键"},
     "settings.hotkey_desc": {
-        "en": "Global key to start and stop recording.",
-        "zh": "用于全局启停录音的按键。",
+        "en": "Global key to start and stop recording. Press Esc while dictating to cancel without inserting anything.",
+        "zh": "用于全局启停录音的按键。听写时按 Esc 可取消，不插入任何文字。",
     },
     "settings.press_mode": {"en": "Press mode", "zh": "按键模式"},
     "settings.press_mode_desc": {
@@ -588,6 +589,7 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     # ── Overlay ─────────────────────────────────────────────────────
     "overlay.listening": {"en": "Listening…", "zh": "正在聆听…"},
+    "overlay.cancelled": {"en": "Cancelled · nothing inserted", "zh": "已取消 · 未插入文字"},
     "overlay.transcribing": {"en": "Transcribing…", "zh": "正在转写…"},
 
     # ── Capture ─────────────────────────────────────────────────────

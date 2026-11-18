@@ -10,6 +10,7 @@ Hotkey format: modifier keys joined with '+', e.g.:
 from __future__ import annotations
 
 import platform
+import threading
 import traceback
 from typing import Callable, Optional
 
@@ -78,6 +79,23 @@ def _is_modifier_name(name: str) -> bool:
     return name in _ALL_MODIFIER_NAMES
 
 
+ESC_VK = 53
+_CMD, _SHIFT, _ALT, _CTRL = 1 << 20, 1 << 17, 1 << 19, 1 << 18
+
+
+def escape_cancels(combo: list[str], flags: int) -> bool:
+    """Esc with these modifier ``flags`` cancels a dictation (#13): plain Esc,
+    or Esc while the hotkey's own modifiers are held (Hold to Record). Other
+    modifiers make it a shortcut (⌘⌥Esc is Force Quit). Never when Esc is part
+    of the hotkey itself."""
+    if "esc" in combo:
+        return False
+    allowed = _SHIFT
+    for part in combo:
+        allowed |= _MAC_MODIFIER_FLAGS.get(part, 0)
+    return not (flags & (_CMD | _ALT | _CTRL) & ~allowed)
+
+
 # ---------------------------------------------------------------------------
 # macOS implementation — NSEvent global monitor (no CGEventTap)
 # ---------------------------------------------------------------------------
@@ -90,19 +108,123 @@ if _SYSTEM == "Darwin":
     _MOUSE_EVENT_TYPES = {1, 3, 25, 22}       # left/right/other mouse down, scroll wheel
     _MOUSE_MASK = (1 << 1) | (1 << 3) | (1 << 25) | (1 << 22)
 
+    class _EscapeTap:
+        """Swallows Esc system-wide, but only while armed (a dictation is in
+        progress), so the Esc that cancels it doesn't also reach the focused
+        app (#13): Claude Code would stop, Vim would leave insert mode.
+
+        An active Quartz event tap needs the Accessibility permission, which
+        ThunderTalk already has for pasting. It runs on its own thread with
+        its own run loop, so a busy UI thread never delays anyone's typing,
+        and it is switched off between dictations: then no key passes
+        through it at all. Without the permission it can't be created and
+        the listener falls back to observing Esc (which then also reaches
+        the focused app)."""
+
+        def __init__(self, on_escape: Callable[[], None], accepts: Callable[[int], bool]) -> None:
+            self._on_escape, self._accepts = on_escape, accepts
+            self._tap = None
+            self._thread: Optional[threading.Thread] = None
+            self._armed = False
+            self._held = False            # we swallowed an Esc down; swallow its up too
+
+        @property
+        def active(self) -> bool:
+            return self._tap is not None and self._armed
+
+        def arm(self, armed: bool) -> None:
+            self._armed = armed
+            if armed and self._tap is None:
+                if self._thread is None or not self._thread.is_alive():
+                    ready = threading.Event()
+                    self._thread = threading.Thread(target=self._run, args=(ready,),
+                                                    name="escape-tap", daemon=True)
+                    self._thread.start()
+                    ready.wait(1.0)
+                return
+            if self._tap is not None and (armed or not self._held):
+                import Quartz
+                Quartz.CGEventTapEnable(self._tap, armed)
+            # (disarmed with Esc still down: the key-up turns the tap off)
+
+        def _run(self, ready: threading.Event) -> None:
+            try:
+                import Quartz
+                mask = (Quartz.CGEventMaskBit(Quartz.kCGEventKeyDown)
+                        | Quartz.CGEventMaskBit(Quartz.kCGEventKeyUp))
+                tap = Quartz.CGEventTapCreate(Quartz.kCGSessionEventTap, Quartz.kCGHeadInsertEventTap,
+                                              Quartz.kCGEventTapOptionDefault, mask, self._callback, None)
+                if tap is None:
+                    print("[Hotkey] Esc tap unavailable (no Accessibility permission); Esc is observed only")
+                    return
+                source = Quartz.CFMachPortCreateRunLoopSource(None, tap, 0)
+                Quartz.CFRunLoopAddSource(Quartz.CFRunLoopGetCurrent(), source, Quartz.kCFRunLoopCommonModes)
+                Quartz.CGEventTapEnable(tap, self._armed)
+                self._tap = tap
+            except Exception:                      # noqa: BLE001
+                traceback.print_exc()
+                return
+            finally:
+                ready.set()
+            Quartz.CFRunLoopRun()
+
+        def _callback(self, _proxy, etype, event, _refcon):
+            try:
+                import Quartz
+                if etype in (Quartz.kCGEventTapDisabledByTimeout, Quartz.kCGEventTapDisabledByUserInput):
+                    if self._tap is not None and (self._armed or self._held):
+                        Quartz.CGEventTapEnable(self._tap, True)
+                    return event
+                if Quartz.CGEventGetIntegerValueField(event, Quartz.kCGKeyboardEventKeycode) != ESC_VK:
+                    return event
+                if etype == Quartz.kCGEventKeyUp:
+                    if not self._held:
+                        return event
+                    self._held = False
+                    if not self._armed:
+                        Quartz.CGEventTapEnable(self._tap, False)
+                    return None
+                if not self._armed or not self._accepts(int(Quartz.CGEventGetFlags(event))):
+                    return event
+                if not self._held and not Quartz.CGEventGetIntegerValueField(
+                        event, Quartz.kCGKeyboardEventAutorepeat):
+                    self._on_escape()
+                self._held = True
+                return None
+            except Exception:                      # noqa: BLE001 — never break the user's keyboard
+                traceback.print_exc()
+                return event
+
     class HotkeyListener:
         def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
                      on_release: Optional[Callable[[], None]] = None,
-                     on_chord: Optional[Callable[[], None]] = None) -> None:
+                     on_chord: Optional[Callable[[], None]] = None,
+                     on_escape: Optional[Callable[[], None]] = None) -> None:
             self._on_toggle = on_toggle
             self._on_release_cb = on_release
             self._on_chord_cb = on_chord
+            self._on_escape_cb = on_escape
             self._combo = _parse_combo(key_name)
             self._pressed_vks: set[int] = set()
             self._modifier_state: int = 0
             self._fired = False
             self._monitors: list = []
             self._enabled: bool = True
+            self._escape_armed = False
+            self._escape_tap = (_EscapeTap(on_escape, lambda flags: escape_cancels(self._combo, flags))
+                                if on_escape is not None else None)
+
+        def set_escape_armed(self, armed: bool) -> None:
+            """While a dictation is in progress, Esc cancels it (#13)."""
+            armed = bool(armed) and self._on_escape_cb is not None and "esc" not in self._combo
+            if armed == self._escape_armed:
+                return
+            self._escape_armed = armed
+            if self._escape_tap is not None:
+                try:
+                    self._escape_tap.arm(armed)
+                except Exception:                  # noqa: BLE001
+                    traceback.print_exc()
 
         def set_enabled(self, enabled: bool) -> None:
             """Gate firing while the user is capturing a new hotkey."""
@@ -154,6 +276,12 @@ if _SYSTEM == "Darwin":
                 vk = event.keyCode()
                 # 10 = NSKeyDown, 11 = NSKeyUp, 12 = NSFlagsChanged
                 if etype == 10:  # key down
+                    if vk == ESC_VK and self._escape_armed and not (
+                            self._escape_tap is not None and self._escape_tap.active):
+                        # No tap (no permission): observe Esc; the focused app gets it too.
+                        if not event.isARepeat() and escape_cancels(self._combo, int(event.modifierFlags())):
+                            self._on_escape_cb()
+                            return
                     self._pressed_vks.add(vk)
                     self._check_chord(vk)
                     self._check_and_fire()
@@ -292,15 +420,23 @@ else:
     class HotkeyListener:
         def __init__(self, on_toggle: Callable[[], None], key_name: str = "f4",
                      on_release: Optional[Callable[[], None]] = None,
-                     on_chord: Optional[Callable[[], None]] = None) -> None:
+                     on_chord: Optional[Callable[[], None]] = None,
+                     on_escape: Optional[Callable[[], None]] = None) -> None:
             self._on_toggle = on_toggle
             self._on_release_cb = on_release
             self._on_chord_cb = on_chord
+            self._on_escape_cb = on_escape
+            self._escape_armed = False
             self._combo = _parse_pynput_combo(key_name)
             self._pressed: set = set()
             self._listener_obj: Optional[keyboard.Listener] = None
             self._fired = False
             self._enabled: bool = True
+
+        def set_escape_armed(self, armed: bool) -> None:
+            """Esc cancels a dictation in progress (observed, not swallowed)."""
+            self._escape_armed = (bool(armed) and self._on_escape_cb is not None
+                                  and keyboard.Key.esc not in self._combo)
 
         def set_enabled(self, enabled: bool) -> None:
             """Gate firing while the user is capturing a new hotkey."""
@@ -340,6 +476,10 @@ else:
                 if key is None or not self._combo:
                     return
                 key = self._normalize(key)
+                if key == keyboard.Key.esc and self._escape_armed and key not in self._pressed:
+                    self._pressed.add(key)
+                    self._on_escape_cb()
+                    return
                 if self._fired and self._on_chord_cb is not None and key not in self._combo:
                     self._on_chord_cb()
                 self._pressed.add(key)

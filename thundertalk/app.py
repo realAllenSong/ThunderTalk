@@ -328,6 +328,7 @@ class Pipeline(QObject):
     press_signal = Signal()
     release_signal = Signal()
     chord_signal = Signal()
+    escape_signal = Signal()
     audio_ready = Signal(object)
     capture_ready = Signal(object)
     review_ready = Signal(str, str, str)    # original, translated, tgt_lang
@@ -344,6 +345,8 @@ class Pipeline(QObject):
         self._stopping = False
         self._ducking_session = None
         self._stopping_session = None
+        self._take_id = 0               # one per dictation; Esc cancels by id (#13)
+        self._cancelled_take = -1
         # All in-flight QThread workers are kept alive in this list. Each
         # worker's `.finished` signal removes it. Single-reference patterns
         # (e.g. `self._worker = worker`) are unsafe because reassigning to a
@@ -372,6 +375,13 @@ class Pipeline(QObject):
 
     def chord(self) -> None:
         self.chord_signal.emit()
+
+    def escape(self) -> None:
+        self.escape_signal.emit()
+
+    @property
+    def dictation_active(self) -> bool:
+        return self._starting or self._recording or self._stopping
 
     def stop_capture(self):
         """Quit owns the token even while a delayed microphone tail is pending."""
@@ -642,9 +652,31 @@ def main() -> None:
     def _on_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float,
                      recording=None) -> None:
         try:
+            if _cancelled(recording):
+                _keep_cancelled(recording, text, dur, ms)
+                return
             _handle_asr_done(text, ms, dur, backend, rtf, recording)
         finally:
             DICTATION.end()
+
+    def _cancelled(recording) -> bool:
+        return recording is not None and recording.get("take") == pipe._cancelled_take
+
+    def _keep_cancelled(recording, text: str = "", dur: float | None = None, ms: int = 0) -> None:
+        """Esc discarded this take (#13): nothing is pasted. With "keep recent
+        recordings" on, the audio (and any text that was already recognised)
+        goes to History marked as cancelled, so a slip of the finger can be
+        undone; otherwise nothing is kept."""
+        keep = settings.get("keep_recent_recordings")
+        samples = recording["samples"] if recording else None
+        audio_diagnostic("dictation_cancel_kept", kept=bool(keep), chars=len(text or ""))
+        if not keep or samples is None or len(samples) < 800:
+            return
+        _save_recent_recording(recording, text or "", "", keep, recognition_source="cancelled")
+        history.add(text=text or "", duration_secs=dur if dur is not None else len(samples) / 16000,
+                    inference_ms=ms, model=recording["model"], recognition_source="cancelled",
+                    recording_path=recording.get("recording_path", ""))
+        QTimer.singleShot(50, window.home_page.refresh)
 
     def _handle_asr_done(text: str, ms: int, dur: float, backend: str, rtf: float,
                          recording=None) -> None:
@@ -767,6 +799,10 @@ def main() -> None:
             overlay.show_error(t("overlay.recognition_failed" if speech else "overlay.no_speech"))
 
     def _on_asr_error(msg: str, recording=None) -> None:
+        if _cancelled(recording):
+            DICTATION.end()
+            _keep_cancelled(recording)
+            return
         if getattr(pipe.asr, "is_cloud", False) is True:
             window.show_toast(t("cloud.dictation_failed").format(err=msg[:180]), "error")
         if recording is not None and (has_speech(recording["samples"]) or (
@@ -878,6 +914,7 @@ def main() -> None:
             DICTATION.end()
             state.set_recording(st.REC_IDLE)
             overlay.hide_overlay()
+            _sync_escape()
             return
         if pipe._recording:
             # ---- STOP recording ----
@@ -891,6 +928,7 @@ def main() -> None:
             pipe._stopping = True
             session, pipe._ducking_session = pipe._ducking_session, None
             pipe._stopping_session = session
+            take = pipe._take_id
 
             def _finalize_stop() -> None:
                 try:
@@ -904,8 +942,14 @@ def main() -> None:
                 finally:
                     pipe._stopping = False
                     pipe._stopping_session = None
+                    _sync_escape()
                 stop_ms = int((time.perf_counter() - t_stop) * 1000)
                 print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
+                if take == pipe._cancelled_take:          # Esc during the tail grace
+                    DICTATION.end()
+                    if samples is not None:
+                        _keep_cancelled(_recording_of(samples, take))
+                    return
 
                 if samples is None or len(samples) < 800:
                     print("[Toggle] Too short (audio already restored on stop)")
@@ -914,13 +958,7 @@ def main() -> None:
                     overlay.show_error(t("overlay.too_short"))
                     return
 
-                recording = {"samples": samples,
-                             "preview": cloud_live.text if pipe.asr.is_cloud else live.last_clean_text(),
-                             "preview_stats": live.stats,
-                             "model": settings.active_model_id or pipe.asr.current_model or "unknown",
-                             "language": settings.transcription_language,
-                             "hotwords": list(settings.hotwords),
-                             "keep": settings.get("keep_recent_recordings")}
+                recording = _recording_of(samples, take)
 
                 def _done(text, ms, dur, backend, rtf):
                     result = getattr(worker, "result", None)
@@ -1006,6 +1044,8 @@ def main() -> None:
                 text_output.activity.start()
             # Show overlay immediately so user gets instant visual feedback
             pipe._starting = True
+            pipe._take_id += 1
+            _sync_escape()
             audio_diagnostic("recording_requested", ducking=bool(settings.get("mute_speakers")))
             DICTATION.begin()
             overlay.show_recording()
@@ -1028,6 +1068,60 @@ def main() -> None:
                 pipe._ducking_session = session
                 session.ready.add_done_callback(lambda _future: pipe.audio_ready.emit(session))
 
+    def _recording_of(samples, take: int) -> dict:
+        return {"samples": samples,
+                "preview": cloud_live.text if pipe.asr.is_cloud else live.last_clean_text(),
+                "preview_stats": live.stats,
+                "model": settings.active_model_id or pipe.asr.current_model or "unknown",
+                "language": settings.transcription_language,
+                "hotwords": list(settings.hotwords),
+                "keep": settings.get("keep_recent_recordings"),
+                "take": take}
+
+    @Slot()
+    def on_escape() -> None:
+        """Esc during a dictation discards it without inserting text (#13)."""
+        transcribing = state.recording == st.REC_TRANSCRIBING
+        audio_diagnostic("dictation_cancel", starting=pipe._starting, recording=pipe._recording,
+                         stopping=pipe._stopping, transcribing=transcribing)
+        if pipe._starting:                      # microphone still opening
+            pipe._starting = False
+            session, pipe._ducking_session = pipe._ducking_session, None
+            try:
+                stop_recording_and_restore(pipe.recorder, session)
+            except Exception as exc:
+                audio_diagnostic("cancel_capture_failed", error=type(exc).__name__)
+            DICTATION.end()
+        elif pipe._recording:
+            live.stop()
+            cloud_live.stop()               # a segment already sent is still billed
+            pipe._recording = False
+            session, pipe._ducking_session = pipe._ducking_session, None
+            pipe._cancelled_take = pipe._take_id
+            try:
+                samples = stop_recording_and_restore(pipe.recorder, session)
+            except Exception as exc:
+                audio_diagnostic("cancel_capture_failed", error=type(exc).__name__)
+                samples = None
+            DICTATION.end()
+            if samples is not None:
+                _keep_cancelled(_recording_of(samples, pipe._take_id))
+        elif pipe._stopping or transcribing:
+            # _finalize_stop / the ASR worker see the id and drop the result
+            # (the worker itself finishes: a decode can't be interrupted).
+            pipe._cancelled_take = pipe._take_id
+        else:
+            _sync_escape()
+            return
+        state.set_recording(st.REC_IDLE)
+        overlay.show_result(t("overlay.cancelled"))
+        _sync_escape()
+
+    def _sync_escape() -> None:
+        listener = getattr(pipe, "hotkey_listener", None)
+        if listener is not None:
+            listener.set_escape_armed(pipe.dictation_active or state.recording != st.REC_IDLE)
+
     def _start_capture() -> bool:
         mic = settings.microphone
         try:
@@ -1043,6 +1137,7 @@ def main() -> None:
                 audio_diagnostic("startup_cleanup_failed", error=type(stop_exc).__name__)
             pipe._starting = False
             DICTATION.end()
+            _sync_escape()
             print(f"[Toggle] recording startup failed: {exc}")
             overlay.show_error(t("overlay.mic_unavailable"))
             return False
@@ -1183,8 +1278,13 @@ def main() -> None:
 
     # --- Hotkey --------------------------------------------------------
     hotkey = HotkeyListener(on_toggle=pipe.press, key_name=settings.hotkey,
-                            on_release=pipe.release, on_chord=pipe.chord)
+                            on_release=pipe.release, on_chord=pipe.chord,
+                            on_escape=pipe.escape)
     hotkey.start()
+    pipe.hotkey_listener = hotkey
+    # Esc is only taken over while a dictation is in progress (#13).
+    pipe.escape_signal.connect(on_escape, Qt.QueuedConnection)
+    state.recording_changed.connect(lambda _s: _sync_escape())
 
     def _on_hotkey_setting_changed(key_name: str) -> None:
         hotkey.set_hotkey(key_name)

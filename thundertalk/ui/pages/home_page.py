@@ -346,9 +346,9 @@ class _HistoryRow(QWidget):
 
         model = (entry.model or "").strip()
         source = getattr(entry, "recognition_source", "final")
-        if source in ("preview", "failed", "partial"):
+        if source in ("preview", "failed", "partial", "cancelled"):
             key = {"preview": "home.preview_recovered", "failed": "home.recognition_failed",
-                   "partial": "home.recognition_partial"}[source]
+                   "partial": "home.recognition_partial", "cancelled": "home.cancelled"}[source]
             notice = QLabel(t(key))
             notice.setWordWrap(True)
             notice.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
