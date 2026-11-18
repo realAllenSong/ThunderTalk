@@ -32,6 +32,10 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.14.2
+
+- **A modifier hotkey no longer fires inside shortcuts (Toggle mode):** with a hotkey such as Left ⌥, a recording starts or stops when you let go of it, and only if nothing else was pressed or clicked meanwhile. ⌥Tab, ⌥ plus a letter, ⌥ with Caps Lock, ⌘ or the other ⌥, and ⌥-click all leave dictation alone, including shortcuts that another app such as Raycast or AltTab takes over. Function keys like F4 and key combos still start the instant you press them ([#12](https://github.com/realAllenSong/ThunderTalk/issues/12)).
+
 ## New in v1.14.1
 
 - **Qwen3-ASR-0.6B Tuned (optional model):** ThunderTalk's own fine-tune of Qwen3-ASR-0.6B for short and mixed Chinese–English dictation. On the standard test set it makes fewer errors at the same speed (8.7% → 8.0% token errors; short Chinese 6.9% → 5.0%, short English 20.2% → 17.2%, short mixed 16.1% → 14.7%). Download it on the Models page; the original model stays the default. [Model card](https://huggingface.co/Oulasong/Qwen3-ASR-0.6B-ThunderTalk).
