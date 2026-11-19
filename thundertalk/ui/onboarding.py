@@ -43,9 +43,20 @@ def _fmt_size(mb: int) -> str:
 
 
 def recommended_model(hardware=None):
-    """Qwen3-ASR-0.6B ONNX int8 on every Mac: as accurate as the MLX build,
-    faster, CPU-only and half the download (879 MB vs 1.9 GB)."""
-    return next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-int8")
+    """ThunderTalk's tuned Qwen3-ASR-0.6B (8-bit MLX) on Apple Silicon: the
+    most accurate and fastest dictation model in the standard eval. Intel
+    Macs, 8 GB Macs and installs without MLX get Qwen3-ASR-0.6B ONNX int8
+    (CPU, half the memory)."""
+    from thundertalk.core import asr
+    from thundertalk.core.models import TUNED_QWEN_ID, detect_hardware, tuned_fits
+    hw = hardware or detect_hardware()
+    if asr._MLX_AVAILABLE is not None:
+        mlx_ok = asr._IS_APPLE_SILICON and asr._MLX_AVAILABLE
+    else:                               # not checked yet: look, don't import (slow)
+        from importlib.util import find_spec
+        mlx_ok = asr._IS_APPLE_SILICON and all(find_spec(n) for n in ("mlx", "mlx_qwen3_asr"))
+    rid = TUNED_QWEN_ID if mlx_ok and tuned_fits(hw) else "qwen3-asr-06b-int8"
+    return next(m for m in BUILTIN_MODELS if m.id == rid)
 
 
 def _download_failure_key(message: str) -> str:

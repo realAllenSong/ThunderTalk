@@ -54,22 +54,21 @@ def wizard(qapp, isolated_home, monkeypatch):
 
 
 @pytest.mark.parametrize("cpu,ram,platform,mlx,expected", [
-    ("M1", 8, "apple-silicon", True, "onnx"),
-    ("M2", 16, "apple-silicon", True, "onnx"),
-    ("M3 Max", 36, "apple-silicon", True, "onnx"),
-    ("Intel", 16, "all", False, "onnx"),
-    ("M2", 16, "apple-silicon", False, "onnx"),
+    ("M1", 8, "apple-silicon", True, "qwen3-asr-06b-int8"),       # 8 GB: CPU, half the memory
+    ("M2", 16, "apple-silicon", True, "qwen3-asr-06b-tuned-mlx"),
+    ("M3 Max", 36, "apple-silicon", True, "qwen3-asr-06b-tuned-mlx"),
+    ("Intel", 16, "all", False, "qwen3-asr-06b-int8"),
+    ("M2", 16, "apple-silicon", False, "qwen3-asr-06b-int8"),     # no MLX runtime
 ])
-def test_recommendation_is_onnx_on_every_mac(monkeypatch, cpu, ram, platform, mlx, expected):
+def test_recommendation_tuned_on_apple_silicon(monkeypatch, cpu, ram, platform, mlx, expected):
     monkeypatch.setattr("thundertalk.core.asr._IS_APPLE_SILICON", mlx)
-    assert recommended_model(models.HardwareInfo(cpu, ram, cpu, platform)).backend == expected
-    assert recommended_model().backend == "onnx"
+    assert recommended_model(models.HardwareInfo(cpu, ram, cpu, platform)).id == expected
 
 
 def test_welcome_consent_overlaps_permissions_and_back_does_not_duplicate(wizard):
     overlay, page, _, _, _ = wizard
     assert not page.started
-    assert "879 MB" in overlay._next.text()
+    assert ("879 MB" if overlay._rec.id == "qwen3-asr-06b-int8" else "1.2 GB") in overlay._next.text()
     overlay._next.click()
     assert overlay._step == 1 and page.started == [overlay._rec.id]
     overlay._on_dl_progress(overlay._rec.id, 40, "352 / 879 MB")

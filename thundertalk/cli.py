@@ -36,7 +36,7 @@ CLOUD_TTS = ("openai", "gemini", "elevenlabs", "custom")
 # `--engine best` for files, most accurate first. Dictation (`auto`) favours
 # latency; a recording or a call favours accuracy. Measured in docs/plans.
 ASR_QUALITY = (
-    "qwen3-asr-17b-mlx", "qwen3-asr-06b-mlx", "qwen3-asr-06b-int8", "funasr-nano-int8",
+    "qwen3-asr-06b-tuned-mlx", "qwen3-asr-17b-mlx", "qwen3-asr-06b-mlx", "qwen3-asr-06b-int8", "funasr-nano-int8",
     "sensevoice-small-int8", "parakeet-tdt-06b-v3-int8", "parakeet-tdt-06b-v2-int8",
 )
 DIARIZE_MODEL = "moss-transcribe-diarize-mlx"

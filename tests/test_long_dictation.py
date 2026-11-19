@@ -155,11 +155,17 @@ def test_recovered_history_label_and_recording_link(qapp, isolated_home, monkeyp
     from thundertalk.ui.pages.home_page import _HistoryRow
     monkeypatch.setattr(i18n, 'LANG', lang)
     history = HistoryStore()
-    history.add('preview', 179, 1, 'fake', recognition_source='preview', recording_path='/local/audio.wav')
+    wav = isolated_home / 'audio.wav'
+    wav.write_bytes(b'RIFF')
+    history.add('preview', 179, 1, 'fake', recognition_source='preview', recording_path=str(wav))
+    history.add('old', 1, 1, 'fake', recording_path=str(isolated_home / 'pruned.wav'))
     row = _HistoryRow(history._entries[0])
     assert i18n.t('home.preview_recovered') in [x.text() for x in row.findChildren(QLabel)]
     assert i18n.t('home.open_recording') in [x.text() for x in row.findChildren(QPushButton)]
     row.close()
+    gone = _HistoryRow(history._entries[1])     # audio pruned (only the latest 20 are kept)
+    assert i18n.t('home.open_recording') not in [x.text() for x in gone.findChildren(QPushButton)]
+    gone.close()
 
 
 def test_asr_worker_recovers_before_emitting_text(qapp):
