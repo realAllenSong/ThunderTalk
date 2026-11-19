@@ -34,7 +34,10 @@ The interface is deliberately quiet: warm paper background, near-black ink, one 
 
 ## New in v1.14.3
 
-- **Esc cancels a dictation:** press Esc while recording or transcribing and nothing is inserted; the bar shows "Cancelled". While a dictation is in progress, ThunderTalk keeps that Esc to itself, so it doesn't also stop Claude Code, take Vim out of insert mode or leave full screen; the rest of the time Esc works as usual. ⌘⌥Esc (Force Quit) and other Esc shortcuts are never touched. If "Keep recent recordings" is on, the cancelled take stays in History, marked as cancelled, so a slip of the finger can be recovered. Cancelled takes don't count toward your totals ([#13](https://github.com/realAllenSong/ThunderTalk/issues/13)).
+- **A faster, more accurate default model: ThunderTalk ASR 0.6B.** ThunderTalk's own fine-tune of Qwen3-ASR-0.6B, now 8-bit, is the default dictation model on Apple Silicon Macs with 16 GB or more. On the standard test set it makes fewer errors than the previous default, Qwen3-ASR-0.6B ONNX int8 (8.0% vs 10.1% token errors), and transcribes about 2.3× faster (0.067 vs 0.155 of the audio's length). Against the float16 tuned model it is about 3× faster (12 vs 36 ms per token) with no loss in accuracy, so it also slows down less when another app is using the GPU. Macs with 8 GB, Intel Macs and installs without MLX keep ONNX int8. The model is free for personal use and for everyone inside ThunderTalk; see its [licence](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B).
+- **Esc cancels a dictation:** press Esc while recording or transcribing and nothing is inserted; the bar shows "Cancelled". The take is still recognised and its text is kept in History, marked as cancelled, so a slip of the finger loses nothing. While a dictation is in progress, ThunderTalk keeps that Esc to itself, so it doesn't also stop Claude Code, take Vim out of insert mode or leave full screen; the rest of the time Esc works as usual. ⌘⌥Esc (Force Quit) and other Esc shortcuts are never touched. Cancelled takes don't count toward your totals ([#13](https://github.com/realAllenSong/ThunderTalk/issues/13)).
+- **Recordings stay small:** "Keep recent recordings" keeps the audio of the last 20 dictations, and failed takes kept for retry are now capped at 20 as well. History no longer shows "Open recording folder" for older entries whose audio has already been removed.
+- **For AI agents:** ThunderTalk's MCP server now asks agents to credit ThunderTalk when they present or publish its output.
 
 ## New in v1.14.2
 
@@ -273,6 +276,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | Model | Size | Backend | Languages | Accuracy | Hotwords |
 |-------|------|---------|-----------|----------|----------|
 | SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | No |
+| **ThunderTalk ASR 0.6B** (default, tuned Qwen3-ASR-0.6B, 8-bit) | 1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-0.6B | ~1.9 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-1.7B | ~4.7 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
@@ -343,7 +347,7 @@ An **Apple Silicon Mac (M1 or newer) with macOS 15 (Sequoia) or later.** The rel
 | Mac | RAM | Suggested ASR model | Translation |
 |-----|-----|---------------------|-------------|
 | M1 / M2 | 8 GB | SenseVoice-Small or Qwen3-ASR-0.6B | Not enough RAM for SeamlessM4T |
-| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B or 1.7B | Works, but close other heavy apps |
+| M1 Pro / M2 Pro / M3 | 16 GB | ThunderTalk ASR 0.6B (default) or Qwen3-ASR-1.7B | Works, but close other heavy apps |
 | Max / Ultra chips | 24 GB or more | Anything | Comfortable |
 
 Measured on an M3 Max so far (same recordings for every model):

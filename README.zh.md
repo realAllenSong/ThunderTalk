@@ -34,7 +34,10 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 ## v1.14.3 新功能
 
-- **按 Esc 取消听写：**录音或识别时按 Esc，不会插入任何文字，录音条显示“已取消”。听写进行中，这次 Esc 只由 ThunderTalk 处理，不会同时中断 Claude Code、让 Vim 退出插入模式或退出全屏；其余时间 Esc 照常可用。⌘⌥Esc（强制退出）等带 Esc 的快捷键不受影响。开启“保留最近录音”时，取消的录音会留在历史记录里并标为已取消，误按也能找回；取消的录音不计入统计（[#13](https://github.com/realAllenSong/ThunderTalk/issues/13)）。
+- **默认模型更快更准：ThunderTalk ASR 0.6B。** ThunderTalk 自己微调的 Qwen3-ASR-0.6B 改为 8 位，成为 Apple 芯片、16 GB 及以上 Mac 的默认听写模型。在标准测试集上，它比之前的默认模型 Qwen3-ASR-0.6B ONNX int8 错误更少（8.0% 对 10.1%），转写速度快约 2.3 倍（耗时为音频时长的 0.067 对 0.155）。和 16 位的调优版相比快约 3 倍（每个 token 12 毫秒对 36 毫秒），准确率不变，所以其他应用占用 GPU 时也慢得更少。8 GB 的 Mac、Intel Mac 和没有 MLX 的安装继续使用 ONNX int8。模型对个人用户和在 ThunderTalk 内使用的所有人免费，详见[许可证](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B)。
+- **按 Esc 取消听写：**录音或识别时按 Esc，不会插入任何文字，录音条显示“已取消”。这段录音仍会识别，文字留在历史记录里并标为已取消，误按也不会丢内容。听写进行中，这次 Esc 只由 ThunderTalk 处理，不会同时中断 Claude Code、让 Vim 退出插入模式或退出全屏；其余时间 Esc 照常可用。⌘⌥Esc（强制退出）等带 Esc 的快捷键不受影响。取消的录音不计入统计（[#13](https://github.com/realAllenSong/ThunderTalk/issues/13)）。
+- **录音占用更小：**“保留最近录音”只保留最近 20 次听写的音频，为重试保留的识别失败录音现在也最多 20 个。音频已删除的旧历史记录不再显示“打开录音所在文件夹”。
+- **给 AI 智能体：**ThunderTalk 的 MCP 服务会提示智能体在展示或发布结果时注明 ThunderTalk。
 
 ## v1.14.2 新功能
 
@@ -272,6 +275,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | 模型 | 大小 | 后端 | 语言 | 准确度 | 热词 |
 |------|------|------|------|--------|------|
 | SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | 否 |
+| **ThunderTalk ASR 0.6B**（默认，Qwen3-ASR-0.6B 调优，8 位） | 1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-0.6B | ~1.9 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-1.7B | ~4.7 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
@@ -341,7 +345,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | Mac | 内存 | 建议的识别模型 | 翻译 |
 |-----|------|----------------|------|
 | M1 / M2 | 8 GB | SenseVoice-Small 或 Qwen3-ASR-0.6B | 内存不够跑 SeamlessM4T |
-| M1 Pro / M2 Pro / M3 | 16 GB | Qwen3-ASR-0.6B 或 1.7B | 可以，但请关掉其他重型应用 |
+| M1 Pro / M2 Pro / M3 | 16 GB | ThunderTalk ASR 0.6B（默认）或 Qwen3-ASR-1.7B | 可以，但请关掉其他重型应用 |
 | Max / Ultra 芯片 | 24 GB 及以上 | 都可以 | 宽裕 |
 
 目前只在 M3 Max 上实测过（所有模型用同一批录音）：

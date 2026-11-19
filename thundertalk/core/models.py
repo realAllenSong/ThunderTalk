@@ -389,7 +389,7 @@ def _local_mlx_dir(model_id: str) -> Optional[Path]:
 _base = next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-mlx")
 from dataclasses import replace as _replace  # noqa: E402
 BUILTIN_MODELS.insert(BUILTIN_MODELS.index(_base) + 1, _replace(
-    _base, id=TUNED_QWEN_ID, name="Qwen3-ASR-0.6B Tuned", variant="MLX 8-bit · ThunderTalk",
+    _base, id=TUNED_QWEN_ID, name="ThunderTalk ASR 0.6B", variant="MLX 8-bit · tuned Qwen3-ASR-0.6B",
     download_url=TUNED_QWEN_URL, size_mb=1176,
     notes="Fine-tuned for Chinese, English and mixed dictation · 8-bit · ~30x real time on M3 Max"))
 
