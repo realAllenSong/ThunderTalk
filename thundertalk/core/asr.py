@@ -173,6 +173,38 @@ def foreign_script(text: str, languages: list[str]) -> bool:
     return sum(not ok(c) for c in letters) > len(letters) * 0.3
 
 
+def load_qwen_mlx(path_or_repo: str):
+    """Load a Qwen3-ASR MLX model in float16, or as saved when it is quantized.
+
+    mlx_qwen3_asr only reads models quantized as a whole. ThunderTalk's 8-bit
+    builds quantize the text decoder (where dictation spends its time, one
+    token after another) and keep the audio encoder in float16, so only the
+    layers saved with quantization scales are quantized here."""
+    import json
+
+    import mlx.core as mx
+    import mlx.nn as nn
+    import mlx_qwen3_asr
+    from mlx_qwen3_asr import load_models as L
+
+    path = L._resolve_path(path_or_repo)
+    qconf = path / "quantization_config.json"
+    if not qconf.is_file():
+        return mlx_qwen3_asr.load_model(path_or_repo, dtype=mx.float16)[0]
+    q = json.loads(qconf.read_text(encoding="utf-8"))
+    config = L.Qwen3ASRConfig.from_dict(json.loads((path / "config.json").read_text(encoding="utf-8")))
+    weights = L.remap_weights(L._load_safetensors(path))
+    model = L.Qwen3ASRModel(config)
+    nn.quantize(model, bits=int(q.get("bits", 8)), group_size=int(q.get("group_size", 64)),
+                class_predicate=lambda name, _m: f"{name}.scales" in weights)
+    model.load_weights(list(weights.items()))
+    mx.eval(model.parameters())
+    model.eval()
+    model._source_model_id = path_or_repo
+    model._resolved_model_path = str(path)
+    return model
+
+
 class AsrEngine:
     def __init__(self) -> None:
         self._state_lock = threading.RLock()
@@ -440,7 +472,7 @@ class AsrEngine:
             hf_repo = hf_repo[5:]
 
         print(f"[ASR-MLX] Calling load_model({hf_repo!r})...")
-        model, _cfg = mlx_qwen3_asr.load_model(hf_repo, dtype=mx.float16)
+        model = load_qwen_mlx(hf_repo)
         evaluate_model(model)
         mx.clear_cache()
         print("[ASR-MLX] load_model returned")
