@@ -28,7 +28,7 @@
 
 ---
 
-ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere unless you choose an optional cloud engine with your own API key. It is MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
+ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere unless you choose an optional cloud engine with your own API key. The app is free and MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
@@ -276,7 +276,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | Model | Size | Backend | Languages | Accuracy | Hotwords |
 |-------|------|---------|-----------|----------|----------|
 | SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | No |
-| **ThunderTalk ASR 0.6B** (default, tuned Qwen3-ASR-0.6B, 8-bit) | 1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
+| **ThunderTalk ASR 0.6B** (default, tuned Qwen3-ASR-0.6B, 8-bit, ThunderTalk Model License) | 1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-0.6B | ~1.9 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
 | Qwen3-ASR-1.7B | ~4.7 GB | MLX (Metal GPU) | 52 | ★★★★★ | Yes |
@@ -538,7 +538,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## FAQ
 
-**Is ThunderTalk free?** Yes. It is MIT licensed, with no account, no subscription and no usage limits.
+**Is ThunderTalk free?** Yes, for individuals and at work: no account, no subscription and no usage limits. The app code is MIT licensed. ThunderTalk's own models are free for personal use and for companies under 250 employees and US$10 million in revenue; larger companies, and products built on the models, need a licence (see [License](#license)).
 
 **Does it work offline?** Yes. Once a model is downloaded, recognition, translation, file transcription and text to speech run on your Mac. Studio links need a connection. Optional AI proofreading and meeting notes depend on your chosen provider; cloud providers require a connection.
 
@@ -550,9 +550,24 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 **Which apps does dictation work in?** Any app with a text cursor: browsers, editors, Slack, mail, terminals. ThunderTalk pastes where the cursor is.
 
+## For companies
+
+ThunderTalk is free for individuals, schools, non-profits and companies with fewer than 250 employees and under US$10 million in annual revenue, including at work. Larger companies need a licence to use ThunderTalk's own models at work. For a licence or any of the following, write to song@entropinia.com:
+
+- **Managed rollout:** silent install and locked settings through your device management, with cloud engines and AI proofreading switched off so no audio or text can leave your Macs.
+- **Shared vocabulary:** company-wide hotword and terminology lists.
+- **Models tuned for your field:** ThunderTalk ASR trained on your product names and jargon.
+- **Building ThunderTalk into your own product or service:** a commercial licence for ThunderTalk's models and its local API.
+- **Support** for your team.
+
 ## License
 
-ThunderTalk is open source under the [MIT License](LICENSE). Use it, fork it, ship it in your own product. A star or a pull request is always appreciated.
+- **App code:** [MIT License](LICENSE). Keep the copyright notice, and credit ThunderTalk in anything you build from it.
+- **ThunderTalk's own models** (ThunderTalk ASR 0.6B): [ThunderTalk Model License](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B/blob/main/LICENSE). Free for personal and non-commercial use, for non-profits, and inside the ThunderTalk app for companies with fewer than 250 employees and under US$10 million in annual revenue. Larger companies using them at work, building them into another commercial product or service, or offering them as a hosted service need a written licence ([contact](mailto:song@entropinia.com)).
+- **Name and logo:** "ThunderTalk" and its logo identify this project. Forks and products built from the code must use their own name and logo.
+- Other models keep their own licences (see [Supported models](#supported-models)).
+
+A star or a pull request is always appreciated.
 
 ## Acknowledgments
 

@@ -28,7 +28,7 @@
 
 ---
 
-ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方，除非你主动选择使用自己 API 密钥的可选云端引擎。它以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
+ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方，除非你主动选择使用自己 API 密钥的可选云端引擎。App 免费并以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
@@ -275,7 +275,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | 模型 | 大小 | 后端 | 语言 | 准确度 | 热词 |
 |------|------|------|------|--------|------|
 | SenseVoice-Small | 241 MB | ONNX (CPU) | 5 | ★★★☆☆ | 否 |
-| **ThunderTalk ASR 0.6B**（默认，Qwen3-ASR-0.6B 调优，8 位） | 1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
+| **ThunderTalk ASR 0.6B**（默认，Qwen3-ASR-0.6B 调优，8 位，ThunderTalk 模型许可证） | 1.2 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-0.6B | 940 MB | ONNX (CPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-0.6B | ~1.9 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
 | Qwen3-ASR-1.7B | ~4.7 GB | MLX (Metal GPU) | 52 | ★★★★★ | 是 |
@@ -516,7 +516,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 
 ## 常见问题
 
-**ThunderTalk 收费吗？** 不收费。MIT 协议开源，无账号、无订阅、无使用次数限制。
+**ThunderTalk 收费吗？** 个人和工作中使用都不收费：无账号、无订阅、无使用次数限制。App 代码以 MIT 协议开源。ThunderTalk 自有模型对个人和员工少于 250 人且年收入低于 1000 万美元的公司免费；更大的公司以及基于模型做产品，需要授权（见[许可证](#许可证)）。
 
 **能离线使用吗？** 可以。模型下载完成后，识别、翻译、文件转写和文字转语音都在你的 Mac 上运行。工作室链接需要联网。可选的 AI 校对与会议纪要取决于你选择的服务，云端服务需要联网。
 
@@ -528,9 +528,24 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 
 **可以在哪些应用里听写？** 任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。光标在哪里，文字就粘贴到哪里。
 
+## 企业使用
+
+ThunderTalk 对个人、学校、非营利组织，以及员工少于 250 人且年收入低于 1000 万美元的公司免费，在工作中使用也一样。规模更大的公司在工作中使用 ThunderTalk 自有模型需要授权。授权或以下服务，请联系 song@entropinia.com：
+
+- **统一部署：**通过公司的设备管理静默安装、锁定设置，并关闭云端引擎和 AI 校对，确保音频和文字都不会离开公司的 Mac。
+- **共享词汇：**全公司统一的热词和术语表。
+- **行业专属模型：**用你们的产品名和行业术语训练的 ThunderTalk ASR。
+- **把 ThunderTalk 集成进你们自己的产品或服务：**ThunderTalk 模型及本地接口的商业授权。
+- 为团队提供**技术支持**。
+
 ## 许可证
 
-ThunderTalk 基于 [MIT License](LICENSE) 开源。随意使用、fork、集成到你自己的产品里。给个 Star 或提个 PR 就是对项目最好的支持。
+- **App 代码：**[MIT License](LICENSE)。请保留版权声明，并在基于它构建的产品中注明 ThunderTalk。
+- **ThunderTalk 自有模型**（ThunderTalk ASR 0.6B）：[ThunderTalk 模型许可证](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B/blob/main/LICENSE)。个人和非商业用途、非营利组织免费；员工少于 250 人且年收入低于 1000 万美元的公司在 ThunderTalk App 内使用免费。规模更大的公司在工作中使用、集成到其他商业产品或服务、或作为托管服务提供，需要书面授权（[联系](mailto:song@entropinia.com)）。
+- **名称和标志：**“ThunderTalk”名称和标志代表本项目。基于代码的 fork 和产品须使用自己的名称和标志。
+- 其他模型沿用各自的许可证（见[支持的模型](#支持的模型)）。
+
+给个 Star 或提个 PR 就是对项目最好的支持。
 
 ## 致谢
 
