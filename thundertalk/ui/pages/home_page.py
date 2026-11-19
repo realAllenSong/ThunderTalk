@@ -353,8 +353,9 @@ class _HistoryRow(QWidget):
             notice.setWordWrap(True)
             notice.setStyleSheet(f"color: {theme.TEXT_SECONDARY}; background: transparent;")
             body.addWidget(notice)
-        if getattr(entry, "recording_path", ""):
-            from pathlib import Path
+        from pathlib import Path
+        if getattr(entry, "recording_path", "") and Path(entry.recording_path).is_file():
+            # (only the latest takes are kept on disk; older entries keep just their text)
             from PySide6.QtCore import QUrl
             from PySide6.QtGui import QDesktopServices
             recording_button = QPushButton(t("home.open_recording"))

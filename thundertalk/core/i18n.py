@@ -410,8 +410,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Keep recent recordings", "zh": "保留最近录音",
     },
     "settings.keep_recent_recordings.desc": {
-        "en": "Also keep the audio of the last 20 dictations on this Mac (History always keeps the text). Failed or preview-recovered takes are always kept locally for retry.",
-        "zh": "额外在本机保留最近 20 次听写的音频（历史记录始终保留文字）。识别失败或从预览恢复的录音始终保留在本机，以便重试。",
+        "en": "Also keep the audio of the last 20 dictations on this Mac (History always keeps the text). The last 20 failed or preview-recovered takes are kept for retry either way.",
+        "zh": "额外在本机保留最近 20 次听写的音频（历史记录始终保留文字）。最近 20 次识别失败或从预览恢复的录音无论如何都会保留，以便重试。",
     },
     "settings.llm_rewrite.label": {
         "en": "Grammar Correction", "zh": "语法修正",

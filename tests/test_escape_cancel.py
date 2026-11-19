@@ -121,3 +121,16 @@ def test_tap_keeps_running_until_the_swallowed_key_is_released(monkeypatch):
     assert rig.key(ESC_VK, False) is None  # no orphan key-up reaches the app
     assert rig.enabled == [True, False]
     assert rig.key(ESC_VK, True) is not None
+
+
+def test_both_recording_folders_keep_only_the_latest(tmp_path):
+    import numpy as np
+    from thundertalk.core import recordings
+    for folder in (tmp_path / "recordings", tmp_path / "recordings" / "recovery"):
+        for i in range(recordings.KEEP + 3):
+            recordings.save_recording(np.zeros(1600, dtype=np.float32), model="m", language="zh",
+                                      final_text="", preview_text="", pasted_text="",
+                                      loop_detected=False, directory=folder,
+                                      recording_id=f"2026{i:04d}")
+        assert len(list(folder.glob("*.wav"))) == recordings.KEEP
+        assert len(list(folder.glob("*.json"))) == recordings.KEEP

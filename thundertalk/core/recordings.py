@@ -15,6 +15,9 @@ from thundertalk.core.audio_io import wav_bytes
 _LOCK = threading.Lock()
 
 
+KEEP = 20          # latest takes kept per folder (recordings/, recordings/recovery/)
+
+
 def new_recording_id() -> str:
     return datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%S%fZ") + "-" + uuid.uuid4().hex[:8]
 
@@ -24,7 +27,7 @@ def save_recording(samples: np.ndarray, *, model: str, language: str,
                    loop_detected: bool, hotwords: list[str] | None = None,
                    directory: Path | None = None, recording_id: str = "",
                    recognition_source: str = "final") -> Path:
-    """Save 16 kHz mono PCM + metadata, then retain only the latest 20 pairs.
+    """Save 16 kHz mono PCM + metadata, then retain only the latest ``KEEP`` pairs.
 
     Metadata is the completion marker; failed writes remove their audio.
     UUID suffixes avoid collisions between rapid dictations. The app calls
@@ -50,8 +53,9 @@ def save_recording(samples: np.ndarray, *, model: str, language: str,
                 fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
                 with os.fdopen(fd, "wb") as out:
                     out.write(content)
-            for old in (sorted(directory.glob("*.json"))[:-20]
-                        if directory.name != "recovery" else []):
+            # Failed/recovered takes (recovery/) get the same cap, so neither
+            # folder grows without bound.
+            for old in sorted(directory.glob("*.json"))[:-KEEP]:
                 old.with_suffix(".wav").unlink(missing_ok=True)
                 old.unlink(missing_ok=True)
         except Exception:
