@@ -538,10 +538,10 @@ def test_recording_setting_and_translations(qapp, isolated_home, no_audio_hw):
     from thundertalk.core.settings import Settings
     from thundertalk.ui.pages.settings_page import SettingsPage
     s = Settings()
-    assert s.get("keep_recent_recordings") is False      # audio is opt-in; History keeps text
+    assert s.get("keep_recent_recordings") is True
     page = SettingsPage(s)
-    page._recordings_toggle.toggled_signal.emit(True)
-    assert Settings().get("keep_recent_recordings") is True
+    page._recordings_toggle.toggled_signal.emit(False)
+    assert Settings().get("keep_recent_recordings") is False
     for key in ("settings.keep_recent_recordings.label", "settings.keep_recent_recordings.desc"):
         assert i18n._STRINGS[key]["en"] and i18n._STRINGS[key]["zh"]
 
