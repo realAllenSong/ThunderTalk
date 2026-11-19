@@ -10,6 +10,11 @@ user's words always come first.
 the space inside compound brand names ("chat gpt" → "ChatGPT", "github" →
 "GitHub"). It never turns one word into a different word, so it is safe on
 every engine's output.
+
+``_MISHEARD`` is the one exception: a few fixed mishearings measured on the
+tech-dictation eval (2026-11-18) that are practically never meant literally
+("Cloud Code" for Claude Code, "SuperBase" for Supabase). Each was checked
+against every reference transcript in the eval and training corpora.
 """
 
 from __future__ import annotations
@@ -21,6 +26,7 @@ BUILTIN_TERMS: tuple[str, ...] = (
     "Claude", "Claude Code", "Anthropic", "OpenAI", "ChatGPT", "Codex", "GPT", "Gemini",
     "DeepMind", "DeepSeek", "Qwen", "Kimi", "Grok", "xAI", "Mistral", "Llama", "Perplexity",
     "Midjourney", "Sora", "Whisper", "ElevenLabs", "Groq", "Hugging Face", "Ollama",
+    "Claude Desktop", "Fable", "Opus", "Sonnet", "Haiku", "Argon", "Astra", "Antigravity",
     "NVIDIA", "CUDA", "MLX", "PyTorch", "LangChain",
     # developer tools
     "Cursor", "Copilot", "GitHub", "VS Code", "Xcode", "Homebrew", "Docker", "Kubernetes",
@@ -68,7 +74,18 @@ _FIXES: list[tuple[re.Pattern, str]] = [
     (r"\bcloudflare\b", "Cloudflare"),
     (r"\bollama\b", "Ollama"),
     (r"\bqwen\b", "Qwen"),
+    (r"\bcodex\b", "Codex"),
 )]
+# Known mishearings → the term (see the module docstring). Not after "Google"
+# ("Google Cloud Code" is a real product).
+_MISHEARD: list[tuple[re.Pattern, str]] = [
+    (re.compile(_B0 + p + _B1, re.IGNORECASE), r) for p, r in (
+    (r"(?<!google )cloud\s+code", "Claude Code"),
+    (r"super\s?base", "Supabase"),
+    (r"quinn\s?3", "Qwen3"),
+    (r"code\s?ex|codax", "Codex"),
+)] + [(re.compile(_B0 + r"gbt(?=[\s-]?\d)", re.IGNORECASE), "GPT")]   # "GBT5.6" (digit follows)
+
 # Lower-case acronyms become upper case only when they stand alone (so "api"
 # → "API" but "rapid" and "qwen3-asr" are untouched). Mixed-case input is
 # left alone ("Api" may be a name).
@@ -80,7 +97,7 @@ def normalize(text: str) -> str:
     """Fix the spelling of known terms in recognized text (case and spacing only)."""
     if not text or not any(c.isascii() and c.isalpha() for c in text):
         return text
-    for pat, rep in _FIXES:
+    for pat, rep in _MISHEARD + _FIXES:
         text = pat.sub(rep, text)
     return _ACRONYM_RE.sub(lambda m: m.group(1).upper(), text)
 

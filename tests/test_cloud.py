@@ -943,3 +943,16 @@ def test_foreign_script_guard():
     from thundertalk.core.asr import foreign_script
     assert foreign_script("이 보시면 돌려내.", ["zh", "en"]) and foreign_script("สั่งอาหาร", ["zh", "en"])
     assert not foreign_script("我们的CLI和café", ["zh", "en"]) and not foreign_script("こんにちは", ["ja", "en"])
+
+
+def test_known_mishearings_are_fixed_and_nothing_else():
+    from thundertalk.core.terms import normalize
+    assert normalize("Cursor 和 Cloud Code，我都在用。") == "Cursor 和 Claude Code，我都在用。"
+    assert normalize("跟cloud code，跟codeex聊天") == "跟Claude Code，跟Codex聊天"
+    assert normalize("CODAX都要有") == "Codex都要有"
+    assert normalize("数据库用SuperBase") == "数据库用Supabase"
+    assert normalize("基于 Quinn 3调的") == "基于 Qwen3调的"
+    assert normalize("GBT5.6 和 GBT-5") == "GPT5.6 和 GPT-5"
+    for keep in ("Google Cloud Code 插件", "我们的cloud costs太高", "Quinn is a name", "decode extra",
+                 "the super based model", "gbt is", "UGBT5"):
+        assert normalize(keep) == keep, keep
