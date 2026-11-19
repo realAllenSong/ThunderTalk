@@ -237,7 +237,7 @@ def cmd_eval(a, out) -> dict:
         if cloud.is_cloud_id(name):
             raise CliError("bad_args", "--engines are local models; the cloud one goes in --reference")
         if name.startswith("qwen-mlx:"):
-            # A fine-tuned checkpoint folder (tools/finetune): Qwen3-ASR weights, MLX runtime.
+            # A fine-tuned checkpoint folder: Qwen3-ASR weights, MLX runtime.
             if not Path(name.split(":", 1)[1]).expanduser().is_dir():
                 raise CliError("not_found", f"No checkpoint folder: {name}")
             engines.append(name)

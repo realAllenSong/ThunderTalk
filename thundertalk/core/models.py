@@ -371,7 +371,7 @@ def _local_mlx_dir(model_id: str) -> Optional[Path]:
     return d if (d / "model.safetensors").is_file() and (d / "config.json").is_file() else None
 
 
-# ThunderTalk's fine-tune of Qwen3-ASR-0.6B (tools/finetune; model card at
+# ThunderTalk's fine-tune of Qwen3-ASR-0.6B (model card at
 # huggingface.co/Oulasong/Qwen3-ASR-0.6B-ThunderTalk). Optional: the base model
 # stays the default.
 _base = next(m for m in BUILTIN_MODELS if m.id == "qwen3-asr-06b-mlx")
