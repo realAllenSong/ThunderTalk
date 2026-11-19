@@ -375,8 +375,9 @@ The **Models** page shows your detected hardware and tags each model **Recommend
 | Goal | Pick |
 |------|------|
 | Fastest start, fewest languages | **SenseVoice-Small** (5 languages, no hotwords) |
-| Most accurate on the CPU | **Qwen3-ASR-0.6B (ONNX int8)** |
-| Most accurate, Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)**, the default |
+| Most accurate and fastest dictation | **ThunderTalk ASR 0.6B (MLX 8-bit)**, our own model and the default on Apple Silicon with 16 GB or more |
+| On the CPU, leaving the GPU free | **Qwen3-ASR-0.6B (ONNX int8)**, the default on 8 GB Macs |
+| The original Qwen3 model on the GPU | **Qwen3-ASR-0.6B (MLX fp16)** |
 | Hard accents or noisy audio | **Qwen3-ASR-1.7B (MLX fp16)**, needs 16 GB of RAM or more |
 | Meetings and interviews with speaker labels | **MOSS-Transcribe-Diarize 0.9B (MLX)**, Apple Silicon only |
 | Fastest English dictation | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
@@ -384,7 +385,7 @@ The **Models** page shows your detected hardware and tags each model **Recommend
 | Speak in one language, paste another | **Direct mode**, which pastes a SeamlessM4T translation after you stop |
 | Speak in your language and see a translation beside it | **Review mode**: ASR transcribes, then translates, and you choose Replace or Keep original |
 
-The author's own setup: **Qwen3-ASR-0.6B (ONNX int8) with hotwords** for plain transcription, since it is fast, accurate and needs no GPU; and **Review mode** with that recognizer plus **SeamlessM4T v2** when a translation is needed. Review mode translates the transcript text (text to text), which is faster than Direct mode and lets you keep the original.
+The author's own setup: **ThunderTalk ASR 0.6B with hotwords** for plain transcription, since it is the most accurate and the fastest; and **Review mode** with that recognizer plus **SeamlessM4T v2** when a translation is needed. Review mode translates the transcript text (text to text), which is faster than Direct mode and lets you keep the original.
 
 ## Updates
 

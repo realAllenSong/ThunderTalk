@@ -373,8 +373,9 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | 目标 | 选择 |
 |------|------|
 | 启动最快、语言最少 | **SenseVoice-Small**（5 种语言，无热词） |
-| CPU 上准确率最高 | **Qwen3-ASR-0.6B (ONNX int8)** |
-| 准确率最高、Apple Silicon GPU | **Qwen3-ASR-0.6B (MLX fp16)**（默认） |
+| 听写最准、最快 | **ThunderTalk ASR 0.6B (MLX 8 位)**，我们自己的模型，16 GB 及以上 Apple Silicon Mac 的默认模型 |
+| 在 CPU 上运行、不占 GPU | **Qwen3-ASR-0.6B (ONNX int8)**，8 GB Mac 的默认模型 |
+| GPU 上运行的 Qwen3 原版 | **Qwen3-ASR-0.6B (MLX fp16)** |
 | 重口音或嘈杂音频 | **Qwen3-ASR-1.7B (MLX fp16)**，需要 16 GB 及以上内存 |
 | 带说话人标签的会议 / 访谈 | **MOSS-Transcribe-Diarize 0.9B (MLX)**，仅 Apple Silicon |
 | 最快的英语听写 | **Parakeet-TDT 0.6B v2 (ONNX int8)** |
@@ -382,7 +383,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 | 说一种语言，粘贴另一种 | **直译模式**，结束录音后粘贴 SeamlessM4T 的译文 |
 | 用母语说话，同时看到译文 | **审阅模式**：ASR 转写后再翻译，由你选择替换或保留原文 |
 
-作者自己的配置：纯转写用 **Qwen3-ASR-0.6B (ONNX int8) + 热词**，又快又准，不需要 GPU；需要翻译时用**审阅模式**，以它作为识别引擎，搭配 **SeamlessM4T v2**。审阅模式翻译的是转写后的文本（文本到文本），比直译模式快，并且能保留原文。
+作者自己的配置：纯转写用 **ThunderTalk ASR 0.6B + 热词**，最准也最快；需要翻译时用**审阅模式**，以它作为识别引擎，搭配 **SeamlessM4T v2**。审阅模式翻译的是转写后的文本（文本到文本），比直译模式快，并且能保留原文。
 
 ## 自动更新
 
