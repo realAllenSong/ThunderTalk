@@ -663,17 +663,17 @@ def main() -> None:
         return recording is not None and recording.get("take") == pipe._cancelled_take
 
     def _keep_cancelled(recording, text: str = "", dur: float | None = None, ms: int = 0) -> None:
-        """Esc discarded this take (#13): nothing is pasted. With "keep recent
-        recordings" on, the audio (and any text that was already recognised)
-        goes to History marked as cancelled, so a slip of the finger can be
-        undone; otherwise nothing is kept."""
+        """Esc discarded this take (#13): nothing is pasted, but its text goes
+        to History marked as cancelled, so a slip of the finger loses nothing.
+        The audio is saved only when "keep recent recordings" is on."""
         keep = settings.get("keep_recent_recordings")
         samples = recording["samples"] if recording else None
-        audio_diagnostic("dictation_cancel_kept", kept=bool(keep), chars=len(text or ""))
-        if not keep or samples is None or len(samples) < 800:
+        text = (text or "").strip() or (recording or {}).get("preview", "").strip()
+        audio_diagnostic("dictation_cancel_kept", audio=bool(keep), chars=len(text))
+        if samples is None or len(samples) < 800 or not (text or keep):
             return
-        _save_recent_recording(recording, text or "", "", keep, recognition_source="cancelled")
-        history.add(text=text or "", duration_secs=dur if dur is not None else len(samples) / 16000,
+        _save_recent_recording(recording, text, "", keep, recognition_source="cancelled")
+        history.add(text=text, duration_secs=dur if dur is not None else len(samples) / 16000,
                     inference_ms=ms, model=recording["model"], recognition_source="cancelled",
                     recording_path=recording.get("recording_path", ""))
         QTimer.singleShot(50, window.home_page.refresh)
@@ -945,17 +945,14 @@ def main() -> None:
                     _sync_escape()
                 stop_ms = int((time.perf_counter() - t_stop) * 1000)
                 print(f"[Toggle] Restoring system audio ({stop_ms}ms total)")
-                if take == pipe._cancelled_take:          # Esc during the tail grace
-                    DICTATION.end()
-                    if samples is not None:
-                        _keep_cancelled(_recording_of(samples, take))
-                    return
+                cancelled = take == pipe._cancelled_take   # Esc: recognise, keep, don't paste
 
                 if samples is None or len(samples) < 800:
                     print("[Toggle] Too short (audio already restored on stop)")
                     DICTATION.end()
-                    state.set_recording(st.REC_IDLE)
-                    overlay.show_error(t("overlay.too_short"))
+                    if not cancelled:
+                        state.set_recording(st.REC_IDLE)
+                        overlay.show_error(t("overlay.too_short"))
                     return
 
                 recording = _recording_of(samples, take)
@@ -1010,7 +1007,8 @@ def main() -> None:
                                    preview_text=recording["preview"])
                 worker.done.connect(_done)
                 worker.error.connect(_error)
-                worker.waiting.connect(overlay.show_waiting)
+                if not cancelled:
+                    worker.waiting.connect(overlay.show_waiting)
                 _track_worker(worker)
                 worker.start()
 
@@ -1093,22 +1091,13 @@ def main() -> None:
                 audio_diagnostic("cancel_capture_failed", error=type(exc).__name__)
             DICTATION.end()
         elif pipe._recording:
-            live.stop()
-            cloud_live.stop()               # a segment already sent is still billed
-            pipe._recording = False
-            session, pipe._ducking_session = pipe._ducking_session, None
+            # Stop as usual so the take is still recognised (its text goes to
+            # History); the result is dropped instead of pasted.
             pipe._cancelled_take = pipe._take_id
-            try:
-                samples = stop_recording_and_restore(pipe.recorder, session)
-            except Exception as exc:
-                audio_diagnostic("cancel_capture_failed", error=type(exc).__name__)
-                samples = None
-            DICTATION.end()
-            if samples is not None:
-                _keep_cancelled(_recording_of(samples, pipe._take_id))
+            on_toggle()
         elif pipe._stopping or transcribing:
-            # _finalize_stop / the ASR worker see the id and drop the result
-            # (the worker itself finishes: a decode can't be interrupted).
+            # _finalize_stop / the ASR worker see the id: the text goes to
+            # History, nothing is pasted.
             pipe._cancelled_take = pipe._take_id
         else:
             _sync_escape()

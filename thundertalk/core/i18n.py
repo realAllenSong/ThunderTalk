@@ -410,8 +410,8 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Keep recent recordings", "zh": "保留最近录音",
     },
     "settings.keep_recent_recordings.desc": {
-        "en": "Keep the last 20 dictations on this Mac. Failed or preview-recovered takes are always kept locally for retry.",
-        "zh": "在本机保留最近 20 次听写。识别失败或从预览恢复的录音始终保留在本机，以便重试。",
+        "en": "Also keep the audio of the last 20 dictations on this Mac (History always keeps the text). Failed or preview-recovered takes are always kept locally for retry.",
+        "zh": "额外在本机保留最近 20 次听写的音频（历史记录始终保留文字）。识别失败或从预览恢复的录音始终保留在本机，以便重试。",
     },
     "settings.llm_rewrite.label": {
         "en": "Grammar Correction", "zh": "语法修正",
@@ -589,7 +589,7 @@ _STRINGS: dict[str, dict[str, str]] = {
 
     # ── Overlay ─────────────────────────────────────────────────────
     "overlay.listening": {"en": "Listening…", "zh": "正在聆听…"},
-    "overlay.cancelled": {"en": "Cancelled · nothing inserted", "zh": "已取消 · 未插入文字"},
+    "overlay.cancelled": {"en": "Cancelled · not inserted, text kept in History", "zh": "已取消 · 未插入，文字留在历史记录里"},
     "overlay.transcribing": {"en": "Transcribing…", "zh": "正在转写…"},
 
     # ── Capture ─────────────────────────────────────────────────────
