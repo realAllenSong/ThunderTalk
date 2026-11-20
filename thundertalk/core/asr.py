@@ -487,11 +487,18 @@ class AsrEngine:
         mx.set_cache_limit(2048 << 20)
 
         hf_repo = model_dir
+        source = model_dir
         if hf_repo.startswith("hf://"):
-            hf_repo = hf_repo[5:]
+            hf_repo = source = hf_repo[5:]
+            # Load what is on disk; asking the Hub first made every launch wait for
+            # it, and a new upload download itself inside this call.
+            from thundertalk.core.models import hf_local_snapshot
+            cached = hf_local_snapshot(hf_repo)
+            if cached is not None:
+                source = str(cached)
 
-        print(f"[ASR-MLX] Calling load_model({hf_repo!r})...")
-        model = load_qwen_mlx(hf_repo)
+        print(f"[ASR-MLX] Calling load_model({source!r})...")
+        model = load_qwen_mlx(source)
         evaluate_model(model)
         mx.clear_cache()
         print("[ASR-MLX] load_model returned")

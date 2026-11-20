@@ -460,26 +460,97 @@ class DownloadCancelled(Exception):
     """Raised inside a download when the user pressed Cancel."""
 
 
-def _hf_cache_has(repo_id: str) -> bool:
-    """True when a complete snapshot (config + weights) is in the HF cache."""
+# The revision (a tag on the Hub) of ThunderTalk's own models that this app
+# version was measured with. Without a pin the app followed ``main``: a new
+# upload reached every user as an unannounced download inside the next model
+# load, with dictation unavailable until it finished. Now a launch loads what
+# is on disk and never waits for the network; a newer pinned revision is
+# fetched in the background and swapped in when it is complete (app.py).
+HF_REVISIONS: dict[str, str] = {"Oulasong/ThunderTalk-ASR-0.6B": "v2"}
+
+
+def _hf_repo_dir(repo_id: str) -> Path:
     try:
         from huggingface_hub import constants
-        root = (Path(constants.HF_HUB_CACHE)
-                / ("models--" + repo_id.replace("/", "--")) / "snapshots")
+        return Path(constants.HF_HUB_CACHE) / ("models--" + repo_id.replace("/", "--"))
     except Exception:
-        root = (Path.home() / ".cache" / "huggingface" / "hub"
-                / ("models--" + repo_id.replace("/", "--")) / "snapshots")
-    if not root.is_dir():
+        return Path.home() / ".cache" / "huggingface" / "hub" / ("models--" + repo_id.replace("/", "--"))
+
+
+def _snapshot_complete(snap: Path) -> bool:
+    # Snapshot entries are symlinks into blobs/. glob() happily returns
+    # dangling links, but .exists() follows them — so a half-written
+    # weight file is (correctly) treated as "not downloaded".
+    return (snap / "config.json").exists() and any(f.exists() for f in snap.glob("*.safetensors"))
+
+
+def _hf_cache_has(repo_id: str) -> bool:
+    """True when a complete snapshot (config + weights) is in the HF cache."""
+    root = _hf_repo_dir(repo_id) / "snapshots"
+    return root.is_dir() and any(_snapshot_complete(snap) for snap in root.iterdir())
+
+
+def hf_pinned_snapshot(repo_id: str) -> Optional[Path]:
+    """The complete cached snapshot of the revision this app pins for ``repo_id``, if it is there."""
+    revision = HF_REVISIONS.get(repo_id)
+    if not revision:
+        return None
+    repo = _hf_repo_dir(repo_id)
+    try:
+        commit = (repo / "refs" / revision).read_text(encoding="utf-8").strip()
+    except OSError:
+        return None
+    snap = repo / "snapshots" / commit
+    return snap if commit and _snapshot_complete(snap) else None
+
+
+def hf_local_snapshot(repo_id: str) -> Optional[Path]:
+    """What to load without asking the network: the pinned revision when it is
+    cached, otherwise the newest complete snapshot (an older build of the
+    model still dictates while the pinned one downloads)."""
+    pinned = hf_pinned_snapshot(repo_id)
+    if pinned:
+        return pinned
+    root = _hf_repo_dir(repo_id) / "snapshots"
+    snaps = [d for d in root.iterdir() if d.is_dir() and _snapshot_complete(d)] if root.is_dir() else []
+    return max(snaps, key=lambda d: d.stat().st_mtime) if snaps else None
+
+
+def hf_update_pending(repo_id: str) -> bool:
+    """A model that is downloaded, but not in the revision this app pins."""
+    return bool(HF_REVISIONS.get(repo_id)) and _hf_cache_has(repo_id) and hf_pinned_snapshot(repo_id) is None
+
+
+def hf_update(repo_id: str, progress_cb=None, cancel: "threading.Event | None" = None) -> bool:
+    """Fetch the pinned revision of a downloaded model. True when it arrived
+    (the caller reloads). Older snapshots are removed once the new one is
+    complete, so an update does not leave a second copy of the weights behind."""
+    if not hf_update_pending(repo_id):
         return False
-    for snap in root.iterdir():
-        # Snapshot entries are symlinks into blobs/. glob() happily returns
-        # dangling links, but .exists() follows them — so a half-written
-        # weight file is (correctly) treated as "not downloaded".
-        if (snap / "config.json").exists() and any(
-            f.exists() for f in snap.glob("*.safetensors")
-        ):
-            return True
-    return False
+    _hf_snapshot(repo_id, None, _MLX_ALLOW, None, progress_cb, cancel, revision=HF_REVISIONS[repo_id])
+    snap = hf_pinned_snapshot(repo_id)
+    if snap is None:
+        return False
+    _prune_snapshots(repo_id, snap)
+    return True
+
+
+def _prune_snapshots(repo_id: str, keep: Path) -> None:
+    """Remove every snapshot of ``repo_id`` but ``keep``, and the blobs only they used."""
+    import shutil
+    repo = _hf_repo_dir(repo_id)
+    kept = {f.resolve() for f in keep.rglob("*") if f.is_symlink() or f.is_file()}
+    for snap in (repo / "snapshots").iterdir():
+        if snap.is_dir() and snap != keep:
+            shutil.rmtree(snap, ignore_errors=True)
+    blobs = repo / "blobs"
+    if blobs.is_dir():
+        for blob in blobs.iterdir():
+            if blob.is_file() and blob.resolve() not in kept:
+                try:
+                    blob.unlink()
+                except OSError:
+                    pass
 
 
 def _content_length(url: str) -> int:
@@ -559,12 +630,14 @@ def hf_snapshot_dir(repo_id: str) -> Optional[Path]:
     return max(snaps, key=lambda d: d.stat().st_mtime) if snaps else None
 
 
-def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel) -> None:
+def _hf_snapshot(repo_id: str, local_dir, allow, ignore, progress_cb, cancel, revision: Optional[str] = None) -> None:
     """snapshot_download with real byte progress and cancel support."""
     from huggingface_hub import snapshot_download
     from tqdm import tqdm as byte_tqdm
 
     kwargs: dict = {"repo_id": repo_id}
+    if revision:
+        kwargs["revision"] = revision
     kwargs["max_workers"] = 2
     if cancel is not None and cancel.is_set():
         raise DownloadCancelled()
@@ -706,7 +779,16 @@ def download_model(
             if progress_cb:
                 progress_cb(100, "Done")
             return
-        _hf_snapshot(repo_id, None, _MLX_ALLOW, None, progress_cb, cancel)
+        revision = HF_REVISIONS.get(repo_id)
+        try:
+            _hf_snapshot(repo_id, None, _MLX_ALLOW, None, progress_cb, cancel, revision=revision)
+        except DownloadCancelled:
+            raise
+        except Exception as exc:
+            # The pinned tag is not on the Hub (a build made before the upload): take main.
+            if not revision or "Revision" not in type(exc).__name__:
+                raise
+            _hf_snapshot(repo_id, None, _MLX_ALLOW, None, progress_cb, cancel)
         if progress_cb:
             progress_cb(100, "Done")
         return

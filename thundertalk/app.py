@@ -321,6 +321,30 @@ class TranslatorLoadWorker(QThread):
             self.error.emit(self._model_id, str(e))
 
 
+class ModelUpdater(QObject):
+    """Fetches the revision of a downloaded model that this app version pins
+    (core/models.py: HF_REVISIONS) while the user keeps dictating with the one
+    on disk. ``updated`` fires when the new weights are complete. A daemon
+    thread, so quitting never waits for a download; it resumes next launch."""
+
+    updated = Signal(str)
+
+    def start(self, model_id: str, repo_id: str) -> None:
+        import threading
+
+        def run() -> None:
+            from thundertalk.core import models
+            try:
+                print(f"[ModelUpdate] Fetching {repo_id}@{models.HF_REVISIONS.get(repo_id)} in the background")
+                if models.hf_update(repo_id):
+                    print(f"[ModelUpdate] {repo_id} is up to date on disk")
+                    self.updated.emit(model_id)
+            except Exception as exc:          # offline, tag not uploaded yet, disk full: try again next launch
+                print(f"[ModelUpdate] Not updated ({type(exc).__name__}); the current model stays")
+
+        threading.Thread(target=run, name="model-update", daemon=True).start()
+
+
 class Pipeline(QObject):
     """Bridges hotkey events (from a background thread) into Qt signals."""
 
@@ -601,6 +625,38 @@ def main() -> None:
         _start_model_load(last_model, path, info.family, info.backend)
 
     QTimer.singleShot(500, _restore_model)
+
+    # --- Model update (background) -----------------------------------------
+    # A launch loads the weights that are on disk. When this app version pins a
+    # newer revision of the active model, it is downloaded here and loaded once
+    # it is complete and no dictation is running.
+    pipe._model_updater = None
+
+    def _apply_model_update(mid: str) -> None:
+        from thundertalk.core.models import find, get_model_path
+        info = find(mid)
+        if settings.active_model_id != mid or not info:
+            return
+        if pipe.dictation_active or (pipe._load_worker and pipe._load_worker.isRunning()):
+            QTimer.singleShot(15000, lambda: _apply_model_update(mid))
+            return
+        print(f"[ModelUpdate] Loading the updated {mid}")
+        _start_model_load(mid, get_model_path(mid), info.family, info.backend)
+
+    def _update_model() -> None:
+        from thundertalk.core import models
+        mid = settings.active_model_id
+        info = models.find(mid) if mid else None
+        if not (info and info.backend == "mlx" and (info.download_url or "").startswith("hf://")):
+            return
+        repo = info.download_url[len("hf://"):]
+        if models._local_mlx_dir(mid) is not None or not models.hf_update_pending(repo):
+            return
+        pipe._model_updater = ModelUpdater()
+        pipe._model_updater.updated.connect(_apply_model_update)
+        pipe._model_updater.start(mid, repo)
+
+    QTimer.singleShot(20000, _update_model)
 
     from thundertalk.core import text_output
     proofread = window.proofread_page
