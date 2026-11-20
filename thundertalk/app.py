@@ -1096,7 +1096,7 @@ def main() -> None:
             _cancel_cleanup()
             save_frontmost_app()
             # Names around the cursor become hotwords for this take; read off the UI thread.
-            context.start(text_output._previous_app_pid if settings.get("context_hotwords") is True else None)
+            context.start(text_output._previous_app_pid if settings.get("context_hotwords") is not False else None)
             text_output.activity.set_hotkey(settings.hotkey)
             if not text_output.activity.available:
                 text_output.activity.stop()
