@@ -84,6 +84,7 @@ _MISHEARD: list[tuple[re.Pattern, str]] = [
     (r"super\s?base", "Supabase"),
     (r"quinn\s?3", "Qwen3"),
     (r"code\s?ex|codax", "Codex"),
+    (r"rebot", "rebuttal"),                 # not a word; seen once in 40 real dictations with the second model
 )] + [(re.compile(_B0 + r"gbt(?=[\s-]?\d)", re.IGNORECASE), "GPT")]   # "GBT5.6" (digit follows)
 
 # Lower-case acronyms become upper case only when they stand alone (so "api"

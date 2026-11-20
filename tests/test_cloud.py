@@ -953,6 +953,7 @@ def test_known_mishearings_are_fixed_and_nothing_else():
     assert normalize("数据库用SuperBase") == "数据库用Supabase"
     assert normalize("基于 Quinn 3调的") == "基于 Qwen3调的"
     assert normalize("GBT5.6 和 GBT-5") == "GPT5.6 和 GPT-5"
+    assert normalize("然后我们的rebot，然后来判断") == "然后我们的rebuttal，然后来判断"
     for keep in ("Google Cloud Code 插件", "我们的cloud costs太高", "Quinn is a name", "decode extra",
-                 "the super based model", "gbt is", "UGBT5"):
+                 "the super based model", "gbt is", "UGBT5", "明天 reboot", "a robot", "rebottle it"):
         assert normalize(keep) == keep, keep
