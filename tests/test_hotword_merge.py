@@ -1,7 +1,7 @@
 """Hotwords may only change the words they are about (thundertalk.core.hotword_merge)."""
 import pytest
 
-from thundertalk.core.hotword_merge import merge
+from thundertalk.core.hotword_merge import candidates, merge, respell
 
 HOT = ["PlayWright CLI", "Rosetta"]
 
@@ -33,6 +33,27 @@ def test_merge(plain, hinted, want):
 def test_no_hotwords_or_no_hint_keeps_the_plain_text():
     assert merge("Play Rice OI.", "Playwright CLI.", []) == "Play Rice OI."
     assert merge("Play Rice OI.", "", HOT) == "Play Rice OI."
+
+
+def test_candidates_are_the_hotwords_the_text_sounds_like():
+    words = ["PlayWright CLI", "Rosetta", "Codex", "闪电说"]
+    assert candidates("你自己 play race，然后 iterator", words) == ["PlayWright CLI"]
+    assert candidates("用闪电硕来写，再跑 code x", words) == ["闪电说"]          # "code x" spells Codex: respelled, no decode
+    assert candidates("我们用 rosetter 和 code ex 吧", words) == ["Codex", "Rosetta"]
+    # Short hotwords need a close match: "所" (suo) is not "Sol", "还可以" is "hai ke yi" and does reach "Haiku".
+    assert candidates("所以说这个还可以", ["Sol", "Opus", "Luna"]) == []
+    assert candidates("所以说这个还可以", ["Haiku"]) == ["Haiku"]
+    assert candidates("像 USD 我不知道它有没有要求，对吧？", words) == []
+    assert candidates("我不懂。", words) == []
+    # Already written: nothing left for a second decode to do.
+    assert candidates("用 Rosetta 和 codex 做", words) == []
+
+
+def test_respell_uses_the_users_spelling_and_leaves_longer_words_alone():
+    assert respell("open playwright cli now", ["PlayWright CLI"]) == "open PlayWright CLI now"
+    assert respell("用 rosetta 做", ["Rosetta"]) == "用 Rosetta 做"
+    assert respell("the solution", ["Sol"]) == "the solution"
+    assert merge("a solution", "a Solution", ["Sol"]) == "a solution"
 
 
 # ── through the engine: two decodes for a final, one for a preview ─────────
@@ -69,6 +90,21 @@ def test_preview_decodes_once_without_the_hotwords(monkeypatch):
     eng, calls = _engine(monkeypatch, "Play Rice OI.", "Playwright CLI.")
     r = eng._recognize_mlx(np.zeros(16000, dtype=np.float32), 16000, preview=True)
     assert calls == [""] and r.text == "Play Rice OI."
+
+
+def test_no_sound_alike_stretch_means_one_decode(monkeypatch):
+    import numpy as np
+    eng, calls = _engine(monkeypatch, "像 USD 我不知道它有没有要求。", "像 PlayWright CLI 我不知道它有没有要求。")
+    assert eng._recognize_mlx(np.zeros(16000, dtype=np.float32), 16000).text == "像 USD 我不知道它有没有要求。"
+    assert calls == [""]
+
+
+def test_only_the_likely_hotwords_are_prompted(monkeypatch):
+    import numpy as np
+    eng, calls = _engine(monkeypatch, "用 play race 测", "用 Playwright CLI 测")
+    eng.set_hotwords(["Rosetta", "Codex", "PlayWright CLI", "Antigravity"])
+    assert eng._recognize_mlx(np.zeros(16000, dtype=np.float32), 16000).text == "用 Playwright CLI 测"
+    assert calls == ["", "PlayWright CLI"]
 
 
 def test_no_hotwords_means_one_decode(monkeypatch):

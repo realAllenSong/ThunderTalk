@@ -7,6 +7,12 @@ sentences included ("我不懂。" → "我不行。"). So the decoder runs twic
 and with the hotwords, and ``merge`` starts from the plain transcript and takes
 from the hinted one only the stretches where a hotword appears.
 
+The second decode only runs when it can matter: ``candidates`` finds the
+hotwords that some stretch of the plain transcript sounds like, and only those
+go into the prompt. Most dictations name no hotword, so they cost one decode,
+and a long hotword list no longer has to fit the prompt. A hotword the decoder
+already wrote is put in the user's spelling without a decode (``respell``).
+
 The prompt also makes the decoder write a hotword over words that sound
 nothing like it ("USD" → "PlayWright CLI", "opportunity" → "Opus Sonnet"), so
 a stretch is only taken when the plain words sound like what replaces them
@@ -15,23 +21,29 @@ a stretch is only taken when the plain words sound like what replaces them
 from __future__ import annotations
 
 import difflib
+import functools
 import re
 
 _UNIT = re.compile(r"[A-Za-z0-9]+(?:['’.\-][A-Za-z0-9]+)*|[㐀-鿿぀-ヿ가-힯]")
 
 
-SOUND_ALIKE = 0.5      # "play race"/"Playwright CLI" 0.57, "罗塞塔"/"Rosetta" 0.53; "girls night"/"歌 Sonnet" 0.44
+SOUND_ALIKE = 0.52     # "play race"/"Playwright CLI" 0.57, "罗塞塔"/"Rosetta" 0.53; "道它"/"Rosetta" 0.50, "girls night"/"歌 Sonnet" 0.44
+
+
+@functools.lru_cache(maxsize=8192)
+def _pinyin(ch: str) -> str:
+    try:
+        from pypinyin import lazy_pinyin
+        return lazy_pinyin(ch)[0]
+    except Exception:
+        return ch
 
 
 def _sound(text: str) -> str:
     out = []
     for ch in text.lower():
         if "\u3400" <= ch <= "\u9fff":
-            try:
-                from pypinyin import lazy_pinyin
-                out.append(lazy_pinyin(ch)[0])
-            except Exception:
-                out.append(ch)
+            out.append(_pinyin(ch))
         elif ch.isascii() and ch.isalnum():
             out.append(ch)
     return "".join(out)
@@ -61,9 +73,68 @@ def _hotword_spans(text: str, hotwords: list[str]) -> list[tuple[int, int]]:
         key = "".join(word.lower().split())
         at = squashed.find(key) if key else -1
         while at >= 0:
-            spans.append((index[at], index[at + len(key) - 1] + 1))
+            start, end = index[at], index[at + len(key) - 1] + 1
+            if not (_inside_word(text, start - 1, start) or _inside_word(text, end - 1, end)):
+                spans.append((start, end))
             at = squashed.find(key, at + 1)
     return spans
+
+
+def _inside_word(text: str, left: int, right: int) -> bool:
+    """True when the characters at ``left`` and ``right`` belong to one Latin word ("Sol" in "solution")."""
+    return (0 <= left and right < len(text)
+            and text[left].isascii() and text[left].isalnum() and text[right].isascii() and text[right].isalnum())
+
+
+def respell(text: str, hotwords: list[str]) -> str:
+    """Hotwords the decoder already wrote, in the user's spelling ("playwright cli" → "PlayWright CLI")."""
+    spans = sorted((s, e, w) for w in hotwords for s, e in _hotword_spans(text, [w]))
+    out, at = [], 0
+    for s, e, w in spans:
+        if s < at:
+            continue
+        out += [text[at:s], w]
+        at = e
+    return "".join(out) + text[at:]
+
+
+def _alike_enough(key: str) -> float:
+    """How close a stretch must sound before the second decode is worth running.
+
+    Letters and pinyin are a blunt ear: at 0.52 "Gemini" matches some stretch in
+    78 % of real dictations and "Opus" in 72 %, a 13-letter hotword in 4 %.
+    Short hotwords therefore need a closer match (measured on 596 dictations:
+    Sol/Opus/Terra/Sonnet ≤ 2 %, Gemini 15 %, Haiku 29 % — "还可" is "hai ke")."""
+    n = len(key)
+    return 0.75 if n <= 4 else 0.67 if n <= 6 else 0.6 if n <= 9 else 0.55
+
+
+def candidates(plain: str, hotwords: list[str]) -> list[str]:
+    """The hotwords some stretch of ``plain`` sounds like but does not spell, closest first."""
+    sounds = [_sound(m.group()) for m in _UNIT.finditer(plain)]
+    sounds = [u for u in sounds if u]
+    found = []
+    for word in hotwords:
+        key = _sound(word)
+        if not key or _hotword_spans(plain, [word]):
+            continue
+        need = _alike_enough(key)
+        sm = difflib.SequenceMatcher(None, autojunk=False)
+        sm.set_seq2(key)
+        lo, hi, best = max(2, -(-len(key) * 3 // 5)), len(key) * 1.7, 0.0
+        for i in range(len(sounds)):
+            window = ""
+            for unit in sounds[i:]:
+                window += unit
+                if len(window) > hi:
+                    break
+                if len(window) >= lo:
+                    sm.set_seq1(window)
+                    if sm.real_quick_ratio() >= need and sm.quick_ratio() >= need:
+                        best = max(best, sm.ratio())
+        if best >= need:
+            found.append((best, word))
+    return [w for _score, w in sorted(found, key=lambda f: -f[0])]
 
 
 def merge(plain: str, hinted: str, hotwords: list[str]) -> str:

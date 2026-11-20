@@ -281,17 +281,26 @@ class AsrEngine:
         return info.max_clip_seconds if info else 20.0
 
     def _prompt_hotwords(self) -> str:
+        words = self._bounded(self._hotwords.split("/"))
+        if "/".join(words) != self._hotwords:
+            print(f"[ASR] Hotword prompt bounded to {len(','.join(words).encode('utf-8'))} UTF-8 bytes")
+        return ",".join(words)
+
+    def _bounded(self, candidates: list[str]) -> list[str]:
         info = self._model_info()
         limit = info.max_hotword_bytes if info else 64
         words, size = [], 0
-        for word in self._hotwords.split("/"):
+        for word in candidates:
             cost = len(word.encode("utf-8")) + bool(words)
             if size + cost <= limit:
                 words.append(word)
                 size += cost
-        if "/".join(words) != self._hotwords:
-            print(f"[ASR] Hotword prompt bounded to {size} UTF-8 bytes")
-        return ",".join(words)
+        return words
+
+    def _bounded_prompt(self, candidates: list[str]) -> str:
+        """Prompt for the second, hinted decode: the hotwords the plain
+        transcript sounds like, closest first, within the model's budget."""
+        return " ".join(self._bounded(candidates))
 
     @property
     def needs_reload_for_hotwords(self) -> bool:
@@ -876,9 +885,8 @@ class AsrEngine:
         mx.set_cache_limit(2048 << 20)
 
         duration_secs = len(samples) / sample_rate
-        context = self._prompt_hotwords().replace(",", " ")
-        if self._context_override is not None:          # eval experiments (cli_eval --context)
-            context = self._context_override
+        # eval experiments (cli_eval --context) put a fixed prompt on the one decode
+        context = self._context_override or ""
         # Dictated speech stays well under 12 tokens/s; 32 covers the language
         # tag. Final decodes get twice that, so a repetition loop ends within
         # a second or two instead of running to the old 4096-token limit.
@@ -900,9 +908,7 @@ class AsrEngine:
         # sentences included). The final is decoded plain, then once more with
         # the hotwords, and only the hotword stretches of that second decode
         # are taken (hotword_merge). Previews stay plain: one decode per tick.
-        hotwords = context if self._context_override is None else ""
-        if hotwords:
-            context = ""
+        hotwords = self._context_override is None and bool(self._user_hotwords())
         result = decode(context, self._language)
         if self._language is None and not preview and foreign_script(result.text, self._auto_languages):
             # Auto-detect picked a language this user does not speak (measured:
@@ -916,13 +922,17 @@ class AsrEngine:
             result = again
         text = result.text.strip()
         if hotwords and not preview and text:
-            from thundertalk.core.hotword_merge import merge
-            hinted = _strip_special_tokens(decode(hotwords, self._language).text.strip())
-            if not self._is_hotword_hallucination(hinted) and not foreign_script(hinted, self._auto_languages):
-                merged = merge(text, hinted, self._user_hotwords())
-                if merged != text:
-                    print(f"[ASR-HOTWORD] '{text}' → '{merged}'")
-                    text = merged
+            from thundertalk.core.hotword_merge import candidates, merge, respell
+            words = self._user_hotwords()
+            merged = respell(text, words)
+            likely = candidates(merged, words)       # no sound-alike stretch → no second decode
+            if likely:
+                hinted = _strip_special_tokens(decode(self._bounded_prompt(likely), self._language).text.strip())
+                if not self._is_hotword_hallucination(hinted) and not foreign_script(hinted, self._auto_languages):
+                    merged = merge(merged, hinted, likely)
+            if merged != text:
+                print(f"[ASR-HOTWORD] '{text}' → '{merged}'")
+                text = merged
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MLX] Transcribe done in {inference_ms}ms")
 
