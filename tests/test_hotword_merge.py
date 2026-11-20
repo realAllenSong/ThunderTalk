@@ -118,3 +118,75 @@ def test_hotwords_recited_over_silence_are_not_taken(monkeypatch):
     import numpy as np
     eng, calls = _engine(monkeypatch, "", "PlayWright CLI")
     assert eng._recognize_mlx(np.zeros(16000, dtype=np.float32), 16000).text == "" and calls == [""]
+
+
+# ── through the engine: stretches are scored, not decoded again ────────────
+
+def _scoring_engine(monkeypatch, plain, gain):
+    """An engine whose decoder "prefers" every sound-alike stretch by ``gain``."""
+    from mlx_qwen3_asr import tokenizer
+
+    from thundertalk.core import hotword_score
+
+    eng, calls = _engine(monkeypatch, plain, "never decoded")
+    eng.set_hotwords([])
+    monkeypatch.setattr(tokenizer._TokenizerHolder, "get", classmethod(lambda cls, _id: object()))
+
+    def fake_score(model, tok, samples, text, stretches, **kw):
+        for s in stretches:
+            s.gain = gain
+        fake_score.prompt = kw["prompt"]
+        return stretches
+
+    monkeypatch.setattr(hotword_score, "score", fake_score)
+    return eng, calls, fake_score
+
+
+def test_a_preferred_stretch_becomes_the_users_hotword_without_a_second_decode(monkeypatch):
+    import numpy as np
+    eng, calls, scored = _scoring_engine(monkeypatch, "你自己 play race，然后我不懂。", gain=0.5)
+    eng.set_hotwords(["Playwright CLI", "Rosetta"])
+    r = eng._recognize_mlx(np.zeros(16000, dtype=np.float32), 16000)
+    assert r.text == "你自己 Playwright CLI，然后我不懂。"
+    assert calls == [""] and scored.prompt == "Playwright CLI"          # one decode; only the likely hotword prompted
+
+
+def test_a_stretch_the_decoder_does_not_prefer_stays(monkeypatch):
+    import numpy as np
+    from thundertalk.core.asr import AsrEngine
+    eng, calls, _ = _scoring_engine(monkeypatch, "你自己 play race，然后我不懂。", gain=AsrEngine.HOTWORD_GAIN - 0.5)
+    eng.set_hotwords(["Playwright CLI"])
+    assert eng._recognize_mlx(np.zeros(16000, dtype=np.float32), 16000).text == "你自己 play race，然后我不懂。"
+    assert calls == [""]
+
+
+def test_a_name_off_the_screen_needs_more_than_the_users_own_hotword(monkeypatch):
+    import numpy as np
+    audio = np.zeros(16000, dtype=np.float32)
+    from thundertalk.core.asr import AsrEngine
+    enough_for_a_hotword = AsrEngine.HOTWORD_GAIN + 0.5
+    eng, _calls, _ = _scoring_engine(monkeypatch, "我用 Rosetta 来做。", gain=enough_for_a_hotword)
+    eng.set_context_terms(["Rozetta"])                                   # an earlier mishearing, still in the text field
+    assert eng._recognize_mlx(audio, 16000).text == "我用 Rosetta 来做。"
+    eng, _calls, _ = _scoring_engine(monkeypatch, "我用 rose etta 来做。", gain=enough_for_a_hotword + AsrEngine.CONTEXT_GAIN)
+    eng.set_context_terms(["Rosetta"])
+    assert eng._recognize_mlx(audio, 16000).text == "我用 Rosetta 来做。"
+
+
+def test_only_the_users_own_hotwords_respell(monkeypatch):
+    import numpy as np
+    audio = np.zeros(16000, dtype=np.float32)
+    eng, calls, _ = _scoring_engine(monkeypatch, "交给 Codex 和 playwright cli。", gain=-9)
+    eng.set_hotwords(["PlayWright CLI"])
+    eng.set_context_terms(["CodeX"])                                     # wrongly cased on screen
+    assert eng._recognize_mlx(audio, 16000).text == "交给 Codex 和 PlayWright CLI。"
+
+
+def test_letters_are_compared_the_way_they_are_said():
+    from thundertalk.core.hotword_merge import stretches
+    found = lambda text, word: [text[s:e] for _a, _w, s, e in stretches(text, [word])]      # noqa: E731
+    assert found("Coco Roa 配旁白", "Kokoro") == ["Coco Roa"]            # c = k
+    assert found("Tira 写的文案", "Terra") == ["Tira"]
+    assert found("交给 Fase Book", "Facebook") == ["Fase Book"]            # ce = se
+    assert found("你自己 play race，然后 iterator", "Rosetta") == []        # not across Latin and Chinese
+    assert found("the solution is clear", "Sol") == []

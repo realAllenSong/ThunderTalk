@@ -205,6 +205,30 @@ def load_qwen_mlx(path_or_repo: str):
     return model
 
 
+def remember_encoder_output(model) -> None:
+    """Keep the audio encoder's last output on ``model``.
+
+    Checking hotword stretches (hotword_score) needs the encoder output of the
+    take the decoder has just written. Asked again with the same features, the
+    encoder now answers from memory instead of encoding the take twice. Set past
+    mlx's own attribute handling, so the module itself stays in the parameter tree."""
+    import mlx.core as mx
+
+    tower = model.audio_tower
+    last: dict = {}
+
+    def audio_tower(mel, feature_lens):
+        seen = last.get("mel")
+        if (seen is not None and seen.shape == mel.shape and seen.dtype == mel.dtype
+                and bool(mx.array_equal(seen, mel).item())):
+            return last["out"]
+        out = tower(mel, feature_lens)
+        last.update(mel=mel, out=out)
+        return out
+
+    object.__setattr__(model, "audio_tower", audio_tower)
+
+
 class AsrEngine:
     def __init__(self) -> None:
         self._state_lock = threading.RLock()
@@ -500,6 +524,7 @@ class AsrEngine:
         print(f"[ASR-MLX] Calling load_model({source!r})...")
         model = load_qwen_mlx(source)
         evaluate_model(model)
+        remember_encoder_output(model)
         mx.clear_cache()
         print("[ASR-MLX] load_model returned")
         self._mlx_model = model
@@ -891,6 +916,50 @@ class AsrEngine:
             rtf=rtf,
         )
 
+    # A sound-alike stretch becomes the hotword when the decoder, shown the hotword, rates that
+    # spelling at least this much (log-probability, nats) against what it wrote. Measured on 65
+    # names the model was never trained on (2026-11-20): stretches where the name was said reach
+    # up to +3 and a third of them sit between -2 and 0; of 153 + 197 stretches where it was not
+    # said, the closest is -4.2 ("OpenAI" for the hotword "OpenMAIC").
+    HOTWORD_GAIN = -2.0
+    # Names read off the screen need this much more (so: at least 0). One of them may be an earlier
+    # mishearing still sitting in the text field; wrong spellings of 82 names the model writes
+    # correctly replaced none of 176 at 0 and the first one at -2.
+    CONTEXT_GAIN = 2.0
+
+    def _check_stretches(self, samples, sample_rate, plain: str, found: list, result, decode) -> str:
+        """Decide the sound-alike stretches of ``plain``: score each against its
+        hotword (hotword_score: a few tokens per stretch); if that cannot run
+        (a take the library splits, an engine without the pieces), decode once
+        more with the hotwords as prompt and take only their stretches."""
+        from thundertalk.core import hotword_merge as hm
+        likely = list(dict.fromkeys(word for _alike, word, _s, _e in found))
+        prompted = self._bounded(likely)
+        try:
+            if getattr(self, "_hotword_mode", "score") != "score" or len(samples) / sample_rate > 29.0:
+                raise ValueError("second decode")
+            from mlx_qwen3_asr.audio import load_audio_np
+            from mlx_qwen3_asr.config import DEFAULT_MODEL_ID
+            from mlx_qwen3_asr.tokenizer import _TokenizerHolder
+
+            from thundertalk.core import hotword_score as hs
+            own = {w.lower() for w in self._user_hotwords()}
+            tried = [hs.Stretch(start, end, word, alike, bar=0.0 if word.lower() in own else self.CONTEXT_GAIN)
+                     for alike, word, start, end in found if word in prompted]
+            scored = hs.score(self._mlx_model, _TokenizerHolder.get(DEFAULT_MODEL_ID),
+                              load_audio_np((samples, sample_rate), sr=16000), plain, tried,
+                              prompt=" ".join(prompted), language=self._language,
+                              detected=getattr(result, "language", None))
+            self._last_stretches = scored                 # eval reads the gains
+            return hs.apply(plain, scored, self.HOTWORD_GAIN)
+        except Exception as exc:
+            if str(exc) != "second decode":
+                print(f"[ASR-HOTWORD] Scoring unavailable ({type(exc).__name__}: {exc}); decoding again")
+            hinted = _strip_special_tokens(decode(" ".join(prompted), self._language).text.strip())
+            if self._is_hotword_hallucination(hinted) or foreign_script(hinted, self._auto_languages):
+                return plain
+            return hm.merge(plain, hinted, prompted)
+
     @serialized_mlx
     def _recognize_mlx(self, samples: np.ndarray, sample_rate: int,
                        preview: bool = False) -> AsrResult:
@@ -939,14 +1008,12 @@ class AsrEngine:
             result = again
         text = result.text.strip()
         if hotwords and not preview and text:
-            from thundertalk.core.hotword_merge import candidates, merge, respell
+            from thundertalk.core import hotword_merge as hm
             words = self._checked_words()
-            merged = respell(text, words)
-            likely = candidates(merged, words)       # no sound-alike stretch → no second decode
-            if likely:
-                hinted = _strip_special_tokens(decode(self._bounded_prompt(likely), self._language).text.strip())
-                if not self._is_hotword_hallucination(hinted) and not foreign_script(hinted, self._auto_languages):
-                    merged = merge(merged, hinted, likely)
+            merged = hm.respell(text, self._user_hotwords())   # the user's spelling; a name on screen may be cased wrongly
+            found = hm.stretches(merged, words)      # no sound-alike stretch → nothing more to run
+            if found:
+                merged = self._check_stretches(samples, sample_rate, merged, found, result, decode)
             if merged != text:
                 print(f"[ASR-HOTWORD] '{text}' → '{merged}'")
                 text = merged

@@ -3,20 +3,23 @@
 A local LLM decoder takes the user's hotwords as a prompt, and a prompt shifts
 the whole transcript, not just the hotword: with the single hotword
 "PlayWright CLI", 21 of 40 real dictations came out differently, unrelated
-sentences included ("我不懂。" → "我不行。"). So the decoder runs twice, without
-and with the hotwords, and ``merge`` starts from the plain transcript and takes
-from the hinted one only the stretches where a hotword appears.
+sentences included ("我不懂。" → "我不行。"). So the text always comes from a
+decode that never sees the hotwords, and hotwords are applied to it afterwards:
 
-The second decode only runs when it can matter: ``candidates`` finds the
-hotwords that some stretch of the plain transcript sounds like, and only those
-go into the prompt. Most dictations name no hotword, so they cost one decode,
-and a long hotword list no longer has to fit the prompt. A hotword the decoder
-already wrote is put in the user's spelling without a decode (``respell``).
+* ``respell``: a hotword the decoder already wrote gets the user's spelling
+  ("playwright cli" → "PlayWright CLI"). No model involved.
+* ``stretches``: the places that sound like a hotword without spelling it
+  ("play race", "罗塞塔", "Coco Roa" for Kokoro), found on letters, on how the
+  letters are said, on tone-less pinyin and, for transliterations, on the
+  consonants alone. Most dictations have none and cost nothing more.
+* Each stretch is then put to the decoder as a question (``hotword_score``):
+  with the hotword in the prompt, is the hotword spelling at least as likely
+  there as what was written? Only that stretch can change.
 
-The prompt also makes the decoder write a hotword over words that sound
-nothing like it ("USD" → "PlayWright CLI", "opportunity" → "Opus Sonnet"), so
-a stretch is only taken when the plain words sound like what replaces them
-(``sounds_like``: letters and tone-less pinyin, so "罗塞塔" can become "Rosetta").
+``candidates`` and ``merge`` are the older way to decide a stretch, a second
+full decode with the hotwords as prompt, taking from it only the stretches
+where a hotword appears and the two transcripts sound alike. The engine falls
+back to it where scoring cannot run (takes longer than one decode window).
 """
 from __future__ import annotations
 
@@ -125,36 +128,75 @@ def _skeleton(key: str) -> str:
     return "".join(out)
 
 
-def candidates(plain: str, hotwords: list[str]) -> list[str]:
-    """The hotwords some stretch of ``plain`` sounds like but does not spell, closest first."""
-    units = [(m.group(), _sound(m.group())) for m in _UNIT.finditer(plain)]
-    units = [(u, k) for u, k in units if k]
-    found = []
+_SPELLINGS = (("ph", "f"), ("ck", "k"), ("qu", "kw"), ("ce", "se"), ("ci", "si"), ("cy", "si"), ("ge", "je"), ("gi", "ji"),
+              ("c", "k"), ("q", "k"), ("z", "s"), ("x", "ks"), ("y", "i"))
+
+
+@functools.lru_cache(maxsize=8192)
+def _spoken(letters: str) -> str:
+    """Latin letters the way they are said, roughly: "Coco Roa" and "Kokoro" both start "kokoro",
+    "Jamin" and "Gemini" both start "j·m·n". Doubled letters count once."""
+    for a, b in _SPELLINGS:
+        letters = letters.replace(a, b)
+    return "".join(ch for i, ch in enumerate(letters) if i == 0 or ch != letters[i - 1])
+
+
+def stretches(plain: str, hotwords: list[str], per_word: int = 2) -> list[tuple[float, str, int, int]]:
+    """Where ``plain`` sounds like a hotword it does not spell: (closeness, hotword, start, end), closest first."""
+    units = [(m.group(), _sound(m.group()), m.start(), m.end()) for m in _UNIT.finditer(plain)]
+    units = [u for u in units if u[1]]
+    out = []
     for word in hotwords:
         key = _sound(word)
-        if not key or _hotword_spans(plain, [word]):
+        if not key:
             continue
         need = _alike_enough(key)
         bones = _skeleton(key) if word.isascii() else ""
+        written = _hotword_spans(plain, [word])
         sm = difflib.SequenceMatcher(None, autojunk=False)
         sm.set_seq2(key)
-        lo, hi, best = max(2, -(-len(key) * 3 // 5)), len(key) * 1.7, 0.0
+        said = difflib.SequenceMatcher(None, autojunk=False)       # the same comparison on how the letters are said
+        said.set_seq2(_spoken(key) if word.isascii() else key)
+        lo, hi, hits = max(2, -(-len(key) * 3 // 5)), len(key) * 1.7, []
         for i in range(len(units)):
-            window, chinese = "", True
-            for unit, sound in units[i:]:
+            window, spoken, chinese, latin = "", "", True, True
+            for unit, sound, _start, end in units[i:]:
                 window += sound
+                spoken += _spoken(sound) if unit.isascii() else sound
                 chinese = chinese and not unit.isascii()
+                latin = latin and unit.isascii()
                 if len(window) > hi:
                     break
-                if len(window) >= lo:
-                    sm.set_seq1(window)
-                    if sm.real_quick_ratio() >= need and sm.quick_ratio() >= need:
-                        best = max(best, sm.ratio())
-                    elif chinese and len(bones) >= 3 and _skeleton(window) == bones:
-                        best = max(best, need)        # a transliteration: same consonants, other vowels
-        if best >= need:
-            found.append((best, word))
-    return [w for _score, w in sorted(found, key=lambda f: -f[0])]
+                if len(window) < lo:
+                    continue
+                sm.set_seq1(window)
+                if sm.real_quick_ratio() >= need and sm.quick_ratio() >= need and sm.ratio() >= need:
+                    hits.append((sm.ratio(), word, units[i][2], end))
+                    continue
+                if latin and word.isascii():                   # mixed windows ("race，然") match too much this way
+                    said.set_seq1(spoken)
+                    if said.real_quick_ratio() >= need and said.quick_ratio() >= need and said.ratio() >= need:
+                        hits.append((said.ratio(), word, units[i][2], end))
+                        continue
+                if chinese and len(bones) >= 3 and _skeleton(window) == bones:
+                    hits.append((need, word, units[i][2], end))      # a transliteration: same consonants, other vowels
+        kept = []
+        for hit in sorted(hits, key=lambda h: (-h[0], h[3] - h[2])):
+            if len(kept) < per_word and all(hit[3] <= k[2] or hit[2] >= k[3] for k in kept) \
+                    and not any(hit[2] < e and hit[3] > s for s, e in written):
+                kept.append(hit)
+        out += kept
+    return sorted(out, key=lambda h: -h[0])
+
+
+def candidates(plain: str, hotwords: list[str]) -> list[str]:
+    """The hotwords some stretch of ``plain`` sounds like but does not spell, closest first."""
+    seen, out = set(), []
+    for _alike, word, _start, _end in stretches(plain, hotwords):
+        if word not in seen:
+            seen.add(word)
+            out.append(word)
+    return out
 
 
 def merge(plain: str, hinted: str, hotwords: list[str]) -> str:
