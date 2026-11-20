@@ -109,29 +109,49 @@ def _alike_enough(key: str) -> float:
     return 0.75 if n <= 4 else 0.67 if n <= 6 else 0.6 if n <= 9 else 0.55
 
 
+_DIGRAPHS = (("zh", "j"), ("ch", "k"), ("sh", "s"), ("th", "t"), ("ph", "f"), ("ck", "k"), ("ng", "n"), ("x", "ks"))
+_CLASSES = str.maketrans("lbdgcqzxv", "rptkkkjsf")
+
+
+def _skeleton(key: str) -> str:
+    """Consonants of a sound key in coarse classes (l=r, b=p, d=t, g=k=c…), repeats dropped.
+    A name written in Chinese keeps these and little else: 罗塞塔 "luosaita" and "rosetta" are both r-s-t."""
+    for a, b in _DIGRAPHS:
+        key = key.replace(a, b)
+    out = []
+    for ch in key.translate(_CLASSES):
+        if ch not in "aeiouyw0123456789" and (not out or out[-1] != ch):
+            out.append(ch)
+    return "".join(out)
+
+
 def candidates(plain: str, hotwords: list[str]) -> list[str]:
     """The hotwords some stretch of ``plain`` sounds like but does not spell, closest first."""
-    sounds = [_sound(m.group()) for m in _UNIT.finditer(plain)]
-    sounds = [u for u in sounds if u]
+    units = [(m.group(), _sound(m.group())) for m in _UNIT.finditer(plain)]
+    units = [(u, k) for u, k in units if k]
     found = []
     for word in hotwords:
         key = _sound(word)
         if not key or _hotword_spans(plain, [word]):
             continue
         need = _alike_enough(key)
+        bones = _skeleton(key) if word.isascii() else ""
         sm = difflib.SequenceMatcher(None, autojunk=False)
         sm.set_seq2(key)
         lo, hi, best = max(2, -(-len(key) * 3 // 5)), len(key) * 1.7, 0.0
-        for i in range(len(sounds)):
-            window = ""
-            for unit in sounds[i:]:
-                window += unit
+        for i in range(len(units)):
+            window, chinese = "", True
+            for unit, sound in units[i:]:
+                window += sound
+                chinese = chinese and not unit.isascii()
                 if len(window) > hi:
                     break
                 if len(window) >= lo:
                     sm.set_seq1(window)
                     if sm.real_quick_ratio() >= need and sm.quick_ratio() >= need:
                         best = max(best, sm.ratio())
+                    elif chinese and len(bones) >= 3 and _skeleton(window) == bones:
+                        best = max(best, need)        # a transliteration: same consonants, other vowels
         if best >= need:
             found.append((best, word))
     return [w for _score, w in sorted(found, key=lambda f: -f[0])]

@@ -464,6 +464,8 @@ def main() -> None:
     QTimer.singleShot(800, _check_permissions)
 
     # --- Hotwords + Language → ASR engine ---
+    from thundertalk.core.context_terms import ContextCapture
+    context = ContextCapture()
     pipe.asr.set_hotwords(settings.hotwords)
     pipe.asr.set_builtin_terms(settings.get("builtin_terms") is not False)
     pipe.asr.set_auto_languages(settings.get("auto_languages") or ["zh", "en"])
@@ -1002,6 +1004,7 @@ def main() -> None:
                     print(f"[Toggle] Starting Review (ASR → T2TT → popup) on {len(samples)} samples")
                 else:
                     print(f"[Toggle] Starting ASR on {len(samples)} samples")
+                pipe.asr.set_context_terms(context.terms)
                 worker = AsrWorker(pipe.asr, samples,
                                    wait_before=live.wait_idle, lock=GPU_LOCK,
                                    preview_text=recording["preview"])
@@ -1036,6 +1039,8 @@ def main() -> None:
             review_overlay.hide_review()
             _cancel_cleanup()
             save_frontmost_app()
+            # Names around the cursor become hotwords for this take; read off the UI thread.
+            context.start(text_output._previous_app_pid if settings.get("context_hotwords") is not False else None)
             text_output.activity.set_hotkey(settings.hotkey)
             if not text_output.activity.available:
                 text_output.activity.stop()

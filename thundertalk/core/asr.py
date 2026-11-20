@@ -327,6 +327,16 @@ class AsrEngine:
     def _user_hotwords(self) -> list[str]:
         return [w for w in self._hotwords.split("/") if w]
 
+    def set_context_terms(self, words: list[str]) -> None:
+        """Names read from where the user is typing (core.context_terms), for
+        the next final decode. Checked like hotwords, after the user's own."""
+        self._context_terms = [w.strip() for w in (words or []) if w and w.strip()]
+
+    def _checked_words(self) -> list[str]:
+        own = self._user_hotwords()
+        seen = {w.lower() for w in own}
+        return own + [w for w in getattr(self, "_context_terms", []) if w.lower() not in seen]
+
     def _is_hotword_hallucination(self, text: str) -> bool:
         """Detect when ASR output is just a concatenation of hotwords (hallucinated)."""
         if not self._hotword_set:
@@ -908,7 +918,7 @@ class AsrEngine:
         # sentences included). The final is decoded plain, then once more with
         # the hotwords, and only the hotword stretches of that second decode
         # are taken (hotword_merge). Previews stay plain: one decode per tick.
-        hotwords = self._context_override is None and bool(self._user_hotwords())
+        hotwords = self._context_override is None and bool(self._checked_words())
         result = decode(context, self._language)
         if self._language is None and not preview and foreign_script(result.text, self._auto_languages):
             # Auto-detect picked a language this user does not speak (measured:
@@ -923,7 +933,7 @@ class AsrEngine:
         text = result.text.strip()
         if hotwords and not preview and text:
             from thundertalk.core.hotword_merge import candidates, merge, respell
-            words = self._user_hotwords()
+            words = self._checked_words()
             merged = respell(text, words)
             likely = candidates(merged, words)       # no sound-alike stretch → no second decode
             if likely:
