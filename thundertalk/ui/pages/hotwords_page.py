@@ -225,7 +225,7 @@ class HotwordsPage(QWidget):
         self._sec_screen.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         srow.addWidget(self._sec_screen)
         srow.addStretch()
-        self._screen_toggle = theme.ToggleSwitch(self._settings.get("context_hotwords") is not False)
+        self._screen_toggle = theme.ToggleSwitch(self._settings.get("context_hotwords") is True)
         self._screen_toggle.toggled_signal.connect(lambda on: self._settings.set("context_hotwords", bool(on)))
         srow.addWidget(self._screen_toggle)
         sc.addLayout(srow)

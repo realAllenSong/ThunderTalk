@@ -207,11 +207,12 @@ EXTRA: dict[str, dict[str, str]] = {
     "hotwords.remove": {"en": "Remove", "zh": "移除"},
     "hotwords.screen_title": {"en": "Names on screen", "zh": "屏幕上的名字"},
     "hotwords.screen_note": {
-        "en": "When a dictation starts, ThunderTalk reads the text around your cursor, on this Mac, and spells "
-              "the names in it (products, people, projects) the way they are written there. Works with "
+        "en": "Off by default. When on, a dictation reads the text already in the box you are typing into, on this "
+              "Mac, and spells the names in it (products, people, projects) the way they are written there. Helps "
+              "when you add to a document or a long prompt; an empty chat box has nothing to read. Works with "
               "ThunderTalk ASR and the Qwen3 MLX models.",
-        "zh": "听写开始时，ThunderTalk 在本机读取光标附近的文字，其中出现的名字（产品、人名、项目名）会按那里的写法来拼。"
-              "适用于 ThunderTalk ASR 和 Qwen3 MLX 模型。",
+        "zh": "默认关闭。打开后，听写时会在本机读取你正在输入的框里已有的文字，其中出现的名字（产品、人名、项目名）按那里的写法来拼。"
+              "适合在文档或长 prompt 里接着说；空白聊天框里没有可读的内容。适用于 ThunderTalk ASR 和 Qwen3 MLX 模型。",
     },
     "hotwords.builtin_title": {"en": "Built-in AI & tech terms", "zh": "内置 AI 与科技词汇"},
     "hotwords.builtin_note": {

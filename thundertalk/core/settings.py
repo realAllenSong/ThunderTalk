@@ -61,7 +61,7 @@ DEFAULTS: dict[str, Any] = {
     "moss_speaker_labels": False,
     # Show the words recognized so far under the indicator while dictating.
     "live_preview": True,
-    "context_hotwords": True,          # names around the cursor are checked like hotwords (read on this Mac only)
+    "context_hotwords": False,         # opt-in: names around the cursor are checked like hotwords (read on this Mac only)
     "keep_recent_recordings": True,    # audio of the last 20; History keeps the text either way
     # First-run setup flow (welcome → permissions → model → try it).
     "onboarding_done": False,
