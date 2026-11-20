@@ -919,13 +919,14 @@ class AsrEngine:
     # A sound-alike stretch becomes the hotword when the decoder, shown the hotword, rates that
     # spelling at least this much (log-probability, nats) against what it wrote. Measured on 65
     # names the model was never trained on (2026-11-20): stretches where the name was said reach
-    # up to +3 and a third of them sit between -2 and 0; of 153 + 197 stretches where it was not
-    # said, the closest is -4.2 ("OpenAI" for the hotword "OpenMAIC").
-    HOTWORD_GAIN = -2.0
+    # up to +3 and a quarter of them sit between -1 and 0. Of 418 stretches where it was not
+    # said, the closest are -1.4 ("Rabbit", itself a mishearing, for the hotword "Raycast") and
+    # -4.2 ("OpenAI" for "OpenMAIC"). At -1: 54.7 -> 69.3 % of the names, nothing else changed.
+    HOTWORD_GAIN = -1.0
     # Names read off the screen need this much more (so: at least 0). One of them may be an earlier
     # mishearing still sitting in the text field; wrong spellings of 82 names the model writes
-    # correctly replaced none of 176 at 0 and the first one at -2.
-    CONTEXT_GAIN = 2.0
+    # correctly replaced none of 176 at 0 and the first one at -1.
+    CONTEXT_GAIN = 1.0
 
     def _check_stretches(self, samples, sample_rate, plain: str, found: list, result, decode) -> str:
         """Decide the sound-alike stretches of ``plain``: score each against its
