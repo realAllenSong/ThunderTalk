@@ -30,6 +30,7 @@ _generation = itertools.count(1)
 _executor_lock = threading.Lock()
 _system_audio_executor = None
 _SETTLE_TIMEOUT = 0.5
+_LAYOUT_PATIENCE = 5      # idle restore attempts (1/s) before a changed control layout counts as lasting
 _SETTLE_INTERVAL = 0.02
 
 
@@ -228,6 +229,8 @@ class _DuckingController:
         self._journal_lock = None
         self._loaded = False
         self._next_retry = 0.0
+        self._layout_misses = {}      # uid → restore attempts that found other controls than the journal's
+        self._waiting = {}            # uid → control keys seen when a restore was last put off (None: disconnected)
         self._transitions = {}
         self._transition_lock = threading.Lock()
         self._last_skip = {}
@@ -664,6 +667,7 @@ class _DuckingController:
             # session is removed from the active owner set.
             closing = self._in_transition()
             self.sessions.remove(generation)
+            self._waiting.clear()
             self._restoring_transition = closing
             try:
                 if not self.sessions:
@@ -699,7 +703,44 @@ class _DuckingController:
             print(f"[Audio] Could not restore output control {key}: {exc}")
             return False
 
+    def _restore_changed_layout(self, uid, saved):
+        """Finish a restore on a device that no longer exposes the journal's controls.
+
+        A Bluetooth output swaps its controls between profiles (vmvc:0 while
+        the microphone is open, volm:1/volm:2 afterwards). Waiting for the old
+        layout never ends: the journal stays, the restore retries every
+        second and muting on that route is refused ("pending_route_recovery").
+        What we changed is the journal's intent. Once the new layout has
+        lasted, and every control we changed still exists in it, those are put
+        back and the entry is released."""
+        current = self.backend.controls(uid)
+        if current is None:
+            self._layout_misses.pop(uid, None)
+            return False
+        self._layout_misses[uid] = self._layout_misses.get(uid, 0) + 1
+        if self._layout_misses[uid] < _LAYOUT_PATIENCE:
+            return False              # relayouts at microphone open/close settle on their own
+        original, expected = saved["original"], saved["expected"]
+        intent = saved.get("intent", {k: v for k, v in expected.items() if original.get(k) != v})
+        if saved["apple_owned"] or not intent or not set(intent) <= set(current):
+            return False
+        ours = [k for k in sorted(intent) if k.startswith("mute:") or not saved["user_changed"]]
+        ok = all([self._restore_write(uid, k, original[k], force=k.startswith("mute:")) for k in ours])
+        check = self.backend.controls(uid)
+        ok = ok and check is not None and all(check.get(k) == original[k] for k in ours)
+        self._diag("restore_layout_changed", uid, current=check, original=original, intent=intent, complete=bool(ok))
+        if ok:
+            del self.saved[uid]
+            self._layout_misses.pop(uid, None)
+            print("[Audio] Output controls changed layout; restored what was muted and released the journal")
+        return ok
+
     def _restore_device(self, uid, saved):
+        present = self.backend.controls(uid)
+        seen = None if present is None else tuple(sorted(present))
+        if uid in self._waiting and self._waiting[uid] == seen:
+            return                    # nothing changed since this restore was put off: no polling, no log lines
+        self._waiting.pop(uid, None)
         # A crash can occur inside AppleScript, before we learn which route
         # received the mute. Native flags saved ahead of the call identify it.
         if saved.get("apple_candidate") and not saved["apple_owned"]:
@@ -718,8 +759,14 @@ class _DuckingController:
         self._diag("restore_start", uid, current=current, expected=saved["expected"],
                    original=saved["original"], user_changed=saved["user_changed"])
         if current is None:
-            self._diag("restore_deferred", uid, reason="disconnected")
+            if self._restore_changed_layout(uid, saved):
+                return
+            now = self.backend.controls(uid)
+            self._diag("restore_deferred", uid, reason="disconnected" if now is None else "controls_changed")
+            if now is None or self._layout_misses.get(uid, 0) >= _LAYOUT_PATIENCE:
+                self._waiting[uid] = None if now is None else tuple(sorted(now))
             return
+        self._layout_misses.pop(uid, None)
         saved["restoring"] = True
         self._try_persist()
         original, expected = saved["original"], saved["expected"]

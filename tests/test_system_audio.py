@@ -289,6 +289,59 @@ def test_disconnected_device_journal_survives_and_recovers_on_return(setup):
     assert not controller.path.exists()
 
 
+def test_changed_control_layout_releases_the_journal_after_it_lasts(setup):
+    # A Bluetooth output shows vmvc:0 while the microphone is open and volm:1/2 afterwards.
+    backend, controller = setup
+    backend.state["speakers"] = {"vmvc:0": 0.73, "mute:0": False}
+    controller.begin(1)
+    assert backend.state["speakers"]["mute:0"] is True
+    backend.state["speakers"] = {"volm:1": 0.44, "volm:2": 0.44, "mute:0": True}
+    controller.end(1)
+    assert controller.path.exists() and backend.state["speakers"]["mute:0"] is True   # could be a passing relayout
+    for _ in range(audio._LAYOUT_PATIENCE):
+        controller._restore()
+    assert backend.state["speakers"] == {"volm:1": 0.44, "volm:2": 0.44, "mute:0": False}
+    assert not controller.saved and not controller.path.exists()
+    controller.begin(2)                      # muting works on this route again
+    assert backend.state["speakers"]["mute:0"] is True
+    controller.end(2)
+    assert backend.state["speakers"]["mute:0"] is False
+
+
+def test_changed_layout_without_the_controls_we_changed_keeps_the_journal_quietly(setup):
+    backend, controller = setup
+    backend.state["speakers"] = {"vmvc:0": 0.73, "mute:0": False}
+    controller.begin(1)
+    backend.state["speakers"] = {"volm:1": 0.44, "volm:2": 0.44}      # the mute control is gone
+    controller.end(1)
+    for _ in range(audio._LAYOUT_PATIENCE + 3):
+        controller._restore()
+    assert "speakers" in controller.saved and controller.path.exists()
+    reads = []
+    backend.controls = lambda uid, _c=backend.controls: reads.append(uid) or _c(uid)
+    controller._restore()
+    assert len(reads) == 1                   # one look at the device, then nothing: no settle polling
+    backend.state["speakers"] = {"vmvc:0": 0.73, "mute:0": True}      # the old layout is back
+    controller._restore()
+    assert backend.state["speakers"]["mute:0"] is False and not controller.saved
+
+
+def test_disconnected_device_is_not_polled_again_until_it_returns(setup):
+    backend, controller = setup
+    controller.begin(1)
+    gone = backend.state.pop("speakers")
+    controller.end(1)
+    reads = []
+    real = backend.controls
+    backend.controls = lambda uid: reads.append(uid) or real(uid)
+    for _ in range(3):
+        controller._restore()
+    assert len(reads) == 3 and controller.path.exists()
+    backend.state["speakers"] = gone
+    controller._restore()
+    assert backend.state["speakers"]["mute:0"] is False and not controller.path.exists()
+
+
 def test_second_instance_cannot_recover_a_live_recording(setup):
     backend, controller = setup
     controller.begin(1)
