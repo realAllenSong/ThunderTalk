@@ -163,7 +163,11 @@ class ContextCapture:
             take = self._take
 
         def run() -> None:
-            terms = extract_terms(self._reader(pid))
+            try:
+                terms = extract_terms(self._reader(pid)) if pid else []
+            except Exception as exc:                    # context is a bonus; a dictation never depends on it
+                print(f"[Context] Not read: {type(exc).__name__}")
+                terms = []
             with self._lock:
                 if take == self._take:
                     self._terms = terms

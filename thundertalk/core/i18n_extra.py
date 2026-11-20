@@ -205,6 +205,14 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "当前模型（{name}）不使用热词。请在“模型”页切换到 Qwen3-ASR 模型后再生效。",
     },
     "hotwords.remove": {"en": "Remove", "zh": "移除"},
+    "hotwords.screen_title": {"en": "Names on screen", "zh": "屏幕上的名字"},
+    "hotwords.screen_note": {
+        "en": "When a dictation starts, ThunderTalk reads the text around your cursor, on this Mac, and spells "
+              "the names in it (products, people, projects) the way they are written there. Works with "
+              "ThunderTalk ASR and the Qwen3 MLX models.",
+        "zh": "听写开始时，ThunderTalk 在本机读取光标附近的文字，其中出现的名字（产品、人名、项目名）会按那里的写法来拼。"
+              "适用于 ThunderTalk ASR 和 Qwen3 MLX 模型。",
+    },
     "hotwords.builtin_title": {"en": "Built-in AI & tech terms", "zh": "内置 AI 与科技词汇"},
     "hotwords.builtin_note": {
         "en": "About 80 names people dictate every day (Claude Code, ChatGPT, Codex, MCP, GitHub, "
