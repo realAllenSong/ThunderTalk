@@ -894,6 +894,15 @@ class AsrEngine:
             mx.eval(r.text) if hasattr(r.text, '__mlx_array__') else None
             return r
 
+        # The user's hotwords never go into the decode that the text comes
+        # from: as a prompt they shift the whole transcript, not just the
+        # hotword (one hotword changed 21 of 40 real dictations, unrelated
+        # sentences included). The final is decoded plain, then once more with
+        # the hotwords, and only the hotword stretches of that second decode
+        # are taken (hotword_merge). Previews stay plain: one decode per tick.
+        hotwords = context if self._context_override is None else ""
+        if hotwords:
+            context = ""
         result = decode(context, self._language)
         if self._language is None and not preview and foreign_script(result.text, self._auto_languages):
             # Auto-detect picked a language this user does not speak (measured:
@@ -905,13 +914,20 @@ class AsrEngine:
                 again = decode(context, _QWEN_LANG.get(self._auto_languages[-1]))
             print(f"[ASR-MLX] Off-language output redone: {result.text[:40]!r} → {again.text[:40]!r}")
             result = again
+        text = result.text.strip()
+        if hotwords and not preview and text:
+            from thundertalk.core.hotword_merge import merge
+            hinted = _strip_special_tokens(decode(hotwords, self._language).text.strip())
+            if not self._is_hotword_hallucination(hinted) and not foreign_script(hinted, self._auto_languages):
+                merged = merge(text, hinted, self._user_hotwords())
+                if merged != text:
+                    print(f"[ASR-HOTWORD] '{text}' → '{merged}'")
+                    text = merged
         inference_ms = int((time.perf_counter() - t0) * 1000)
         print(f"[ASR-MLX] Transcribe done in {inference_ms}ms")
 
         mx.clear_cache()
         rtf = (inference_ms / 1000) / duration_secs if duration_secs > 0 else 0
-
-        text = result.text.strip()
 
         cleaned = _strip_special_tokens(text)
         if cleaned != text:
