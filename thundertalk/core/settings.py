@@ -42,6 +42,12 @@ DEFAULTS: dict[str, Any] = {
     # (likely via the in-app updater) and surface a one-time hint
     # about macOS permissions resetting under ad-hoc code signing.
     "last_run_version": "",
+    # The two one-time popups (core/promo.py): the highest "time saved" milestone
+    # the user has acknowledged, the never-again switch, and the version whose
+    # "what's new" note they closed.
+    "promo_milestone_hours": 0,
+    "promo_off": False,
+    "whats_new_seen": "",
     "tts_model": "",
     # AI proofreading. Removed v1.7.0 keys (cleanup_app_overrides,
     # cleanup_model_overrides, voice_commands_enabled) are ignored on load and

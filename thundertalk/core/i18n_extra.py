@@ -386,6 +386,56 @@ EXTRA: dict[str, dict[str, str]] = {
         "zh": "重新走一遍权限、模型与试用流程。",
     },
 
+    # ── Recommend / what's new (core/promo.py) ──────────────────────
+    "promo.milestone.title": {
+        "en": "ThunderTalk has saved you about {n} hours of typing.",
+        "zh": "ThunderTalk 已帮你省下约 {n} 小时的打字时间。",
+    },
+    "promo.milestone.sub": {
+        "en": "If it has earned its place on your Mac, tell someone who types a lot.",
+        "zh": "如果它确实帮到了你，欢迎推荐给同样每天要打很多字的人。",
+    },
+    "promo.recommend": {"en": "Recommend…", "zh": "推荐给朋友…"},
+    "promo.star": {"en": "Star on GitHub", "zh": "去 GitHub 点星"},
+    "promo.off": {"en": "Don't show these", "zh": "不再提示"},
+    "promo.later": {"en": "Not now", "zh": "以后再说"},
+    "promo.dialog.title": {"en": "Recommend ThunderTalk", "zh": "推荐 ThunderTalk"},
+    "promo.dialog.sub": {
+        "en": "Pick where you will share it and edit the text as you like. It is copied for you to paste; "
+              "nothing is posted for you.",
+        "zh": "选一个要发的地方，文字可以直接改。复制后由你自己粘贴发出，应用不会替你发布任何内容。",
+    },
+    "promo.dialog.link_yes": {"en": "Link included", "zh": "带链接"},
+    "promo.dialog.link_none": {"en": "No link", "zh": "不带链接"},
+    "promo.dialog.link_no": {
+        "en": "This place does not allow links, so the text says how to find the app instead.",
+        "zh": "这个平台不让放链接，所以文字里写的是怎么找到它。",
+    },
+    "promo.dialog.copy": {"en": "Copy", "zh": "复制"},
+    "promo.dialog.copy_open": {"en": "Copy and open {place}", "zh": "复制并打开 {place}"},
+    "promo.dialog.copied": {"en": "Copied", "zh": "已复制"},
+    "promo.dialog.close": {"en": "Close", "zh": "关闭"},
+    "about.recommend": {"en": "Recommend", "zh": "推荐给朋友"},
+    "about.star": {"en": "Star on GitHub", "zh": "GitHub 点星"},
+    "whatsnew.title": {"en": "What's new in ThunderTalk", "zh": "ThunderTalk 的新功能"},
+    "whatsnew.notes": {"en": "Full release notes", "zh": "完整更新说明"},
+    "whatsnew.ok": {"en": "Got it", "zh": "知道了"},
+    "whatsnew.finish": {"en": "Long dictations no longer make you wait.", "zh": "长听写不用再等。"},
+    "whatsnew.finish.detail": {
+        "en": "Earlier speech is recognized while you keep talking, so only the last stretch is left when you stop.",
+        "zh": "你还在说的时候，前面的话已经识别好了，停下时只剩最后一小段。",
+    },
+    "whatsnew.bar": {"en": "Put the dictation bar where you want it.", "zh": "听写条可以放到你想要的位置。"},
+    "whatsnew.bar.detail": {
+        "en": "Top or bottom in Settings, or just drag it. It appears on the display you are typing on.",
+        "zh": "在设置里选顶部或底部，也可以直接拖动；它会出现在你正在打字的那块屏幕上。",
+    },
+    "whatsnew.esc": {"en": "Esc cancels a dictation.", "zh": "按 Esc 取消听写。"},
+    "whatsnew.esc.detail": {
+        "en": "Changed your mind mid-sentence? Press Esc and nothing is pasted.",
+        "zh": "说到一半不想要了？按 Esc，什么都不会粘贴。",
+    },
+
     # ── Tray ────────────────────────────────────────────────────────
     "tray.status.ready": {"en": "Ready · {name}", "zh": "已就绪 · {name}"},
     "tray.status.setup": {"en": "Setup needed — open ThunderTalk", "zh": "需要设置——打开 ThunderTalk"},

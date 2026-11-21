@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from typing import Optional
 
-from PySide6.QtCore import QPoint, QRectF, Qt, Signal
+from PySide6.QtCore import QEvent, QPoint, QRectF, Qt, Signal
 from PySide6.QtGui import QCloseEvent, QColor, QFontMetrics, QPainter, QPen
 from PySide6.QtWidgets import (
     QApplication,
@@ -315,6 +315,9 @@ class MainWindow(QMainWindow):
         self._settings_page = SettingsPage(settings)
         self._studio_page.transcribe_tab.set_provider_source(self._proofread_page)
         self._about_page = AboutPage()
+        # One-time popups (what's new after an update, a recommend prompt per milestone).
+        from thundertalk.ui.promo_popups import PromoPopups
+        self._promo = PromoPopups(self, settings, history)
 
         for page in self._pages():
             self._stack.addWidget(page)
@@ -503,6 +506,12 @@ class MainWindow(QMainWindow):
         if not self._titlebar_configured:
             self._titlebar_configured = True
             self._setup_macos_titlebar()
+        self._promo.check()
+
+    def changeEvent(self, ev) -> None:
+        super().changeEvent(ev)
+        if ev.type() == QEvent.Type.ActivationChange and self.isActiveWindow():
+            self._promo.check()          # only ever over this window, while the user is looking at it
 
     def _setup_macos_titlebar(self) -> None:
         """Hide the system title bar text while keeping traffic-light buttons.

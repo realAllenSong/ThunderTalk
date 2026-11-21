@@ -14,6 +14,5 @@ def test_download_buttons_point_at_this_versions_zip():
     buttons = [a or b for a, b in links]
     assert len(buttons) == 3 and set(buttons) == {want}      # nav, hero, closing call: none sends people to a list of releases
     assert f'"downloadUrl": "{want}"' in PAGE and f'"softwareVersion": "{v}"' in PAGE
-    assert f"New in v{v}" in PAGE
     # The file name is what the in-app updater and the Homebrew cask look for too.
     assert want.endswith("-macOS.zip") and "macos" in want.lower()

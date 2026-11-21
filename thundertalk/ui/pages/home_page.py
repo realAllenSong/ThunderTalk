@@ -19,11 +19,12 @@ from PySide6.QtWidgets import (
     QHBoxLayout,
     QLabel,
     QPushButton,
+    QSizePolicy,
     QVBoxLayout,
     QWidget,
 )
 
-from thundertalk.core import i18n
+from thundertalk.core import i18n, promo
 from thundertalk.core import state as st
 from thundertalk.core.i18n import t
 from thundertalk.ui import theme
@@ -44,7 +45,7 @@ if TYPE_CHECKING:
 
 _PAGE_SIZE = 60
 _CLAMP_CHARS = 300
-_TYPING_UNITS_PER_MIN = 40.0
+_STAT_SIZES = (34, 30, 27, 24, 21)
 
 
 # ── formatting ───────────────────────────────────────────────────────────
@@ -222,8 +223,18 @@ class _Stat(QWidget):
         self._value = QLabel("0")
         self._value.setFont(theme.font_serif(34, bold=False))
         self._value.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
+        # The figure never widens the page: the ledger picks a size at which all four fit.
+        self._value.setSizePolicy(QSizePolicy.Policy.Ignored, QSizePolicy.Policy.Preferred)
         ly.addWidget(self._value)
         ly.addStretch()
+
+    def fits(self, px: int) -> bool:
+        m = self.layout().contentsMargins()
+        room = self.width() - m.left() - m.right()
+        return QFontMetrics(theme.font_serif(px, bold=False)).horizontalAdvance(self._value.text()) <= room
+
+    def set_size(self, px: int) -> None:
+        self._value.setFont(theme.font_serif(px, bold=False))
 
     def set_label(self, text: str) -> None:
         self._label.setText(text.upper())
@@ -499,7 +510,8 @@ class HomePage(QWidget):
         self._stat_time = _Stat(t("home.speaking_time"))
         self._stat_saved = _Stat(t("home.time_saved"), t("home.time_saved.tip"))
         self._stat_sessions = _Stat(t("home.sessions"))
-        for c in (self._stat_words, self._stat_time, self._stat_saved, self._stat_sessions):
+        self._stats = (self._stat_words, self._stat_time, self._stat_saved, self._stat_sessions)
+        for c in self._stats:
             ledger.addWidget(c, stretch=1)
         self._root.addLayout(ledger)
         self._root.addWidget(_Hairline())
@@ -541,8 +553,20 @@ class HomePage(QWidget):
         self.refresh()
 
     # ── lifecycle ──
+    def _fit_ledger(self) -> None:
+        """"12 小时 40 分" is wider than "12h 40m": shrink all four figures together rather than
+        let one push the page wider than its column."""
+        px = next((px for px in _STAT_SIZES if all(s.fits(px) for s in self._stats)), _STAT_SIZES[-1])
+        for s in self._stats:
+            s.set_size(px)
+
+    def resizeEvent(self, ev) -> None:
+        super().resizeEvent(ev)
+        QTimer.singleShot(0, self._fit_ledger)      # after the columns have their new widths
+
     def showEvent(self, ev) -> None:
         super().showEvent(ev)
+        QTimer.singleShot(0, self._fit_ledger)
         self._state.refresh_permissions()
         self._update_perm_banner()
         self._perm_timer.start()
@@ -584,13 +608,13 @@ class HomePage(QWidget):
         h = self._history
         units = h.total_units
         speak = h.total_duration_secs
-        typing_min = units / _TYPING_UNITS_PER_MIN
-        saved_secs = max(0.0, typing_min * 60 - speak)
+        saved_secs = promo.saved_seconds(units, speak)
 
         self._stat_words.set_value(units)
         self._stat_time.set_value(speak, _fmt_duration)
         self._stat_saved.set_value(saved_secs, _fmt_duration)
         self._stat_sessions.set_value(h.session_count)
+        self._fit_ledger()
         self._rebuild_list()
 
     def _matches(self, entry) -> bool:

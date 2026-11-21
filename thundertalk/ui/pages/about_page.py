@@ -23,6 +23,7 @@ from PySide6.QtWidgets import (
 )
 
 import thundertalk
+from thundertalk.core import promo
 from thundertalk.core.i18n import t
 from thundertalk.core.updater import (
     UpdateInfo,
@@ -215,7 +216,14 @@ class AboutPage(QWidget):
             d.setStyleSheet(f"color: {theme.BORDER_DEFAULT}; font-size: 12px; padding: 0 4px;")
             return d
 
-        footer_links.addWidget(_link(t("about.website"), "https://github.com/realAllenSong/ThunderTalk"))
+        recommend = _link(t("about.recommend"), "")
+        recommend.clicked.disconnect()
+        recommend.clicked.connect(self._recommend)
+        footer_links.addWidget(recommend)
+        footer_links.addWidget(_divider())
+        footer_links.addWidget(_link(t("about.star"), promo.REPO_URL))
+        footer_links.addWidget(_divider())
+        footer_links.addWidget(_link(t("about.website"), promo.SITE_URL))
         footer_links.addWidget(_divider())
         footer_links.addWidget(_link(t("about.report_issue"), "https://github.com/realAllenSong/ThunderTalk/issues"))
         footer_links.addWidget(_divider())
@@ -229,6 +237,10 @@ class AboutPage(QWidget):
         copyright.setStyleSheet(f"color: {theme.TEXT_MUTED}; font-size: 11px;")
         copyright.setAlignment(Qt.AlignmentFlag.AlignCenter)
         ly.addWidget(copyright)
+
+    def _recommend(self) -> None:
+        from thundertalk.ui.recommend_dialog import RecommendDialog
+        RecommendDialog.open_over(self)
 
     # ── Public API ──────────────────────────────────────────────
 

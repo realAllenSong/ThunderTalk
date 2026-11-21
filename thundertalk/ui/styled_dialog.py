@@ -34,6 +34,25 @@ from PySide6.QtWidgets import (
 from thundertalk.ui import theme
 
 
+def paint_panel(dialog: QWidget) -> None:
+    """The rounded BG_CARD panel of a frameless dialog (margins 12/8/12/16), with a
+    faint edge shadow: the window is translucent, so the dialog draws its own."""
+    p = QPainter(dialog)
+    p.setRenderHint(QPainter.RenderHint.Antialiasing)
+    rect = QRectF(dialog.rect()).adjusted(12, 8, -12, -16)
+    for i, a in enumerate((14, 8, 4)):
+        sh = QPainterPath()
+        sh.addRoundedRect(rect.adjusted(-i, 2 + i, i, 3 + i * 2), 10 + i, 10 + i)
+        p.fillPath(sh, QColor(0, 0, 0, a))
+    path = QPainterPath()
+    path.addRoundedRect(rect, 10, 10)
+    p.fillPath(path, QColor(theme.BG_CARD))
+    p.setPen(QPen(theme._BORDER_STRONG_C, 1))
+    p.setBrush(Qt.BrushStyle.NoBrush)
+    p.drawPath(path)
+    p.end()
+
+
 class StyledDialog(QDialog):
     """Frameless modal dialog with custom-painted background.
 
@@ -123,23 +142,8 @@ class StyledDialog(QDialog):
         # dismisses the dialog as a Cancel.
         cancel_btn.setShortcut("Esc")
 
-    # Custom paint — rounded BG_CARD panel with a translucent rim.
     def paintEvent(self, _ev) -> None:
-        p = QPainter(self)
-        p.setRenderHint(QPainter.RenderHint.Antialiasing)
-        rect = QRectF(self.rect()).adjusted(12, 8, -12, -16)
-        # Faint edge shadow (translucent window, so we draw our own).
-        for i, a in enumerate((14, 8, 4)):
-            sh = QPainterPath()
-            sh.addRoundedRect(rect.adjusted(-i, 2 + i, i, 3 + i * 2), 10 + i, 10 + i)
-            p.fillPath(sh, QColor(0, 0, 0, a))
-        path = QPainterPath()
-        path.addRoundedRect(rect, 10, 10)
-        p.fillPath(path, QColor(theme.BG_CARD))
-        p.setPen(QPen(theme._BORDER_STRONG_C, 1))
-        p.setBrush(Qt.BrushStyle.NoBrush)
-        p.drawPath(path)
-        p.end()
+        paint_panel(self)
 
     # ── Convenience constructor ────────────────────────────────
 

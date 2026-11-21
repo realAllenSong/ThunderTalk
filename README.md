@@ -32,6 +32,13 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.17.0
+
+- **After an update, the app tells you what changed.** A small window lists up to three things worth knowing, with the full release notes one click away. It appears once, only over ThunderTalk's own window, and never while you are dictating in another app.
+- **Recommend ThunderTalk with text that fits where you post it.** About → Recommend gives a short description of the app, in English or Chinese, that you can edit before copying. Places that do not allow links (Xiaohongshu, Douyin) get a version that says how to find the app instead. Nothing is posted for you and nothing is reported back.
+- **A note when it has saved you real time.** At 10, 50, 100, 250, 500 and 1,000 hours of estimated typing saved, the app says so once and offers Recommend and Star on GitHub. "Don't show these" turns it off for good.
+- **Fix:** in Chinese, the four figures on Home no longer run past the edge of the page once the totals reach hours.
+
 ## New in v1.16.0
 
 - **The text arrives within a second, however long you speak.** ThunderTalk now recognizes each stretch of speech that is over while you keep talking, with the same settings as the final text, and only the last stretch is left when you stop. On 36 dictations of 30 seconds to 4.5 minutes the wait after stopping went from 3.4 s (median) and 11.3 s (longest) to 0.45 s and 0.76 s, with the same accuracy (6.3% vs 6.5% token errors). An optional **Fast finish** (Settings) works in shorter pieces: 0.28 s and 0.53 s ([#15](https://github.com/realAllenSong/ThunderTalk/issues/15)).
