@@ -32,6 +32,12 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.16.0
+
+- **The text arrives within a second, however long you speak.** ThunderTalk now recognizes each stretch of speech that is over while you keep talking, with the same settings as the final text, and only the last stretch is left when you stop. On 36 dictations of 30 seconds to 4.5 minutes the wait after stopping went from 3.4 s (median) and 11.3 s (longest) to 0.45 s and 0.76 s, with the same accuracy (6.3% vs 6.5% token errors). An optional **Fast finish** (Settings) works in shorter pieces: 0.28 s and 0.53 s ([#15](https://github.com/realAllenSong/ThunderTalk/issues/15)).
+- **Put the dictation bar where you want it:** top or bottom of the screen, or drag it anywhere and it stays there. With several displays it appears on the one you are typing on ([#14](https://github.com/realAllenSong/ThunderTalk/issues/14)).
+- **First-run setup ends with four things worth knowing:** long dictations, Esc to cancel, moving the bar, and teaching it names with hotwords.
+
 ## New in v1.15.0
 
 - **ThunderTalk ASR 0.6B, second version: more names right.** Trained further on the names people dictate now (models, agent tools, developer, finance and academic terms). On 191 test sentences that say 724 names it writes 80.4% of them correctly (v1.14.3: 67.7%), and on names from October–November 2026 61.3% (51.4%). Ordinary dictation improved too: 7.97% → 7.66% token errors on the standard test set, at the same speed. On real dictations it ends sentences with full stops and question marks again instead of running them together with commas (306 vs 202 on 40 recordings). The new weights download in the background after you update; the app keeps dictating meanwhile.

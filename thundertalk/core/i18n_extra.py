@@ -345,8 +345,40 @@ EXTRA: dict[str, dict[str, str]] = {
     "onb.try.placeholder": {"en": "Your words will appear here…", "zh": "你说的话会出现在这里…"},
     "onb.try.success": {"en": "It works — that's all there is to it.", "zh": "成功了——就是这么简单。"},
     "onb.try.tip": {
-        "en": "ThunderTalk keeps running in your menu bar. You can close this window any time.",
-        "zh": "ThunderTalk 会继续在菜单栏中运行，可随时关闭此窗口。",
+        "en": "Said the wrong thing? Press Esc while recording and nothing is typed.",
+        "zh": "说错了？录音时按 Esc，什么都不会输入。",
+    },
+    "onb.tips.title": {"en": "Four things worth knowing", "zh": "四件值得知道的事"},
+    "onb.tips.sub": {
+        "en": "You can dictate now. These are what people usually find weeks later.",
+        "zh": "现在就可以开始听写了。下面这几件事，很多人用了几周才发现。",
+    },
+    "onb.tips.long.title": {"en": "Speak as long as you like", "zh": "想说多久就说多久"},
+    "onb.tips.long.sub": {
+        "en": "ThunderTalk recognizes what you have said while you keep talking, so the text arrives "
+              "within about a second of stopping, even after several minutes.",
+        "zh": "你说话的同时，前面说完的部分就已经在识别了。说上几分钟，停下后也在一秒左右出字。",
+    },
+    "onb.tips.esc.title": {"en": "Esc cancels", "zh": "按 Esc 取消"},
+    "onb.tips.esc.sub": {
+        "en": "Nothing is typed, and the text is still kept in History in case you wanted it.",
+        "zh": "什么都不会输入；文字仍会保存在「历史」里，万一还用得上。",
+    },
+    "onb.tips.bar.title": {"en": "Put the bar where you like", "zh": "听写条可以挪"},
+    "onb.tips.bar.sub": {
+        "en": "Drag the dictation bar anywhere and it stays there, or choose top or bottom in Settings. "
+              "With several displays it appears on the one you are typing on.",
+        "zh": "把听写条拖到顺手的位置，它就停在那里；也可以在设置里选顶部或底部。多个显示器时，它出现在你正在输入的那块屏幕上。",
+    },
+    "onb.tips.names.title": {"en": "Teach it names", "zh": "教它认名字"},
+    "onb.tips.names.sub": {
+        "en": "A product, a colleague or a project it keeps spelling wrong? Add it under Hotwords. "
+              "Only that word changes, nothing else.",
+        "zh": "产品名、同事的名字、项目名老是写错？加到「热词」里。只会改这个词，别的字不动。",
+    },
+    "onb.tips.more": {
+        "en": "ThunderTalk stays in your menu bar. Hold-to-talk, translation and AI proofreading are in Settings.",
+        "zh": "ThunderTalk 会留在菜单栏里。按住说话、翻译和 AI 校对都在设置中。",
     },
     "onb.rerun": {"en": "Run setup again", "zh": "重新运行设置向导"},
     "onb.rerun.desc": {

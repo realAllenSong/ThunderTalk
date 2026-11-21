@@ -35,7 +35,7 @@ if TYPE_CHECKING:
     from thundertalk.core.state import AppState
     from thundertalk.ui.pages.models_page import ModelsPage
 
-_STEPS = 4
+_STEPS = 5
 
 
 def _fmt_size(mb: int) -> str:
@@ -69,8 +69,8 @@ def _download_failure_key(message: str) -> str:
 # ── small pieces ─────────────────────────────────────────────────────────
 
 class _StepDots(QWidget):
-    """Four short rules (done = ink, current = ink, ahead = hairline) and a
-    mono "02 / 04" counter."""
+    """One short rule per step (done = ink, current = ink, ahead = hairline) and a
+    mono "02 / 05" counter."""
 
     def __init__(self) -> None:
         super().__init__()
@@ -261,6 +261,7 @@ class OnboardingOverlay(QWidget):
         self._stack.addWidget(self._build_permissions())
         self._stack.addWidget(self._build_model())
         self._stack.addWidget(self._build_try())
+        self._stack.addWidget(self._build_tips())
         sl.addWidget(self._stack, stretch=1)
 
         foot = QHBoxLayout()
@@ -474,6 +475,28 @@ class OnboardingOverlay(QWidget):
         ly.addStretch()
         return w
 
+    _TIPS = ("long", "esc", "bar", "names")
+
+    def _build_tips(self) -> QWidget:
+        """What a first dictation does not show: the things people otherwise find weeks later."""
+        w = QWidget()
+        ly = QVBoxLayout(w)
+        ly.setContentsMargins(0, 8, 0, 0)
+        ly.setSpacing(6)
+        self._k_title = _title(t("onb.tips.title"), 32)
+        ly.addWidget(self._k_title)
+        self._k_sub = _sub(t("onb.tips.sub"))
+        ly.addWidget(self._k_sub)
+        ly.addSpacing(10)
+        self._tips = [_Feature(f"{i:02d}", t(f"onb.tips.{key}.title"), t(f"onb.tips.{key}.sub"))
+                      for i, key in enumerate(self._TIPS, 1)]
+        for tip in self._tips:
+            ly.addWidget(tip)
+        self._k_more = _sub(t("onb.tips.more"))
+        ly.addWidget(self._k_more)
+        ly.addStretch()
+        return w
+
     # ── navigation ──
     def _go(self, step: int, animate: bool = True) -> None:
         self._step = max(0, min(_STEPS - 1, step))
@@ -530,10 +553,14 @@ class OnboardingOverlay(QWidget):
             theme.restyle_button(self._next, "primary", 42, 14)
             self._next.setText(t("onb.next" if self._state.permissions_ok else "onb.perm.review"))
             self._next.setEnabled(ready)
+        elif s == 3:
+            theme.restyle_button(self._next, "primary", 42, 14)
+            self._next.setText(t("onb.next" if self._trial_succeeded else "onb.try.later"))
+            self._next.setEnabled(self._state.recording == st.REC_IDLE)
         else:
             theme.restyle_button(self._next, "primary", 42, 14)
-            self._next.setText(t("onb.finish" if self._trial_succeeded else "onb.try.later"))
-            self._next.setEnabled(self._state.recording == st.REC_IDLE)
+            self._next.setText(t("onb.finish"))
+            self._next.setEnabled(True)
 
     def _finish(self, completed: bool) -> None:
         if self._closing:
@@ -791,6 +818,12 @@ class OnboardingOverlay(QWidget):
         self._m_other.setText(t("onb.model.other"))
         self._t_edit.setPlaceholderText(t("onb.try.placeholder"))
         self._t_tip.setText(t("onb.try.tip"))
+        self._k_title.setText(t("onb.tips.title"))
+        self._k_sub.setText(t("onb.tips.sub"))
+        self._k_more.setText(t("onb.tips.more"))
+        for tip, key in zip(self._tips, self._TIPS):
+            tip._a.setText(t(f"onb.tips.{key}.title"))
+            tip._b.setText(t(f"onb.tips.{key}.sub"))
         self._back.setText(t("onb.back"))
         self._skip.setText(t("onb.skip"))
         self._go(self._step, animate=False)

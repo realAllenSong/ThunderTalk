@@ -152,7 +152,15 @@ def test_typed_text_is_not_dictation_and_finish_waits_for_recording(wizard):
     assert overlay.accept_dictation("Recognized sentence")
     assert overlay._t_edit.toPlainText() == "Recognized sentence"
     assert overlay._t_status.text().endswith(t("onb.try.success"))
-    assert overlay._next.text() == t("onb.finish")
+    assert overlay._next.text() == t("onb.next")
+    overlay._next.click()
+    # The last step says what one dictation cannot show: long takes, Esc, the bar, hotwords.
+    assert overlay._step == 4 and not settings.get("onboarding_done")
+    assert [tip._a.text() for tip in overlay._tips] == [t(f"onb.tips.{k}.title") for k in ("long", "esc", "bar", "names")]
+    assert overlay._next.text() == t("onb.finish") and overlay._next.isEnabled() and not overlay._skip.isVisible()
+    overlay._back.click()
+    assert overlay._step == 3
+    overlay._next.click()
     overlay._next.click()
     assert settings.get("onboarding_done")
 
@@ -166,6 +174,18 @@ def test_hold_mode_and_retranslation(wizard, monkeypatch):
     overlay.retranslate()
     assert "按住" in overlay._t_sub.text()
     assert overlay._feats[0]._a.text() == t("onb.feat.private.title")
+    assert overlay._tips[1]._a.text() == "按 Esc 取消" and "Esc" in overlay._t_tip.text()
+
+
+def test_trying_later_still_shows_the_tips_before_finishing(wizard):
+    overlay, _, perm, _, settings = wizard
+    perm.mic, perm.acc = "authorized", True
+    overlay._go(3, animate=False)
+    assert overlay._next.text() == t("onb.try.later")
+    overlay._next.click()
+    assert overlay._step == 4 and not settings.get("onboarding_done")
+    overlay._next.click()
+    assert settings.get("onboarding_done")
 
 
 def test_skip_cancels_and_saves_but_back_does_not(wizard):
