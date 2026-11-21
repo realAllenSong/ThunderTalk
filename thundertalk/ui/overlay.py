@@ -85,11 +85,19 @@ class VoiceOverlay(QWidget):
             Qt.WindowType.FramelessWindowHint
             | Qt.WindowType.WindowStaysOnTopHint
             | Qt.WindowType.Tool
+            | Qt.WindowType.WindowDoesNotAcceptFocus     # dragging the bar must not take the keyboard from the app typed into
         )
         self.setAttribute(Qt.WidgetAttribute.WA_TranslucentBackground)
         self.setAttribute(Qt.WidgetAttribute.WA_ShowWithoutActivating)
         self.setAttribute(Qt.WidgetAttribute.WA_MacAlwaysShowToolWindow)
         self.setFixedSize(_W, _H)
+        self._position = "top"           # "top" | "bottom" of the display, or "custom" after a drag (#14)
+        self._custom = (0.5, 0.0)        # where a drag left the bar, as fractions of the room on the display
+        self._find_screen = None         # () → QScreen the user is typing on, or None
+        self._on_moved = None            # (fx, fy) → None, after a drag
+        self._drag_from = None
+        self._drag_origin = QPoint()
+        self._dragging = False
 
         self._state = self._IDLE
         self._text = ""
@@ -122,6 +130,37 @@ class VoiceOverlay(QWidget):
         self._hide_timer.timeout.connect(self.hide_overlay)
 
     # ── public API ──────────────────────────────────────────────────────
+
+    def set_position(self, position: str, custom=None) -> None:
+        self._position = position if position in ("bottom", "custom") else "top"
+        if custom is not None:
+            try:
+                self._custom = (min(1.0, max(0.0, float(custom[0]))), min(1.0, max(0.0, float(custom[1]))))
+            except (TypeError, ValueError, IndexError):
+                pass
+
+    def set_screen_finder(self, find) -> None:
+        """``find()`` returns the display the user is dictating into (or None: stay where the bar was)."""
+        self._find_screen = find
+
+    def on_moved(self, callback) -> None:
+        """``callback(fx, fy)`` after the user dragged the bar somewhere."""
+        self._on_moved = callback
+
+    @staticmethod
+    def _room(g) -> tuple[int, int]:
+        """How far the widget's top-left can travel on a display: the bar plus the room its live text
+        grows into must stay on it. The top edge stays put while the text grows downward."""
+        tallest = _H + _PV_LINES * _PV_LINE_H + _PV_PAD_B
+        return max(1, g.width() - _W), max(1, g.height() - tallest)
+
+    def bar_origin(self, g) -> QPoint:
+        """Top-left of the widget on a display whose usable area is ``g``."""
+        rx, ry = self._room(g)
+        if self._position == "custom":
+            return QPoint(g.x() + int(round(self._custom[0] * rx)), g.y() + int(round(self._custom[1] * ry)))
+        x = g.x() + rx // 2
+        return QPoint(x, g.y() + ry - 52) if self._position == "bottom" else QPoint(x, g.y() + 52)
 
     def set_hotkey(self, combo: str) -> None:
         self._hotkey = combo
@@ -295,8 +334,51 @@ class VoiceOverlay(QWidget):
         if self._state == self._DIFF and event.button() == Qt.MouseButton.LeftButton:
             self.hide_overlay()
             event.accept()
+        elif event.button() == Qt.MouseButton.LeftButton:
+            # The bar can be dragged anywhere; where it is dropped is remembered (#14).
+            self._drag_from = event.globalPosition().toPoint()
+            self._drag_origin = self.pos()
+            self._dragging = False
+            event.accept()
         else:
             super().mousePressEvent(event)
+
+    def mouseMoveEvent(self, event) -> None:
+        if self._drag_from is None:
+            return super().mouseMoveEvent(event)
+        at = event.globalPosition().toPoint()
+        delta = at - self._drag_from
+        if not self._dragging and delta.manhattanLength() < 6:
+            return                                   # a click that wobbled, not a drag
+        self._dragging = True
+        self.move(self._clamped(self._drag_origin + delta, at))
+        event.accept()
+
+    def mouseReleaseEvent(self, event) -> None:
+        dragged, self._drag_from, self._dragging = self._dragging, None, False
+        if not dragged:
+            return super().mouseReleaseEvent(event)
+        g = self._geometry_at(self.pos() + QPoint(_W // 2, _H // 2))
+        if g is not None:
+            rx, ry = self._room(g)
+            self._position = "custom"
+            self._custom = (min(1.0, max(0.0, (self.x() - g.x()) / rx)), min(1.0, max(0.0, (self.y() - g.y()) / ry)))
+            if self._on_moved is not None:
+                self._on_moved(*self._custom)
+        event.accept()
+
+    def _geometry_at(self, point: QPoint):
+        from PySide6.QtGui import QGuiApplication
+        s = QGuiApplication.screenAt(point) or self.screen()
+        return s.availableGeometry() if s else None
+
+    def _clamped(self, origin: QPoint, pointer: QPoint) -> QPoint:
+        """Keep the whole bar, with its live text, on the display the pointer is on."""
+        g = self._geometry_at(pointer)
+        if g is None:
+            return origin
+        rx, ry = self._room(g)
+        return QPoint(min(g.x() + rx, max(g.x(), origin.x())), min(g.y() + ry, max(g.y(), origin.y())))
 
     def _diff_layout(self, text: str, ranges=()) -> QTextLayout:
         layout = QTextLayout(text, theme.font(_PV_FONT_PT))
@@ -328,10 +410,15 @@ class VoiceOverlay(QWidget):
 
     def _present(self) -> None:
         if not self.isVisible():
-            s = self.screen()
+            s = None
+            if self._find_screen is not None:
+                try:
+                    s = self._find_screen()
+                except Exception:              # the bar must appear whatever happens
+                    s = None
+            s = s or self.screen()
             if s:
-                g = s.availableGeometry()
-                self.move(QPoint(g.x() + (g.width() - _W) // 2, g.y() + 52))
+                self.move(self.bar_origin(s.availableGeometry()))
             self.show()
         self.update()
 

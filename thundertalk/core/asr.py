@@ -769,9 +769,18 @@ class AsrEngine:
         touched (repetition.clean). File transcription passes
         ``cut_loops=False``: it re-decodes a looping span in pieces instead,
         which recovers the words a cut would lose."""
+        # Asked before the engine lock: the stream may still be decoding its last piece under it.
+        done = None if preview else self._take_local_stream(samples, sample_rate)
         with self._locked():
             self._take_stream(samples, preview)
-            if not preview and not self._streamed and len(samples) / sample_rate > self.max_clip_seconds:
+            if done is not None:
+                from thundertalk.core.dictation import decode_chunks
+                prefix, upto = done
+                print(f"[ASR] {upto / sample_rate:.1f}s decoded while recording; "
+                      f"{(len(samples) - upto) / sample_rate:.1f}s left")
+                r = decode_chunks(self._recognize_any, samples, sample_rate, self.max_clip_seconds,
+                                  start=upto, prefix=prefix)
+            elif not preview and not self._streamed and len(samples) / sample_rate > self.max_clip_seconds:
                 from thundertalk.core.dictation import decode_chunks
                 r = decode_chunks(self._recognize_any, samples, sample_rate, self.max_clip_seconds)
             else:
@@ -787,6 +796,37 @@ class AsrEngine:
             from thundertalk.core.terms import normalize
             r.text = normalize(r.text)
         return r
+
+    # ── finishing earlier speech while recording (core/local_stream.py) ──
+    _STREAM_BACKENDS = ("mlx", "onnx")        # engines whose long takes are decoded window by window
+
+    @property
+    def streams_locally(self) -> bool:
+        """True for a loaded local engine that decodes a long take in windows cut at pauses
+        (so the windows that are over can be decoded while the speaker goes on)."""
+        return (self.is_loaded and self._cloud is None and self._apple is None and self._moss_model is None
+                and (self._active_backend or "").startswith(self._STREAM_BACKENDS)
+                and self.max_clip_seconds <= 60)
+
+    def attach_local_stream(self, stream) -> None:
+        self._local_stream = stream
+
+    def stream_token(self):
+        """What must stay the same from the first piece of a take to its final."""
+        return (self._model_id, self._active_backend, self._language_code, self._hotwords,
+                tuple(getattr(self, "_context_terms", ())), self._builtin_terms)
+
+    def recognize_window(self, samples: np.ndarray, sample_rate: int = 16000) -> AsrResult:
+        """The final decode of one window (hotwords checked), for the local stream."""
+        from thundertalk.core.audio_level import normalize_quiet
+        with self._locked():
+            return self._recognize_any(normalize_quiet(samples, sample_rate), sample_rate)
+
+    def _take_local_stream(self, samples: np.ndarray, sample_rate: int):
+        stream = getattr(self, "_local_stream", None)
+        if stream is None or sample_rate != 16000 or not self.streams_locally:
+            return None
+        return stream.take(samples)
 
     def _take_stream(self, samples: np.ndarray, preview: bool) -> None:
         self._streamed = None

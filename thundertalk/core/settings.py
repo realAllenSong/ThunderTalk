@@ -60,7 +60,12 @@ DEFAULTS: dict[str, Any] = {
     # two or more speakers are detected in the utterance.
     "moss_speaker_labels": False,
     # Show the words recognized so far under the indicator while dictating.
+    "overlay_position": "top",         # dictation bar: "top" | "bottom", or "custom" once it was dragged (#14)
+    "overlay_custom": [0.5, 0.0],      # where it was dropped: fractions of the room on the display
+    "overlay_follow_display": True,    # show the bar on the display being typed into, not where it last was
     "live_preview": True,
+    "finish_while_speaking": True,     # local engines decode finished speech during the take (core/local_stream.py)
+    "fast_finish": False,              # opt-in: shorter pieces, less left to decode at stop, a little less context (#15)
     "context_hotwords": True,          # names in the box being typed into are checked like hotwords (read on this Mac only; nothing there, nothing done)
     "keep_recent_recordings": True,    # audio of the last 20; History keeps the text either way
     # First-run setup flow (welcome → permissions → model → try it).

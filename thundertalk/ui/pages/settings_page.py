@@ -499,6 +499,22 @@ class SettingsPage(QWidget):
         self._live_toggle.toggled_signal.connect(lambda v: self._settings.set("live_preview", v))
         card2.add_row("settings.live_preview.label", "settings.live_preview.desc",
                       self._live_toggle, sep=True)
+        self._fast_toggle = theme.ToggleSwitch(self._settings.get("fast_finish") is True)
+        self._fast_toggle.toggled_signal.connect(lambda v: self._settings.set("fast_finish", bool(v)))
+        card2.add_row("settings.fast_finish.label", "settings.fast_finish.desc", self._fast_toggle, sep=True)
+
+        # Where the dictation bar appears (#14)
+        self._bar_combo = self._combo(150)
+        self._bar_combo.addItem(t("settings.bar.top"), "top")
+        self._bar_combo.addItem(t("settings.bar.bottom"), "bottom")
+        self._bar_combo.addItem(t("settings.bar.custom"), "custom")
+        self.sync_bar_position()
+        self._bar_combo.currentIndexChanged.connect(
+            lambda i: self._settings.set("overlay_position", self._bar_combo.itemData(i)))
+        card2.add_row("settings.bar.label", "settings.bar.desc", self._bar_combo, sep=True)
+        self._follow_toggle = theme.ToggleSwitch(self._settings.get("overlay_follow_display") is not False)
+        self._follow_toggle.toggled_signal.connect(lambda v: self._settings.set("overlay_follow_display", bool(v)))
+        card2.add_row("settings.bar_follow.label", "settings.bar_follow.desc", self._follow_toggle, sep=True)
 
         self._tidy_toggle = theme.ToggleSwitch(self._settings.get("tidy_dictation") is not False)
         self._tidy_toggle.toggled_signal.connect(lambda v: self._settings.set("tidy_dictation", v))
@@ -602,6 +618,16 @@ class SettingsPage(QWidget):
         self._open_btn.setText(t("settings.logs.open"))
         self._setup_btn.setText(t("onb.rerun"))
         self._mic_combo.setItemText(0, t("settings.mic.auto"))
+        self._bar_combo.setItemText(0, t("settings.bar.top"))
+        self._bar_combo.setItemText(1, t("settings.bar.bottom"))
+        self._bar_combo.setItemText(2, t("settings.bar.custom"))
+
+    def sync_bar_position(self) -> None:
+        """Show the saved bar position (it changes to "where I put it" when the bar is dragged)."""
+        index = {"bottom": 1, "custom": 2}.get(self._settings.get("overlay_position"), 0)
+        self._bar_combo.blockSignals(True)
+        self._bar_combo.setCurrentIndex(index)
+        self._bar_combo.blockSignals(False)
 
     def _on_memory_mode_changed(self, idx: int) -> None:
         mode = self._mem_combo.itemData(idx)

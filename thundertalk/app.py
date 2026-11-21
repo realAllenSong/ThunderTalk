@@ -6,7 +6,8 @@ import sys
 import time
 import traceback
 
-from PySide6.QtCore import QObject, QThread, QTimer, Signal, Slot, Qt, qInstallMessageHandler
+from PySide6.QtCore import QObject, QPoint, QThread, QTimer, Signal, Slot, Qt, qInstallMessageHandler
+from PySide6.QtGui import QGuiApplication
 from PySide6.QtWidgets import QApplication
 
 
@@ -465,6 +466,27 @@ def main() -> None:
             shutdown_system_audio()
     app.aboutToQuit.connect(_shutdown_recording)
     overlay = VoiceOverlay()
+    overlay.set_position(settings.get("overlay_position") or "top", settings.get("overlay_custom"))
+
+    def _bar_dragged(fx: float, fy: float) -> None:
+        settings.set("overlay_custom", [round(fx, 4), round(fy, 4)])
+        settings.set("overlay_position", "custom")
+        window.settings_page.sync_bar_position()
+
+    overlay.on_moved(_bar_dragged)
+
+    def _dictation_screen():
+        """The display with the window the user is typing into; None keeps the bar where it was.
+        Runs each time the bar is about to appear, so a changed position applies to the next dictation."""
+        overlay.set_position(settings.get("overlay_position") or "top", settings.get("overlay_custom"))
+        if settings.get("overlay_follow_display") is False:
+            return QGuiApplication.primaryScreen()
+        from thundertalk.core import text_output as _to
+        from thundertalk.core.active_display import window_center
+        at = window_center(_to._previous_app_pid)
+        return QGuiApplication.screenAt(QPoint(*at)) if at else None
+
+    overlay.set_screen_finder(_dictation_screen)
     overlay.set_hotkey(settings.hotkey)
     from thundertalk.ui.review_overlay import ReviewOverlay
     review_overlay = ReviewOverlay()
@@ -489,7 +511,7 @@ def main() -> None:
 
     # --- Hotwords + Language → ASR engine ---
     from thundertalk.core.context_terms import ContextCapture
-    context = ContextCapture()
+    context = ContextCapture(on_terms=lambda terms: pipe.asr.set_context_terms(terms))
     pipe.asr.set_hotwords(settings.hotwords)
     pipe.asr.set_builtin_terms(settings.get("builtin_terms") is not False)
     pipe.asr.set_auto_languages(settings.get("auto_languages") or ["zh", "en"])
@@ -509,6 +531,16 @@ def main() -> None:
     live = LivePreview(pipe.recorder.snapshot,
                        lambda s: pipe.asr.recognize(s, preview=True).text)
     live.text_changed.connect(lambda text: overlay.set_preview_text(text))
+
+    # --- Local engines: speech that is over is decoded while the user goes on,
+    # with the final's own settings; at stop only the last stretch is left, so
+    # the wait no longer grows with the length of the take (#15).
+    # GPU_LOCK for every engine: the live preview takes it without waiting too, so the two skip a
+    # turn for each other instead of queueing (a preview that waits looks slow and switches itself off).
+    from thundertalk.core.local_stream import DEFAULT_WINDOW_S, FAST_WINDOW_S, LocalStream
+    local_live = LocalStream(pipe.recorder.snapshot, pipe.asr.recognize_window,
+                             lambda: pipe.asr.max_clip_seconds, pipe.asr.stream_token, lock=GPU_LOCK)
+    pipe.asr.attach_local_stream(local_live)
 
     # --- Cloud dictation: each finished stretch of speech goes to the selected
     # cloud model while recording (sent once), so the preview is that model's
@@ -979,6 +1011,7 @@ def main() -> None:
             t_stop = time.perf_counter()
             live.stop()             # no new preview decodes; final takes priority
             cloud_live.stop()       # no new segments; the final takes what was sent
+            local_live.stop()       # no new pieces; the final takes what is decoded
             print(f"[Toggle] Stop requested, capturing {TAIL_GRACE_MS}ms tail...")
             overlay.show_transcribing()
             state.set_recording(st.REC_TRANSCRIBING)
@@ -1061,8 +1094,12 @@ def main() -> None:
                 else:
                     print(f"[Toggle] Starting ASR on {len(samples)} samples")
                 pipe.asr.set_context_terms(context.terms)
+                def _settle() -> None:
+                    live.wait_idle()            # a preview decode in flight
+                    local_live.wait_idle()      # a piece in flight (it holds the GPU lock)
+
                 worker = AsrWorker(pipe.asr, samples,
-                                   wait_before=live.wait_idle, lock=GPU_LOCK,
+                                   wait_before=_settle, lock=GPU_LOCK,
                                    preview_text=recording["preview"])
                 worker.done.connect(_done)
                 worker.error.connect(_error)
@@ -1200,6 +1237,10 @@ def main() -> None:
             cloud_live.start(GROQ_SEGMENT_S if mid.startswith("groq:") else SEGMENT_S)
         elif preview_wanted(settings):
             live.start()
+        direct = (settings.get("translation_target") or "off") != "off" and \
+            (settings.get("translation_mode") or "direct") == "direct"     # no ASR pass at all
+        if pipe.asr.streams_locally and not direct and settings.get("finish_while_speaking") is not False:
+            local_live.start(FAST_WINDOW_S if settings.get("fast_finish") is True else DEFAULT_WINDOW_S)
         print("[Toggle] Recording started")
         return True
 

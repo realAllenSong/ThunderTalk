@@ -388,15 +388,40 @@ _STRINGS: dict[str, dict[str, str]] = {
         "en": "Copy transcribed text to clipboard automatically.",
         "zh": "转录完成后自动将文本复制到剪贴板。",
     },
+    "settings.fast_finish.label": {"en": "Fast finish", "zh": "快速出字"},
+    "settings.fast_finish.desc": {
+        "en": "ThunderTalk already recognizes what you have said while you keep talking, so the wait after you "
+              "stop does not grow with the length of the dictation. With this on, it works in shorter pieces: "
+              "the text arrives a little sooner (about 0.3 s instead of 0.5 s after you stop), and each piece is "
+              "recognized with less context, which can cost a little accuracy. Local models only.",
+        "zh": "ThunderTalk 本来就会在你说话的同时识别已经说完的部分，所以停下后的等待不会随时长变长。"
+              "打开后改用更短的片段：出字再快一点（停下后约 0.3 秒，原来约 0.5 秒），"
+              "但每段参考的上下文更少，准确率可能略低。仅本地模型。",
+    },
+    "settings.bar.label": {"en": "Dictation bar position", "zh": "听写条位置"},
+    "settings.bar.desc": {
+        "en": "Top or bottom of the screen, or drag the bar to where you want it while it is showing: "
+              "it stays there. Choose Top or Bottom to put it back.",
+        "zh": "屏幕顶部或底部；也可以在听写条出现时直接把它拖到想要的位置，之后就停在那里。选回顶部或底部即可复位。",
+    },
+    "settings.bar.top": {"en": "Top", "zh": "顶部"},
+    "settings.bar.bottom": {"en": "Bottom", "zh": "底部"},
+    "settings.bar.custom": {"en": "Where I put it", "zh": "我拖到的位置"},
+    "settings.bar_follow.label": {"en": "Bar follows the display you type on", "zh": "听写条跟随正在输入的屏幕"},
+    "settings.bar_follow.desc": {
+        "en": "With several displays, show the bar on the one that holds the window you are dictating into. "
+              "Off: always on the main display.",
+        "zh": "多个显示器时，听写条出现在你正在输入的窗口所在的那块屏幕上。关闭后固定在主显示器。",
+    },
     "settings.live_preview.label": {
         "en": "Live Preview", "zh": "实时预览",
     },
     "settings.live_preview.desc": {
         "en": "Show the words recognized so far under the indicator while you speak. "
-              "The pasted text is still recognized from the full recording. With a cloud model "
+              "The pasted text is recognized separately, in longer pieces with more context. With a cloud model "
               "the preview is that model's own text: each stretch of speech is sent once while you talk, "
               "so the final arrives almost as soon as you stop, at no extra cost.",
-        "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字仍按完整录音识别。"
+        "zh": "说话时在录音指示条下方显示已识别的文字。粘贴的文字是另外按更长的片段、带更多上下文识别的。"
               "使用云端模型时，预览就是该云端模型的结果：边说边把每段话发送一次，"
               "松开后几乎立刻出结果，不额外计费。",
     },

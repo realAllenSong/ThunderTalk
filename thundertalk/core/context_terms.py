@@ -150,8 +150,9 @@ def read_context(pid: int | None) -> str:
 class ContextCapture:
     """Reads the context off the UI thread when a dictation starts; ``terms`` is ready by the time it ends."""
 
-    def __init__(self, reader=read_context):
+    def __init__(self, reader=read_context, on_terms=None):
         self._reader = reader
+        self._on_terms = on_terms          # called with the names of the current take (empty at its start)
         self._lock = threading.Lock()
         self._terms: list[str] = []
         self._take = 0
@@ -161,6 +162,8 @@ class ContextCapture:
             self._take += 1
             self._terms = []
             take = self._take
+        if self._on_terms:
+            self._on_terms([])
 
         def run() -> None:
             try:
@@ -169,8 +172,11 @@ class ContextCapture:
                 print(f"[Context] Not read: {type(exc).__name__}")
                 terms = []
             with self._lock:
-                if take == self._take:
+                current = take == self._take
+                if current:
                     self._terms = terms
+            if current and terms and self._on_terms:
+                self._on_terms(terms)
             if terms:
                 print(f"[Context] {len(terms)} names from the focused field")
 
