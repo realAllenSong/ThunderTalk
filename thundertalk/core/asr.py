@@ -937,7 +937,11 @@ class AsrEngine:
         likely = list(dict.fromkeys(word for _alike, word, _s, _e in found))
         prompted = self._bounded(likely)
         try:
-            if getattr(self, "_hotword_mode", "score") != "score" or len(samples) / sample_rate > 29.0:
+            from mlx_qwen3_asr.chunking import MAX_CHUNK_SECONDS
+            # Scoring needs the take in one decode window. It used to stop at 29 s, below the
+            # library's 30 s window, so a 30 s take and every ~30 s piece of a long one paid a
+            # whole second decode (#15: +0.66 s at 30 s with names on screen).
+            if getattr(self, "_hotword_mode", "score") != "score" or len(samples) / sample_rate > MAX_CHUNK_SECONDS:
                 raise ValueError("second decode")
             from mlx_qwen3_asr.audio import load_audio_np
             from mlx_qwen3_asr.config import DEFAULT_MODEL_ID

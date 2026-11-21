@@ -190,3 +190,11 @@ def test_letters_are_compared_the_way_they_are_said():
     assert found("交给 Fase Book", "Facebook") == ["Fase Book"]            # ce = se
     assert found("你自己 play race，然后 iterator", "Rosetta") == []        # not across Latin and Chinese
     assert found("the solution is clear", "Sol") == []
+
+
+def test_a_full_30_second_window_is_scored_not_decoded_again(monkeypatch):
+    import numpy as np
+    eng, calls, scored = _scoring_engine(monkeypatch, "你自己 play race，然后我不懂。", gain=0.5)
+    eng.set_hotwords(["Playwright CLI"])
+    r = eng._recognize_mlx(np.zeros(30 * 16000, dtype=np.float32), 16000)     # #15: 29 s used to be the limit
+    assert r.text == "你自己 Playwright CLI，然后我不懂。" and calls == [""]
