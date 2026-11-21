@@ -26,6 +26,19 @@ def test_missing_voice_engine_fails_cleanly(monkeypatch, capsys):
     assert "not downloaded" in out and "no speech engine downloaded" in out and "SELFTEST FAIL" in out
 
 
+def test_a_cloud_voice_is_never_tried_unless_it_is_named(monkeypatch, capsys):
+    """The self-check ran every engine that was ready, a cloud one with the user's key included."""
+    from thundertalk.core import cloud, speech
+    for bid in speech.BACKEND_ORDER:
+        monkeypatch.setattr(speech.backend(bid), "is_ready", lambda: False)
+    monkeypatch.setattr(cloud, "is_configured", lambda pid, settings=None: pid == "openai")
+    spoke = []
+    monkeypatch.setattr(speech, "get_engine", lambda: spoke.append(1))
+    assert selftest.run(["tts"]) == 1                       # nothing local is ready, and the cloud one is not touched
+    out = capsys.readouterr().out
+    assert spoke == [] and "cloud engine (billed)" in out and "no speech engine downloaded" in out
+
+
 def test_app_main_routes_the_flag(monkeypatch):
     import sys
 

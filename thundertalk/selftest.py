@@ -50,6 +50,10 @@ def check_tts(engine: str = "") -> bool:
     for b in speech.backends():
         if engine and b.info.id != engine:
             continue
+        if not engine and b.info.id in speech.cloud_ids():
+            # A self-check must not bill anyone: a cloud voice is only tried when it is named.
+            _say(True, f"tts:{b.info.id}", skipped="cloud engine (billed); pass --engine to test it")
+            continue
         if not b.is_ready():
             _say(True, f"tts:{b.info.id}", skipped="not downloaded")
             continue

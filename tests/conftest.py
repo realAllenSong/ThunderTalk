@@ -24,6 +24,47 @@ def _never_touch_real_settings(tmp_path_factory):
         yield
 
 
+@pytest.fixture(autouse=True)
+def _no_real_keys_language_or_network(monkeypatch, tmp_path):
+    """A test run must not depend on, or spend, anything of the person running it.
+
+    * Cloud keys: none (no Keychain, no environment keys). Until 2026-11-21 only test_cloud.py
+      did this, so on a Mac with an OpenAI key test_selftest's "no engine downloaded" case found a
+      cloud voice engine and synthesized its sentence through the paid API on every full run
+      (21 requests that month), and "failed" because it then passed.
+    * UI language: English, whatever the user's settings say (test_display_names failed on a
+      Mac set to Chinese).
+    * Network: only this machine. A test that needs a server fakes urlopen or starts one locally.
+    """
+    import urllib.request
+
+    from thundertalk.core import cloud, i18n
+    monkeypatch.setenv("THUNDERTALK_KEYCHAIN_SERVICE", "ThunderTalk Cloud TEST")
+    monkeypatch.setenv("THUNDERTALK_CLOUD_USAGE", str(tmp_path / "cloud_usage.json"))
+    for name in ("OPENAI_ADMIN_KEY", "THUNDERTALK_OPENAI_ADMIN_KEY"):
+        monkeypatch.delenv(name, raising=False)
+    for pid, provider in cloud.PROVIDERS.items():
+        monkeypatch.delenv(f"THUNDERTALK_{pid.upper()}_API_KEY", raising=False)
+        for name in provider.env:
+            monkeypatch.delenv(name, raising=False)
+    monkeypatch.setattr(cloud, "_keychain_available", lambda: False)
+    cloud.forget_cached_keys()
+    monkeypatch.setattr(i18n, "LANG", "en")
+
+    real_urlopen = urllib.request.urlopen
+
+    def local_only(req, *args, **kwargs):
+        url = req if isinstance(req, str) else req.full_url
+        host = urllib.request.urlparse(url).hostname or ""
+        if host not in ("127.0.0.1", "localhost", "::1"):
+            raise RuntimeError(f"a test tried to reach {host}: fake the request instead")
+        return real_urlopen(req, *args, **kwargs)
+
+    monkeypatch.setattr(urllib.request, "urlopen", local_only)
+    yield
+    cloud.forget_cached_keys()
+
+
 @pytest.fixture(scope="session")
 def qapp():
     from PySide6.QtWidgets import QApplication
