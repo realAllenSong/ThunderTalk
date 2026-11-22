@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="AGPL-3.0 License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-brightgreen" alt="Platform: macOS" />
   <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest"><img src="https://img.shields.io/github/v/release/realAllenSong/ThunderTalk?color=orange" alt="Latest release" /></a>
   <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="Downloads" /></a>
@@ -28,7 +28,7 @@
 
 ---
 
-ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere unless you choose an optional cloud engine with your own API key. The app is free and MIT licensed, and works as an open-source alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
+ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what you want to write, and the text lands where your cursor is. Recognition happens on your machine, on the Apple Silicon GPU through MLX or on the CPU through ONNX, so your audio is never sent anywhere unless you choose an optional cloud engine with your own API key. The app is free and open source (AGPL-3.0), and works as an alternative to Typeless, Wispr Flow, superwhisper and macOS Dictation.
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
@@ -574,7 +574,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## FAQ
 
-**Is ThunderTalk free?** Yes, for individuals and at work: no account, no subscription and no usage limits. The app code is MIT licensed. ThunderTalk's own models are free for personal use and for companies under 250 employees and US$10 million in revenue; larger companies, and products built on the models, need a licence (see [License](#license)).
+**Is ThunderTalk free?** Yes, for individuals and at work: no account, no subscription and no usage limits. The app code is open source under the AGPL-3.0. ThunderTalk's own models are free for personal use and for companies under 250 employees and US$10 million in revenue; larger companies, and products built on the models, need a licence (see [License](#license)).
 
 **Does it work offline?** Yes. Once a model is downloaded, recognition, translation, file transcription and text to speech run on your Mac. Studio links need a connection. Optional AI proofreading and meeting notes depend on your chosen provider; cloud providers require a connection.
 
@@ -593,12 +593,15 @@ ThunderTalk is free for individuals, schools, non-profits and companies with few
 - **Managed rollout:** silent install and locked settings through your device management, with cloud engines and AI proofreading switched off so no audio or text can leave your Macs.
 - **Shared vocabulary:** company-wide hotword and terminology lists.
 - **Models tuned for your field:** ThunderTalk ASR trained on your product names and jargon.
-- **Building ThunderTalk into your own product or service:** a commercial licence for ThunderTalk's models and its local API.
+- **Building ThunderTalk into your own product or service:** a commercial licence for ThunderTalk's code, its models and its local API, without the AGPL's obligation to publish your source.
 - **Support** for your team.
 
 ## License
 
-- **App code:** [MIT License](LICENSE). Keep the copyright notice, and credit ThunderTalk in anything you build from it.
+- **App code:** [GNU Affero General Public License v3.0](LICENSE). Use it, study it, change it and share it freely. If you distribute ThunderTalk or a modified version, or offer it to others as a network service, you must publish your complete source under the AGPL-3.0 as well, keep the copyright and licence notices, and credit ThunderTalk.
+- **Commercial licence for the code:** to build ThunderTalk into a closed-source product or service, or to use it without the AGPL's conditions, write to song@entropinia.com. A licence can come with support.
+- **Earlier versions:** releases up to v1.18.0 were published under the MIT License and stay under it.
+- **Contributions:** by sending a pull request you agree that your contribution may be distributed under the AGPL-3.0 and under ThunderTalk's commercial licences.
 - **ThunderTalk's own models** (ThunderTalk ASR 0.6B): [ThunderTalk Model License](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B/blob/main/LICENSE). Free for personal and non-commercial use, for non-profits, and inside the ThunderTalk app for companies with fewer than 250 employees and under US$10 million in annual revenue. Larger companies using them at work, building them into another commercial product or service, or offering them as a hosted service need a written licence ([contact](mailto:song@entropinia.com)).
 - **Name and logo:** "ThunderTalk" and its logo identify this project. Forks and products built from the code must use their own name and logo.
 - Other models keep their own licences (see [Supported models](#supported-models)).
