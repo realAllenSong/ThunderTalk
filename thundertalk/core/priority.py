@@ -31,6 +31,7 @@ class DictationPriority:
         self._cond = threading.Condition()
         self._count = 0
         self._since = 0.0
+        self._ended = 0.0                         # monotonic time the last dictation ended here
         self._stale_s = stale_s
 
     def begin(self) -> None:
@@ -52,10 +53,25 @@ class DictationPriority:
         with self._cond:
             self._count = max(0, self._count - 1)
             if not self._count:
+                self._ended = time.monotonic()
                 if self._lease is not None:
+                    try:
+                        os.utime(self._shared_path, None)   # other processes see when it ended
+                    except OSError:
+                        pass
                     self._lease.close()       # also released automatically if the app crashes
                     self._lease = None
                 self._cond.notify_all()
+
+    def since_end(self) -> float:
+        """Seconds since a dictation last ended, here or in another process (inf if never)."""
+        ages = [time.monotonic() - self._ended] if self._ended else []
+        if self._shared_path is not None:
+            try:
+                ages.append(max(0.0, time.time() - self._shared_path.stat().st_mtime))
+            except OSError:
+                pass
+        return min(ages) if ages else float("inf")
 
     @property
     def active(self) -> bool:
@@ -78,16 +94,20 @@ class DictationPriority:
             return False
 
     def wait_clear(self, cancel: Optional[threading.Event] = None,
-                   on_wait: Optional[Callable[[], None]] = None, poll: float = 0.1) -> float:
-        """Block while a dictation is in progress (or until ``cancel`` is set).
+                   on_wait: Optional[Callable[[], None]] = None, poll: float = 0.1,
+                   cooldown: float = 0.0) -> float:
+        """Block while a dictation is in progress (or until ``cancel`` is set),
+        and for ``cooldown`` seconds after one ends: people often dictate again
+        right away, and a job started in between would hold the next one up.
         ``on_wait`` runs once, before waiting. Returns the seconds waited."""
-        if not self.active:
+        busy = lambda: self.active or (cooldown > 0 and self.since_end() < cooldown)  # noqa: E731
+        if not busy():
             return 0.0
         if on_wait is not None:
             on_wait()
         t0 = time.monotonic()
         with self._cond:
-            while self.active and not (cancel is not None and cancel.is_set()):
+            while busy() and not (cancel is not None and cancel.is_set()):
                 self._cond.wait(poll)
         return time.monotonic() - t0
 

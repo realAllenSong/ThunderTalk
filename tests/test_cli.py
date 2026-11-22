@@ -25,7 +25,8 @@ EN_CLIP = MODELS / "funasr-nano-int8" / "test_wavs" / "noise_en.wav"
 def _cli(*args: str, timeout: float = 300) -> tuple[int, list[dict], str]:
     exe = os.environ.get("THUNDERTALK_BIN")
     cmd = [exe] if exe else [sys.executable, str(ROOT / "run.py")]
-    env = {**os.environ, "HF_HUB_OFFLINE": "1", "PYTHONPATH": str(ROOT)}
+    env = {**os.environ, "HF_HUB_OFFLINE": "1", "PYTHONPATH": str(ROOT),
+           "THUNDERTALK_LOCAL": "1", "THUNDERTALK_WAIT": "0"}     # this checkout, and fail fast when short of memory
     p = subprocess.run([*cmd, "--cli", *args], capture_output=True, text=True, timeout=timeout,
                        env=env, cwd=str(ROOT), check=False)
     lines = [ln for ln in p.stdout.splitlines() if ln.strip()]

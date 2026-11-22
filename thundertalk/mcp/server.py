@@ -143,6 +143,24 @@ def translate_local(output_path: str, target: str, input_path: str | None = None
                                    text_file=text_file, source_language=source_language)))
 
 
+@_tool
+def run_batch(jobs: list[list[str]], redo: bool = False, stop_on_error: bool = False) -> str:
+    """Many jobs in one call / 批量: each job is a CLI argument list, e.g.
+    ["transcribe", "/abs/a.m4a", "--out", "/abs/a.md"] or ["speak", "--text", "…", "--out", "/abs/a.wav"].
+    Runs one at a time through the app's queue (models stay loaded, the user's dictation goes first).
+    Jobs whose --out exists are skipped unless redo. Use absolute paths."""
+    import tempfile
+    with tempfile.NamedTemporaryFile("w", suffix=".jsonl", delete=False, encoding="utf-8") as f:
+        for argv in jobs:
+            f.write(json.dumps(argv, ensure_ascii=False) + "\n")
+        path = f.name
+    try:
+        return _compact(_cli("batch", path, *_flag(redo, "--redo"), *_flag(stop_on_error, "--stop-on-error"),
+                             timeout=86400))
+    finally:
+        os.unlink(path)
+
+
 # ── Speech 朗读 / TTS ─────────────────────────────────────────────────────────
 
 @_tool
@@ -253,13 +271,14 @@ def local_status() -> str:
 
 
 _HEADLESS = ("transcribe", "notes", "burn", "translate", "compose", "speak", "voices",
-             "history", "models", "status", "cloud", "eval")
+             "history", "models", "status", "cloud", "eval", "jobs")
 
 
 @_tool
 def studio_command(command: str, arguments: list[str]) -> str:
     """Escape hatch: any `ThunderTalk --cli` v3 command with raw argv (e.g. --start/--end,
-    --save-history, compose lyrics --remember, cloud list|test|usage, eval --recent). `<command> --help` lists flags."""
+    --save-history, compose lyrics --remember, cloud list|test|usage, eval --recent, jobs).
+    `<command> --help` lists flags."""
     if command not in _HEADLESS:
         raise ValueError("command must be one of: " + ", ".join(_HEADLESS))
     if command == "cloud" and "set-key" in arguments:

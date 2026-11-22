@@ -129,8 +129,11 @@ def _parser() -> argparse.ArgumentParser:
     from thundertalk.cli_music import add_parser
     add_parser(sub)
     sub.add_parser("status", help="engines, downloaded models and permissions as JSON")
+    sub.add_parser("jobs", help="the running app's job queue (agents and scripts share it)")
     from thundertalk.cli_eval import add_parser as add_eval
     add_eval(sub)
+    from thundertalk.cli_batch import add_parser as add_batch
+    add_batch(sub)
     from thundertalk.cli_cloud import add_parser as add_cloud
     add_cloud(sub)
     return ap
@@ -257,17 +260,58 @@ def export_transcript(tr, fmt: str) -> tuple[str, int]:
 
 # ── commands ────────────────────────────────────────────────────────────
 
+# The job being run on this thread: set by the app's service (and by `batch`).
+#   cancel     threading.Event, set when the caller has gone away
+#   asr        callable(model_id, language) -> an already loaded engine to use, or None
+JOB = __import__("threading").local()
+# Seconds a heavy job waits for memory or for another heavy job before giving up.
+WAIT_S = float(os.environ.get("THUNDERTALK_WAIT", "900"))
+COOLDOWN_S = 1.5        # after a dictation ends, before a job starts or resumes
+
+
+def _cancel():
+    return getattr(JOB, "cancel", None)
+
+
 @contextmanager
 def model_slot(out, *, heavy=True, info=None):
-    """Share alternate-model admission with Studio and yield before loading."""
-    from contextlib import nullcontext
+    """Share alternate-model admission with Studio, yield to dictation, and wait
+    (up to ``THUNDERTALK_WAIT`` seconds) for memory and for another heavy job to
+    finish, instead of failing at once: an agent's batch should queue, not break."""
+    from contextlib import ExitStack
     from thundertalk.core.priority import DICTATION, alternate_job
-    DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
-    with alternate_job() if heavy else nullcontext():
-        if info is not None and heavy:
-            from thundertalk.core.transcribe import _has_model_headroom
-            if not _has_model_headroom(info):
-                raise CliError("memory", "Not enough free memory to load this model safely")
+    cancel = _cancel()
+    DICTATION.wait_clear(cancel, on_wait=lambda: out.stage("yield"), cooldown=COOLDOWN_S)
+    if not heavy:
+        yield
+        return
+    from thundertalk.core.transcribe import _has_model_headroom
+    deadline, told = time.monotonic() + WAIT_S, set()
+    while True:
+        stack = ExitStack()
+        try:
+            stack.enter_context(alternate_job(cancel))
+        except RuntimeError as exc:
+            if str(exc) == "cancelled":
+                raise CliError("cancelled", "Cancelled") from exc
+            if str(exc) != "model_busy":
+                raise
+            reason = "model_busy"
+        else:
+            if info is None or _has_model_headroom(info):
+                break
+            stack.close()
+            reason = "memory"
+        if time.monotonic() >= deadline:
+            raise CliError(reason, {"memory": "Not enough free memory to load this model safely",
+                                    "model_busy": "Another ThunderTalk job is still using a model"}[reason])
+        if cancel is not None and cancel.is_set():
+            raise CliError("cancelled", "Cancelled")
+        if reason not in told:
+            told.add(reason)
+            out.emit(type="stage", label="waiting", reason=reason)
+        time.sleep(2.0)
+    with stack:
         yield
 
 
@@ -286,14 +330,21 @@ def _transcribe_path(a, out: _Out, src: Path):
         model_id = resolve_asr(a.engine, settings)
     info = find(model_id)
     from thundertalk.core.priority import DICTATION
-    DICTATION.wait_clear(on_wait=lambda: out.stage("yield"))
+    DICTATION.wait_clear(_cancel(), on_wait=lambda: out.stage("yield"), cooldown=COOLDOWN_S)
     out.stage("load_model")
     out.emit(type="stage", label="engine", engine=model_id)
     t0 = time.monotonic()
     engine = None
-    with model_slot(out, heavy=not info.built_in and info.backend != "cloud", info=info):
+    # An engine already loaded with this model (the app's dictation engine, or one a batch
+    # keeps): no second copy in memory, no load. It is not ours to unload.
+    source = getattr(JOB, "asr", None)
+    borrowed = source(model_id, a.language) if source is not None and info.backend != "mlx-moss" else None
+    with model_slot(out, heavy=borrowed is None and not info.built_in and info.backend != "cloud", info=info):
         try:
-            if info.backend != "mlx-moss":
+            if borrowed is not None:
+                engine = borrowed
+                out.emit(type="stage", label="engine_shared", engine=model_id)
+            elif info.backend != "mlx-moss":
                 engine = AsrEngine()
                 engine.set_language(a.language)
                 if settings.hotwords:
@@ -311,7 +362,7 @@ def _transcribe_path(a, out: _Out, src: Path):
                     out.progress(pct / 100 * 0.98)
 
             tr = transcribe.transcribe_file(str(src), engine, speakers=speakers, progress=progress,
-                                            model_id="" if engine is not None else model_id)
+                                            cancel=_cancel(), model_id="" if engine is not None else model_id)
             tr.model_id = model_id
         except apple_speech.AppleSpeechError as exc:
             raise _apple_error(exc) from exc
@@ -322,7 +373,7 @@ def _transcribe_path(a, out: _Out, src: Path):
                 raise CliError(str(exc), {"no_speech": "No speech was found in this file."}.get(str(exc), str(exc))) from exc
             raise
         finally:
-            if engine is not None:
+            if engine is not None and engine is not borrowed:
                 engine.unload()
     return tr, {"engine": model_id, "duration": round(tr.duration, 2),
                 "seconds": round(time.monotonic() - t0, 2), "entries": len(tr.segments)}
@@ -499,18 +550,22 @@ def cmd_speak(a, out: _Out) -> dict:
 
     polish = bool(getattr(a, "polish", False))
     checks = not getattr(a, "no_check", False) and bid not in ("apple", *CLOUD_TTS)
-    with model_slot(out, heavy=bid not in ("apple", "kokoro", *CLOUD_TTS)):
-        asr = _readback_engine(out) if checks else None
+    keep = getattr(JOB, "keep_models", False)        # in the app: the Speak page shares this engine
+    with model_slot(out, heavy=not keep and bid not in ("apple", "kokoro", *CLOUD_TTS)):
+        asr, own_asr = _readback_engine(out) if checks else (None, False)
         try:
             from thundertalk.core import tts_verify
             params = tts.TtsParams(takes=speech.POLISH_TAKES) if polish else None
             r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend,
-                               params=params, verifier=tts_verify.make_verifier(asr))
+                               params=params, verifier=tts_verify.make_verifier(asr), cancel=_cancel())
         except tts.TtsModelMissing as exc:
             raise CliError("tts_missing", str(exc)) from exc
+        except tts.TtsCancelled as exc:
+            raise CliError("cancelled", "Cancelled") from exc
         finally:
-            eng.unload()
-            if asr is not None:
+            if not keep:
+                eng.unload()
+            if asr is not None and own_asr:
                 asr.unload()
     out.stage("write")
     dest.parent.mkdir(parents=True, exist_ok=True)
@@ -526,10 +581,15 @@ def cmd_speak(a, out: _Out) -> dict:
 
 
 def _readback_engine(out):
-    """A local recognizer to read each generated piece back (the check the app
-    runs with its dictation model): the most accurate downloaded one that runs
-    on this Mac, without hotwords or number formatting. None when there is none
-    (the speech is then made unchecked, as before)."""
+    """(recognizer, ours) to read each generated piece back: in the app its own
+    dictation engine (``ours`` False: not to be unloaded), else the most accurate
+    downloaded local model, without hotwords or number formatting. (None, False)
+    when there is none (the speech is then made unchecked, as before)."""
+    shared = getattr(JOB, "readback", None)
+    if shared is not None:
+        engine = shared()
+        if engine is not None:
+            return engine, False
     from thundertalk.core.asr import AsrEngine
     from thundertalk.core.models import find, get_model_path, is_downloaded
     for mid in ASR_QUALITY:
@@ -542,10 +602,10 @@ def _readback_engine(out):
             engine.set_builtin_terms(False)
             engine.load_model(get_model_path(mid), info.family, info.backend)
             engine._itn_enabled = False
-            return engine
+            return engine, True
         except Exception:
-            return None
-    return None
+            return None, False
+    return None, False
 
 
 def _voice_row(b, v) -> dict:
@@ -576,10 +636,12 @@ def cmd_status(_a, out: _Out) -> dict:
         mic = check_microphone()
     except Exception:                                          # noqa: BLE001
         mic = "unknown"
+    from thundertalk import service
     return {
         "version": thundertalk.__version__, "cli_version": 3,
         "capabilities": ["transcribe", "batch", "notes", "burn", "translate", "speak", "voices", "compose", "history", "models",
-                         "cloud"],
+                         "cloud", "jobs", "service"],
+        "service": service.available() is not None,
         "asr": {"downloaded": downloaded, "dictation_model": settings.get("active_model_id") or "",
                 "auto": resolve_asr("auto", settings) if downloaded else "",
                 "models": [{"id": m.id, "name": f"{m.name} {m.variant}", "downloaded": m.id in downloaded}
@@ -598,7 +660,24 @@ def _cloud_summary(settings) -> list[dict]:
     return cloud.summary(settings)
 
 
-COMMANDS = {"transcribe": cmd_transcribe, "speak": cmd_speak, "voices": cmd_voices, "status": cmd_status}
+def cmd_jobs(_a, out) -> dict:
+    """Is the app taking jobs, and what is queued. Without the app, jobs run in their own process."""
+    from thundertalk import service
+    info = service.available()
+    if info is None:
+        return {"service": False, "jobs": []}
+    import json as _json
+    import socket as _socket
+    with _socket.socket(_socket.AF_UNIX, _socket.SOCK_STREAM) as s:
+        s.settimeout(2)
+        s.connect(str(service.socket_path()))
+        s.sendall(b'{"op": "jobs"}\n')
+        jobs = _json.loads(s.makefile("rb").readline() or b"{}").get("jobs", [])
+    return {"service": True, "version": info.get("version"), "jobs": jobs}
+
+
+COMMANDS = {"transcribe": cmd_transcribe, "speak": cmd_speak, "voices": cmd_voices, "status": cmd_status,
+            "jobs": cmd_jobs}
 
 
 def error_result(exc):
@@ -652,33 +731,60 @@ def network_mode(download=False):
             hf.HF_HUB_OFFLINE = old_hf
 
 
-def main(argv: Optional[list[str]] = None) -> int:
-    argv = sys.argv[1:] if argv is None else argv
-    if argv[:1] in (["-h"], ["--help"], []):
-        _parser().print_help()
-        return 0 if argv else 1
-    out = _Out()
+# Arguments that name files: made absolute before a job goes to the app, which
+# does not share the caller's working directory.
+PATH_ARGS = ("input", "inputs", "out", "out_dir", "text_file", "subtitles", "notes_file", "lyrics_file",
+             "transcript_file", "sung_lyrics")
+
+
+def _absolute(ns: argparse.Namespace) -> dict:
+    from thundertalk.core import links
+    args = dict(vars(ns))
+
+    def fix(v):
+        if not isinstance(v, str) or not v or links.is_url(v) or v.startswith("my:"):
+            return v
+        return str(Path(v).expanduser().resolve())
+
+    for key in PATH_ARGS:
+        if key in args:
+            v = args[key]
+            args[key] = [fix(x) for x in v] if isinstance(v, list) else fix(v)
+    return args
+
+
+def _handler(command: str):
+    if command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose", "cloud", "eval",
+                       "batch"):
+        raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
+    handler = COMMANDS.get(command)
+    if handler is None:
+        from thundertalk import cli_batch, cli_cloud, cli_eval, cli_library, cli_music, cli_studio
+        module = (cli_music if command == "compose" else cli_cloud if command == "cloud"
+                  else cli_eval if command == "eval" else cli_batch if command == "batch"
+                  else cli_studio if command in ("notes", "burn", "translate") else cli_library)
+        handler = getattr(module, "cmd_" + command)
+    return handler
+
+
+def execute(a: argparse.Namespace, out, *, in_app: bool = False) -> int:
+    """Run one parsed command, emitting its events and final ``result`` on ``out``.
+    ``in_app``: inside the running app's service, where the process-wide
+    offline switch for model hubs is left alone (the app manages its downloads)."""
+    from contextlib import nullcontext
     from thundertalk.core import apple_speech
     apple_speech.PROMPT = False
     try:
-        a = _parser().parse_args(argv)
-        if a.command not in (*COMMANDS, "notes", "burn", "translate", "history", "models", "compose", "cloud",
-                             "eval"):
-            raise CliError("bad_args", "Missing command: transcribe, speak, voices or status")
-        handler = COMMANDS.get(a.command)
-        if handler is None:
-            from thundertalk import cli_cloud, cli_eval, cli_library, cli_music, cli_studio
-            module = (cli_music if a.command == "compose" else cli_cloud if a.command == "cloud"
-                      else cli_eval if a.command == "eval"
-                      else cli_studio if a.command in ("notes", "burn", "translate") else cli_library)
-            handler = getattr(module, "cmd_" + a.command)
-        with network_mode(a.command == "models" and a.action == "download"):
+        handler = _handler(a.command)
+        guard = nullcontext() if in_app else network_mode(a.command == "models" and a.action == "download")
+        with guard:
             result = handler(a, out)
         result.setdefault("ok", True)
         out.emit(type="result", **result)
         return 0 if result["ok"] else 1
     except KeyboardInterrupt:
         out.emit(type="result", ok=False, error="Interrupted", code="cancelled")
+        return 1
     except Exception as exc:                                   # noqa: BLE001
         result = error_result(exc)
         if result["code"] == "failed":
@@ -686,3 +792,43 @@ def main(argv: Optional[list[str]] = None) -> int:
             traceback.print_exc()
         out.emit(type="result", **result)
     return 1
+
+
+def app_service() -> bool:
+    """The running app takes jobs: same version (so the same options), and not THUNDERTALK_LOCAL=1."""
+    import thundertalk
+    from thundertalk import service
+    if os.environ.get("THUNDERTALK_LOCAL") == "1":
+        return False
+    info = service.available()
+    return info is not None and info.get("version") == thundertalk.__version__
+
+
+def _forward(a: argparse.Namespace, out) -> Optional[int]:
+    """Hand a heavy job to the running app (one queue, shared models). None when
+    there is no app to hand it to, or the caller asked to run it here."""
+    from thundertalk import service
+    if a.command not in service.SERVICE_COMMANDS or not app_service():
+        return None
+    result = service.run(a.command, _absolute(a), lambda e: out.emit(**e),
+                         client=os.environ.get("THUNDERTALK_CLIENT", "cli"))
+    if result is None:
+        return None
+    return 0 if result.get("ok") else 1
+
+
+def main(argv: Optional[list[str]] = None) -> int:
+    argv = sys.argv[1:] if argv is None else argv
+    if argv[:1] in (["-h"], ["--help"], []):
+        _parser().print_help()
+        return 0 if argv else 1
+    out = _Out()
+    try:
+        a = _parser().parse_args(argv)
+    except CliError as exc:
+        out.emit(type="result", **error_result(exc))
+        return 1
+    forwarded = _forward(a, out)
+    if forwarded is not None:
+        return forwarded
+    return execute(a, out)

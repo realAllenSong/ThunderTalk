@@ -50,6 +50,9 @@ def _no_real_keys_language_or_network(monkeypatch, tmp_path, request):
     # urlopen guard below cannot see: in tests it is simply not there.
     from thundertalk.core import speaker_check
     monkeypatch.setattr(speaker_check, "ensure", lambda *a, **k: False)
+    # Never hand a test's job to the ThunderTalk app running on this Mac.
+    from thundertalk import service
+    monkeypatch.setattr(service, "socket_path", lambda: tmp_path / "no-service.sock")
     monkeypatch.setenv("THUNDERTALK_KEYCHAIN_SERVICE", "ThunderTalk Cloud TEST")
     monkeypatch.setenv("THUNDERTALK_CLOUD_USAGE", str(tmp_path / "cloud_usage.json"))
     for name in ("OPENAI_ADMIN_KEY", "THUNDERTALK_OPENAI_ADMIN_KEY"):

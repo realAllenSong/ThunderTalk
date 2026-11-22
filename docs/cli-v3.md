@@ -33,6 +33,8 @@ and `capabilities`. `--help` is available on every command.
 | `models list [--kind asr\|translation\|tts\|music]` | Catalog IDs, readiness, compatibility, download size. / 模型目录、可用状态、兼容性和大小。 |
 | `models download ID [--planner]` | Explicit online download, including optional runtime components; progress events. Planner is for music. / 显式联网下载，含所需运行组件；作曲可含规划模型。 |
 | `models activate ID` | Persist the ASR, Speak engine/voice or Compose default; already-running GUI picks settings up on restart. The single translation model is usable immediately by `translate`. / 保存默认模型；已打开的 GUI 重启后读取。翻译只有一个固定模型，CLI 可直接使用。 |
+| `batch JOBS [--redo] [--stop-on-error]` | Many jobs from one file, one per line: a JSON argv array, `{"argv": [...]}` or a plain command line; `#` comments. Jobs whose `--out` exists are skipped, so a stopped batch resumes. One failure does not stop the rest. / 一个文件里的多条任务；已有输出的跳过，可断点续跑；一条失败不影响其余。 |
+| `jobs` | The running app's queue: id, command, client, state, seconds; `service: false` when the app is not running. / 应用中的任务队列；应用未运行时 `service: false`。 |
 | `status` | App/CLI versions, capabilities, models, TTS engines, permissions, ffmpeg, cloud providers (key present, never the key). / 版本、能力、模型、权限、ffmpeg 及云端服务商。 |
 | `cloud list` | Providers, whether a key is set (`keychain`/`env`/`none`), base URL, models. / 服务商、是否有密钥、接口地址、模型。 |
 | `cloud set-key PROVIDER` | Reads the key from stdin (never argv) and stores it in the macOS Keychain. Refused over MCP. / 从标准输入读取密钥并存入钥匙串；MCP 不接受。 |
@@ -157,6 +159,46 @@ No success is reported for a members-only preview served as a complete video.
 | `music:memory`, `music:memory_low`, `music:stalled`, `music:load_failed`, `music:failed`, `worker_stopped`, `bad_take` | Same Compose admission/abort causes as the app; memory errors include `free_percent` / 同应用的作曲准入和中止原因。 |
 | `batch_failed`, `notes_failed` | At least one item or optional notes failed; inspect `items` / 至少一项失败，查看逐项结果。 |
 
+## Batch and the job service / 批处理与任务队列
+
+While the app runs it is also a local job service. `transcribe`, `speak`,
+`translate`, `notes`, `burn` and `compose` hand their work to it over a Unix
+socket in `$TMPDIR` that only your user can open (the MCP server runs the same
+command line, so agents get this too):
+
+- **One job at a time, in order.** Ten agents calling at once queue instead of
+  loading ten models; memory stays bounded. The first event is
+  `{"type":"queued","position":n}`.
+- **One copy of each model.** A transcription with the dictation model uses the
+  app's loaded engine (`stage: engine_shared`); voice engines stay loaded between jobs.
+- **Dictation first.** No job starts while you dictate or within 1.5 s after
+  (`stage: yield`); long jobs also pause between units of work.
+- **Cancel by hanging up.** Ctrl-C or a killed agent cancels its job, queued or running.
+- **Wait, don't fail.** When memory or the shared model slot is taken, a job
+  emits `stage: waiting` with a `reason` and retries for up to `THUNDERTALK_WAIT`
+  seconds (default 900) before failing with `memory` or `model_busy`.
+
+Without the app, commands run in their own process as before; the waiting
+rules still apply. `THUNDERTALK_LOCAL=1` always runs in the calling process.
+Relative paths are resolved before a job is handed over.
+
+`batch` runs each line as one of these jobs. Through the app every job goes to
+the queue; without it, a recognizer or voice engine is loaded once for the whole
+file. Events carry a zero-based `item`; the final result lists `items` and
+counts `succeeded`, `failed`, `skipped` and `not_run`.
+
+```text
+# jobs.txt
+transcribe ~/talks/a.m4a --out ~/talks/a.md
+["speak", "--text-file", "intro.txt", "--voice", "voxcpm2:lively-explainer-zh", "--out", "intro.wav"]
+{"argv": ["translate", "--text", "Hello", "--source-language", "eng", "--target", "cmn", "--out", "t.txt"]}
+```
+
+应用运行时即本地任务服务：重任务经仅限当前用户的套接字排队，一次一个、按先后执行；
+听写模型直接复用，不重复加载；听写时及结束后 1.5 秒内不开始任务；调用方断开即取消；
+内存或模型槽被占时等待（`THUNDERTALK_WAIT`，默认 900 秒）而不是立刻失败。
+未打开应用时照旧在本进程运行；`THUNDERTALK_LOCAL=1` 强制本进程。`batch` 每行一条任务。
+
 ## Studio capability audit / 工作室功能对照
 
 Inspected `studio_page.py`, every module in `ui/studio/`, Models and AI Proofread,
@@ -199,10 +241,10 @@ lock belongs to the test harness, not installed ThunderTalk.
 ## MCP
 
 `ThunderTalk --mcp` (packaged app) or `python -m thundertalk --mcp` (checkout) runs a
-stdio server whose 13 tools are thin CLI wrappers: `transcribe_file` (also URLs), `transcribe_inputs`, `meeting_notes`,
+stdio server whose 14 tools are thin CLI wrappers: `transcribe_file` (also URLs), `transcribe_inputs`, `meeting_notes`,
 `subtitle_video`, `translate_local`, `compose_music`, `speak_text`,
 `list_local_voices`, `manage_local_voice`, `transcript_history`, `manage_models`,
-`local_status`. Partial batch/Compose results are returned intact even when `ok` is false.
+`local_status`, `run_batch` (a list of argv arrays → `batch`). Partial batch/Compose results are returned intact even when `ok` is false.
 `studio_command(command, arguments)` exposes every CLI option
 as an argv array without shell interpolation. Inside the app the server runs the
 app binary itself; elsewhere set `THUNDERTALK_BIN` or the current Python is used.
@@ -214,6 +256,6 @@ were removed. Register once for every project:
 
     claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp
 
-MCP 由 `ThunderTalk --mcp` 启动，13 个工具都是 CLI 薄包装；`studio_command` 可传递所有
+MCP 由 `ThunderTalk --mcp` 启动，14 个工具都是 CLI 薄包装；`studio_command` 可传递所有
 命令参数，不经过 shell。结果为单行紧凑 JSON，状态和声音列表已精简以节省 token；
 旧的 :8765 / mlx-tts-server HTTP 工具已移除。

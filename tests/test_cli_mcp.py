@@ -1,5 +1,8 @@
 from __future__ import annotations
 
+import json
+from pathlib import Path
+
 import pytest
 
 from thundertalk.mcp import server
@@ -92,7 +95,22 @@ def test_frozen_app_runs_itself(monkeypatch):
 def test_no_legacy_http_tools():
     names = {t.name for t in server.mcp._tool_manager.list_tools()}
     assert not names & {"transcribe_audio", "synthesize_speech", "get_asr_status", "get_tts_voices"}
-    assert len(names) == 13
+    assert len(names) == 14 and "run_batch" in names
+
+
+def test_run_batch_hands_the_jobs_to_the_batch_command(monkeypatch):
+    calls = []
+    def fake_cli(*args, **kw):
+        jobs = Path(args[1]).read_text(encoding="utf-8").splitlines()
+        calls.append((args, [json.loads(j) for j in jobs], kw))
+        return {"ok": True, "succeeded": len(jobs)}
+    monkeypatch.setattr(server, "_cli", fake_cli)
+    out = json.loads(server.run_batch([["transcribe", "/a.m4a", "--out", "/a.md"], ["speak", "--text", "hi", "--out", "/b.wav"]],
+                                      redo=True))
+    (args, jobs, kw), = calls
+    assert args[0] == "batch" and "--redo" in args and "--stop-on-error" not in args
+    assert jobs == [["transcribe", "/a.m4a", "--out", "/a.md"], ["speak", "--text", "hi", "--out", "/b.wav"]]
+    assert out == {"ok": True, "succeeded": 2} and not Path(args[1]).exists()        # the temp file is gone
 
 
 def test_mcp_refuses_cloud_keys(monkeypatch):
