@@ -122,3 +122,47 @@ def test_non_ascii_names_get_usable_ids(isolated_home):
     v = voices.VoiceLibrary().add("我的声音", voices.prepare_reference(_speechlike(5.0), SR).audio, "你好")
     assert v.id and "/" not in v.id
     assert voices.VoiceLibrary().get(v.id).name == "我的声音"
+
+
+# ── what a recording will pass on to its clones ──────────────────────────
+
+def _spoken(seconds=6.0, sr=SR, amp=0.2):
+    """Words with gaps between them and silence at both ends, like a real recording."""
+    word = _speechlike(0.45, sr, amp)
+    k = int(0.05 * sr)
+    word[:k] *= np.linspace(0, 1, k, dtype=np.float32)
+    word[-k:] *= np.linspace(1, 0, k, dtype=np.float32)
+    gap = np.zeros(int(0.15 * sr), np.float32)
+    n = int(seconds / 0.6)
+    return _padded(np.concatenate([np.concatenate([word, gap]) for _ in range(n)]), 0.3, 0.3, sr)
+
+
+def test_a_clean_recording_raises_nothing():
+    assert voices.recording_issues(_spoken()) == []
+    assert not {"noisy", "cut_end"} & set(voices.prepare_reference(_spoken(), SR).warnings)
+
+
+def test_room_noise_is_reported_from_22_db_under_the_voice():
+    rng = np.random.default_rng(0)
+    x = _spoken()
+    for snr, noisy in ((30, False), (26, False), (18, True), (10, True)):
+        y = x + rng.normal(0, 0.2 * 0.7 / 10 ** (snr / 20), len(x)).astype(np.float32)
+        assert ("noisy" in voices.recording_issues(y)) is noisy, snr
+
+
+def test_a_recording_that_stops_mid_word_is_reported():
+    x = _spoken()
+    cut = x[: len(x) - int(0.3 * SR) - int(0.15 * SR) - int(0.2 * SR)]      # ends inside the last word
+    assert voices.recording_issues(cut) == ["cut_end"]
+    assert "cut_end" in voices.prepare_reference(cut, SR).warnings
+
+
+def test_too_short_to_judge():
+    assert voices.recording_issues(np.zeros(int(0.5 * SR), np.float32)) == []
+
+
+def test_every_warning_has_words_in_both_languages():
+    from thundertalk.core import i18n
+    for key in ("noisy", "cut_end", "clipping", "trimmed_long", "too_quiet", "short"):
+        entry = i18n._STRINGS[f"studio.clone.warn.{key}"]
+        assert entry["en"].strip() and entry["zh"].strip()

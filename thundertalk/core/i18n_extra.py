@@ -435,6 +435,22 @@ EXTRA: dict[str, dict[str, str]] = {
         "en": "Changed your mind mid-sentence? Press Esc and nothing is pasted.",
         "zh": "说到一半不想要了？按 Esc，什么都不会粘贴。",
     },
+    "whatsnew.voices": {"en": "Seven new Chinese voices.", "zh": "新增七个中文音色。"},
+    "whatsnew.voices.detail": {
+        "en": "A calm explainer, culture talk, a witty lecturer, late-night radio, a food vlogger and a woman's "
+              "documentary narration, in Studio ▸ Speak.",
+        "zh": "冷静讲解、人文讲述、幽默讲堂、深夜电台、美食探店、纪录片女声等，在工作室 ▸ 朗读里。",
+    },
+    "whatsnew.loudness": {"en": "Every spoken clip now comes out equally loud.", "zh": "每条配音的音量现在一致了。"},
+    "whatsnew.loudness.detail": {
+        "en": "Whatever the voice, the result is brought to the same loudness, so clips for one video match.",
+        "zh": "不管用哪个音色，成品都调到同一个响度，同一个视频里的几段不会忽大忽小。",
+    },
+    "whatsnew.longcat": {"en": "A fourth local voice engine: LongCat.", "zh": "第四个本地语音引擎：LongCat。"},
+    "whatsnew.longcat.detail": {
+        "en": "Clones in Chinese and English, and a long sentence takes no longer than a short one. A 2.1 GB download in Speak.",
+        "zh": "支持中文和英文克隆，长句和短句耗时差不多。在朗读页下载，2.1 GB。",
+    },
 
     # ── Tray ────────────────────────────────────────────────────────
     "tray.status.ready": {"en": "Ready · {name}", "zh": "已就绪 · {name}"},

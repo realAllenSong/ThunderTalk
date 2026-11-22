@@ -32,6 +32,14 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
+## New in v1.18.0
+
+- **Seven new Chinese voices,** chosen by ear from 88 candidates in 22 styles: 冷静讲解 (a clean, restrained explainer), 人文讲述 (a warm woman sharing poetry and culture), 幽默讲堂 (a witty lecturer telling a case), 深夜电台 and 深夜低音 (two late-night radio hosts, one deeper), 美食探店 (an excited food vlogger) and 纪录片女声 (a woman's documentary narration). Like every built-in voice they are designed from a text description, not recorded from or modelled on a person's voice. 25 built-in voices now.
+- **Every clip comes out equally loud.** Speech used to be normalised to its highest peak, so a voice with sharp consonants came out quieter than a smooth one: 12 clips in six voices ranged from -15.0 to -21.9 LUFS. They now all land between -16.0 and -16.7 LUFS, with the pieces inside a clip matched too.
+- **A fourth local voice engine, LongCat-AudioDiT** (Meituan, MIT, a 2.1 GB download in Studio ▸ Speak): cloning in Chinese and English, mixed sentences included. It generates a whole piece at once, so a long sentence takes no longer than a short one: a 36-second Chinese paragraph took 32–34 s, against 44–70 s with VoxCPM2 on the same Mac.
+- **Adding your own voice tells you what will be copied into it:** a warning when the room noise is less than 22 dB under your voice, and when the recording stops in the middle of a word.
+- `--engine best` now prefers VoxCPM2, then IndexTTS, LongCat and Kokoro. A take that stops dead before its last word has died away is redone.
+
 ## New in v1.17.0
 
 - **After an update, the app tells you what changed.** A small window lists up to three things worth knowing, with the full release notes one click away. It appears once, only over ThunderTalk's own window, and never while you are dictating in another app.
@@ -182,11 +190,12 @@ Studio replaces the old Lab page. It has Transcribe, Speak and Compose (on suppo
 
 - **VoxCPM2** (OpenBMB): studio-quality 48 kHz speech and voice cloning; about real time on Apple silicon.
 - **IndexTTS-2.5** (bilibili): very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic; about real time.
+- **LongCat-AudioDiT 1B** (Meituan): voice cloning in Chinese and English; generates a whole piece at once, so long sentences take no longer than short ones.
 - **Kokoro** (82M): small and fast (about 4 times faster than real time, on the CPU), with 23 curated voices (20 Chinese, 3 English).
-- 18 built-in voices for VoxCPM2 and IndexTTS in the styles people know from short videos, vlogs and podcasts: film recap, documentary, explainer and business-explainer narration, news, a cool CEO, two chatty lifestyle voices, a Taiwanese accent, and English YouTuber, podcast and narrator voices. All are designed voices (created by VoxCPM2 from a text description, not recordings of real people or imitations of any platform's voices) that ship with the app.
+- 25 built-in voices for VoxCPM2, IndexTTS and LongCat in the styles people know from short videos, vlogs and podcasts: film recap, documentary (a man's and a woman's), three explainer and two business-explainer narrations, culture talk, a witty lecturer, late-night radio, a food vlogger, news, a cool CEO, two chatty lifestyle voices, a Taiwanese accent, and English YouTuber, podcast and narrator voices. All are designed voices (created by VoxCPM2 from a text description, not recordings of real people or imitations of any platform's voices) that ship with the app.
 - Every voice has a short preview: click ▶ on a voice to hear it before you generate anything.
 - Speed control (0.75x to 1.5x) and a seekable player. Save the result as WAV (lossless) or M4A (small).
-- **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2 or IndexTTS. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
+- **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2, IndexTTS or LongCat. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
 
 The speech engines are one-time downloads. After that, file transcription and speech generation work offline. Optional AI notes use your chosen provider; web links and cloud providers require a connection.
 
@@ -318,6 +327,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 |-------|------|---------|----------|
 | VoxCPM2 (8-bit, Apache-2.0) | 3.2 GB | MLX (Metal GPU) | Built-in voices, cloning |
 | IndexTTS-2.5 (8-bit, bilibili Model Use License) | 1.7 GB + 2.3 GB encoder | MLX (Metal GPU) | Built-in voices, cloning |
+| LongCat-AudioDiT 1B (8-bit, MIT) | 2.1 GB | MLX (Metal GPU) | Built-in voices, cloning (Chinese, English) |
 | Kokoro v1.1 multi-lang (Apache-2.0) | 364 MB | ONNX (CPU) | 23 built-in voices (20 Chinese, 3 English) |
 | Apple system voices | 0 MB (part of macOS) | AVSpeechSynthesizer (CPU) | The Chinese and English voices installed on the Mac |
 
@@ -551,7 +561,7 @@ Contributions are welcome; see [CONTRIBUTING.md](CONTRIBUTING.md).
 
 - **UI:** [PySide6](https://doc.qt.io/qtforpython-6/) (Qt 6), with the colours, type and spacing defined in one theme module
 - **Speech recognition:** [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx) (ONNX), [mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) and [mlx-audio](https://github.com/Blaizzy/mlx-audio) (MLX)
-- **Text to speech:** VoxCPM2 through mlx-audio, IndexTTS-2.5 through a vendored MLX port, Kokoro through sherpa-onnx; all in-process
+- **Text to speech:** VoxCPM2 and LongCat-AudioDiT through mlx-audio, IndexTTS-2.5 through a vendored MLX port, Kokoro through sherpa-onnx; all in-process
 - **Translation:** SeamlessM4T v2 through PyTorch and Transformers
 - **Audio:** [sounddevice](https://python-sounddevice.readthedocs.io/) for capture; macOS `afconvert` for decoding files
 - **Hotkeys:** native NSEvent on macOS

@@ -118,3 +118,93 @@ EXPLAINER_STYLES: tuple[Style, ...] = (
           "二十多岁的年轻女性，声音清亮干脆，财经商业科普视频解说，语速偏快、节奏利落，自信有条理，像在跟观众分析一个故事，不是播新闻，干净录音",
           "这家公司十年前还只是一家小酒店，如今却成了行业里最赚钱的玩家之一。它到底做对了什么？答案，可能就藏在一个不起眼的细节里。"),
 )
+
+
+# November 2026 round: what the user asked for after 1.17.0. Chinese only (the
+# English voices were fine): short-video staples, voices with a premium feel,
+# and delivery styles of creators whose videos do well. For the last group the
+# pace, pauses, median pitch and pitch range of ten public videos were measured
+# on vocals separated from the music (2026-11-21, ~/Library/Caches/ThunderTalk-bench/
+# voices-2026-11/refs/measure.json) and written into the descriptions as words.
+# Nobody is cloned or named: every clip is designed from the description alone.
+# Lines follow the spoken-Chinese rules in the writing-explainer-copy skill
+# (whole sentences, two-character words, a particle where a person would use one).
+STYLES_2026_11: tuple[Style, ...] = (
+    # ── creator delivery styles (measured) ──────────────────────────────
+    Style("calm-explainer", "冷静讲解", "Calm explainer", "chinese", "m", "creator",   # 157 Hz, 4.1 字/秒, 14 st
+          "三十岁左右的男性，音高中等，声音干净克制，科普短片的解说，语速平稳不快，咬字清楚，冷静理性，不渲染情绪，"
+          "像在把一件复杂的事情讲明白，录音棚干净录音",
+          "一件短袖的成本到底是多少呢？我们把它拆开来看。面料、人工、运输，每一项加在一起，其实比你想象的要低得多。"),
+    Style("fast-finance", "快节奏财经", "Fast finance", "chinese", "f", "creator",     # 190 Hz, 6.1 字/秒, few pauses
+          "二十七八岁的女性，音高中等偏低，声音干净有颗粒感，财经科普视频，语速很快但是每个字都清楚，"
+          "像跟朋友聊天一样把事情讲透，带一点笑意，不端着，不是播音腔",
+          "这个游戏你可能没有玩过，但是你一定听说过。它的背后是一场上千亿的豪赌，今天咱们就来聊一聊，这些钱到底是怎么花出去的。"),
+    Style("deadpan-rant", "冷面吐槽", "Deadpan rant", "chinese", "m", "creator",       # 113 Hz, 6.5 字/秒, 6.6 st, no pauses
+          "三十多岁的男性，嗓音偏低，语速非常快，几乎不换气，语调很平，面无表情地吐槽，冷幽默，越平静越好笑",
+          "这位老师的操作，只能说非常魔幻。骂他的人可以绕地球整整一圈，但是你猜怎么着，他一点儿都不慌，甚至还想再来一次。"),
+    Style("history-yarn", "历史评书", "History yarn", "chinese", "m", "creator",       # 163 Hz, 4.6 字/秒, 25 pauses/min
+          "三十多岁的男性，音高中等，讲历史故事，带一点说书人的腔调和幽默感，抑扬顿挫很明显，停顿多，娓娓道来又带着一点坏笑",
+          "话说这位老爷子，年轻的时候可不是什么省油的灯。那一年，他只带了三个人，就干成了一件谁都不敢想的大事。"),
+    Style("culture-talk", "人文讲述", "Culture talk", "chinese", "f", "creator",       # 214 Hz, 3.7 字/秒, 23 pauses/min
+          "三十岁左右的女性，声音温暖有感染力，讲诗词和人文故事，语速偏慢，停顿多，带着感叹和笑意，像在跟你分享她特别喜欢的东西",
+          "你有没有发现啊，苏东坡的词，读着读着，心里就松下来了。他好像什么都经历过，可是他从来都不抱怨。"),
+    Style("travel-essay", "旅行文案", "Travel essay", "chinese", "f", "creator",       # 257 Hz, slow, pauses 0.8 s
+          "二十多岁的年轻女性，声音清澈干净，旅行短片的独白，语速很慢，句子之间停顿很长，克制的深情，有画面感，不煽情",
+          "我也不知道，那天晚上他为什么睡不着。很多年以后，我站在同一条河边，才忽然明白，有些句子，是要等你走到那里，才看得懂的。"),
+    Style("lecture-wit", "幽默讲堂", "Witty lecturer", "chinese", "m", "creator",      # 171 Hz, fast, 17.5 st
+          "四十多岁的男老师，音高中等偏高，在课堂上讲案例，语速快，语调起伏很大，自带幽默，讲到好笑的地方自己也在忍着笑，很亲切",
+          "张三这个人呢，他就想，哎，我凑够三个人，是不是就可以省下六块钱了？你看，人为了省这六块钱，能想出多少办法来。"),
+    Style("deep-report", "深度解说", "Deep report", "chinese", "m", "creator",         # 5.4 字/秒, steady, 9 st
+          "三十多岁的男性，声音低沉厚实，纪实类长视频的解说，语速偏快而且很稳，严肃克制，有分量，像在读一篇深度报道",
+          "二十年的时间，和无数种诈骗手段死磕之后，这套系统终于给整个金融体系，装上了一道刹车。"),
+    # ── short-video staples ─────────────────────────────────────────────
+    Style("late-night", "深夜电台", "Late-night radio", "chinese", "m", "shortvideo",
+          "三十多岁的男性，嗓音低沉温柔，带着气声，深夜情感电台的主播，语速很慢，贴着话筒轻声说话，很治愈",
+          "这么晚了，还没有睡吧。没关系，今天过得不好也没有关系。你已经很努力了，剩下的事情，就交给明天吧。"),
+    Style("healing", "治愈女声", "Healing voice", "chinese", "f", "shortvideo",
+          "二十多岁的女性，声音轻柔温暖，情感类短视频的旁白，语速慢，像在安慰一个朋友，真诚不做作",
+          "后来我才明白，不是所有的事情都要有一个结果。有些人，能陪你走一段路，就已经很好了。"),
+    Style("motivation", "励志口播", "Motivation", "chinese", "m", "shortvideo",
+          "三十岁左右的男性，声音坚定有力量，励志短视频的口播，语速中等，重音清楚，不喊也不吼，沉着地给人打气",
+          "你现在觉得难，是因为你正在走上坡路。别停下来，再坚持一下，等到回头看的时候，你会感谢今天没有放弃的自己。"),
+    Style("livestream", "带货主播", "Live seller", "chinese", "f", "shortvideo",
+          "二十多岁的女主播，在直播间带货，语速快，热情有感染力，声音明亮，节奏感很强，真诚地推荐",
+          "姐妹们看过来，这个价格我只说一遍！今天直播间拍一发三，库存真的不多了，喜欢的姐妹直接拍，不要犹豫！"),
+    Style("suspense", "悬疑故事", "Suspense", "chinese", "m", "shortvideo",
+          "中年男性，嗓音低而且略带沙哑，讲悬疑故事，语速慢，压着声音，句尾留白，让人后背发凉",
+          "那天夜里十二点，他听见有人在敲门。可是他明明记得，这栋楼的六层，已经空了整整三年。"),
+    Style("foodie", "美食探店", "Foodie", "chinese", "m", "shortvideo",
+          "二十多岁的男生，探店博主，声音有活力，带着刚吃到好东西的兴奋，口语化，接地气",
+          "朋友们，这家店我真的忍不住要说，一口咬下去，外面是脆的，里面还在流汁，三十块钱吃到撑，谁懂啊！"),
+    Style("game-cast", "游戏解说", "Game caster", "chinese", "m", "shortvideo",
+          "二十岁出头的男生，游戏解说，语速快，情绪饱满，带着激动和调侃，声音清亮",
+          "注意看这一波操作！残血反杀，一打三！兄弟们，这就是为什么我说，这个英雄现在就是版本答案。"),
+    Style("audiobook", "有声书", "Audiobook", "chinese", "f", "shortvideo",
+          "三十岁左右的女性，有声书演播，声音细腻干净，叙事感强，语速平稳，人物的情绪点到为止",
+          "她推开门的时候，雨刚好停了。院子里的桂花落了一地，空气里全是甜的。她忽然想起来，上一次回来，已经是七年前的事情了。"),
+    Style("tech-review", "数码评测", "Tech review", "chinese", "m", "shortvideo",
+          "二十七八岁的男性，数码评测博主，声音清爽自信，语速中等偏快，逻辑清楚，干净利落，带一点轻松的调侃",
+          "先说结论，这台机器我用了两周，优点很明显，缺点也很真实。屏幕和续航，是我觉得它最值得买的两个理由。"),
+    # ── premium ─────────────────────────────────────────────────────────
+    Style("brand-film-m", "品牌片男声", "Brand film (male)", "chinese", "m", "premium",
+          "四十岁左右的男性，声音低沉醇厚有质感，高端品牌宣传片的旁白，语速很慢，字字有分量，留白多，沉稳大气，有电影感",
+          "有些东西，时间拿不走。一针，一线，一道弧度。三十年，我们只做一件事情，把它做到最好。"),
+    Style("brand-film-f", "品牌片女声", "Brand film (female)", "chinese", "f", "premium",
+          "三十多岁的女性，声音优雅从容，略低有磁性，高端品牌广告的旁白，语速慢，克制而有力量，高级感",
+          "真正的好，从来不急着被看见。它在细节里，在分寸里，在你每一次不经意的触碰里。"),
+    Style("documentary-f", "纪录片女声", "Documentary (female)", "chinese", "f", "premium",
+          "四十岁左右的女性，声音温润沉静，人文纪录片的旁白，语速舒缓，娓娓道来，有温度也有阅历",
+          "清晨五点，这座小城还没有醒来。巷子口的早点铺，已经亮起了灯。四十年了，老板娘每天都是第一个到的。"),
+    Style("podcast-f", "播客女声", "Podcast (female)", "chinese", "f", "premium",
+          "三十岁左右的女性，播客主播，声音松弛自然，带一点沙哑的质感，像坐在你对面聊天，语速自然，有思考的停顿，偶尔带着笑",
+          "我最近一直在想一个问题啊，就是我们为什么那么害怕无聊。其实你想想，小时候的我们，才是最会跟无聊相处的。"),
+    Style("podcast-m", "播客男声", "Podcast (male)", "chinese", "m", "premium",
+          "三十多岁的男性，播客主播，声音松弛有磁性，像朋友之间聊天，语速自然，有停顿，真实，不是播音腔",
+          "其实吧，我以前也觉得这件事情挺简单的。后来真的自己做了一遍才发现，哎，完全不是那么回事。"),
+)
+
+# VOICE_SET=2026-11 makes the candidate tools (design / score / lab page) work on that round alone.
+import os as _os  # noqa: E402
+
+if _os.environ.get("VOICE_SET") == "2026-11":
+    STYLES = STYLES_2026_11

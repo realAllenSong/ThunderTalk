@@ -608,7 +608,7 @@ def test_clone_auto_and_best_ignore_noncloning_preference(run, monkeypatch, tmp_
     for engine in ("auto", "best"):
         rc, events = run("speak", "--text", "hello", "--voice", "my:demo", "--engine", engine, "--out", str(tmp_path / "o.wav"))
         assert rc == 0, events
-    assert used == ["voxcpm2", "indextts"]
+    assert used == ["voxcpm2", "voxcpm2"]                  # the saved engine cannot clone → default; best → VoxCPM2 first
 
 
 def test_tts_music_model_downloads_progress_and_activation(run, monkeypatch):

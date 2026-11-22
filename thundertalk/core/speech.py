@@ -8,6 +8,7 @@ backend owns the chosen voice:
   * ``kokoro``  — Kokoro v1.1 through sherpa-onnx (CPU, small, 100+ voices)
   * ``voxcpm2`` — VoxCPM2 through mlx-audio (Apple GPU, designed voices and cloning)
   * ``indextts`` — IndexTTS-2.5 through the vendored MLX port (Apple GPU, cloning)
+  * ``longcat`` — LongCat-AudioDiT 1B through mlx-audio (Apple GPU, cloning, zh/en)
   * ``apple``   — the voices built into macOS (AVSpeechSynthesizer, no download)
 
 The old Qwen3-TTS engine (``tts.TtsEngine``) is no longer offered in the app.
@@ -34,9 +35,10 @@ from thundertalk.core.tts import (
     TtsModelMissing,
     TtsParams,
     Verifier,
-    active_rms,
     assemble,
+    close_piece,
     detect_language,
+    ends_cut,
     expected_seconds,
     fade,
     plan_segments,
@@ -65,6 +67,9 @@ def _make(bid: str) -> TtsBackend:
     if bid == "indextts":
         from thundertalk.core.tts_backends.indextts import IndexTTSBackend
         return IndexTTSBackend()
+    if bid == "longcat":
+        from thundertalk.core.tts_backends.longcat import LongCatBackend
+        return LongCatBackend()
     if bid == "apple":
         from thundertalk.core.tts_backends.apple import AppleBackend
         return AppleBackend()
@@ -75,7 +80,7 @@ def _make(bid: str) -> TtsBackend:
     raise KeyError(bid)
 
 
-BACKEND_ORDER = ("voxcpm2", "indextts", "kokoro", "apple")
+BACKEND_ORDER = ("voxcpm2", "indextts", "longcat", "kokoro", "apple")
 
 
 def backend(bid: str) -> TtsBackend:
@@ -459,13 +464,17 @@ class SpeechEngine:
                       seed: int, speed: float, ctx: dict, verifier: Optional[Verifier], state: dict,
                       cancel: Optional[threading.Event]) -> tuple[np.ndarray, SegmentReport]:
         sr = b.sample_rate
-        attempts = params.max_attempts if getattr(b, "stochastic", True) else 1
-        best, best_pen, best_ratio, best_err, used, misses = None, 1e9, 0.0, None, 0, 0
+        stochastic = getattr(b, "stochastic", True)
+        attempts = params.max_attempts if stochastic else 1
+        best, best_pen, best_ratio, best_err, best_cut, used, misses = None, 1e9, 0.0, None, False, 0, 0
+        said = close_piece(seg, lang)        # what the model is given; ``seg`` is what it is checked against
         for attempt in range(attempts):
             if cancel is not None and cancel.is_set():
                 raise TtsCancelled()
             used = attempt + 1
-            audio = trim_silence(self._gen(b, seg, voice, lang, seed + attempt * 7919, speed, ctx), sr)
+            raw = self._gen(b, said, voice, lang, seed + attempt * 7919, speed, ctx)
+            cut = stochastic and ends_cut(raw, sr)
+            audio = trim_silence(raw, sr)
             native = bool(ctx.get("native_speed"))
             exp = expected_seconds(seg, lang) / (speed if native else 1.0)
             ratio = (len(audio) / sr) / exp
@@ -487,10 +496,11 @@ class SpeechEngine:
                 except Exception:
                     err = None
             misread = err is not None and err > params.verify_max_err
-            pen = (0.0 if dur_ok else 1.0) + 2.0 * (err or 0.0) + 0.1 * abs(math.log(max(ratio, 1e-3)))
+            pen = ((0.0 if dur_ok else 1.0) + 2.0 * (err or 0.0) + 0.1 * abs(math.log(max(ratio, 1e-3)))
+                   + (0.15 if cut else 0.0))        # a clipped last word: worse than a few misheard characters
             if pen < best_pen:
-                best, best_pen, best_ratio, best_err = audio, pen, ratio, err
-            if dur_ok and not misread:
+                best, best_pen, best_ratio, best_err, best_cut = audio, pen, ratio, err, cut
+            if dur_ok and not misread and not cut:
                 break
             if dur_ok and err is not None and err > 0.6:
                 misses += 1
@@ -501,7 +511,8 @@ class SpeechEngine:
         ok = (floor <= best_ratio <= params.ratio_max
               and (state["off"] or best_err is None or best_err <= params.verify_max_err))
         audio = best if best is not None else np.zeros(int(0.2 * sr), np.float32)
-        return audio, SegmentReport(seg, expected_seconds(seg, lang), len(audio) / sr, used, ok, best_err)
+        return audio, SegmentReport(seg, expected_seconds(seg, lang), len(audio) / sr, used, ok, best_err,
+                                    bool(best_cut and best is not None))
 
     def synthesize(self, text: str, voice: VoiceSel, language: Optional[str] = None, speed: float = 1.0,
                    params: Optional[TtsParams] = None, seed: Optional[int] = None,
@@ -529,7 +540,7 @@ class SpeechEngine:
         lang = language if language and language != "auto" else detect_language(text)
         base_seed = seed if seed is not None else int(time.time()) & 0x7FFFFFFF
         sr = b.sample_rate
-        plan = plan_segments(text, lang, params.chunk_scale)
+        plan = plan_segments(text, lang, b.chunk_scale(voice, lang, params.chunk_scale))
         t0 = time.monotonic()
         ctx: dict = {}
         reports: list[SegmentReport] = []
@@ -550,15 +561,16 @@ class SpeechEngine:
             pauses.append(pause)
             if progress:
                 progress(idx + 1, len(plan), seg)
-        rms = [active_rms(p, sr) for p in pieces]
-        target = float(np.median(rms)) if rms else 1.0
-        leveled = [p * min(max(target / max(r, 1e-6), 0.5), 2.0) for p, r in zip(pieces, rms)]
+        # Pieces are matched by loudness, and the whole clip leaves at one loudness
+        # (-16 LUFS): two clips for the same video sound equally loud whatever the
+        # voice. It used to be peak-normalised, which follows a clip's sharpest
+        # consonant instead of how loud it sounds.
+        from thundertalk.core import loudness
+        leveled = [p * g for p, g in zip(pieces, loudness.match_gains(pieces, sr))]
         mix = assemble(leveled, pauses[:-1], sr)
         if abs(speed - 1.0) >= 0.02 and not ctx.get("native_speed"):
             mix = time_stretch(mix, speed, sr)
-        peak = float(np.max(np.abs(mix))) if len(mix) else 0.0
-        if peak > 1e-6:
-            mix = mix * (0.891 / peak)
+        mix, _ = loudness.normalize(mix, sr)
         return SynthResult(mix.astype(np.float32), sr, lang, reports, time.monotonic() - t0)
 
 

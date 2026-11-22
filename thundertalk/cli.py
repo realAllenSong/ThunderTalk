@@ -31,7 +31,8 @@ from typing import Optional
 
 FORMATS = ("txt", "md", "srt", "vtt", "json")
 # Cloud engines (openai, gemini, elevenlabs, custom) are used only when named.
-TTS_ENGINES = ("auto", "best", "apple", "kokoro", "voxcpm2", "indextts", "openai", "gemini", "elevenlabs", "custom")
+TTS_ENGINES = ("auto", "best", "apple", "kokoro", "voxcpm2", "indextts", "longcat", "openai", "gemini", "elevenlabs", "custom")
+CLONE_ENGINES = ("voxcpm2", "indextts", "longcat")
 CLOUD_TTS = ("openai", "gemini", "elevenlabs", "custom")
 # `--engine best` for files, most accurate first. Dictation (`auto`) favours
 # latency; a recording or a call favours accuracy. Measured in docs/plans.
@@ -42,7 +43,10 @@ ASR_QUALITY = (
 DIARIZE_MODEL = "moss-transcribe-diarize-mlx"
 # Read-back error 0–3.4 % for IndexTTS and VoxCPM2 on zh/en/mixed; Kokoro is
 # as good on one language but 8–16 % on mixed text (2026-09-30-tts-engines.md).
-TTS_QUALITY = ("indextts", "voxcpm2", "kokoro")
+# Among the two that measure alike the user's ear decides: VoxCPM2 sounds best
+# to them (2026-11-21). LongCat read back as cleanly in a first comparison but
+# has far fewer hours behind it.
+TTS_QUALITY = ("voxcpm2", "indextts", "longcat", "kokoro")
 _LANG = {"zh": "chinese", "en": "english", "ja": "japanese", "ko": "korean"}
 
 
@@ -451,14 +455,14 @@ def cmd_speak(a, out: _Out) -> dict:
         if saved is None:
             raise CliError("not_found", f"Saved voice not found: {a.voice}")
         if a.engine == "best":
-            clone_backend = next((bid for bid in TTS_QUALITY if bid in ("voxcpm2", "indextts") and speech.backend(bid).is_ready()), speech.DEFAULT_CLONE_BACKEND)
+            clone_backend = next((bid for bid in TTS_QUALITY if bid in CLONE_ENGINES and speech.backend(bid).is_ready()), speech.DEFAULT_CLONE_BACKEND)
         elif a.engine == "auto":
             preferred = _settings().get("studio_engine")
-            clone_backend = preferred if preferred in ("voxcpm2", "indextts") else speech.DEFAULT_CLONE_BACKEND
+            clone_backend = preferred if preferred in CLONE_ENGINES else speech.DEFAULT_CLONE_BACKEND
         else:
             clone_backend = a.engine
-        if clone_backend not in ("voxcpm2", "indextts"):
-            raise CliError("bad_args", "Cloned voices need voxcpm2 or indextts")
+        if clone_backend not in CLONE_ENGINES:
+            raise CliError("bad_args", "Cloned voices need voxcpm2, indextts or longcat")
         if not speech.backend(clone_backend).is_ready():
             raise CliError("tts_missing", f"Download {clone_backend} first")
         if not saved.ref_text.strip():

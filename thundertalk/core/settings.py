@@ -80,7 +80,7 @@ DEFAULTS: dict[str, Any] = {
     "studio_voice": "",
     "studio_language": "auto",
     "studio_speed": 1.0,
-    "studio_engine": "",            # Speak engine: voxcpm2 | indextts | kokoro ("" = from the voice)
+    "studio_engine": "",            # Speak engine: voxcpm2 | indextts | longcat | kokoro ("" = from the voice)
     # Studio ▸ Compose: last model ("" = the tier's recommendation), mode, length, takes, language.
     "compose_model": "",
     "compose_mode": "song",         # song | bgm

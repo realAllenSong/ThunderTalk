@@ -149,9 +149,9 @@ def translate_local(output_path: str, target: str, input_path: str | None = None
 def speak_text(text: str, output_path: str, engine: str = "auto", voice: str = "",
                speed: float = 1.0, language: str = "auto") -> str:
     """Text-to-speech / 配音 / 朗读 (zh, en, mixed) to .m4a .wav .mp3.
-    engine: auto | best | apple | kokoro | voxcpm2 | indextts, or cloud openai | gemini |
+    engine: auto | best | apple | kokoro | voxcpm2 | indextts | longcat, or cloud openai | gemini |
     elevenlabs | custom only if the user asked. voice: id from
-    list_local_voices, or my:<id> for a cloned voice (voxcpm2/indextts). speed 0.5–2."""
+    list_local_voices, or my:<id> for a cloned voice (voxcpm2/indextts/longcat). speed 0.5–2."""
     args = ["speak", "--text", text, "--out", str(Path(output_path).expanduser()),
             "--engine", engine, "--speed", str(speed), "--language", language]
     if voice:

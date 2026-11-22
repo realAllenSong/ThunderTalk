@@ -32,6 +32,14 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
+## v1.18.0 新功能
+
+- **新增七个中文音色，**从 22 种风格的 88 条候选里凭听感挑出来的：冷静讲解（干净克制的科普解说）、人文讲述（温暖的女声，讲诗词和人文故事）、幽默讲堂（课堂上讲案例的男老师）、深夜电台和深夜低音（两个深夜电台男声，后一个更低沉）、美食探店（刚吃到好东西的探店博主）、纪录片女声（人文纪录片旁白）。和其他内置音色一样，都是按文字描述设计出来的，不是真人录音，也不是照着某个人的声音做的。现在共有 25 个内置音色。
+- **每条配音的音量一致了。**以前成品是按最高的那个峰值来归一的，辅音尖锐的音色会比平滑的音色轻：6 个音色的 12 条成品，响度从 -15.0 到 -21.9 LUFS 不等。现在全部落在 -16.0 到 -16.7 LUFS 之间，同一条成品里的各段之间也做了匹配。
+- **第四个本地语音引擎 LongCat-AudioDiT**（美团，MIT 许可，在工作室 ▸ 朗读里下载，2.1 GB）：支持中文、英文和中英混说的声音克隆。它整段一次生成，长句和短句耗时差不多：一段 36 秒的中文，它用了 32–34 秒，同一台 Mac 上 VoxCPM2 用了 44–70 秒。
+- **添加自己的声音时，会提示哪些问题会被带进克隆里：**底噪离人声不到 22 分贝时提醒，录音停在一个字的中间时也提醒。
+- `--engine best` 现在优先用 VoxCPM2，其次是 IndexTTS、LongCat 和 Kokoro。一段语音如果在最后一个字还没收完时就戛然而止，会重新生成。
+
 ## v1.17.0 新功能
 
 - **更新之后，应用会告诉你有什么变化。** 一个小窗口列出最多三条值得知道的改动，完整更新说明一点就到。只出现一次，只弹在 ThunderTalk 自己的窗口上，不会打断你在别的应用里听写。
@@ -182,11 +190,12 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 - **VoxCPM2**（OpenBMB）：48 kHz 录音棚音质，支持声音克隆；在 Apple 芯片上约为实时速度。
 - **IndexTTS-2.5**（bilibili）：克隆还原度很高，支持中、英、日、西、阿语；约为实时速度。
+- **LongCat-AudioDiT 1B**（美团）：中文和英文的声音克隆；整段一次生成，长句和短句耗时差不多。
 - **Kokoro**（8200 万参数）：小巧快速（CPU 上约为实时的 4 倍），内置 23 个精选音色（20 个中文、3 个英文）。
-- VoxCPM2 与 IndexTTS 内置 18 个音色，都是短视频、Vlog、播客里常见的风格：影视解说、纪录片旁白、科普讲述、商业解读、新闻主播、霸道总裁、两种闺蜜分享、台湾腔，以及英文 YouTuber、播客和旁白。全部是“设计”出来的音色（由 VoxCPM2 根据文字描述生成，不是真人录音，也不模仿任何平台的音色），随应用一起提供。
+- VoxCPM2、IndexTTS 和 LongCat 内置 25 个音色，都是短视频、Vlog、播客里常见的风格：影视解说、纪录片旁白（男声和女声）、三种科普讲解、两种商业解读、人文讲述、幽默讲堂、深夜电台、美食探店、新闻主播、霸道总裁、两种闺蜜分享、台湾腔，以及英文 YouTuber、播客和旁白。全部是“设计”出来的音色（由 VoxCPM2 根据文字描述生成，不是真人录音，也不模仿任何平台的音色），随应用一起提供。
 - 每个音色都能试听：点音色上的 ▶，不用生成就能先听一听。
 - 可调语速（0.75x 到 1.5x），带可拖动进度的播放器。结果可保存为 WAV（无损）或 M4A（体积小）。
-- **我的声音：** 录制或导入 5 到 15 秒你自己的声音，就能用 VoxCPM2 或 IndexTTS 以你的声音朗读任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
+- **我的声音：** 录制或导入 5 到 15 秒你自己的声音，就能用 VoxCPM2、IndexTTS 或 LongCat 以你的声音朗读任何内容。参考音频保存在你 Mac 上的 `~/.thundertalk/voices`。请只克隆你有权使用的声音。
 
 语音引擎只需下载一次，之后文件转写与语音生成可离线使用。可选的 AI 纪要使用你选择的服务；网页链接和云端服务需要联网。
 
@@ -317,6 +326,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 |------|------|------|------|
 | VoxCPM2（8-bit，Apache-2.0） | 3.2 GB | MLX (Metal GPU) | 内置音色、声音克隆 |
 | IndexTTS-2.5（8-bit，bilibili 模型使用许可） | 1.7 GB + 2.3 GB 编码器 | MLX (Metal GPU) | 内置音色、声音克隆 |
+| LongCat-AudioDiT 1B（8-bit，MIT） | 2.1 GB | MLX (Metal GPU) | 内置音色、声音克隆（中文、英文） |
 | Kokoro v1.1 多语言版（Apache-2.0） | 364 MB | ONNX (CPU) | 23 种内置音色（20 种中文、3 种英文） |
 
 都是一次性下载：在“朗读”里选中某个引擎的音色时，应用会提示下载。IndexTTS 使用打过补丁的 [mlx-indextts2](https://github.com/vanch007/mlx-indextts2) MLX 移植版（见 `third_party/README.md`）。
@@ -529,7 +539,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 
 - **UI：** [PySide6](https://doc.qt.io/qtforpython-6/)（Qt 6），颜色、字体和间距集中定义在一个主题模块里
 - **语音识别：** [sherpa-onnx](https://github.com/k2-fsa/sherpa-onnx)（ONNX）、[mlx-qwen3-asr](https://github.com/nicoboss/mlx-qwen3-asr) 与 [mlx-audio](https://github.com/Blaizzy/mlx-audio)（MLX）
-- **文字转语音：** VoxCPM2（mlx-audio）、IndexTTS-2.5（内置的 MLX 移植版）、Kokoro（sherpa-onnx），全部在进程内运行
+- **文字转语音：** VoxCPM2 和 LongCat-AudioDiT（mlx-audio）、IndexTTS-2.5（内置的 MLX 移植版）、Kokoro（sherpa-onnx），全部在进程内运行
 - **翻译：** 通过 PyTorch 与 Transformers 运行的 SeamlessM4T v2
 - **音频：** 采集用 [sounddevice](https://python-sounddevice.readthedocs.io/)，文件解码用 macOS 自带的 `afconvert`
 - **快捷键：** macOS 原生 NSEvent

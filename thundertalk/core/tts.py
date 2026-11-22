@@ -306,6 +306,33 @@ def trim_silence(x: np.ndarray, sr: int = SR, thr_db: float = -44.0,
     return x[a:b]
 
 
+def ends_cut(x: np.ndarray, sr: int = SR) -> bool:
+    """True when the audio stops while it is still sounding: the model ended
+    the piece before the last word had died away.
+
+    Judged on the raw take, before silence is trimmed. Of 36 finished clips
+    from three engines the loudest last 15 ms was 28 dB under the clip's own
+    level; the same clips cut in mid-word ended 1–19 dB under it (2026-11-21)."""
+    frame = int(0.005 * sr)
+    n = len(x) // frame
+    if n < 20:
+        return False
+    r = 20 * np.log10(_frame_rms(np.asarray(x, dtype=np.float32)[: n * frame], frame) + 1e-9)
+    return bool(float(np.max(r[-3:])) > float(np.percentile(r, 95)) - 24.0)
+
+
+_OPEN_END = re.compile(r"[,，、;；:：]\s*$")
+
+
+def close_piece(text: str, lang: str) -> str:
+    """A piece that ends on a comma (a long sentence split in two) with a full
+    stop instead. Given text that ends "…，" a model expects more to come and
+    tends to stop early, swallowing the last syllable."""
+    if not _OPEN_END.search(text):
+        return text
+    return _OPEN_END.sub("。" if lang in ("chinese", "japanese") else ".", text)
+
+
 def active_rms(x: np.ndarray, sr: int = SR) -> float:
     frame = int(0.02 * sr)
     r = _frame_rms(x, frame)
@@ -428,6 +455,7 @@ class SegmentReport:
     attempts: int
     ok: bool
     error_rate: Optional[float] = None      # ASR read-back error of the chosen take
+    cut_end: bool = False                   # the chosen take stops while still sounding
 
 
 @dataclass
@@ -444,8 +472,10 @@ class SynthResult:
 
     @property
     def warnings(self) -> list[str]:
-        return [f"“{s.text[:40]}…” needed {s.attempts} attempts and may sound off"
-                for s in self.segments if not s.ok]
+        return ([f"“{s.text[:40]}…” needed {s.attempts} attempts and may sound off"
+                 for s in self.segments if not s.ok]
+                + [f"“{s.text[:40]}…” ends abruptly: its last word may be cut short"
+                   for s in self.segments if s.ok and s.cut_end])
 
 
 ProgressCB = Callable[[int, int, str], None]

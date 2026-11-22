@@ -25,7 +25,7 @@ def _never_touch_real_settings(tmp_path_factory):
 
 
 @pytest.fixture(autouse=True)
-def _no_real_keys_language_or_network(monkeypatch, tmp_path):
+def _no_real_keys_language_or_network(monkeypatch, tmp_path, request):
     """A test run must not depend on, or spend, anything of the person running it.
 
     * Cloud keys: none (no Keychain, no environment keys). Until 2026-11-21 only test_cloud.py
@@ -35,10 +35,17 @@ def _no_real_keys_language_or_network(monkeypatch, tmp_path):
     * UI language: English, whatever the user's settings say (test_display_names failed on a
       Mac set to Chinese).
     * Network: only this machine. A test that needs a server fakes urlopen or starts one locally.
+    * Free memory: plenty. The guard that refuses to load a background model when the Mac is
+      short of memory read the real figure, so a full run failed whenever something heavy was
+      running beside it (seen four times in November 2026 before the cause was found: a fake GPU
+      voice backend "could not load" while a real model job held the memory). Tests of the guard
+      itself set their own figure.
     """
     import urllib.request
 
-    from thundertalk.core import cloud, i18n
+    from thundertalk.core import cloud, i18n, memory_policy
+    if request.module.__name__.rsplit(".", 1)[-1] != "test_memory_policy":      # that file tests the gauge itself
+        monkeypatch.setattr(memory_policy, "free_percent", lambda: 90)
     monkeypatch.setenv("THUNDERTALK_KEYCHAIN_SERVICE", "ThunderTalk Cloud TEST")
     monkeypatch.setenv("THUNDERTALK_CLOUD_USAGE", str(tmp_path / "cloud_usage.json"))
     for name in ("OPENAI_ADMIN_KEY", "THUNDERTALK_OPENAI_ADMIN_KEY"):

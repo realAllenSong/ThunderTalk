@@ -12,9 +12,15 @@ from thundertalk.core import speech, tts
 from thundertalk.core.tts_backends.base import BackendInfo, BackendVoice, Download, TtsBackend
 
 
-def _tone(seconds, sr, hz=200.0):
+def _tone(seconds, sr, hz=200.0, dies_away=True):
+    """A tone that dies away over its last 50 ms the way a spoken word does
+    (``dies_away=False``: it stops dead, like a take the model ended too early)."""
     t = np.arange(int(seconds * sr)) / sr
-    return (0.3 * np.sin(2 * np.pi * hz * t)).astype(np.float32)
+    x = (0.3 * np.sin(2 * np.pi * hz * t)).astype(np.float32)
+    k = min(int(0.05 * sr), len(x) // 2)
+    if dies_away and k > 1:
+        x[-k:] *= np.concatenate([np.linspace(1.0, 0.0, k - k // 3), np.zeros(k // 3)]).astype(np.float32)
+    return x
 
 
 class FakeBackend(TtsBackend):
@@ -411,3 +417,96 @@ def test_unload_waits_until_synthesis_has_returned_numpy_audio(slow):
     assert not synth.is_alive() and not closer.is_alive()
     assert "error" not in result and "error" not in outcome
     assert unloaded.is_set() and not e.is_loaded("g1")
+
+
+# ── endings, split pieces and loudness ───────────────────────────────────
+
+class CutFirst(FakeBackend):
+    """Its first take of every piece stops dead; later takes die away."""
+
+    def generate(self, text, voice, language, *, seed=0, speed=1.0, context=None):
+        self.calls.append((text, voice, language, seed, speed, dict(context or {})))
+        first = sum(1 for c in self.calls if c[0] == text) == 1
+        return _tone(len(text) * self.spc, self.sample_rate, dies_away=not (first and self.cut_first))
+
+
+def _cutter(monkeypatch, cut_first=True, always=False):
+    b = CutFirst("gpu2", gpu=True)
+    b.cut_first = cut_first
+    if always:
+        b.generate = lambda text, voice, language, **kw: _tone(len(text) * b.spc, b.sample_rate, dies_away=False)
+    monkeypatch.setattr(speech, "BACKEND_ORDER", ("gpu2",))
+    monkeypatch.setattr(speech, "_BACKENDS", {})
+    monkeypatch.setattr(speech, "_make", lambda bid: b)
+    return b
+
+
+def test_a_take_that_stops_dead_is_redone(monkeypatch):
+    b = _cutter(monkeypatch)
+    r = speech.SpeechEngine().synthesize("这是一句完整的话。", "gpu2:a", language="chinese", seed=1)
+    assert [s.attempts for s in r.segments] == [2] and not r.segments[0].cut_end and r.warnings == []
+    assert len(b.calls) == 2 and b.calls[0][3] != b.calls[1][3]            # a different seed for the second take
+
+
+def test_when_every_take_stops_dead_the_user_is_told(monkeypatch):
+    _cutter(monkeypatch, always=True)
+    r = speech.SpeechEngine().synthesize("这是一句完整的话。", "gpu2:a", language="chinese", seed=1)
+    assert r.segments[0].attempts == tts.TtsParams().max_attempts and r.segments[0].cut_end
+    assert any("ends abruptly" in w for w in r.warnings)
+
+
+def test_a_voice_that_cannot_differ_between_takes_is_not_judged_by_its_ending(fakes):
+    fakes["cpu1"].generate = lambda text, voice, language, **kw: _tone(len(text) * 0.24, 24000, dies_away=False)
+    r = speech.SpeechEngine().synthesize("这是一句完整的话。", "cpu1:a", language="chinese")
+    assert r.segments[0].attempts == 1 and not r.segments[0].cut_end
+
+
+def test_a_piece_split_at_a_comma_is_given_to_the_model_with_a_full_stop(fakes):
+    first, second = "这是一个很长的句子的前半部分我们先把它说到这里为止", "然后这是它的后半部分我们接着把剩下的内容也说完"
+    r = speech.SpeechEngine().synthesize(f"{first}，{second}。", "gpu2:a", language="chinese", seed=1,
+                                         params=tts.TtsParams(chunk_scale=0.5))      # at most 40 characters a piece
+    assert [c[0] for c in fakes["gpu2"].calls] == [first + "。", second + "。"]
+    assert r.segments[0].text == first + "，"                                # checked against what was written
+
+
+def test_close_piece_only_touches_an_open_ending():
+    assert tts.close_piece("前半句，", "chinese") == "前半句。" and tts.close_piece("first half, ", "english") == "first half."
+    assert tts.close_piece("一句话。", "chinese") == "一句话。" and tts.close_piece("真的吗？", "chinese") == "真的吗？"
+
+
+def test_ends_cut_tells_a_dead_stop_from_a_word_that_dies_away():
+    assert tts.ends_cut(_tone(1.0, 24000, dies_away=False), 24000)
+    assert not tts.ends_cut(_tone(1.0, 24000), 24000)
+    assert not tts.ends_cut(np.concatenate([_tone(1.0, 24000, dies_away=False), np.zeros(2400, np.float32)]), 24000)
+    assert not tts.ends_cut(np.zeros(100, np.float32), 24000)               # too short to judge
+
+
+def test_every_clip_leaves_at_the_same_loudness_whatever_the_voice(fakes):
+    from thundertalk.core import loudness
+    eng = speech.SpeechEngine()
+    quiet = eng.synthesize(TEXT, "gpu2:a", language="chinese", seed=1)
+    fakes["gpu2"].generate = lambda text, voice, language, **kw: 0.05 * _tone(len(text) * 0.24, 24000, hz=400.0)
+    other = eng.synthesize(TEXT, "gpu2:a", language="chinese", seed=1)
+    for r in (quiet, other):
+        assert loudness.integrated_lufs(r.audio, r.sample_rate) == pytest.approx(loudness.SPEECH_LUFS, abs=0.3)
+        assert float(np.abs(r.audio).max()) <= loudness.PEAK_CEILING + 1e-4
+
+
+def test_pieces_of_one_clip_are_matched_in_loudness(fakes):
+    from thundertalk.core import loudness
+    levels = iter([0.3, 0.06, 0.3])
+
+    def gen(text, voice, language, **kw):
+        return (next(levels) / 0.3) * _tone(len(text) * 0.24, 24000)
+
+    fakes["gpu2"].generate = gen
+    r = speech.SpeechEngine().synthesize(TEXT, "gpu2:a", language="chinese", seed=1,
+                                         params=tts.TtsParams(chunk_scale=0.3))
+    assert len(r.segments) == 3
+    sr, t = r.sample_rate, 0
+    got = []
+    for s in r.segments:                                                    # 0.5 s from the middle of each piece
+        mid = int((t + s.audio_s / 2) * sr)
+        got.append(loudness.integrated_lufs(r.audio[mid - sr // 4: mid + sr // 4], sr))
+        t += s.audio_s + 0.3
+    assert max(got) - min(got) == pytest.approx(8.0, abs=0.7)               # made 14 dB apart; a gain is at most 6

@@ -98,6 +98,12 @@ def test_a_version_without_notes_shows_nothing_and_never_notes_from_the_future()
     assert promo.whats_new("1.17.1", "", "1.16.0")[0] == "1.17.0"    # skipped a version: its notes still count
 
 
+def test_someone_who_closed_the_last_notes_gets_the_next_releases():
+    version, keys = promo.whats_new("1.18.0", "1.17.0", "1.17.0")
+    assert version == "1.18.0" and keys == promo.WHATS_NEW["1.18.0"]
+    assert promo.whats_new("1.18.0", "", "1.16.0")[0] == "1.18.0"        # two releases behind: the newest notes only
+
+
 def test_every_note_has_text_in_both_languages():
     for keys in promo.WHATS_NEW.values():
         assert len(keys) <= 3

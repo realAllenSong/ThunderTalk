@@ -339,7 +339,7 @@ def run(argv: list[str]) -> int:
     ap.add_argument("--model", default="", help="ASR model id, or turbo | xl for music")
     ap.add_argument("--dit", choices=["mlx", "mps"], default="mlx", help="Music diffusion backend")
     ap.add_argument("--model-dir", default="", help="ASR directory, or ACE-Step project root (read-only)")
-    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts (default: all downloaded / the clone default)")
+    ap.add_argument("--engine", default="", help="kokoro | voxcpm2 | indextts | longcat (default: all downloaded / the clone default)")
     a = ap.parse_args(argv)
     ok = True
     try:

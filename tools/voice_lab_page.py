@@ -17,7 +17,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 
 from voice_styles import STYLES  # noqa: E402
 
-GROUPS = [("narration", "解说 · 旁白"), ("lifestyle", "生活 · Vlog"), ("fun", "搞怪 · 方言"), ("english", "English")]
+GROUPS = [("creator", "创作者风格（按热门视频的语速和音高设计）"), ("shortvideo", "短视频常用"), ("premium", "高级感"),
+          ("narration", "解说 · 旁白"), ("lifestyle", "生活 · Vlog"), ("fun", "搞怪 · 方言"), ("english", "English")]
 
 
 def main(root: Path, out: Path) -> None:
@@ -34,10 +35,13 @@ def main(root: Path, out: Path) -> None:
 
     def fmt(r: dict) -> str:
         rb = "—" if r["read_back"] is None else f"{r['read_back'] * 100:.0f}%"
-        return f"自然度 {r['utmos']:.2f} · 读回误差 {rb} · 音高起伏 {r['pitch_st']} 半音"
+        more = f" · 音高 {r['f0']} Hz · 语速 {r['pace']} 字/秒" if "f0" in r else ""
+        return f"自然度 {r['utmos']:.2f} · 读回误差 {rb} · 音高起伏 {r['pitch_st']} 半音{more}"
 
     parts = []
     for gid, gname in GROUPS:
+        if not any(s.group == gid for s in STYLES):
+            continue
         parts.append(f"<h2>{gname}</h2>")
         for s in (s for s in STYLES if s.group == gid):
             rows = sorted((r for r in scores.values() if r["slug"] == s.slug), key=lambda r: -r["utmos"])

@@ -40,7 +40,7 @@ class BackendVoice:
 
 @dataclass(frozen=True)
 class BackendInfo:
-    id: str                     # "kokoro" | "voxcpm2" | "indextts"
+    id: str                     # "kokoro" | "voxcpm2" | "indextts" | "longcat"
     name: str                   # display name, e.g. "VoxCPM2"
     blurb_en: str
     blurb_zh: str
@@ -81,6 +81,12 @@ class TtsBackend:
 
     def unload(self) -> None:
         pass
+
+    def chunk_scale(self, voice, language: str, default: float) -> float:
+        """Multiplier on the pipeline's piece-length targets for ``voice``. A
+        backend with a hard limit on how much it can speak at once returns a
+        smaller number; never a larger one."""
+        return default
 
     def warm_up(self, voice, language: str) -> None:
         """Pay the first-call costs (lazy sub-models, kernel set-up, preparing

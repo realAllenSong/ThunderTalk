@@ -55,6 +55,32 @@ class ReferenceCheck:
     ok: bool                          # False → too short/quiet to clone from
 
 
+MIN_SNR_DB = 22.0            # speech this far above the room's noise clones cleanly (Kaikou's recording notes)
+
+
+def recording_issues(x: np.ndarray, sr: int = SR) -> list[str]:
+    """What in a raw recording will be copied into every clone of it: room
+    noise ("noisy") and an ending in the middle of a word ("cut_end", which the
+    model reads on into what it says). Judged before silence is trimmed,
+    because the silence is the evidence.
+
+    Not judged: echo. A fall-time measure at phrase ends flagged 9 of the 18
+    clean shipped clips and did not separate them from simulated rooms
+    (2026-11-21), so there is no echo warning rather than an unreliable one."""
+    frame = int(0.01 * sr)
+    n = len(x) // frame
+    if n < 100:
+        return []
+    r = 20 * np.log10(np.sqrt(np.mean(np.asarray(x[: n * frame], dtype=np.float64).reshape(n, frame) ** 2, axis=1)) + 1e-9)
+    active, floor = float(np.percentile(r, 90)), float(np.percentile(r, 3))
+    out: list[str] = []
+    if active - floor < MIN_SNR_DB:
+        out.append("noisy")
+    if float(np.max(r[-3:])) > max(active - 24.0, floor + 12.0):
+        out.append("cut_end")
+    return out
+
+
 def prepare_reference(x: np.ndarray, sr: int) -> ReferenceCheck:
     """Turn a raw recording into a usable cloning reference and say what's wrong
     with it, in words a user can act on (message keys are stable identifiers)."""
@@ -65,6 +91,7 @@ def prepare_reference(x: np.ndarray, sr: int) -> ReferenceCheck:
     peak = float(np.max(np.abs(x))) if len(x) else 0.0
     if peak > 0.999:
         warnings.append("clipping")
+    warnings.extend(recording_issues(x, SR))
     x = trim_silence(x, SR, thr_db=-40.0, keep_head=0.1, keep_tail=0.2)
     dur = len(x) / SR
     if dur > MAX_REF_SECONDS:

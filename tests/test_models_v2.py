@@ -200,7 +200,7 @@ def test_retired_speak_setting_falls_back(qapp, isolated_home, voice):
     assert tab._engine_id == speech.DEFAULT_CLONE_BACKEND
     assert tab._voice_id in tab._chips
     assert tab._needed_backend().info.id == speech.DEFAULT_CLONE_BACKEND
-    assert {bid for bid in speech.BACKEND_ORDER} == {"voxcpm2", "indextts", "kokoro", "apple"}
+    assert {bid for bid in speech.BACKEND_ORDER} == {"voxcpm2", "indextts", "longcat", "kokoro", "apple"}
     tab.shutdown()
     tab.close()
 
