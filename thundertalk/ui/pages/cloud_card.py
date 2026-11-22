@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from PySide6.QtCore import QThread, QTimer, Signal
-from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QVBoxLayout, QWidget
 
 from thundertalk.core import cloud, cloud_usage
 from thundertalk.core.i18n import t
@@ -494,12 +494,21 @@ class CloudCard(theme.Card):
         ly.addWidget(self._note)
         # Studio is local by default: a key for dictation does not put that
         # provider's voices among the Speak engines unless asked for here.
-        self._studio = QCheckBox(t("cloud.studio_voices"))
-        self._studio.setToolTip(t("cloud.studio_voices.tip"))
-        self._studio.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; background: transparent;")
-        self._studio.setChecked(settings.get("studio_cloud_voices") is True)
-        self._studio.toggled.connect(self._on_studio)
-        ly.addWidget(self._studio)
+        srow = QHBoxLayout()
+        srow.setContentsMargins(0, 6, 0, 0)
+        studio_lbl = QLabel(t("cloud.studio_voices"))
+        studio_lbl.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; font-weight: 600;"
+                                 " background: transparent;")
+        srow.addWidget(studio_lbl)
+        srow.addStretch()
+        self._studio = theme.ToggleSwitch(settings.get("studio_cloud_voices") is True)
+        self._studio.toggled_signal.connect(self._on_studio)
+        srow.addWidget(self._studio)
+        ly.addLayout(srow)
+        studio_note = QLabel(t("cloud.studio_voices.tip"))
+        studio_note.setWordWrap(True)
+        studio_note.setStyleSheet(_MUTED)
+        ly.addWidget(studio_note)
         self.rows: dict[str, ProviderRow] = {}
         for pid in cloud.PROVIDERS:
             ly.addWidget(theme.separator())

@@ -646,7 +646,7 @@ def test_cloud_voices_join_studio_only_when_switched_on(qapp, monkeypatch, tmp_p
     changed = []
     card.changed.connect(lambda: changed.append(1))
     assert s.get("studio_cloud_voices") is False and not card._studio.isChecked()      # local by default
-    card._studio.setChecked(True)
+    card._studio._flip()                                                              # as a click does
     assert s.get("studio_cloud_voices") is True and changed == [1]
     assert CloudCard(settings_mod.Settings())._studio.isChecked()                     # remembered
 

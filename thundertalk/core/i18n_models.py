@@ -6,11 +6,11 @@ MODELS = {
     "cloud.optional": {"en": "Optional", "zh": "可选"},
     "cloud.studio_voices": {"en": "Also list cloud voices in Studio ▸ Speak", "zh": "在工作室 ▸ 朗读里也列出云端语音"},
     "cloud.studio_voices.tip": {
-        "en": "Off: Speak uses only the voices on this Mac. On: every provider here that has a key and offers "
-              "speech (OpenAI, Gemini, ElevenLabs, a compatible server) appears as an engine; text you speak with "
-              "it is sent to that provider and billed to your account.",
-        "zh": "关闭：朗读只用这台 Mac 上的音色。打开：这里每个填了 key、提供语音合成的服务（OpenAI、Gemini、ElevenLabs、"
-              "兼容服务）都会出现在引擎里；用它们生成时，文字会发给对应服务商，并按你的账户计费。",
+        "en": "Off, Studio uses only the voices on this Mac. On, every provider below with a key and a speech "
+              "model appears among the Speak engines; what you speak with it is sent to that provider and billed "
+              "to your account.",
+        "zh": "关闭时，工作室只用这台 Mac 上的音色。打开后，下面每个填了 key、能合成语音的服务都会出现在朗读引擎里；"
+              "用它们生成时，文字会发给对应服务商，并按你的账户计费。",
     },
     "cloud.note": {
         "en": "Use your own API key for OpenAI, Gemini, Groq, ElevenLabs or any OpenAI-compatible "
