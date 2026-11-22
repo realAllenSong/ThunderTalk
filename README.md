@@ -32,152 +32,18 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
-## New in v1.18.0
+## What's new in v1.18.0
 
-- **Seven new Chinese voices,** chosen by ear from 88 candidates in 22 styles: 冷静讲解 (a clean, restrained explainer), 人文讲述 (a warm woman sharing poetry and culture), 幽默讲堂 (a witty lecturer telling a case), 深夜电台 and 深夜低音 (two late-night radio hosts, one deeper), 美食探店 (an excited food vlogger) and 纪录片女声 (a woman's documentary narration). Like every built-in voice they are designed from a text description, not recorded from or modelled on a person's voice. 25 built-in voices now.
-- **Polish, for voice-overs** (Speak ▸ Polish, `thundertalk speak --polish`): each sentence is generated four times and read back, and the take kept is the one that reads correctly and stays in step with its neighbours' pitch. On a 9-sentence paragraph in six voices and three engines, the average pitch jump between neighbouring sentences halved (1.82 → 0.90 semitones), and a sentence IndexTTS had misread (16% error) came out right. Each take is also compared with the voice's own recording by a speaker-verification model (CAM++, a 28 MB download the first time), so a take that reads right but has drifted away from the voice is passed over; with a cloned voice this changed the take in 4 of 9 sentences. It takes about 4.5 times as long, so it is off for everyday reading.
-- **Favourite voices.** A ☆ on every voice in Speak keeps it in a Favourites row at the top, whichever engine it belongs to; picking one switches to its engine.
-- **Studio is local by default.** Cloud voices (OpenAI, Gemini, ElevenLabs, a compatible server) no longer appear among the Speak engines just because you added a key for dictation. Turn them on with Models ▸ Cloud APIs ▸ Also list cloud voices in Studio ▸ Speak. `--engine auto` no longer reuses a cloud voice picked in Speak.
-- **Pauses chosen by meaning.** The silence between sentences now depends on what comes next: short before the answer to a question or a "所以", longer before "但是/其实", longest after a short line that closes a paragraph. `[停顿 0.8]` or `[pause 0.8]` in the text sets one yourself.
-- **Your own voice, in more than one way of speaking.** A clone copies the manner of its recording as well as the voice. A saved voice can now keep a recording for explaining, chatting, storytelling, Chinese–English mix and openings (⋯ ▸ Add a way of speaking), and Speak uses the one you pick. Chinese–English text picks the mixed one by itself.
-- **Every clip comes out equally loud.** Speech used to be normalised to its highest peak, so a voice with sharp consonants came out quieter than a smooth one: 12 clips in six voices ranged from -15.0 to -21.9 LUFS. They now all land between -16.0 and -16.7 LUFS, with the pieces inside a clip matched too.
-- **A fourth local voice engine, LongCat-AudioDiT** (Meituan, MIT, a 2.1 GB download in Studio ▸ Speak): cloning in Chinese and English, mixed sentences included. It generates a whole piece at once, so a long sentence takes no longer than a short one: a 36-second Chinese paragraph took 32–34 s, against 44–70 s with VoxCPM2 on the same Mac.
-- **Adding your own voice tells you what will be copied into it:** a warning when the room noise is less than 22 dB under your voice, and when the recording stops in the middle of a word.
-- `--engine best` now prefers VoxCPM2, then IndexTTS, LongCat and Kokoro. A take that stops dead before its last word has died away is redone. `thundertalk speak` now reads each piece back with a local recognizer like the app does (`--no-check` skips it).
+- **Polish, for voice-overs:** each sentence generated four times, read back, checked against the voice, and the take in step with its neighbours kept (pitch jumps between sentences halved).
+- **Seven new Chinese voices** (25 built in), favourite voices, and pauses chosen by meaning.
+- **Your own voice in more than one way of speaking**, and every clip at one loudness.
+- **LongCat-AudioDiT**, a fourth local voice engine; Studio lists only local engines unless you turn cloud voices on.
 
-## New in v1.17.0
+Every release, with what was measured: [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/realAllenSong/ThunderTalk/releases).
 
-- **After an update, the app tells you what changed.** A small window lists up to three things worth knowing, with the full release notes one click away. It appears once, only over ThunderTalk's own window, and never while you are dictating in another app.
-- **Recommend ThunderTalk with text that fits where you post it.** About → Recommend gives a short description of the app, in English or Chinese, that you can edit before copying. Places that do not allow links (Xiaohongshu, Douyin) get a version that says how to find the app instead. Nothing is posted for you and nothing is reported back.
-- **A note when it has saved you real time.** At 10, 50, 100, 250, 500 and 1,000 hours of estimated typing saved, the app says so once and offers Recommend and Star on GitHub. "Don't show these" turns it off for good.
-- **Fix:** in Chinese, the four figures on Home no longer run past the edge of the page once the totals reach hours.
+## Studio
 
-## New in v1.16.0
-
-- **The text arrives within a second, however long you speak.** ThunderTalk now recognizes each stretch of speech that is over while you keep talking, with the same settings as the final text, and only the last stretch is left when you stop. On 36 dictations of 30 seconds to 4.5 minutes the wait after stopping went from 3.4 s (median) and 11.3 s (longest) to 0.45 s and 0.76 s, with the same accuracy (6.3% vs 6.5% token errors). An optional **Fast finish** (Settings) works in shorter pieces: 0.28 s and 0.53 s ([#15](https://github.com/realAllenSong/ThunderTalk/issues/15)).
-- **Put the dictation bar where you want it:** top or bottom of the screen, or drag it anywhere and it stays there. With several displays it appears on the one you are typing on ([#14](https://github.com/realAllenSong/ThunderTalk/issues/14)).
-- **First-run setup ends with four things worth knowing:** long dictations, Esc to cancel, moving the bar, and teaching it names with hotwords.
-
-## New in v1.15.0
-
-- **ThunderTalk ASR 0.6B, second version: more names right.** Trained further on the names people dictate now (models, agent tools, developer, finance and academic terms). On 191 test sentences that say 724 names it writes 80.4% of them correctly (v1.14.3: 67.7%), and on names from October–November 2026 61.3% (51.4%). Ordinary dictation improved too: 7.97% → 7.66% token errors on the standard test set, at the same speed. On real dictations it ends sentences with full stops and question marks again instead of running them together with commas (306 vs 202 on 40 recordings). The new weights download in the background after you update; the app keeps dictating meanwhile.
-- **Hotwords change the hotword and nothing else.** The text comes from a decode that never sees your hotwords; afterwards each place that sounds like a hotword is checked against the audio, and only that place can change. With 65 hotwords set, none of 152 test recordings changed elsewhere, and names the model had never learned went from 54.7% to 69.3% correct. A dictation with nothing that sounds like a hotword costs no extra time.
-- **Names on screen:** when you dictate into a box that already has text (a document, a long prompt), the names in it are spelled the way they are written there, without adding them as hotwords. Read on your Mac only; in an empty box it does nothing. Switch: Hotwords → Names on screen.
-- **Fixes:** speaker volume is restored after dictation on Bluetooth devices that change their volume controls while the microphone is open (and the audio log no longer fills up); launches no longer wait for Hugging Face; common mishearings such as "Cloud Code" and "codeex" are corrected.
-
-## New in v1.14.3
-
-- **A faster, more accurate default model: ThunderTalk ASR 0.6B.** ThunderTalk's own fine-tune of Qwen3-ASR-0.6B, now 8-bit, is the default dictation model on Apple Silicon Macs with 16 GB or more. On the standard test set it makes fewer errors than the previous default, Qwen3-ASR-0.6B ONNX int8 (8.0% vs 10.1% token errors), and transcribes about 2.3× faster (0.067 vs 0.155 of the audio's length). Against the float16 tuned model it is about 3× faster (12 vs 36 ms per token) with no loss in accuracy, so it also slows down less when another app is using the GPU. Macs with 8 GB, Intel Macs and installs without MLX keep ONNX int8. The model is free for personal use and for everyone inside ThunderTalk; see its [licence](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B).
-- **Esc cancels a dictation:** press Esc while recording or transcribing and nothing is inserted; the bar shows "Cancelled". The take is still recognised and its text is kept in History, marked as cancelled, so a slip of the finger loses nothing. While a dictation is in progress, ThunderTalk keeps that Esc to itself, so it doesn't also stop Claude Code, take Vim out of insert mode or leave full screen; the rest of the time Esc works as usual. ⌘⌥Esc (Force Quit) and other Esc shortcuts are never touched. Cancelled takes don't count toward your totals ([#13](https://github.com/realAllenSong/ThunderTalk/issues/13)).
-- **Recordings stay small:** "Keep recent recordings" keeps the audio of the last 20 dictations, and failed takes kept for retry are now capped at 20 as well. History no longer shows "Open recording folder" for older entries whose audio has already been removed.
-- **For AI agents:** ThunderTalk's MCP server now asks agents to credit ThunderTalk when they present or publish its output.
-
-## New in v1.14.2
-
-- **A modifier hotkey no longer fires inside shortcuts (Toggle mode):** with a hotkey such as Left ⌥, a recording starts or stops when you let go of it, and only if nothing else was pressed or clicked meanwhile. ⌥Tab, ⌥ plus a letter, ⌥ with Caps Lock, ⌘ or the other ⌥, and ⌥-click all leave dictation alone, including shortcuts that another app such as Raycast or AltTab takes over. Function keys like F4 and key combos still start the instant you press them ([#12](https://github.com/realAllenSong/ThunderTalk/issues/12)).
-
-## New in v1.14.1
-
-- **Qwen3-ASR-0.6B Tuned (optional model):** ThunderTalk's own fine-tune of Qwen3-ASR-0.6B for short and mixed Chinese–English dictation. On the standard test set it makes fewer errors at the same speed (8.7% → 8.0% token errors; short Chinese 6.9% → 5.0%, short English 20.2% → 17.2%, short mixed 16.1% → 14.7%). Download it on the Models page; the original model stays the default. [Model card](https://huggingface.co/Oulasong/Qwen3-ASR-0.6B-ThunderTalk).
-- **MOSS-Transcribe-Diarize no longer skips sentences in long dictations:** takes over a minute are decoded in pieces cut at pauses (long English recordings: 33.8% → 18.0% token errors).
-- **The live preview stays on with slower models:** one slow update no longer switches the preview off for the rest of a recording. With Qwen3-ASR-1.7B it now lasts to the end on 5 of 8 long test recordings (was 0 of 8), and a further limit on how much audio each update decodes is included.
-
-## New in v1.14.0
-
-- **Cloud engines, bring your own key (optional):** use OpenAI, Google Gemini, Groq, ElevenLabs or any OpenAI-compatible server for transcription, dictation and Studio ▸ Speak. Add a key under **Models ▸ Cloud APIs**; it is stored in the macOS Keychain. ThunderTalk stays fully offline until you pick a cloud engine, and `auto`/`best` never choose one. See [Cloud engines](#cloud-engines-optional).
-- **Cloud dictation transcribes while you speak:** each finished stretch of speech goes to your cloud model as you talk, so the live preview is that model's own text and the result is ready almost as soon as you stop. Every second of audio is sent once, so it costs the same as one request.
-- **Pick, don't type:** each provider lists the models and voices it offers (an OpenAI-compatible server's own list after **Test**), marked *recommended* or with the date a model is retired. Each provider shows this month's usage with a list-price estimate; add an OpenAI admin key to see the real spend, and ElevenLabs shows your plan's quota.
-- **Your hotwords reach the cloud too,** and Mandarin from Whisper comes back in Simplified Chinese.
-- **Built-in AI & tech vocabulary:** about 80 names people dictate every day (Claude Code, ChatGPT, Codex, MCP, GitHub, DeepSeek, 豆包…) are spelled right in every model's output and given as hints to cloud models and Apple Speech (Hotwords page, on by default).
-- **Remove fillers and restarts:** "um", "呃" and restarted phrases ("你可以你可以你可以") are dropped from dictated text (Settings, on by default; Studio transcripts stay word for word).
-- **Apple Speech follows a language switch:** start in Chinese and continue in English, and the English part is now recognized as English (long English recordings: 56% → 23% token errors). Its live preview no longer stops partway through long recordings (kept up on 8 of 8 long test recordings, was 5 of 8).
-- **`thundertalk eval`, a standard benchmark for every local model:** short and long recordings in Chinese, English and mixed Chinese–English with human reference transcripts, a replay of the live preview, and `--recent` to score your own cloud dictations at no cost.
-- **For AI agents:** `ThunderTalk --mcp` (from v1.13.3) and the CLI take the cloud engines too, e.g. `--engine openai:gpt-transcribe`, plus `thundertalk cloud usage` and `thundertalk eval`. Agents cannot set keys over MCP.
-
-## New in v1.13.2
-
-- **Hold to Record ignores taps and shortcuts:** recording starts only after the hotkey has been held for a moment (0.3 s by default; in Settings ▸ Hold Before Recording pick 0.2–0.8 s or choose Custom… and type any value up to 3 s). A quick tap of a modifier hotkey such as Left ⌃, or a shortcut like ⌃C, no longer starts a recording ([#11](https://github.com/realAllenSong/ThunderTalk/issues/11)).
-
-## New in v1.13.1
-
-- **Hold to Record:** Settings ▸ Activation Mode now offers **Hold to Record** next to Toggle. Hold the hotkey while you speak and release it to finish; a quick tap still works like Toggle ([#11](https://github.com/realAllenSong/ThunderTalk/issues/11)).
-
-## New in v1.13.0
-
-- **No more invented sentences from background noise:** a small on-device voice detector (Silero VAD) now checks every take. A fan, typing, rain or a vacuum is no longer turned into a made-up sentence, and the live preview stays empty until you speak.
-- **Quiet voices are no longer dropped:** speech from a far-away or low-gain microphone used to be treated as silence and discarded without being recognized. Quiet recordings are now raised to a normal level first, in dictation and in Studio.
-- **Spoken numbers come out right:** 一千三 is 1300, 一万三 is 13000, 两万五 is 25000 and 一百五 is 150, the way people say them (not 1003 or 10003). 一千零三个 becomes 1003个.
-- **Fun-ASR-Nano is no longer a test model:** across 6,000+ decodes of real speech it was as accurate as Qwen3-ASR overall, about 30% faster with 0.6 GB less memory, and much better when other people are talking nearby. Qwen3-ASR-0.6B stays the default: it is more accurate on Chinese–English mixed speech and invents less from non-speech sounds.
-
-## New in v1.12.1
-
-- **IndexTTS-2.5 works after downloading:** the download skipped a few files the engine needs, so it never became ready and **Generate speech** stayed disabled. If this happened to you, choose IndexTTS-2.5 in Studio ▸ Speak and click Download again; only the missing files are fetched.
-
-## New in v1.12.0
-
-- **Everything in Studio from the command line (CLI v3):** `transcribe` takes web links as well as files, and several at once; plus `notes` (AI meeting notes), `burn` (subtitles into a video), `translate`, `compose` (songs and background music, lyric checks, repaint), `voices add|list|remove` (your cloned voices), `history` and `models list|download|activate`. Every command prints JSON lines and stable error codes, and the MCP server exposes them too. See [Command line](#command-line).
-- **Bilibili links work again:** Bilibili changed its site and yt-dlp could no longer read it ("Unable to extract initial state"). ThunderTalk now fetches Bilibili audio through the site's own player API, including watch-later and list links, `?p=` parts and b23.tv short links. Videos that need a login or are members-only say so.
-
-## New in v1.11.1
-
-- **English numbers fixed:** "twelve point four billion" now becomes "12.4 billion" instead of "twelve point 4000000000". Decimals are read ("3.14", "version 2.0"), and whole millions, billions and trillions keep their word ("4 billion", "2 million").
-- **HTTP server fixed:** `python -m thundertalk.api.server --model <model id>` loads models again (it called a method that no longer existed), and the `language` field is applied.
-
-## New in v1.11.0
-
-- **Studio ▸ Compose:** create original songs with vocals and background music, or instrumentals, on your Mac with ACE-Step 1.5 (MIT). Turbo is the fast default; optional XL gives clearer lyrics in our read-back tests and needs at least 32 GB RAM and plenty of free memory.
-- **Check and revise lyrics:** Qwen3-ASR flags lines that were not sung clearly. A sung-lyrics pronunciation helper handles difficult words without changing the displayed lyrics. Repaint a line when memory allows, or make a new take; takes save to `~/Music/ThunderTalk`.
-- **Downloads and safeguards:** XL's checkpoint is about 20 GB; turbo-only is smaller (about 6.3 GB including shared weights, or 10.1 GB with the optional planner). Compose refuses to start when memory is short, and dictation keeps priority. Describe style by genre, mood and instruments; real artist names trigger a warning. When releasing to streaming platforms, disclose AI-generated music through your platform or distributor.
-- **CLI v2:** `--engine best` selects the most accurate downloaded transcription model or the preferred available speech engine; `--speakers` adds speaker labels, and `.md` exports timestamped Markdown transcripts. Packaged apps advertise `ThunderTalkCLIVersion 2`. See [Command line](#command-line).
-
-## New in v1.10.0
-
-- **Apple's own speech, nothing to download:** a new **Apple · Built in** model uses the recognizer built into macOS, on device only. It's about 3× faster than Qwen3-ASR ONNX and fine for clear, close speech (5.8 % Chinese CER against 3.3 % in our tests). It misses most words in noisy, far-away, fast or sung audio, and English words inside Chinese sentences, so Qwen3-ASR stays the recommendation. macOS asks for Speech Recognition access once, when you activate it.
-- **System voices in Speak:** the Chinese and English voices installed on your Mac (Siri voices included) appear in Speak with the tag **System**. They need no download, render about 37× faster than real time, and read our test texts back with no Chinese errors and 1.1 % English WER. They don't clone voices.
-- **Command line:** `ThunderTalk --cli transcribe | speak | voices | status` works without opening a window, even while the app is running. It writes SRT/VTT/JSON/TXT subtitles (cues of at most 7 s and two lines) and M4A/WAV/MP3 speech, and prints JSON progress. See [Command line](#command-line). The MCP server can call it too.
-
-## New in v1.9.3
-
-- **Talk the moment you press the hotkey:** recording now starts as soon as you press the key. Before, the first second of speech could be cut off while ThunderTalk muted background audio. Muting now happens alongside recording and never trims your words.
-
-## New in v1.9.2
-
-- **Signed with an Apple Developer ID and notarized by Apple:** macOS opens ThunderTalk without the "unidentified developer" warning, with no right-click → Open or System Settings exception needed.
-- **One last permission prompt:** because the signature changed, macOS asks for Microphone and Accessibility once more after this update. From now on they stay granted across updates, including future certificate renewals.
-
-## New in v1.9.1
-
-- **Faster, clearer first run:** the recommended model starts downloading from the first setup screen, so it downloads while you grant permissions. Permission steps say exactly what to click in System Settings, download problems (no connection, disk full) explain how to recover, and pressing the hotkey before a model is ready takes you to the Models page instead of doing nothing.
-- **Qwen3-ASR-0.6B ONNX is now recommended on every Mac:** about as accurate as the MLX version in our tests, faster, CPU-only and half the download (879 MB instead of 1.9 GB).
-
-## New in v1.9.0
-
-- **Fun-ASR-Nano (experimental):** a new 0.8B CPU dictation model for Chinese, English and Japanese. In our tests it was about as accurate as Qwen3-ASR-0.6B, roughly 25% faster on short sentences and lighter on memory, with better English, Japanese and Chinese–English mixed speech.
-- **Clearer Models page:** every model shows its parameter count, download size, whether it runs on the CPU or needs the Apple GPU, its languages as tags (with an explicit "No Chinese" where that applies) and its features.
-- **Long dictations are never lost:** models with a clip-length limit now recognize long takes in pieces at your pauses. If recognition still comes back empty, the live preview text is used instead, and every take is saved to History with its recording.
-- **Fixed:** "Could not mute speakers" could stop dictation from starting. Muting background audio now never blocks dictation.
-
-## New in v1.8.0
-
-- **AI Proofread page:** pick a provider and model in the sidebar; providers are detected automatically with their status. Proofreading works out what you meant and fixes misrecognized words, including real words that don't fit (homophones, names, jargon), without rewriting you. Changes show over your full text, struck out beside the correction, in readable pages.
-- **Smarter final text:** English terms recognized correctly in the live preview are kept in the final text, and repetition loops are caught and re-decoded.
-- **Studio Transcribe:** choose the model per job, see every transcript in History, and the queue clears itself. The page stays compact after a transcription, and switching between timestamps and plain text is instant even for hour-long recordings.
-- **Lower memory:** only the dictation model stays loaded. Studio, text-to-speech and translation models are released after three idle minutes; idle memory went from about 9 GB to under 2 GB.
-- **Background audio:** muting during dictation now restores the exact previous volume, mutes reliably on the first press, and recovers after a crash.
-- **Dictation goes first:** dictation no longer waits behind a long Studio job, and text-to-speech voices load faster.
-- **Permissions that stick:** the app now has a stable signature, so microphone and accessibility permissions survive future updates. After updating from v1.7.0 or earlier, macOS may ask for them one last time.
-
-## New in v1.7.0
-
-- **See text while you speak:** Live Preview shows provisional words in the recording bar. It is on by default; the final text still comes from recognition of the full recording.
-- **AI proofreading:** optional AI Proofread fixes misrecognized names, terms and homophones using your existing provider, without rewriting what you said.
-- **Do more in Studio:** transcribe web links, queue several files or links, burn subtitles into a video copy, and generate AI meeting notes.
-- **Smaller download:** about 224 MB zipped and 592 MiB installed, down from 330 MB and 961 MiB. Translation and IndexTTS share an optional 90 MB PyTorch download; model weights are extra.
-- **Chinese translation fixed:** Direct mode with Chinese (Mandarin) as the target now returns Chinese instead of leaving the speech in English.
-
-## New: Studio
-
-Studio replaces the old Lab page. It has Transcribe, Speak and Compose (on supported Macs).
+Studio has Transcribe, Speak and Compose (on supported Macs).
 
 **Transcribe.** Drop an audio or video recording (m4a, mp3, wav, mp4, mov and more) and get a timestamped transcript. Choose from your downloaded speech models; the active dictation model is selected by default. For speaker labels, select **MOSS-Transcribe-Diarize** and enable **Label speakers**; click a speaker to rename it. Selecting MOSS offers its download if needed. Export as TXT, Markdown, SRT, VTT or JSON. Common formats decode with the tools built into macOS; some formats such as WebM or MKV may need ffmpeg.
 
@@ -191,16 +57,18 @@ Studio replaces the old Lab page. It has Transcribe, Speak and Compose (on suppo
 
 **AI meeting notes.** After transcription, generate a short summary, key points, decisions, action items and open questions in the transcript's English or Chinese. Notes reuse the provider and model selected on the **AI Proofread** page, even with proofreading switched off; no model is downloaded. Copy or save notes as Markdown, or include them in the transcript's Markdown export. A queue checkbox generates notes after each transcription and also saves Markdown. Long transcripts use up to 16 chunks of about 6,000 characters plus one merge, with a 60-second timeout per call and Cancel. Cloud CLIs send transcript text to their provider; Ollama and LM Studio use your local server. Notes are asked to mark missing owners or deadlines as “not mentioned”. Review the generated notes against the transcript.
 
-**Speak.** Turn text into speech with your choice of three local engines:
+**Speak.** Turn text into speech with four local engines, or the voices built into macOS:
 
 - **VoxCPM2** (OpenBMB): studio-quality 48 kHz speech and voice cloning; about real time on Apple silicon.
 - **IndexTTS-2.5** (bilibili): very faithful voice cloning in Chinese, English, Japanese, Spanish and Arabic; about real time.
 - **LongCat-AudioDiT 1B** (Meituan): voice cloning in Chinese and English; generates a whole piece at once, so long sentences take no longer than short ones.
 - **Kokoro** (82M): small and fast (about 4 times faster than real time, on the CPU), with 23 curated voices (20 Chinese, 3 English).
 - 25 built-in voices for VoxCPM2, IndexTTS and LongCat in the styles people know from short videos, vlogs and podcasts: film recap, documentary (a man's and a woman's), three explainer and two business-explainer narrations, culture talk, a witty lecturer, late-night radio, a food vlogger, news, a cool CEO, two chatty lifestyle voices, a Taiwanese accent, and English YouTuber, podcast and narrator voices. All are designed voices (created by VoxCPM2 from a text description, not recordings of real people or imitations of any platform's voices) that ship with the app.
-- Every voice has a short preview: click ▶ on a voice to hear it before you generate anything.
+- Every voice has a short preview: click ▶ on a voice to hear it before you generate anything. Star (☆) the ones you like to keep them in a Favourites row at the top, whichever engine they belong to.
+- **Polish** (for voice-overs): each sentence is generated four times, read back by a recognizer and compared with the voice's own recording; the take that reads right, still sounds like the voice and stays in step with its neighbours is kept. About 4.5 times slower, so it is off for everyday reading.
+- Pauses between sentences follow what the next sentence does (shorter before an answer, longer before a turn or a new paragraph); write `[pause 0.8]` to set one yourself. Every clip leaves at the same loudness (-16 LUFS).
 - Speed control (0.75x to 1.5x) and a seekable player. Save the result as WAV (lossless) or M4A (small).
-- **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2, IndexTTS or LongCat. The reference is stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
+- **My voices:** record or import 5 to 15 seconds of your own voice and it can read anything you type, with VoxCPM2, IndexTTS or LongCat. A voice can keep one more recording for each way of speaking (explaining, chatting, storytelling, Chinese–English mix, openings), and Speak uses the one you pick. Adding a recording warns you about room noise or an ending cut mid-word. References are stored on your Mac in `~/.thundertalk/voices`. Please only clone voices you have the right to use.
 
 The speech engines are one-time downloads. After that, file transcription and speech generation work offline. Optional AI notes use your chosen provider; web links and cloud providers require a connection.
 
@@ -220,25 +88,30 @@ Use genre, mood and instruments for style prompts; Compose warns on real artist 
 
 **Dictation**
 
-- One global hotkey that works in any app. The default is Right ⌘; choose Toggle (press to start, press to stop) or Hold in Settings, and change the key or combination there too.
-- **Live Preview:** read provisional text in the floating recording bar while you speak. **Settings ▸ Live Preview** is on by default. Words can change as you continue; stopping triggers full-clip recognition for the final pasted text. Repeating preview windows are discarded; a conservative merge can recover Latin terms where a clean preview aligns with a Chinese span in the final text. Preview is hidden in Direct translation mode, and may pause or stop for a recording if the model cannot keep up.
-- Several speech models: Qwen3-ASR 0.6B and 1.7B, Fun-ASR-Nano, SenseVoice-Small, NVIDIA Parakeet-TDT, and MOSS-Transcribe-Diarize. The app reads your hardware and recommends one.
-- Chinese, English and Chinese-English mixed in one sentence. The interface itself is available in English and 中文.
-- Hotwords: teach it product names, acronyms and people it keeps getting wrong (Qwen3-ASR models).
-- Inverse text normalisation: spoken numbers become digits, in English and Chinese ("twenty five" becomes 25, "三百五十二" becomes 352).
-- Optional translation into 100+ languages with SeamlessM4T v2, in **Direct** mode (paste the translation after you stop) or **Review** mode (transcribe first, then choose Replace or Keep original).
-- A searchable history, stored as a plain file in `~/.thundertalk`.
-- **Recent recordings:** on by default; keeps the last 20 dictations as 16 kHz mono WAV plus recognition metadata in `~/.thundertalk/recordings/`, stored only on this Mac. Switch off **Settings ▸ Keep recent recordings** to stop saving new audio (existing recordings remain). These files are never uploaded.
-- **AI Proofread:** use your existing logged-in Codex, Claude Code, Gemini, Grok or Cursor CLI, an already installed Ollama / LM Studio model, Cherry Studio's API server, or a custom OpenAI-compatible API. No AI model is bundled or downloaded. Open **AI Proofread** in the sidebar: providers are detected automatically, each shows whether it is ready, needs a login or isn't running, and models are listed from the provider (a test call checks models that can't be listed). Search models by name or exact ID; Cursor effort variants are grouped, and supported reasoning levels are saved per provider with low effort as the default. Proofreading fixes misrecognized words — product and model names, jargon, homophones — using the sentence's context, your hotwords and the model's knowledge. It makes minimal edits: it never translates, switches between Chinese and English, reformats or answers. It applies to plain dictation, not Direct or Review translation. Raw text is pasted immediately; the proofread text replaces it only if you haven't typed, clicked, scrolled or switched apps. Transient failures retry once after five seconds; failures show a specific reason and leave raw text untouched. After replacement, the overlay shows your full text at full width with the old words struck out beside their corrections. It advances in three-line pages (pages without changes are skipped) with a page counter, staying visible for 3–6 seconds per page (up to 25 seconds of reading time); the last page counts any remaining changes. Hover to pause, click to dismiss, or start recording to replace the diff immediately. Terminal results are skipped because terminal input has no standard paste undo.
+- One global hotkey in any app (default Right ⌘). **Toggle** (press to start, press to stop) or **Hold to Record** (hold while you speak; quick taps and key combinations are ignored). Recording starts the moment you press.
+- **The text arrives within a second, however long you speak:** finished stretches are recognized while you keep talking.
+- **Live Preview** shows provisional words in the recording bar as you speak. **Esc** cancels a dictation and nothing is pasted. The bar sits at the top or bottom of the screen, or wherever you drag it, on the display you are typing on.
+- Chinese, English, and both in one sentence. Spoken numbers become digits ("twenty five" → 25, "三百五十二" → 352).
+- **Names come out right:** ThunderTalk ASR is trained on product names and technical terms. Add your own **hotwords** (they change only the places that sound like them), and names already in the text box you dictate into are spelled the way they are written there.
+- No sentences invented from background noise, and quiet voices are kept. A dictation is never lost: long takes are recognized in pieces at your pauses, and every take is saved to **History**.
+- **Recent recordings:** on by default; the last 20 dictations are kept as small audio files with their recognition details in `~/.thundertalk/recordings/`, on this Mac only (**Settings ▸ Keep recent recordings**).
+- Optional: remove fillers and restarts; **AI Proofread** with the AI you already use (Codex, Claude Code, Gemini, Grok or Cursor CLI, Ollama, LM Studio, Cherry Studio or any OpenAI-compatible API; nothing is bundled); translation into 100+ languages with SeamlessM4T v2; cloud engines with your own API key.
+
+**Speech models**
+
+- ThunderTalk ASR 0.6B (the default, tuned for names and dictation), Qwen3-ASR 0.6B and 1.7B, Fun-ASR-Nano, SenseVoice-Small, NVIDIA Parakeet-TDT, MOSS-Transcribe-Diarize (speaker labels) and Apple's built-in recognizer (nothing to download). The app reads your hardware and recommends one; `thundertalk eval` measures them on your own Mac. Details: [Supported models](#supported-models).
+
+**Studio:** transcribe files and links (YouTube, Bilibili and more), batch exports, subtitles, meeting notes, text to speech with cloned voices, and original songs. See [Studio](#studio).
+
+**For agents and scripts:** the `thundertalk` command line covers every Studio feature with JSON-lines output and batches; `ThunderTalk --mcp` is an MCP server for Claude Code, Codex, Cursor and other agents. See [Command line](#command-line).
 
 **Everyday details**
 
-- A guided first run: welcome, permissions, choose a model, try it.
-- Model downloads show real progress from the byte count, resume after an interrupted connection, and Cancel stops immediately.
-- An in-app updater: a small prompt appears when a release is published; one click downloads, swaps and relaunches.
+- A guided first run: welcome, permissions, choose a model, try it, and four things worth knowing.
+- Updates in one click, with a short note on what changed. Model downloads show real progress, resume after an interruption, and cancel at once.
 - Optional speaker mute while recording, so the microphone does not pick up your own audio.
-- A memory profile (Settings, Performance) that trades some KV-cache size and thread count for roughly 3 GB less RAM.
-- Studio voice models, MOSS speaker transcription and translation free their weights after three minutes idle. They reload on the next request; dictation and Live Preview keep sharing the resident dictation model. Temporary MLX buffers are cleared after jobs. Translation uses a disposable worker so PyTorch's retained heaps also exit when idle.
+- A memory profile (Settings, Performance) for roughly 3 GB less RAM. Studio models free their memory after three minutes idle; dictation keeps its model resident.
+- Signed with an Apple Developer ID and notarized by Apple; microphone and Accessibility permissions survive updates.
 
 **Privacy**
 
@@ -255,7 +128,7 @@ With Homebrew:
 brew install --cask realallensong/tap/thundertalk
 ```
 
-Or download the latest **ThunderTalk.app** from [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), move it to your Applications folder and open it. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
+Or download the disk image (`.dmg`) from the [website](https://realallensong.github.io/ThunderTalk/) or [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), open it, drag **ThunderTalk** into **Applications**, and open it from there. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
 
 ThunderTalk is signed with an Apple Developer ID and notarised by Apple, so it opens like any other downloaded app.
 
@@ -284,7 +157,9 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 "$TT" --cli translate --text 'Hello' --source-language eng --target cmn --out translated.txt
 "$TT" --cli compose --instrumental --style 'gentle piano, warm guitar' --length 10 --model turbo --planner off
 "$TT" --cli speak --text 'Hello 你好' --out hi.m4a --engine best
+"$TT" --cli speak --text-file script.txt --voice voxcpm2:lively-explainer-zh --polish --out voiceover.wav
 "$TT" --cli voices add reference.wav --name Demo --transcript 'The words spoken in this clip.'
+"$TT" --cli voices add chat.wav --to my:demo --scene chat --transcript 'What is said in the chat clip.'
 "$TT" --cli voices list
 "$TT" --cli voices remove my:demo
 "$TT" --cli history list --query meeting
@@ -299,7 +174,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 - **Transcribe:** files and anything `links.fetch_audio` supports (YouTube, Bilibili video/watch-later/list/b23.tv). Downloads emit byte progress; results include title/source URL. Temporary media is removed on success/error/interruption. `--start`, `--end`, `--max-seconds` limit inference after downloading (require ffmpeg); timestamps are relative to the selected clip. `--engine auto` uses dictation then Apple; `best` chooses the most accurate downloaded ASR. `--speakers` uses MOSS; `--timestamps` adds TXT times; `--speaker-name S01=Name` renames speakers. Formats: txt/md/srt/vtt/json; `--notes` adds notes per input. History writes require `--save-history`.
 - **Notes/translation/burn:** notes use the ready AI Proofread provider/model or `--provider`/`--model`; input may be media/URL or txt/json/md. Translation uses local SeamlessM4T, with a file/URL or `--text`/`--text-file`. Burn transcribes first when `--subtitles` is omitted; default is burn-in, `--soft` adds a subtitle track; ffmpeg is required.
 - **Compose:** `--song --lyrics` or `--lyrics-file` with section tags; `--sung-lyrics` takes a JSON line-override map. Options include style, length, BPM, language, takes, seed, turbo/xl, planner on/off, and output root (default `~/Music/ThunderTalk`). Planning-token/diffusion-step events, advisory lyric checks, and nonblocking artist `warning` fields are returned. `compose lyrics/check/another/repaint/list/show/export/delete` expose the remaining processing actions. The app's hardware/memory guards apply; a v3 app's dictation has priority.
-- **Libraries:** `voices add/list/rename/edit/remove`; saved voices work with `speak --voice my:ID --engine voxcpm2` or `indextts`. `history list/show/export/rename/edit/delete`. `models list/download/activate` covers ASR/TTS/translation/music and optional runtimes; downloads alone enable networking for weights. Activation updates defaults for the app's next start.
+- **Libraries:** `voices add/list/rename/edit/remove`; saved voices work with `speak --voice my:ID --engine voxcpm2`, `indextts` or `longcat`, and `--scene` picks one of a voice's ways of speaking. `history list/show/export/rename/edit/delete`. `models list/download/activate` covers ASR/TTS/translation/music and optional runtimes; downloads alone enable networking for weights. Activation updates defaults for the app's next start.
 - **Errors:** common `bad_args`, `not_found`, `no_model`, `no_speech`, `decode`, `permission_denied`, `cancelled`, `tts_missing`, `ffmpeg_missing`, `no_provider`, `bad_transcript`, `bad_reference`, `transcript_required`, `model_busy`, `batch_failed`. Link codes remain `login` (membership/preview), `private`, `geo`, `unavailable`, `blocked`, `network`, `playlist`, `live`, `no_audio`, `missing`, `unsupported`, `other`. Compose uses `music:memory`, `music:memory_low`, `music:stalled`, `music:load_failed`, `music:failed`, `worker_stopped`. See the reference for the complete table.
 - **MCP:** `ThunderTalk --mcp` runs a stdio MCP server inside the app, so Claude Code, Codex, Cursor and other agents can use it from any project: `claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`. Its 13 tools wrap every command, and `studio_command(command, arguments)` passes any other flag. Results are one line of compact JSON, which keeps token use low. Microphone recording, playback/preview, clipboard/dialog widgets and live queue editing remain GUI interactions; the [audit](docs/cli-v3.md#studio-capability-audit--工作室功能对照) gives their reasons and CLI data equivalents.
 
