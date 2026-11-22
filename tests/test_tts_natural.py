@@ -159,3 +159,74 @@ def test_when_no_take_reads_correctly_two_more_are_tried(takes):
     r = speech.SpeechEngine().synthesize("这是唯一的一句话。", "tk:a", language="chinese", seed=1,
                                          verifier=lambda audio, seg, lang: 0.3, params=tts.TtsParams(takes=4))
     assert r.segments[0].attempts == 6 and not r.segments[0].ok
+
+
+# ── voice check: takes that drifted from the voice are passed over ──
+@pytest.fixture
+def voiceprint(monkeypatch):
+    """Fake speaker model: a take's voiceprint is set by its pitch (150 Hz = the voice itself)."""
+    from thundertalk.core import speaker_check
+
+    def embed(audio, sr):
+        st = tts.median_semitones(audio, sr) or 0.0
+        drift = abs(st - 12 * np.log2(150 / 55.0)) / 12            # an octave away = unrelated voice
+        v = np.array([1.0 - drift, drift], dtype=np.float32)
+        return v / np.linalg.norm(v)
+
+    monkeypatch.setattr(speaker_check, "ensure", lambda *a, **k: True)
+    monkeypatch.setattr(speaker_check, "embed", embed)
+    monkeypatch.setattr(speech, "_reference_audio", lambda voice: (_voice(150.0), 24000))
+    monkeypatch.setattr(speech, "SIM_FLOOR", 0.9)
+    monkeypatch.setattr(speech, "SIM_WEIGHT", 2.0)
+    monkeypatch.setattr(speech, "SIM_SLACK", 0.01)
+
+
+class Drifts(Takes):
+    """Take 0 of every sentence reads best but is spoken a fifth higher: someone else."""
+    PITCH = (225.0, 150.0, 152.0, 148.0)
+
+
+def test_a_take_that_reads_best_but_sounds_like_someone_else_is_passed_over(monkeypatch, voiceprint):
+    b = Drifts()
+    monkeypatch.setattr(speech, "BACKEND_ORDER", ("tk",))
+    monkeypatch.setattr(speech, "_BACKENDS", {})
+    monkeypatch.setattr(speech, "_make", lambda bid: b)
+    calls = []
+    verifier = lambda audio, seg, lang: 0.0 if len(calls.append(1) or calls) % 4 == 1 else 0.03   # noqa: E731
+    r = speech.SpeechEngine().synthesize(TEXT, "tk:a", language="chinese", seed=1, verifier=verifier,
+                                         params=tts.TtsParams(takes=4))
+    assert all(s.similarity is not None and s.similarity > 0.95 for s in r.segments)
+    assert all(abs(s.pitch_st - 12 * np.log2(150 / 55.0)) < 0.6 for s in r.segments)
+    assert r.warnings == []
+
+
+def test_when_every_take_drifted_the_result_says_so(monkeypatch, voiceprint):
+    class AllDrift(Takes):
+        PITCH = (225.0, 230.0, 228.0, 226.0)
+    b = AllDrift()
+    monkeypatch.setattr(speech, "BACKEND_ORDER", ("tk",))
+    monkeypatch.setattr(speech, "_BACKENDS", {})
+    monkeypatch.setattr(speech, "_make", lambda bid: b)
+    r = speech.SpeechEngine().synthesize("这是唯一的一句话。", "tk:a", language="chinese", seed=1,
+                                         params=tts.TtsParams(takes=4))
+    assert any("may not sound like the chosen voice" in w for w in r.warnings)
+
+
+def test_offline_the_voice_check_is_skipped_and_said(monkeypatch, takes):
+    from thundertalk.core import speaker_check
+    monkeypatch.setattr(speaker_check, "ensure", lambda *a, **k: False)
+    monkeypatch.setattr(speech, "_reference_audio", lambda voice: (_voice(150.0), 24000))
+    r = speech.SpeechEngine().synthesize("这是唯一的一句话。", "tk:a", language="chinese", seed=1,
+                                         params=tts.TtsParams(takes=4))
+    assert r.segments[0].similarity is None and any("Voice check skipped" in w for w in r.warnings)
+
+
+def test_the_reference_is_the_shipped_clip_or_the_users_recording():
+    from thundertalk.core.tts_backends.presets import load_presets
+    c = load_presets()[0]
+    a, sr = speech._reference_audio(f"voxcpm2:{c.slug}")
+    assert sr == 24000 and len(a) > 24000
+    clip = _voice(140.0)
+    a, sr = speech._reference_audio(tts.ClonePrompt(clip, "words", "me"))
+    assert sr == 24000 and np.array_equal(a, clip)
+    assert speech._reference_audio("voxcpm2:no-such-voice") is None

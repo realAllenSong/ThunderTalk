@@ -609,6 +609,7 @@ class SegmentReport:
     error_rate: Optional[float] = None      # ASR read-back error of the chosen take
     cut_end: bool = False                   # the chosen take stops while still sounding
     pitch_st: Optional[float] = None        # median pitch of the chosen take (polished output only)
+    similarity: Optional[float] = None      # chosen take vs the voice's reference (polished output only)
 
 
 @dataclass
@@ -618,6 +619,8 @@ class SynthResult:
     language: str
     segments: list[SegmentReport] = field(default_factory=list)
     seconds_taken: float = 0.0
+    notes: list[str] = field(default_factory=list)      # about the whole clip, e.g. a check that was skipped
+    unlike_below: Optional[float] = None                 # similarity under which a piece is said not to sound right
 
     @property
     def duration(self) -> float:
@@ -628,7 +631,11 @@ class SynthResult:
         return ([f"“{s.text[:40]}…” needed {s.attempts} attempts and may sound off"
                  for s in self.segments if not s.ok]
                 + [f"“{s.text[:40]}…” ends abruptly: its last word may be cut short"
-                   for s in self.segments if s.ok and s.cut_end])
+                   for s in self.segments if s.ok and s.cut_end]
+                + [f"“{s.text[:40]}…” may not sound like the chosen voice (every take drifted)"
+                   for s in self.segments if self.unlike_below is not None and s.similarity is not None
+                   and s.similarity < self.unlike_below]
+                + list(self.notes))
 
 
 ProgressCB = Callable[[int, int, str], None]

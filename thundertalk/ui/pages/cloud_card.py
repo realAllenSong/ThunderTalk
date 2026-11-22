@@ -13,7 +13,7 @@ from __future__ import annotations
 from typing import Callable, Optional
 
 from PySide6.QtCore import QThread, QTimer, Signal
-from PySide6.QtWidgets import QComboBox, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QVBoxLayout, QWidget
+from PySide6.QtWidgets import QCheckBox, QComboBox, QHBoxLayout, QLabel, QLineEdit, QSizePolicy, QVBoxLayout, QWidget
 
 from thundertalk.core import cloud, cloud_usage
 from thundertalk.core.i18n import t
@@ -492,6 +492,14 @@ class CloudCard(theme.Card):
         self._note.setWordWrap(True)
         self._note.setStyleSheet(_MUTED)
         ly.addWidget(self._note)
+        # Studio is local by default: a key for dictation does not put that
+        # provider's voices among the Speak engines unless asked for here.
+        self._studio = QCheckBox(t("cloud.studio_voices"))
+        self._studio.setToolTip(t("cloud.studio_voices.tip"))
+        self._studio.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; background: transparent;")
+        self._studio.setChecked(settings.get("studio_cloud_voices") is True)
+        self._studio.toggled.connect(self._on_studio)
+        ly.addWidget(self._studio)
         self.rows: dict[str, ProviderRow] = {}
         for pid in cloud.PROVIDERS:
             ly.addWidget(theme.separator())
@@ -503,6 +511,10 @@ class CloudCard(theme.Card):
         self._timer = QTimer(self)
         self._timer.setInterval(int(cloud_usage.BILLING_TTL * 1000))
         self._timer.timeout.connect(self._tick)
+
+    def _on_studio(self, on: bool) -> None:
+        self._settings.set("studio_cloud_voices", bool(on))
+        self.changed.emit()
 
     def showEvent(self, ev) -> None:
         super().showEvent(ev)

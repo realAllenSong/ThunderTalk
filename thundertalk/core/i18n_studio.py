@@ -287,6 +287,9 @@ STUDIO: dict[str, dict[str, str]] = {
 
     # ── speak: voices ────────────────────────────────────────────────
     "studio.voices.builtin": {"en": "Built-in voices", "zh": "内置音色"},
+    "studio.voices.favorites": {"en": "Favourites", "zh": "收藏"},
+    "studio.voices.star": {"en": "Keep this voice in Favourites", "zh": "收藏这个音色"},
+    "studio.voices.unstar": {"en": "Remove from Favourites", "zh": "取消收藏"},
     "studio.voices.mine": {"en": "My voices", "zh": "我的声音"},
     "studio.voices.mine_sub": {"en": "cloned · {sec} s", "zh": "已克隆 · {sec} 秒"},
     "studio.voices.mine_hint": {

@@ -57,6 +57,15 @@ POLISH_TAKES = 4                 # takes per sentence in polished output
 # Cost per semitone two neighbouring sentences differ beyond half a semitone.
 # A three-semitone jump then weighs as much as a tenth of the sentence misheard.
 POLISH_PITCH_WEIGHT = 0.08
+# Speaker similarity of a take to the voice's reference (CAM++, core/speaker_check).
+# 288 takes of 6 voices (4 built in, 2 the user's own) on VoxCPM2, LongCat and IndexTTS,
+# 2026-11-22: a take vs its own voice 0.63–0.94 (median 0.87), vs the closest other
+# voice at most 0.40; no take was nearer another voice. Short sentences score lower
+# across the board, so takes are compared with the best take of their own sentence:
+# the four takes of one sentence differed by 0.03 (median) to 0.18 (most).
+SIM_FLOOR = 0.5              # below this a take sounds like someone else: as bad as a misread
+SIM_WEIGHT = 1.0             # 0.1 short of the sentence's best costs about a 1.3-semitone jump
+SIM_SLACK = 0.03             # ordinary take-to-take variation, free
 
 
 @dataclass
@@ -514,7 +523,8 @@ class SpeechEngine:
         return _Take(audio, pen, ratio, err, cut, dur_ok, misread)
 
     def _report(self, seg: str, lang: str, sr: int, t: Optional["_Take"], used: int, params: TtsParams,
-                state: dict, pitch: Optional[float] = None) -> tuple[np.ndarray, SegmentReport]:
+                state: dict, pitch: Optional[float] = None, sim: Optional[float] = None
+                ) -> tuple[np.ndarray, SegmentReport]:
         if t is None:
             audio = np.zeros(int(0.2 * sr), np.float32)
             return audio, SegmentReport(seg, expected_seconds(seg, lang), len(audio) / sr, used, False, None)
@@ -522,7 +532,7 @@ class SpeechEngine:
         ok = (floor <= t.ratio <= params.ratio_max
               and (state["off"] or t.err is None or t.err <= params.verify_max_err))
         return t.audio, SegmentReport(seg, expected_seconds(seg, lang), len(t.audio) / sr, used, ok, t.err,
-                                      bool(t.cut), pitch)
+                                      bool(t.cut), pitch, sim)
 
     @staticmethod
     def _note_miss(t: "_Take", state: dict, misses: list) -> None:
@@ -576,6 +586,27 @@ class SpeechEngine:
         takes.sort(key=lambda x: x.pen + (1.0 if x.misread else 0.0))
         return takes[:keep], k
 
+    @staticmethod
+    def _similarities(voice: VoiceSel, options: list[list["_Take"]], sr: int,
+                      ctx: dict) -> list[list[Optional[float]]]:
+        """Each take's speaker similarity to the voice's reference recording;
+        None throughout when there is no reference or no model (offline)."""
+        none = [[None] * len(takes) for takes in options]
+        ref = _reference_audio(voice)
+        if ref is None:
+            return none
+        from thundertalk.core import speaker_check
+        if not speaker_check.ensure():
+            ctx["speaker_check"] = "unavailable"
+            return none
+        try:
+            r = speaker_check.embed(*ref)
+            return [[speaker_check.similarity(speaker_check.embed(t.audio, sr), r) for t in takes]
+                    for takes in options]
+        except Exception:
+            ctx["speaker_check"] = "failed"
+            return none
+
     def _synthesize_polished(self, b: TtsBackend, text: str, voice: VoiceSel, lang: str, speed: float,
                              params: TtsParams, base_seed: int, progress: Optional[ProgressCB],
                              cancel: Optional[threading.Event], verifier: Optional[Verifier]
@@ -603,13 +634,15 @@ class SpeechEngine:
             if progress:
                 progress(idx + 1, len(plan), seg)
         pitches = [[median_semitones(t.audio, sr) for t in takes] for takes in options]
-        costs = [[t.pen + (1.0 if t.misread else 0.0) for t in takes] for takes in options]
+        sims = self._similarities(voice, options, sr, ctx)
+        costs = [[t.pen + (1.0 if t.misread else 0.0) + _similarity_cost(s, row) for t, s in zip(takes, row)]
+                 for takes, row in zip(options, sims)]
         # Across a paragraph break a change of register is natural: half the weight.
         weights = [POLISH_PITCH_WEIGHT * (0.5 if pause >= PAUSE_BREAK else 1.0) for _, pause in plan[:-1]]
         chosen = pick_takes(costs, pitches, weights)
         pieces, reports = [], []
-        for (seg, _), takes, k, n, pitch in zip(plan, options, chosen, used, pitches):
-            audio, rep = self._report(seg, lang, sr, takes[k], n, params, state, pitch[k])
+        for (seg, _), takes, k, n, pitch, row in zip(plan, options, chosen, used, pitches, sims):
+            audio, rep = self._report(seg, lang, sr, takes[k], n, params, state, pitch[k], row[k])
             pieces.append(audio)
             reports.append(rep)
         return pieces, [p for _, p in plan], reports, ctx
@@ -680,7 +713,33 @@ class SpeechEngine:
         if abs(speed - 1.0) >= 0.02 and not ctx.get("native_speed"):
             mix = time_stretch(mix, speed, sr)
         mix, _ = loudness.normalize(mix, sr)
-        return SynthResult(mix.astype(np.float32), sr, lang, reports, time.monotonic() - t0)
+        notes = (["Voice check skipped: the speaker model could not be fetched (offline?)"]
+                 if ctx.get("speaker_check") else [])
+        return SynthResult(mix.astype(np.float32), sr, lang, reports, time.monotonic() - t0, notes,
+                           SIM_FLOOR if any(r.similarity is not None for r in reports) else None)
+
+
+def _similarity_cost(sim: Optional[float], row: list[Optional[float]]) -> float:
+    """What a take's distance from the voice costs when choosing among a sentence's takes."""
+    if sim is None:
+        return 0.0
+    best = max(s for s in row if s is not None)
+    cost = SIM_WEIGHT * max(0.0, best - sim - SIM_SLACK)
+    return cost + (1.0 if sim < SIM_FLOOR else 0.0)
+
+
+def _reference_audio(voice: VoiceSel) -> Optional[tuple[np.ndarray, int]]:
+    """The recording a voice is cloned from: the user's own, or a built-in voice's shipped clip."""
+    from thundertalk.core.tts import SR as CLONE_SR
+    if isinstance(voice, ClonePrompt):
+        return np.asarray(voice.audio, dtype=np.float32).reshape(-1), CLONE_SR
+    from thundertalk.core.tts_backends.presets import load_presets
+    slug = voice.split(":", 1)[1] if ":" in voice else ""
+    clip = next((p for p in load_presets() if p.slug == slug), None)
+    if clip is None:
+        return None
+    from thundertalk.core import audio_io
+    return np.asarray(audio_io.decode_audio(str(clip.wav), CLONE_SR), dtype=np.float32), CLONE_SR
 
 
 _ENGINE: Optional[SpeechEngine] = None

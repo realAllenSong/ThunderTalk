@@ -14,6 +14,7 @@ from PySide6.QtCore import QPoint, QPointF, QRectF, QSignalBlocker, QSize, Qt, Q
 from PySide6.QtGui import (
     QAbstractTextDocumentLayout, QColor, QFontMetrics, QPainter, QPalette, QPen,
     QTextCursor, QTextDocument,
+    QPolygonF,
 )
 from PySide6.QtWidgets import (
     QAbstractButton,
@@ -985,7 +986,8 @@ class TranscriptView(QWidget):
 class VoiceChip(QAbstractButton):
     """A selectable voice: name on top, one-line description under it.
 
-    Optional zones on the right: a round ▶ that previews the voice
+    Optional zones on the right: a ☆ that keeps the voice among the
+    favourites (``starrable``), a round ▶ that previews the voice
     (``previewable``) and a ⋯ that opens per-voice actions (``has_menu``).
     In pick mode (``set_pick_mode``) a click ticks the chip instead of
     selecting the voice, for batch actions."""
@@ -993,14 +995,18 @@ class VoiceChip(QAbstractButton):
     preview = Signal()          # the round play button was clicked
     menu_requested = Signal()   # the ⋯ button was clicked
     pick_toggled = Signal(bool)  # pick mode: the chip was ticked / unticked
+    star_toggled = Signal(bool)  # the ☆ was clicked: now starred or not
 
     _PREVIEW_W = 30             # width of the play-button zone
     _MENU_W = 26                # width of the ⋯ zone
     _PICK_W = 26                # width of the checkbox zone on the left
+    _STAR_W = 24                # width of the ☆ zone
 
     def __init__(self, name: str, sub: str = "", *, dashed: bool = False, icon: str = "",
-                 previewable: bool = False, has_menu: bool = False) -> None:
+                 previewable: bool = False, has_menu: bool = False, starrable: bool = False,
+                 starred: bool = False) -> None:
         super().__init__()
+        self._starrable, self._starred = starrable, starred
         self._name, self._sub, self._dashed, self._icon = name, sub, dashed, icon
         self._hover = False
         self._previewable, self._playing = previewable, False
@@ -1025,6 +1031,7 @@ class VoiceChip(QAbstractButton):
         w = max(QFontMetrics(f1).horizontalAdvance(self._name),
                 QFontMetrics(f2).horizontalAdvance(self._sub) if self._sub else 0)
         extra = ((22 if self._icon else 0) + (self._PREVIEW_W if self._previewable else 0)
+                 + (self._STAR_W if self._starrable else 0)
                  + (self._MENU_W if self._has_menu else 0) + (self._PICK_W if self._pick_mode else 0))
         return QSize(int(w) + 36 + extra, 54 if self._sub else 42)
 
@@ -1036,6 +1043,15 @@ class VoiceChip(QAbstractButton):
 
     def is_playing(self) -> bool:
         return self._playing
+
+    # -- star -----------------------------------------------------------------
+    def is_starred(self) -> bool:
+        return self._starred
+
+    def set_starred(self, on: bool) -> None:
+        if on != self._starred:
+            self._starred = on
+            self.update()
 
     # -- pick mode ----------------------------------------------------------
     def set_pick_mode(self, on: bool) -> None:
@@ -1063,10 +1079,17 @@ class VoiceChip(QAbstractButton):
         right = self.width() - 4 - (self._PREVIEW_W if self._previewable else 0)
         return QRectF(right - self._MENU_W, (self.height() - 24) / 2, self._MENU_W, 24)
 
+    def _star_rect(self) -> QRectF:
+        right = self.width() - 4 - (self._PREVIEW_W if self._previewable else 0) - (
+            self._MENU_W if self._has_menu else 0)
+        return QRectF(right - self._STAR_W, (self.height() - 24) / 2, self._STAR_W, 24)
+
     def _zone(self, pos) -> str:
         x = pos.x()
         if self._previewable and x >= self.width() - self._PREVIEW_W - 6:
             return "preview"
+        if self._starrable and not self._pick_mode and self._star_rect().adjusted(-2, -8, 2, 8).contains(pos):
+            return "star"
         if self._has_menu and not self._pick_mode and self._menu_rect().adjusted(-2, -8, 2, 8).contains(pos):
             return "menu"
         return ""
@@ -1087,6 +1110,9 @@ class VoiceChip(QAbstractButton):
                 self.preview.emit()
             elif inside and zone == "menu" and self._zone(ev.position()) == "menu":
                 self.menu_requested.emit()
+            elif inside and zone == "star" and self._zone(ev.position()) == "star":
+                self.set_starred(not self._starred)
+                self.star_toggled.emit(self._starred)
             elif inside and zone == "pick":
                 self.set_picked(not self._picked)
             ev.accept()
@@ -1130,7 +1156,8 @@ class VoiceChip(QAbstractButton):
         if self._icon:
             paint_icon(p, self._icon, QRectF(x - 2, (self.height() - 14) / 2, 14, 14), theme.TEXT_SECONDARY, 2.0)
             x += 20.0
-        right = 8 + (self._PREVIEW_W if self._previewable else 0) + (self._MENU_W if self._has_menu else 0)
+        right = (8 + (self._PREVIEW_W if self._previewable else 0) + (self._MENU_W if self._has_menu else 0)
+                 + (self._STAR_W if self._starrable else 0))
         p.setPen(theme.qcolor(theme.TEXT_PRIMARY))
         p.setFont(theme.font(13, bold=True))
         if self._sub:
@@ -1147,6 +1174,18 @@ class VoiceChip(QAbstractButton):
             p.setBrush(theme.qcolor(theme.TEXT_SECONDARY))
             for k in (-5.0, 0.0, 5.0):
                 p.drawEllipse(QPointF(mr.center().x() + k, mr.center().y()), 1.6, 1.6)
+        if self._starrable and not self._pick_mode:
+            # Filled ink when kept; otherwise a faint outline, darker on hover.
+            sr = self._star_rect()
+            c, rad = sr.center(), 6.4
+            pts = [QPointF(c.x() + (rad if i % 2 == 0 else rad * 0.45) * math.cos(math.radians(-90 + i * 36)),
+                           c.y() + 0.4 + (rad if i % 2 == 0 else rad * 0.45) * math.sin(math.radians(-90 + i * 36)))
+                   for i in range(10)]
+            p.setPen(QPen(theme.qcolor(theme.INK if self._starred else
+                                       (theme.TEXT_SECONDARY if self._hover else theme.BORDER_STRONG)), 1.1,
+                          Qt.PenStyle.SolidLine, Qt.PenCapStyle.RoundCap, Qt.PenJoinStyle.RoundJoin))
+            p.setBrush(theme.qcolor(theme.INK) if self._starred else Qt.BrushStyle.NoBrush)
+            p.drawPolygon(QPolygonF(pts))
         if self._previewable:
             pr = self._preview_rect()
             p.setPen(QPen(theme.qcolor(theme.INK if self._playing else theme.BORDER_STRONG), 1))

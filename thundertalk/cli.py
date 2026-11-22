@@ -397,7 +397,9 @@ def resolve_voice(engine: str, voice: str, language: str, settings, mixed: bool 
     if engine == "auto":
         saved = settings.get("studio_voice") or ""
         try:
-            b = speech.backend(speech.backend_id_for(saved)) if saved and not saved.startswith("my:") else None
+            # The Speak page's voice, unless it is a cloud voice: auto never sends text off this Mac.
+            local = saved and not saved.startswith("my:") and saved.split(":", 1)[0] not in CLOUD_TTS
+            b = speech.backend(speech.backend_id_for(saved)) if local else None
         except ValueError:
             b = None
         v = next((v for v in b.voices() if v.id == saved), None) if b is not None else None

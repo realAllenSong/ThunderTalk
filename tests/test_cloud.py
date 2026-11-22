@@ -637,6 +637,20 @@ def test_cloud_card_never_shows_or_stores_key_in_settings(qapp, monkeypatch, tmp
     assert SECRET not in (tmp_path / "settings.json").read_text() if (tmp_path / "settings.json").exists() else True
 
 
+def test_cloud_voices_join_studio_only_when_switched_on(qapp, monkeypatch, tmp_path):
+    from thundertalk.core import settings as settings_mod
+    monkeypatch.setattr(settings_mod, "_PATH", tmp_path / "settings.json")
+    s = settings_mod.Settings()
+    from thundertalk.ui.pages.cloud_card import CloudCard
+    card = CloudCard(s)
+    changed = []
+    card.changed.connect(lambda: changed.append(1))
+    assert s.get("studio_cloud_voices") is False and not card._studio.isChecked()      # local by default
+    card._studio.setChecked(True)
+    assert s.get("studio_cloud_voices") is True and changed == [1]
+    assert CloudCard(settings_mod.Settings())._studio.isChecked()                     # remembered
+
+
 def test_models_page_hosts_cloud_card(qapp, monkeypatch, tmp_path):
     from thundertalk.core import settings as settings_mod
     monkeypatch.setattr(settings_mod, "_PATH", tmp_path / "settings.json")

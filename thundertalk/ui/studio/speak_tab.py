@@ -134,11 +134,19 @@ class SpeakTab(QWidget):
         vly = QVBoxLayout(vcard)
         vly.setContentsMargins(24, 20, 24, 20)
         vly.setSpacing(12)
+        self._cap_fav = _caption(t("studio.voices.favorites"))
+        vly.addWidget(self._cap_fav)
+        self._fav_host = QWidget()
+        self._fav_flow = FlowLayout(self._fav_host, 10, 10)
+        vly.addWidget(self._fav_host)
+        self._fav_rule = Rule()
+        vly.addWidget(self._fav_rule)
+        self._fav_chips: dict[str, VoiceChip] = {}
         erow2 = QHBoxLayout()
         erow2.setSpacing(12)
         self._cap_engine = _caption(t("studio.engine.pick"))
         erow2.addWidget(self._cap_engine)
-        self._engine_pick = SegmentedControl([(b.info.id, b.info.name) for b in speech.backends()],
+        self._engine_pick = SegmentedControl([(b.info.id, b.info.name) for b in self._backends()],
                                              self._initial_engine())
         self._engine_pick.changed.connect(self._on_engine)
         erow2.addWidget(self._engine_pick)
@@ -407,13 +415,17 @@ class SpeakTab(QWidget):
             old.deleteLater()
         self._engine_tags_layout.addWidget(language_tags(info.language_codes, clone=info.supports_clone))
         self._engine_tags_host.setToolTip(t(f"studio.engine.tag.{info.id}"))
+        favs = self._favorites()
         for v in b.voices():
-            chip = VoiceChip(v.name, _voice_tag(v, zh), previewable=has_preview(v.id))
+            chip = VoiceChip(v.name, _voice_tag(v, zh), previewable=has_preview(v.id), starrable=True,
+                             starred=v.id in favs)
             chip.setToolTip(v.blurb_zh if zh else v.blurb_en)
             chip.clicked.connect(lambda _=False, vid=v.id: self._select(vid))
             chip.preview.connect(lambda vid=v.id: self._toggle_preview(vid))
+            chip.star_toggled.connect(lambda on, vid=v.id: self._set_favorite(vid, on))
             self._builtin_flow.addWidget(chip)
             self._chips[v.id] = chip
+        self._rebuild_favorites()
         clone = b.info.supports_clone
         mine = self._lib.list() if clone else []
         for v in mine:
@@ -467,15 +479,17 @@ class SpeakTab(QWidget):
             self.toast.emit(t("studio.play_failed"), "warn")
             return
         self._preview_vid = vid
-        if vid in self._chips:
-            self._chips[vid].set_playing(True)
+        for chips in (self._chips, self._fav_chips):
+            if vid in chips:
+                chips[vid].set_playing(True)
         self._preview_timer.start()
 
     def _stop_preview(self) -> None:
         self._preview_timer.stop()
         self._preview.stop()
-        if self._preview_vid in self._chips:
-            self._chips[self._preview_vid].set_playing(False)
+        for chips in (self._chips, self._fav_chips):
+            if self._preview_vid in chips:
+                chips[self._preview_vid].set_playing(False)
         self._preview_vid = None
 
     def _on_preview_tick(self) -> None:
@@ -485,6 +499,52 @@ class SpeakTab(QWidget):
     def _mark_selected(self) -> None:
         for vid, chip in self._chips.items():
             chip.setChecked(vid == self._voice_id)
+        for vid, chip in self._fav_chips.items():
+            chip.setChecked(vid == self._voice_id)
+
+    # ── favourites ────────────────────────────────────────────────────
+    def _favorites(self) -> list[str]:
+        if getattr(self, "_favs", None) is None:
+            favs = self._pref("studio_favorites", []) or []
+            self._favs = [f for f in favs if isinstance(f, str)]
+        return list(self._favs)
+
+    def _set_favorite(self, vid: str, on: bool) -> None:
+        self._favs = [f for f in self._favorites() if f != vid] + ([vid] if on else [])
+        self._save_pref("studio_favorites", list(self._favs))
+        if vid in self._chips:
+            self._chips[vid].set_starred(on)
+        self._rebuild_favorites()
+
+    def _rebuild_favorites(self) -> None:
+        """Starred voices from any engine, one click away: picking one also picks its engine."""
+        self._clear_flow(self._fav_host, self._fav_flow)
+        self._fav_chips = {}
+        zh = i18n.LANG == "zh"
+        engines = {b.info.id: b for b in self._backends()}
+        for vid in self._favorites():
+            b = engines.get(vid.split(":", 1)[0])
+            v = next((x for x in b.voices() if x.id == vid), None) if b is not None else None
+            if v is None:
+                continue                       # an engine now hidden, or a system voice this Mac lacks
+            chip = VoiceChip(v.name, f"{_voice_tag(v, zh)} · {b.info.name}", previewable=has_preview(vid),
+                             starrable=True, starred=True)
+            chip.setToolTip(v.blurb_zh if zh else v.blurb_en)
+            chip.clicked.connect(lambda _=False, fid=vid: self._pick_favorite(fid))
+            chip.preview.connect(lambda fid=vid: self._toggle_preview(fid))
+            chip.star_toggled.connect(lambda on, fid=vid: self._set_favorite(fid, on))
+            chip.setChecked(vid == self._voice_id)
+            self._fav_flow.addWidget(chip)
+            self._fav_chips[vid] = chip
+        for w in (self._cap_fav, self._fav_host, self._fav_rule):
+            w.setVisible(bool(self._fav_chips))
+
+    def _pick_favorite(self, vid: str) -> None:
+        bid = vid.split(":", 1)[0]
+        if bid != self._engine_id:
+            self._engine_pick.set_current(bid)
+            self._on_engine(bid)
+        self._select(vid)
 
     def _select(self, vid: str) -> None:
         self._voice_id = vid
@@ -683,7 +743,7 @@ class SpeakTab(QWidget):
 
     def _initial_engine(self) -> str:
         saved = self._pref("studio_engine", "")
-        if saved in speech.BACKEND_ORDER or saved in {b.info.id for b in speech.backends()}:
+        if saved in speech.BACKEND_ORDER or saved in {b.info.id for b in self._backends()}:
             self._engine_id = saved
         elif self._voice_id.startswith(MY_PREFIX):
             self._engine_id = speech.DEFAULT_CLONE_BACKEND
@@ -694,9 +754,15 @@ class SpeakTab(QWidget):
                 self._engine_id = speech.BACKEND_ORDER[0]
         return self._engine_id
 
+    def _backends(self) -> list:
+        """Local engines; cloud ones only when the user asked for them in
+        Models ▸ Cloud APIs (Studio is local by default, whatever keys exist)."""
+        cloud_on = self._pref("studio_cloud_voices", False) is True
+        return [b for b in speech.backends() if cloud_on or b.info.id not in speech.cloud_ids()]
+
     def reload_engines(self) -> None:
-        """Cloud engines come and go with their API keys (Models ▸ Cloud APIs)."""
-        options = [(b.info.id, b.info.name) for b in speech.backends()]
+        """Cloud engines come and go with their API keys and the Studio switch (Models ▸ Cloud APIs)."""
+        options = [(b.info.id, b.info.name) for b in self._backends()]
         self._engine_pick.set_options(options)
         if self._engine_id not in {k for k, _ in options}:
             self._on_engine(speech.BACKEND_ORDER[0])

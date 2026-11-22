@@ -765,3 +765,14 @@ def test_polish_asks_for_four_takes_per_sentence(speak_spy):
     rc, events = invoke("--polish")
     assert rc == 0 and events[-1]["polish"] is True
     assert seen["params"].takes == speech.POLISH_TAKES and seen["verifier"] is not None
+
+
+
+def test_auto_never_reuses_a_cloud_voice_from_the_speak_page(monkeypatch):
+    from thundertalk.core import speech
+    from thundertalk.core.tts_backends import apple
+    settings = SimpleNamespace(get=lambda k: "openai:alloy" if k == "studio_voice" else None)
+    monkeypatch.setattr(speech, "backend", lambda bid: SimpleNamespace(
+        is_ready=lambda: True, voices=lambda: [SimpleNamespace(id="openai:alloy", language="english")]))
+    monkeypatch.setattr(apple, "best_voice", lambda lang: "apple:local")
+    assert cli.resolve_voice("auto", "", "english", settings) == "apple:local"

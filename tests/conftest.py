@@ -46,6 +46,10 @@ def _no_real_keys_language_or_network(monkeypatch, tmp_path, request):
     from thundertalk.core import cloud, i18n, memory_policy
     if request.module.__name__.rsplit(".", 1)[-1] != "test_memory_policy":      # that file tests the gauge itself
         monkeypatch.setattr(memory_policy, "free_percent", lambda: 90)
+    # The speaker model behind polished speech is fetched with curl, which the
+    # urlopen guard below cannot see: in tests it is simply not there.
+    from thundertalk.core import speaker_check
+    monkeypatch.setattr(speaker_check, "ensure", lambda *a, **k: False)
     monkeypatch.setenv("THUNDERTALK_KEYCHAIN_SERVICE", "ThunderTalk Cloud TEST")
     monkeypatch.setenv("THUNDERTALK_CLOUD_USAGE", str(tmp_path / "cloud_usage.json"))
     for name in ("OPENAI_ADMIN_KEY", "THUNDERTALK_OPENAI_ADMIN_KEY"):

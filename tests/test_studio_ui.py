@@ -1405,3 +1405,34 @@ def test_the_dialog_for_another_way_of_speaking_opens_and_saves_to_that_voice(qa
     d._do_save()
     assert d.scene_saved == "chat" and lib.get(v.id).scenes == ("explain", "chat")
     assert len(lib.list()) == 1                                    # no new voice was made
+
+
+
+# ── favourites and the local-only engine list ────────────────────────────
+
+def test_starring_a_voice_puts_it_in_favourites_and_it_picks_its_engine(speak):
+    pick_engine(speak, "longcat")
+    vid = next(v for v in speak._chips if v.startswith("longcat:"))
+    assert speak._cap_fav.isHidden()
+    speak._chips[vid].set_starred(True)
+    speak._chips[vid].star_toggled.emit(True)
+    assert list(speak._fav_chips) == [vid] and not speak._cap_fav.isHidden()
+    pick_engine(speak, "voxcpm2")
+    assert vid in speak._fav_chips and speak._fav_chips[vid].is_starred()           # still there on another engine
+    speak._fav_chips[vid].click()
+    assert speak._engine_id == "longcat" and speak._voice_id == vid
+    assert speak._chips[vid].is_starred() and speak._fav_chips[vid].isChecked()
+    speak._fav_chips[vid].star_toggled.emit(False)                                    # unstar from the row itself
+    assert speak._fav_chips == {} and speak._cap_fav.isHidden() and not speak._chips[vid].is_starred()
+
+
+def test_cloud_engines_stay_out_of_studio_until_asked_for(speak, monkeypatch):
+    from thundertalk.core import speech
+    monkeypatch.setattr(speech, "backends", lambda: [speech.backend("voxcpm2"), speech.backend("kokoro"),
+                                                      SimpleNamespace(info=SimpleNamespace(id="openai", name="OpenAI"))])
+    monkeypatch.setattr(speech, "cloud_ids", lambda: ("openai",))
+    prefs = {}
+    monkeypatch.setattr(speak, "_pref", lambda k, d: prefs.get(k, d))
+    assert [b.info.id for b in speak._backends()] == ["voxcpm2", "kokoro"]
+    prefs["studio_cloud_voices"] = True
+    assert [b.info.id for b in speak._backends()] == ["voxcpm2", "kokoro", "openai"]
