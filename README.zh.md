@@ -449,7 +449,7 @@ ThunderTalk 对个人、学校、非营利组织，以及员工少于 250 人且
 
 ## 许可证
 
-- **App 代码：**[GNU Affero 通用公共许可证 v3.0](LICENSE)。可以自由使用、研究、修改和分享。如果你分发 ThunderTalk 或修改后的版本，或把它作为网络服务提供给他人，必须同样以 AGPL-3.0 公开全部源代码，保留版权和许可声明，并注明 ThunderTalk。
+- **App 代码：**[GNU Affero 通用公共许可证 v3.0](LICENSE)。可以自由使用、研究、修改和分享。如果你分发 ThunderTalk 或修改后的版本，或把它作为网络服务提供给他人，必须同样以 AGPL-3.0 公开全部源代码，保留版权和许可声明，并在产品的关于页和文档里保留“Based on ThunderTalk by realAllenSong”的署名（[NOTICE](NOTICE)，依据许可证第 7(b) 条）。
 - **代码的商业授权：**如果要把 ThunderTalk 集成到闭源产品或服务中，或不想受 AGPL 条件约束，请写信到 song@entropinia.com。授权可附带技术支持。
 - **早期版本：**v1.18.0 及之前的版本以 MIT 协议发布，仍按 MIT 协议使用。
 - **贡献：**提交 Pull Request 即表示你同意你的贡献可以按 AGPL-3.0 和 ThunderTalk 的商业授权分发。
