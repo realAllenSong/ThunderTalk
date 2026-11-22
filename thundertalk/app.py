@@ -423,6 +423,42 @@ class Pipeline(QObject):
         return self.translator
 
 
+def _start_service(settings, pipe) -> None:
+    import argparse
+    from thundertalk import cli, service
+
+    def dictation_engine(model_id: str, language: str):
+        """The dictation engine, when a job asks for the model it holds and its
+        language: no second copy, nothing to load. Never re-configured for a job."""
+        asr = pipe.asr
+        if not asr.is_loaded or model_id != settings.active_model_id:
+            return None
+        if language not in ("", "auto", None, getattr(asr, "_language_code", "auto")):
+            return None
+        return asr
+
+    def runner(job, out):
+        cli.JOB.cancel = job.cancel
+        cli.JOB.asr = dictation_engine
+        cli.JOB.readback = lambda: pipe.asr if pipe.asr.is_loaded else None
+        cli.JOB.keep_models = True            # Speak's engine and its idle release stay in charge
+        try:
+            cli.execute(argparse.Namespace(**job.args), out, in_app=True)
+        finally:
+            for name in ("cancel", "asr", "readback", "keep_models"):
+                setattr(cli.JOB, name, None)
+        return None
+
+    try:
+        svc = service.JobService(runner)
+        svc.start()
+    except Exception as exc:                  # noqa: BLE001 - the app works without it
+        print(f"[Service] not started: {exc}")
+        return
+    from PySide6.QtWidgets import QApplication
+    QApplication.instance().aboutToQuit.connect(svc.stop)
+
+
 def main() -> None:
     if len(sys.argv) > 1 and sys.argv[1] == "--cli":
         from thundertalk import cli
@@ -523,6 +559,11 @@ def main() -> None:
     # cloning references / generated speech back to catch mistakes ---
     window.studio_page.set_engine(pipe.asr)
     app.aboutToQuit.connect(window.studio_page.shutdown)
+
+    # --- Local service: agents and scripts (`thundertalk`, the MCP server) hand
+    # their heavy jobs to this process, which runs them one at a time with the
+    # models it already holds, dictation first (core of thundertalk/service.py).
+    _start_service(settings, pipe)
     app.aboutToQuit.connect(window.models_page.shutdown_downloads)
     app.aboutToQuit.connect(lambda: pipe.translator and pipe.translator.unload())
 

@@ -31,7 +31,7 @@ def run(monkeypatch, tmp_path):
     from thundertalk.core import settings, asr
     monkeypatch.setattr(asr.AsrEngine, "load_model", lambda *a, **kw: pytest.fail("Unexpected real model load"))
     monkeypatch.setattr(settings, "_PATH", tmp_path / ".thundertalk/settings.json")
-    monkeypatch.setattr(cli, "_readback_engine", lambda out: None)     # read-back has tests of its own below
+    monkeypatch.setattr(cli, "_readback_engine", lambda out: (None, False))   # read-back has tests of its own below
     def invoke(*args):
         out = Events()
         monkeypatch.setattr(cli, "_Out", lambda: out)
@@ -547,6 +547,7 @@ def test_compose_sung_dictionary_and_another_take(run, fake_music):
 
 def test_transcription_respects_shared_model_slot_and_headroom(run, fake_asr, monkeypatch, tmp_path):
     from thundertalk.core.priority import EXTRA_MODEL
+    monkeypatch.setattr(cli, "WAIT_S", 0.0)         # what is left once the wait is over (test_service: the wait)
     media = tmp_path / "a.wav"
     media.touch()
     assert EXTRA_MODEL.acquire(blocking=False)
@@ -621,6 +622,7 @@ def test_translate_text_obeys_shared_model_slot(run, monkeypatch, tmp_path):
     from thundertalk.core.priority import EXTRA_MODEL
     monkeypatch.setattr(models, "is_downloaded", lambda *a: True)
     monkeypatch.setattr(translate_process, "TranslationProcess", lambda: pytest.fail("Must not load while busy"))
+    monkeypatch.setattr(cli, "WAIT_S", 0.0)
     assert EXTRA_MODEL.acquire(blocking=False)
     try:
         rc, events = run("translate", "--text", "hi", "--source-language", "eng", "--target", "cmn", "--out", str(tmp_path / "x.txt"))
@@ -732,7 +734,7 @@ def speak_spy(run, monkeypatch, tmp_path):
         def unload(self):
             seen["unloaded"] = True
 
-    monkeypatch.setattr(cli, "_readback_engine", lambda out: Checker())
+    monkeypatch.setattr(cli, "_readback_engine", lambda out: (Checker(), True))
     monkeypatch.setattr(cli, "resolve_voice", lambda *a, **k: "voxcpm2:warm-female-zh")
     monkeypatch.setattr(speech, "backend_id_for", lambda v, *a: "voxcpm2")
 
