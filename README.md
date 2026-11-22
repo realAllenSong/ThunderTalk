@@ -32,12 +32,13 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
-## What's new in v1.18.0
+## What's new in v1.19.0
 
-- **Polish, for voice-overs:** each sentence generated four times, read back, checked against the voice, and the take in step with its neighbours kept (pitch jumps between sentences halved).
-- **Seven new Chinese voices** (25 built in), favourite voices, and pauses chosen by meaning.
-- **Your own voice in more than one way of speaking**, and every clip at one loudness.
-- **LongCat-AudioDiT**, a fourth local voice engine; Studio lists only local engines unless you turn cloud voices on.
+- **Agents and scripts share one queue.** While the app is open, the `thundertalk` command line and the MCP server hand their jobs to it: one at a time, with the models it has already loaded, and never while you dictate. With a four-file batch running, dictation took 0.37 s (median), against 0.34 s with nothing running.
+- **`thundertalk batch`** runs many jobs from one file. Jobs already done are skipped on a rerun, and one failure does not stop the rest.
+- **Licence:** the app code is now under the [AGPL-3.0](#license). Releases up to v1.18.0 remain MIT.
+
+Last release (v1.18.0): Polish for voice-overs, seven new Chinese voices, favourite voices, and LongCat-AudioDiT as a fourth local voice engine.
 
 Every release, with what was measured: [Changelog](CHANGELOG.md) · [GitHub Releases](https://github.com/realAllenSong/ThunderTalk/releases).
 
@@ -103,7 +104,7 @@ Use genre, mood and instruments for style prompts; Compose warns on real artist 
 
 **Studio:** transcribe files and links (YouTube, Bilibili and more), batch exports, subtitles, meeting notes, text to speech with cloned voices, and original songs. See [Studio](#studio).
 
-**For agents and scripts:** the `thundertalk` command line covers every Studio feature with JSON-lines output and batches; `ThunderTalk --mcp` is an MCP server for Claude Code, Codex, Cursor and other agents. See [Command line](#command-line).
+**For agents and scripts:** the `thundertalk` command line covers every Studio feature with JSON-lines output and batches; `ThunderTalk --mcp` is an MCP server for Claude Code, Codex, Cursor and other agents. While the app is open, their jobs wait in one queue and give way to your dictation. See [Command line](#command-line).
 
 **Everyday details**
 
@@ -168,6 +169,8 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 "$TT" --cli models download qwen3-asr-06b-int8
 "$TT" --cli models activate qwen3-asr-06b-int8
 "$TT" --cli status
+"$TT" --cli batch jobs.txt      # one job per line, e.g. transcribe a.m4a --out a.md
+"$TT" --cli jobs                # what the app has queued
 ```
 
 - **Protocol:** stdout is UTF-8 JSON lines: `stage`, `progress` (`value` 0…1, or `null` for unknown size), and `result` (`ok`, output fields or stable `code` + `error`). Logs go to stderr; exit 0 means success, exit 1 means failure. Batch events carry zero-based `item` and `input`; each item has a result and the final summary has `items`, `succeeded`, `failed`. Compose returns each `take` with `metadata` and `lyric_check`, then a summary with `takes`. Read until process exit; ignore unknown fields. `status` includes `cli_version: 3` and `capabilities`.
@@ -175,8 +178,10 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 - **Notes/translation/burn:** notes use the ready AI Proofread provider/model or `--provider`/`--model`; input may be media/URL or txt/json/md. Translation uses local SeamlessM4T, with a file/URL or `--text`/`--text-file`. Burn transcribes first when `--subtitles` is omitted; default is burn-in, `--soft` adds a subtitle track; ffmpeg is required.
 - **Compose:** `--song --lyrics` or `--lyrics-file` with section tags; `--sung-lyrics` takes a JSON line-override map. Options include style, length, BPM, language, takes, seed, turbo/xl, planner on/off, and output root (default `~/Music/ThunderTalk`). Planning-token/diffusion-step events, advisory lyric checks, and nonblocking artist `warning` fields are returned. `compose lyrics/check/another/repaint/list/show/export/delete` expose the remaining processing actions. The app's hardware/memory guards apply; a v3 app's dictation has priority.
 - **Libraries:** `voices add/list/rename/edit/remove`; saved voices work with `speak --voice my:ID --engine voxcpm2`, `indextts` or `longcat`, and `--scene` picks one of a voice's ways of speaking. `history list/show/export/rename/edit/delete`. `models list/download/activate` covers ASR/TTS/translation/music and optional runtimes; downloads alone enable networking for weights. Activation updates defaults for the app's next start.
+- **Queue:** while the app is open, `transcribe`, `speak`, `translate`, `notes`, `burn` and `compose` run inside it, one at a time and in order, through a socket only your user can open. A transcription with the dictation model uses the engine the app already holds. No job starts while you dictate or within 1.5 s after, and closing the command (Ctrl-C, a stopped agent) cancels its job. When memory or the shared model slot is taken, a job reports `waiting` and tries again for up to `THUNDERTALK_WAIT` seconds (default 900). Without the app, commands run on their own as before; `THUNDERTALK_LOCAL=1` always does.
+- **Batch:** `batch FILE` takes one job per line: a JSON argument array or a plain command line. Jobs whose `--out` already exists are skipped (`--redo` runs them), a failed job does not stop the rest (`--stop-on-error` does), and without the app each model is loaded once for the whole file. See [Batch and the job service](docs/cli-v3.md#batch-and-the-job-service--批处理与任务队列).
 - **Errors:** common `bad_args`, `not_found`, `no_model`, `no_speech`, `decode`, `permission_denied`, `cancelled`, `tts_missing`, `ffmpeg_missing`, `no_provider`, `bad_transcript`, `bad_reference`, `transcript_required`, `model_busy`, `batch_failed`. Link codes remain `login` (membership/preview), `private`, `geo`, `unavailable`, `blocked`, `network`, `playlist`, `live`, `no_audio`, `missing`, `unsupported`, `other`. Compose uses `music:memory`, `music:memory_low`, `music:stalled`, `music:load_failed`, `music:failed`, `worker_stopped`. See the reference for the complete table.
-- **MCP:** `ThunderTalk --mcp` runs a stdio MCP server inside the app, so Claude Code, Codex, Cursor and other agents can use it from any project: `claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`. Its 13 tools wrap every command, and `studio_command(command, arguments)` passes any other flag. Results are one line of compact JSON, which keeps token use low. Microphone recording, playback/preview, clipboard/dialog widgets and live queue editing remain GUI interactions; the [audit](docs/cli-v3.md#studio-capability-audit--工作室功能对照) gives their reasons and CLI data equivalents.
+- **MCP:** `ThunderTalk --mcp` runs a stdio MCP server inside the app, so Claude Code, Codex, Cursor and other agents can use it from any project: `claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`. Its 14 tools wrap every command (`run_batch` takes a list of jobs), and `studio_command(command, arguments)` passes any other flag. Results are one line of compact JSON, which keeps token use low. Microphone recording, playback/preview, clipboard/dialog widgets and live queue editing remain GUI interactions; the [audit](docs/cli-v3.md#studio-capability-audit--工作室功能对照) gives their reasons and CLI data equivalents.
 
 ## Supported models
 

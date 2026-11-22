@@ -441,6 +441,12 @@ EXTRA: dict[str, dict[str, str]] = {
               "documentary narration, in Studio ▸ Speak.",
         "zh": "冷静讲解、人文讲述、幽默讲堂、深夜电台、美食探店、纪录片女声等，在工作室 ▸ 朗读里。",
     },
+    "whatsnew.queue": {"en": "Agents now wait for your dictation.", "zh": "Agent 的任务现在会给听写让路。"},
+    "whatsnew.queue.detail": {
+        "en": "While ThunderTalk is open, jobs from Claude Code, Codex and scripts run one at a time inside the app, "
+              "with the models it already has, and never while you dictate.",
+        "zh": "ThunderTalk 开着时，Claude Code、Codex 和脚本交来的任务在应用里排队，一次一个，用已经加载的模型，你听写时不会开始。",
+    },
     "whatsnew.polish": {"en": "Polish, for voice-overs.", "zh": "精修模式，做配音用。"},
     "whatsnew.polish.detail": {
         "en": "Tick Polish in Speak: each sentence is made several times and the most natural take is kept, "

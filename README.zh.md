@@ -32,12 +32,13 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
-## v1.18.0 新功能
+## v1.19.0 新功能
 
-- **精修模式，做配音用：**每句生成四遍并回读、比对声纹，留下和前后句最协调的一遍（句间音高跳动减半）。
-- **新增七个中文音色**（共 25 个）、收藏音色、停顿按意思安排。
-- **自己的声音可以有几种说法**，每条配音音量一致。
-- **第四个本地语音引擎 LongCat-AudioDiT**；工作室默认只列本地引擎，云端语音需要手动打开。
+- **Agent 和脚本共用一个队列。**应用开着时，`thundertalk` 命令行和 MCP 服务把任务交给应用：一次一个，用已经加载的模型，你听写时不会开始。跑一个 4 个文件的批处理时，听写耗时 0.37 秒（中位数），什么都不跑时是 0.34 秒。
+- **`thundertalk batch`** 从一个文件里读多条任务。重跑时已完成的会跳过，一条失败不影响其余。
+- **许可证：**应用代码改用 [AGPL-3.0](#许可证)。v1.18.0 及更早的版本仍是 MIT。
+
+上一版（v1.18.0）：配音精修模式、七个新中文音色、收藏音色，以及第四个本地语音引擎 LongCat-AudioDiT。
 
 每个版本的完整内容和测量数据：[更新日志](CHANGELOG.zh.md) · [GitHub Releases](https://github.com/realAllenSong/ThunderTalk/releases)。
 
@@ -103,7 +104,7 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 **工作室：**转写文件和链接（YouTube、Bilibili 等）、批量导出、字幕、会议纪要、用克隆的声音朗读，以及原创歌曲。见[工作室](#工作室studio)。
 
-**给 Agent 和脚本用：**`thundertalk` 命令行覆盖工作室的全部功能，输出 JSON lines，支持批量；`ThunderTalk --mcp` 是给 Claude Code、Codex、Cursor 等 Agent 用的 MCP 服务。见[命令行](#命令行)。
+**给 Agent 和脚本用：**`thundertalk` 命令行覆盖工作室的全部功能，输出 JSON lines，支持批量；`ThunderTalk --mcp` 是给 Claude Code、Codex、Cursor 等 Agent 用的 MCP 服务。应用开着时，它们的任务在同一个队列里排队，并给你的听写让路。见[命令行](#命令行)。
 
 **日常细节**
 
@@ -165,6 +166,8 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 "$TT" --cli models download qwen3-asr-06b-int8
 "$TT" --cli models activate qwen3-asr-06b-int8
 "$TT" --cli status
+"$TT" --cli batch jobs.txt      # 每行一条任务，例如 transcribe a.m4a --out a.md
+"$TT" --cli jobs                # 应用里排着的任务
 ```
 
 - **协议：** stdout 仅输出 UTF-8 JSON 行：`stage`、`progress`（`value` 为 0…1，未知总量时为 `null`）、`result`（`ok`、输出字段或固定 `code` + `error`）。日志写 stderr；成功退出 0，失败退出 1。批处理事件含从 0 开始的 `item` 和原始 `input`，逐项返回结果，最后汇总 `items`、`succeeded`、`failed`。作曲逐版本返回 `take`、`metadata` 和 `lyric_check`，最后汇总 `takes`。应读到进程退出，并忽略未知字段。`status` 含 `cli_version: 3` 和能力列表。
@@ -172,8 +175,10 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 - **笔记、翻译、字幕：** 笔记沿用 AI 校对中已就绪的服务/模型，可用 `--provider`、`--model` 覆盖，输入支持媒体、网址或 txt/json/md。翻译使用本地 SeamlessM4T，支持媒体/网址和 `--text`/`--text-file`。字幕未传 `--subtitles` 时先转写；默认烧录，`--soft` 为可选字幕轨，需 ffmpeg。
 - **作曲：** `--song --lyrics` 或 `--lyrics-file` 支持段落标签，`--sung-lyrics` 读取 JSON 整行演唱覆盖。可设风格、时长、BPM、语言、版本数、种子、turbo/xl、规划开关和输出根目录（默认 `~/Music/ThunderTalk`）。返回规划 token/扩散步数进度、建议性歌词检查和不阻塞的艺人名 `warning`。`compose lyrics/check/another/repaint/list/show/export/delete` 提供其余操作，沿用内存保护；v3 应用听写优先。
 - **资源库：** `voices add/list/rename/edit/remove`；`speak --voice my:ID --engine voxcpm2` 或 `indextts` 可用保存的声音。`history list/show/export/rename/edit/delete`；`models list/download/activate` 覆盖识别、朗读、翻译、作曲及可选运行组件。只有显式下载会联网获取权重；激活保存为应用下次启动的默认配置。
+- **队列：** 应用开着时，`transcribe`、`speak`、`translate`、`notes`、`burn`、`compose` 在应用里按先后一次一个地运行，经由只有当前用户能打开的套接字。用听写模型转写时直接用应用已经加载的引擎。听写时及结束后 1.5 秒内不开始任务；关掉命令（Ctrl-C、停掉的 Agent）即取消它的任务。内存或共享模型槽被占时，任务报告 `waiting` 并重试，最长 `THUNDERTALK_WAIT` 秒（默认 900）。没开应用时照旧在本进程运行；`THUNDERTALK_LOCAL=1` 始终如此。
+- **批处理：** `batch FILE` 每行一条任务：JSON 参数数组或普通命令行。`--out` 已存在的任务会跳过（`--redo` 重跑），一条失败不影响其余（`--stop-on-error` 则停下），没开应用时每个模型整批只加载一次。见[批处理与任务队列](docs/cli-v3.md#batch-and-the-job-service--批处理与任务队列)。
 - **错误码：** 常见 `bad_args`、`not_found`、`no_model`、`no_speech`、`decode`、`permission_denied`、`cancelled`、`tts_missing`、`ffmpeg_missing`、`no_provider`、`bad_transcript`、`bad_reference`、`transcript_required`、`model_busy`、`batch_failed`。网址沿用 `login`（会员/预览）、`private`、`geo`、`unavailable`、`blocked`、`network`、`playlist`、`live`、`no_audio`、`missing`、`unsupported`、`other`。作曲使用 `music:memory`、`music:memory_low`、`music:stalled`、`music:load_failed`、`music:failed`、`worker_stopped`，完整错误表见参考。
-- **MCP：** `ThunderTalk --mcp` 在应用内启动 stdio MCP 服务，Claude Code、Codex、Cursor 等智能体在任何项目里都能用：`claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`。13 个工具覆盖所有命令，`studio_command(command, arguments)` 可传其余参数。结果是单行紧凑 JSON，省 token。麦克风录制、播放/预听、剪贴板/对话框控件及运行中队列编辑保留在 GUI，原因和命令行替代数据见[功能对照](docs/cli-v3.md#studio-capability-audit--工作室功能对照)。
+- **MCP：** `ThunderTalk --mcp` 在应用内启动 stdio MCP 服务，Claude Code、Codex、Cursor 等智能体在任何项目里都能用：`claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`。14 个工具覆盖所有命令（`run_batch` 一次交一批任务），`studio_command(command, arguments)` 可传其余参数。结果是单行紧凑 JSON，省 token。麦克风录制、播放/预听、剪贴板/对话框控件及运行中队列编辑保留在 GUI，原因和命令行替代数据见[功能对照](docs/cli-v3.md#studio-capability-audit--工作室功能对照)。
 
 ## 支持的模型
 

@@ -2,6 +2,13 @@
 
 What each ThunderTalk release added and fixed. The full notes, with measurements, are on each [GitHub release](https://github.com/realAllenSong/ThunderTalk/releases).
 
+## v1.19.0 (unreleased)
+
+- **Agents and scripts share one queue, and your dictation comes first.** While the app is open, `thundertalk transcribe/speak/translate/notes/burn/compose` (and so every MCP tool) hand their job to the app instead of loading models in a process of their own. Jobs run one at a time in the order they came, so ten agents calling at once cannot run the Mac out of memory. A transcription with the dictation model uses the engine the app already holds, so nothing is loaded twice. No job starts while you dictate or within 1.5 s after, and a long job still gives way between pieces. Closing the command (Ctrl-C, a stopped agent) cancels its job. Measured with a four-file batch running through the app: dictation 0.368 s median and 0.729 s at worst, against 0.337 s with nothing running; all four jobs used the one loaded engine, 1.36 GB for the whole process.
+- **Jobs wait for room instead of failing.** When memory or the shared model slot is taken, a job reports `waiting` and tries again for up to 15 minutes (`THUNDERTALK_WAIT`) before giving up with `memory` or `model_busy`.
+- **`thundertalk batch FILE`**: one job per line (a JSON argument array or a plain command line). Jobs whose `--out` already exists are skipped, so rerunning a stopped batch picks up where it left off; one failure does not stop the rest. Without the app, each model is loaded once for the whole file. `thundertalk jobs` shows the queue, `status` reports whether the app is taking jobs, and MCP gains `run_batch`.
+- **Licence:** the app code is now under the AGPL-3.0, with attribution required (see NOTICE) and commercial licences available. Releases up to v1.18.0 remain under MIT; the fine-tuned speech model keeps its own licence.
+
 ## v1.18.0 (2026-11-22)
 
 - **Seven new Chinese voices,** chosen by ear from 88 candidates in 22 styles: 冷静讲解 (a clean, restrained explainer), 人文讲述 (a warm woman sharing poetry and culture), 幽默讲堂 (a witty lecturer telling a case), 深夜电台 and 深夜低音 (two late-night radio hosts, one deeper), 美食探店 (an excited food vlogger) and 纪录片女声 (a woman's documentary narration). Like every built-in voice they are designed from a text description, not recorded from or modelled on a person's voice. 25 built-in voices now.
