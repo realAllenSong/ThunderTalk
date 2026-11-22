@@ -33,6 +33,7 @@ and `capabilities`. `--help` is available on every command.
 | `models list [--kind asr\|translation\|tts\|music]` | Catalog IDs, readiness, compatibility, download size. / 模型目录、可用状态、兼容性和大小。 |
 | `models download ID [--planner]` | Explicit online download, including optional runtime components; progress events. Planner is for music. / 显式联网下载，含所需运行组件；作曲可含规划模型。 |
 | `models activate ID` | Persist the ASR, Speak engine/voice or Compose default; already-running GUI picks settings up on restart. The single translation model is usable immediately by `translate`. / 保存默认模型；已打开的 GUI 重启后读取。翻译只有一个固定模型，CLI 可直接使用。 |
+| `serve [--port 8765 --host 127.0.0.1 --asr ID --tts kokoro]` | Local speech API until Ctrl-C: `WS /v1/realtime/transcribe` (streaming recognition, VAD segments, partial + final), `POST /v1/audio/speech` (streamed Kokoro speech), `GET /v1/audio/voices`, `POST /v1/audio/transcriptions`, `GET /health`. See below. / 本地语音接口：流式识别（WebSocket）、流式朗读、声音列表、文件转写。 |
 | `status` | App/CLI versions, capabilities, models, TTS engines, permissions, ffmpeg, cloud providers (key present, never the key). / 版本、能力、模型、权限、ffmpeg 及云端服务商。 |
 | `cloud list` | Providers, whether a key is set (`keychain`/`env`/`none`), base URL, models. / 服务商、是否有密钥、接口地址、模型。 |
 | `cloud set-key PROVIDER` | Reads the key from stdin (never argv) and stores it in the macOS Keychain. Refused over MCP. / 从标准输入读取密钥并存入钥匙串；MCP 不接受。 |
@@ -217,3 +218,27 @@ were removed. Register once for every project:
 MCP 由 `ThunderTalk --mcp` 启动，13 个工具都是 CLI 薄包装；`studio_command` 可传递所有
 命令参数，不经过 shell。结果为单行紧凑 JSON，状态和声音列表已精简以节省 token；
 旧的 :8765 / mlx-tts-server HTTP 工具已移除。
+
+## Speech API (`serve`) / 语音接口
+
+`thundertalk serve` (or `python -m thundertalk.api.server --port 8765` from a checkout) loads the most
+accurate downloaded recognition model (`--engine best`) and Kokoro, then serves on 127.0.0.1 (no
+authentication; `--host 0.0.0.0` only on a trusted network). Nothing is downloaded.
+Needs the `api` extra (`fastapi`, `uvicorn`, `websockets`).
+
+- `WS /v1/realtime/transcribe?language=en|zh|auto&silence_ms=350&model=ID` — on accept
+  `{"type":"ready","model":ID,"sample_rate":16000}`. Send binary PCM16 LE mono 16 kHz frames of any
+  length, or text `{"type":"commit"}` (close the open segment now) / `{"type":"reset"}` (drop it).
+  Receive `{"type":"partial","text":…,"seg":n}` about every 0.4 s while speech goes on (only when the
+  text changed) and `{"type":"final","text":…,"seg":n,"audio_ms":…,"decode_ms":…}` once Silero VAD
+  hears `silence_ms` of silence. Segments are numbered from 0; a segment with no words sends no final.
+  `{"type":"error","message":…}` reports a bad message, an unknown model/language or a failed decode.
+- `POST /v1/audio/speech` — OpenAI-style `{"model":"kokoro","input":…,"voice":"kokoro:0",
+  "response_format":"pcm"|"wav","speed":1.0}`; chunked audio, sentence by sentence, header
+  `X-Sample-Rate` (Kokoro 24000). OpenAI model/voice names map to the default engine and voice.
+- `GET /v1/audio/voices` — engines that are downloaded and their voices.
+
+`tools/realtime_bench.py` replays WAV files through the WebSocket in real time and times speech.
+
+`serve` 启动本地语音接口：流式识别（VAD 分段，逐句 partial/final）、OpenAI 兼容的流式朗读和声音列表；
+默认只监听本机，不下载任何模型。

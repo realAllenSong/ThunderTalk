@@ -50,6 +50,13 @@ hidden_imports += ["scipy._external.array_api_compat.numpy.fft", "scipy._externa
 hidden_imports += collect_submodules("yt_dlp")
 # `ThunderTalk --mcp`: the MCP SDK is imported lazily from thundertalk.mcp.server.
 hidden_imports += ["thundertalk.mcp.server"] + collect_submodules("mcp")
+# `ThunderTalk --cli serve`: the speech API, imported lazily. Bundled when the
+# build venv has the `api` extra (fastapi, websockets; uvicorn comes with mcp).
+import importlib.util as _ilu
+if all(_ilu.find_spec(_m) for _m in ("fastapi", "uvicorn", "websockets")):
+    hidden_imports += ["thundertalk.api.server", "thundertalk.api.realtime", "thundertalk.api.speech_stream"]
+    for _m in ("fastapi", "uvicorn", "websockets", "starlette"):
+        hidden_imports += collect_submodules(_m)
 hidden_imports += ["certifi"]
 hidden_imports += collect_submodules("pypinyin")
 
