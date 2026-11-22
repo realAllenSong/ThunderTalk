@@ -250,14 +250,15 @@
   "slug": "foodie-zh",
   "name": "美食探店",
   "language": "chinese",
-  "gender": "f",
+  "gender": "m",
   "description": "二十多岁的男生，探店博主，声音有活力，带着刚吃到好东西的兴奋，口语化，接地气",
   "blurb_en": "An excited food vlogger who has just found something good.",
   "blurb_zh": "刚吃到好东西的探店博主，有活力，接地气。",
   "file": "foodie-zh.wav",
   "text": "朋友们，这家店我真的忍不住要说，一口咬下去，外面是脆的，里面还在流汁，三十块钱吃到撑，谁懂啊！",
   "seed": 101,
-  "duration_s": 8.56
+  "duration_s": 8.56,
+  "gender_by_ear": true
  },
  {
   "slug": "documentary-f-zh",

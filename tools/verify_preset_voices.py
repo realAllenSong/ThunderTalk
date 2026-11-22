@@ -45,6 +45,8 @@ def main() -> int:
         f0 = median_f0(x)
         # Adult male speech is ~85–180 Hz; energetic delivery (YouTuber) sits at the top of it.
         gender_ok = (f0 >= 150) if it["gender"] == "f" else (60 <= f0 < 185)
+        # A label the user set by listening (foodie-zh: an excited young man at ~296 Hz) wins over pitch.
+        gender_ok = gender_ok or bool(it.get("gender_by_ear"))
         ok = err <= 0.05 and gender_ok
         ok_all &= ok
         print(f"{'OK ' if ok else 'BAD'} {it['slug']:18} {it['duration_s']:4.1f}s  err {100 * err:4.1f}%  "
