@@ -536,7 +536,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 
 钥匙串与随机密码文件 `~/.thundertalk/signing/keychain-password` 仅存于本机，严禁提交或分发。脚本保留现有钥匙串搜索列表，仅配置专用钥匙串的签名工具访问权，退出时删除临时私钥，并复用已有身份。请安全备份这两个文件，替换证书会使旧授权失效。构建脚本自动解锁此专用钥匙串，签名要求明确绑定 `com.thundertalk.app` 与证书；身份缺失时保留临时签名回退。`SIGN_IDENTITY=-` 可强制临时签名。
 
-`build_macos.py` 在钥匙串中有 **Developer ID Application** 证书时优先使用它：为每个内嵌二进制文件加上强化运行时与安全时间戳签名，并保留 Apple 基于团队的签名要求，证书续期后权限不会丢失。设置 `NOTARIZE=1` 时，会用 notarytool 钥匙串配置 `ThunderTalk-notary`（可用 `NOTARY_PROFILE` 覆盖；先用 `xcrun notarytool store-credentials` 创建一次）提交公证、附加公证票据并检查 Gatekeeper。`SIGN_IDENTITY` 可指定签名身份。不要把任何私钥交给用户。
+`build_macos.py` 在钥匙串中有 **Developer ID Application** 证书时优先使用它：为每个内嵌二进制文件加上强化运行时与安全时间戳签名，并保留 Apple 基于团队的签名要求，证书续期后权限不会丢失。设置 `NOTARIZE=1` 时，会用 notarytool 钥匙串配置 `ThunderTalk-notary`（可用 `NOTARY_PROFILE` 覆盖；先用 `xcrun notarytool store-credentials` 创建一次）提交公证、附加公证票据并检查 Gatekeeper。每个版本带同一个已公证应用的两种下载：`ThunderTalk-vX.Y.Z-macOS.zip` 给应用内更新和 Homebrew 用，`ThunderTalk-vX.Y.Z-macOS.dmg` 给官网下载用（`python -c "import build_macos; build_macos.make_dmg()"`：内含应用和“应用程序”快捷方式，已签名、公证并附加票据）。`SIGN_IDENTITY` 可指定签名身份。不要把任何私钥交给用户。
 
 线程回归工具 `tools/check_threaded_studio.py` 使用公开哔哩哔哩音频，经过 Studio 的真实链接工作线程路径，测试听写模型、模型选择器、MOSS 说话人标注，以及推理期间的另线程听写和 TTS 预加载。共享 Mac 上须通过 `lock.py gpu` 执行，并设置 `PYTHONPATH=$PWD`、`HF_HUB_OFFLINE=1` 与 `TRANSFORMERS_OFFLINE=1`。`--preload` 测试预加载，`--case picker` 单独验证另一模型，`--streams-only` 验证惰性 CPU 数组跨线程转换。内存保护可能回退到听写模型，输出会记录实际模型。`--streams-only --baseline-streams` 会故意重现旧版原生崩溃，仅用于诊断。
 

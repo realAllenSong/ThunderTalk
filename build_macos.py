@@ -134,6 +134,43 @@ def notarize(app_path: str = APP_PATH) -> None:
     raise RuntimeError("Gatekeeper did not accept the notarized app")
 
 
+def make_dmg(app_path: str = APP_PATH, version: str = "") -> str:
+    """The download for the website: a disk image holding the notarized app and
+    a shortcut to Applications, so people drag the app into place instead of
+    running it from Downloads (where the microphone and Accessibility grants
+    would belong to a copy they later move). Signed, notarized and stapled.
+    The zip stays for the in-app updater and Homebrew."""
+    import shutil
+    import tempfile
+    if not version:
+        sys.path.insert(0, str(Path(__file__).resolve().parent))
+        import thundertalk
+        version = thundertalk.__version__
+    identity = _choose_identity(signing_identities())
+    if not identity.startswith("Developer ID Application:"):
+        raise RuntimeError("The website download must be signed with a Developer ID Application identity")
+    out = f"dist/ThunderTalk-v{version}-macOS.dmg"
+    staging = Path(tempfile.mkdtemp(prefix="thundertalk-dmg-"))
+    try:
+        subprocess.run(["ditto", app_path, str(staging / "ThunderTalk.app")], check=True)
+        (staging / "Applications").symlink_to("/Applications")
+        if os.path.exists(out):
+            os.remove(out)
+        subprocess.run(["hdiutil", "create", "-volname", f"ThunderTalk {version}", "-srcfolder", str(staging),
+                        "-fs", "HFS+", "-format", "UDZO", "-imagekey", "zlib-level=9", out], check=True)
+    finally:
+        shutil.rmtree(staging, ignore_errors=True)
+    subprocess.run(["codesign", "--force", "--sign", identity, "--timestamp", out], check=True)
+    subprocess.run(["xcrun", "notarytool", "submit", out, "--keychain-profile", NOTARY_PROFILE, "--wait"], check=True)
+    subprocess.run(["xcrun", "stapler", "staple", out], check=True)
+    for attempt in range(6):
+        if subprocess.run(["spctl", "--assess", "--type", "open", "--context", "context:primary-signature",
+                           "-vv", out]).returncode == 0:
+            return out
+        time.sleep(10)
+    raise RuntimeError("Gatekeeper did not accept the disk image")
+
+
 def main() -> None:
     subprocess.run([sys.executable, "-m", "PyInstaller", "ThunderTalk.spec", "--noconfirm", "--clean"], check=True)
     identity = sign_app()
