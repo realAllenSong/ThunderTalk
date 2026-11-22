@@ -6,8 +6,9 @@ import time
 from pathlib import Path
 from typing import Optional
 
-from PySide6.QtCore import QTimer, Signal
+from PySide6.QtCore import Qt, QTimer, Signal
 from PySide6.QtWidgets import (
+    QCheckBox,
     QComboBox,
     QFileDialog,
     QHBoxLayout,
@@ -206,6 +207,13 @@ class SpeakTab(QWidget):
         opts.setSpacing(12)
         self._count = _muted(size=12)
         opts.addWidget(self._count, 1)
+        self._scene_lbl = _muted(t("studio.scene.label"))
+        opts.addWidget(self._scene_lbl)
+        self._scene = QComboBox()
+        theme.style_combo(self._scene)
+        self._scene.setToolTip(t("studio.scene.tip"))
+        self._scene.currentIndexChanged.connect(self._on_scene_changed)
+        opts.addWidget(self._scene)
         self._lang_lbl = _muted(t("studio.lang.label"))
         opts.addWidget(self._lang_lbl)
         self._lang = QComboBox()
@@ -223,6 +231,12 @@ class SpeakTab(QWidget):
         self._speed.setCurrentIndex(next((i for i, (_l, v) in enumerate(SPEEDS) if abs(v - saved_speed) < 1e-6), 2))
         self._speed.currentIndexChanged.connect(self._on_speed_changed)
         opts.addWidget(self._speed)
+        self._polish = QCheckBox(t("studio.polish.label"))
+        self._polish.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; font-size: 13px; background: transparent;")
+        self._polish.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._polish.setChecked(bool(self._pref("studio_polish", False)))
+        self._polish.toggled.connect(lambda on: self._save_pref("studio_polish", bool(on)))
+        opts.addWidget(self._polish)
         tly.addLayout(opts)
 
         act = QHBoxLayout()
@@ -288,6 +302,8 @@ class SpeakTab(QWidget):
 
     def refresh(self) -> None:
         self._rebuild_voices()
+        self._sync_polish()
+        self._sync_scenes()
         self._refresh()
         self._schedule_preload()
 
@@ -474,8 +490,29 @@ class SpeakTab(QWidget):
         self._voice_id = vid
         self._save_pref("studio_voice", vid)
         self._mark_selected()
+        self._sync_scenes()
         self._refresh()
         self._schedule_preload()
+
+    def _sync_scenes(self) -> None:
+        """The way-of-speaking picker: only for an own voice that has more than one recording."""
+        v = self._saved_voice()
+        scenes = v.scenes if v is not None else ()
+        want = self._pref("studio_scene", "auto") or "auto"
+        self._scene.blockSignals(True)
+        self._scene.clear()
+        for key in ("auto", "main", *scenes):
+            self._scene.addItem(t(f"studio.scene.{key}"), key)
+        idx = self._scene.findData(want)
+        self._scene.setCurrentIndex(idx if idx >= 0 else 0)
+        self._scene.blockSignals(False)
+        self._scene.setVisible(bool(scenes))
+        self._scene_lbl.setVisible(bool(scenes))
+
+    def _on_scene_changed(self, _i: int) -> None:
+        if self._scene.currentData():
+            self._save_pref("studio_scene", self._scene.currentData())
+            self._schedule_preload()
 
     # ── remembered choices ────────────────────────────────────────────
     def _pref(self, key: str, default):
@@ -528,9 +565,34 @@ class SpeakTab(QWidget):
         menu = QMenu(self)
         menu.addAction(t("studio.voices.rename"), lambda: self._rename_voice(voice_id))
         menu.addAction(t("studio.voices.edit_text"), lambda: self._edit_text(voice_id))
+        menu.addAction(t("studio.scene.add"), lambda: self._add_scene(voice_id))
+        v = self._lib.get(voice_id)
+        if v is not None and v.scenes:
+            drop = menu.addMenu(t("studio.scene.remove"))
+            for s in v.scenes:
+                drop.addAction(t(f"studio.scene.{s}"), lambda s=s: self._remove_scene(voice_id, s))
         menu.addSeparator()
         menu.addAction(t("studio.voices.delete"), lambda: self._delete_voices([voice_id]))
         menu.exec(chip.menu_anchor())
+
+    def _add_scene(self, voice_id: str) -> None:
+        v = self._lib.get(voice_id)
+        if v is None:
+            return
+        mic = self._settings.microphone if self._settings is not None else "auto"
+        mute = self._settings.get("mute_speakers") if self._settings is not None else True
+        dlg = CloneDialog(self.window(), self._asr, self._lib, mic, mute_speakers=mute, for_voice=v)
+        dlg.exec()
+        if dlg.scene_saved is not None:
+            self._sync_scenes()
+            self._schedule_preload()
+            self.toast.emit(t("studio.scene.saved").format(scene=t(f"studio.scene.{dlg.scene_saved}"),
+                                                           name=v.name), "success")
+
+    def _remove_scene(self, voice_id: str, scene: str) -> None:
+        self._lib.remove_scene(voice_id, scene)
+        self._sync_scenes()
+        self._schedule_preload()
 
     def _rename_voice(self, voice_id: str) -> None:
         v = self._lib.get(voice_id)
@@ -659,8 +721,16 @@ class SpeakTab(QWidget):
             self._save_pref("studio_voice", self._voice_id)
         self._rebuild_languages()
         self._rebuild_voices()
+        self._sync_polish()
         self._refresh()
         self._schedule_preload()
+
+    def _sync_polish(self) -> None:
+        """Polish chooses between takes: only engines whose takes differ have any."""
+        b = self._needed_backend()
+        varies = getattr(b, "stochastic", True) and b.info.id not in speech.cloud_ids()
+        self._polish.setEnabled(varies)
+        self._polish.setToolTip(t("studio.polish.tip" if varies else "studio.polish.na"))
 
     def _engine_ready(self) -> bool:
         from thundertalk.core.runtime import restart_needed
@@ -761,7 +831,8 @@ class SpeakTab(QWidget):
                     self.toast.emit(t("studio.voices.need_text"), "warn")
                 return None
             try:
-                return self._lib.prompt(v.id)
+                scene = (self._scene.currentData() or "auto") if v.scenes else "main"
+                return self._lib.prompt(v.id, scene or "auto", self._text.toPlainText())
             except (OSError, KeyError, ValueError):
                 if quiet:
                     return None
@@ -784,7 +855,8 @@ class SpeakTab(QWidget):
         self._player.shutdown()
         self._synth = SynthWorker(text, ref, self._lang.currentData() or "auto",
                                   float(self._speed.currentData() or 1.0), self._asr,
-                                  clone_backend=self._clone_backend())
+                                  clone_backend=self._clone_backend(),
+                                  polish=self._polish.isChecked() and self._polish.isEnabled())
         w = self._synth
         w.step.connect(self._on_step)
         w.done.connect(self._on_done)

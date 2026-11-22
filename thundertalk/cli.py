@@ -113,6 +113,14 @@ def _parser() -> argparse.ArgumentParser:
     sp.add_argument("--voice", default="")
     sp.add_argument("--language", default="auto", choices=("auto", "zh", "en"))
     sp.add_argument("--speed", type=float, default=1.0)
+    sp.add_argument("--scene", default="auto",
+                    help="for my:<id> voices: explain | chat | story | mixed | opener, the recording of that "
+                         "way of speaking; auto = the mixed one for Chinese-English text, else the main one")
+    sp.add_argument("--polish", action="store_true",
+                    help="voice-over quality: 4 takes per sentence, each read back, the one in step with its "
+                         "neighbours kept, pauses set by meaning (about 4x slower)")
+    sp.add_argument("--no-check", action="store_true",
+                    help="skip reading each piece back with a local recognizer (faster, unchecked)")
     vo = sub.add_parser("voices", help="list voices")
     vo.add_argument("--engine", choices=TTS_ENGINES, default="auto", help="auto = every engine")
     from thundertalk import cli_library, cli_studio
@@ -449,6 +457,7 @@ def cmd_speak(a, out: _Out) -> dict:
     clone_backend = None
     voice_id = a.voice
     if a.voice.startswith("my:"):
+        from thundertalk.core import voices
         from thundertalk.core.voices import VoiceLibrary
         lib = VoiceLibrary()
         saved = lib.get(a.voice[3:])
@@ -467,7 +476,9 @@ def cmd_speak(a, out: _Out) -> dict:
             raise CliError("tts_missing", f"Download {clone_backend} first")
         if not saved.ref_text.strip():
             raise CliError("transcript_required", "Add the reference transcript with voices edit --transcript")
-        voice = lib.prompt(saved.id)
+        if a.scene not in ("auto", *voices.SCENES):
+            raise CliError("bad_args", f"--scene must be auto or one of: {', '.join(voices.SCENES)}")
+        voice = lib.prompt(saved.id, a.scene, text)
         bid = clone_backend
     else:
         voice = resolve_voice(a.engine, a.voice, lang, _settings(), mixed=_mixed(text))
@@ -484,13 +495,21 @@ def cmd_speak(a, out: _Out) -> dict:
             out.stage("speak")
         out.progress(0.95 * i / max(1, n))
 
+    polish = bool(getattr(a, "polish", False))
+    checks = not getattr(a, "no_check", False) and bid not in ("apple", *CLOUD_TTS)
     with model_slot(out, heavy=bid not in ("apple", "kokoro", *CLOUD_TTS)):
+        asr = _readback_engine(out) if checks else None
         try:
-            r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend)
+            from thundertalk.core import tts_verify
+            params = tts.TtsParams(takes=speech.POLISH_TAKES) if polish else None
+            r = eng.synthesize(text, voice, language=lang, speed=a.speed, progress=progress, clone_backend=clone_backend,
+                               params=params, verifier=tts_verify.make_verifier(asr))
         except tts.TtsModelMissing as exc:
             raise CliError("tts_missing", str(exc)) from exc
         finally:
             eng.unload()
+            if asr is not None:
+                asr.unload()
     out.stage("write")
     dest.parent.mkdir(parents=True, exist_ok=True)
     try:
@@ -500,7 +519,31 @@ def cmd_speak(a, out: _Out) -> dict:
     out.progress(1.0)
     return {"output": str(dest), "engine": bid, "voice": voice_id, "language": lang,
             "duration": round(r.duration, 2), "seconds": round(time.monotonic() - t0, 2),
-            "sample_rate": r.sample_rate, "warnings": r.warnings}
+            "sample_rate": r.sample_rate, "warnings": r.warnings, "polish": polish,
+            "read_back": asr is not None}
+
+
+def _readback_engine(out):
+    """A local recognizer to read each generated piece back (the check the app
+    runs with its dictation model): the most accurate downloaded one that runs
+    on this Mac, without hotwords or number formatting. None when there is none
+    (the speech is then made unchecked, as before)."""
+    from thundertalk.core.asr import AsrEngine
+    from thundertalk.core.models import find, get_model_path, is_downloaded
+    for mid in ASR_QUALITY:
+        info = find(mid)
+        if info is None or not is_downloaded(mid) or info.backend in ("cloud", "mlx-moss"):
+            continue
+        out.stage("load_checker")
+        try:
+            engine = AsrEngine()
+            engine.set_builtin_terms(False)
+            engine.load_model(get_model_path(mid), info.family, info.backend)
+            engine._itn_enabled = False
+            return engine
+        except Exception:
+            return None
+    return None
 
 
 def _voice_row(b, v) -> dict:

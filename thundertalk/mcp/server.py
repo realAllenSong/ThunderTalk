@@ -147,13 +147,19 @@ def translate_local(output_path: str, target: str, input_path: str | None = None
 
 @_tool
 def speak_text(text: str, output_path: str, engine: str = "auto", voice: str = "",
-               speed: float = 1.0, language: str = "auto") -> str:
+               speed: float = 1.0, language: str = "auto", polish: bool = False, scene: str = "auto") -> str:
     """Text-to-speech / 配音 / 朗读 (zh, en, mixed) to .m4a .wav .mp3.
     engine: auto | best | apple | kokoro | voxcpm2 | indextts | longcat, or cloud openai | gemini |
     elevenlabs | custom only if the user asked. voice: id from
-    list_local_voices, or my:<id> for a cloned voice (voxcpm2/indextts/longcat). speed 0.5–2."""
+    list_local_voices, or my:<id> for a cloned voice (voxcpm2/indextts/longcat). speed 0.5–2.
+    polish=True for voice-overs: 4 takes per sentence, best kept, ~4x slower. [pause 0.8] in text sets a pause.
+    scene (my: voices): explain | chat | story | mixed | opener | auto."""
     args = ["speak", "--text", text, "--out", str(Path(output_path).expanduser()),
             "--engine", engine, "--speed", str(speed), "--language", language]
+    if polish:
+        args.append("--polish")
+    if scene and scene != "auto":
+        args += ["--scene", scene]
     if voice:
         args += ["--voice", voice]
     return _compact(_cli(*args))
@@ -181,11 +187,13 @@ def list_local_voices(engine: str = "auto", language: str = "") -> str:
 @_tool
 def manage_local_voice(action: str, input_path: str | None = None, name: str | None = None,
                        transcript: str | None = None, transcript_file: str | None = None,
-                       engine: str = "auto") -> str:
-    """Saved/cloned voices (声音克隆): add (3–20 s audio + transcript) | list | remove | rename | edit; ids are my:<id>."""
+                       engine: str = "auto", to: str | None = None, scene: str | None = None) -> str:
+    """Saved/cloned voices (声音克隆): add (3–20 s audio + transcript) | list | remove | rename | edit; ids are my:<id>.
+    add with to=my:<id> + scene (explain|chat|story|mixed|opener) keeps a recording of that way of speaking;
+    remove with scene drops just that recording."""
     args = ["voices", action, *([input_path] if input_path is not None else [])]
     return _compact(_cli(*_options(args, name=name, transcript=transcript,
-                                   transcript_file=transcript_file, engine=engine)))
+                                   transcript_file=transcript_file, engine=engine, to=to, scene=scene)))
 
 
 @_tool

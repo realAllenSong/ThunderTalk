@@ -4,8 +4,14 @@ A cloned voice is just a short clean reference recording plus its transcript;
 Qwen3-TTS (Base) imitates it at synthesis time. We keep the prepared 24 kHz
 reference on disk so the user records/imports once and reuses it forever:
 
-    ~/.thundertalk/voices/<id>/voice.json     {"name", "ref_text", "duration", "created"}
+    ~/.thundertalk/voices/<id>/voice.json     {"name", "ref_text", "duration", "created", "scenes"}
     ~/.thundertalk/voices/<id>/ref.wav        16-bit mono, 24 kHz, level-normalised
+    ~/.thundertalk/voices/<id>/scene-<s>.wav  optional: the same voice speaking in another way
+
+A clone copies the manner of its reference as much as its timbre: a reference
+read like an explainer makes a chat sound like an explainer too. So a voice
+can keep one more recording per way of speaking (``SCENES``), and the one that
+fits what is being said is used (Kaikou's "分场景录参考").
 """
 
 from __future__ import annotations
@@ -34,6 +40,9 @@ def voices_dir() -> Path:
     return d
 
 
+SCENES = ("explain", "chat", "story", "mixed", "opener")      # 讲解 聊天 讲故事 中英夹杂 开场
+
+
 @dataclass
 class SavedVoice:
     id: str
@@ -41,6 +50,7 @@ class SavedVoice:
     ref_text: str
     duration: float
     created: float
+    scenes: tuple[str, ...] = ()        # extra recordings this voice has, in SCENES order
 
     @property
     def wav_path(self) -> Path:
@@ -137,8 +147,10 @@ class VoiceLibrary:
             if d.is_dir() and meta.is_file() and (d / "ref.wav").is_file():
                 try:
                     j = json.loads(meta.read_text(encoding="utf-8"))
+                    have = j.get("scenes") or {}
                     out.append(SavedVoice(d.name, j["name"], j.get("ref_text", ""),
-                                          float(j.get("duration", 0.0)), float(j.get("created", 0.0))))
+                                          float(j.get("duration", 0.0)), float(j.get("created", 0.0)),
+                                          tuple(s for s in SCENES if s in have and (d / f"scene-{s}.wav").is_file())))
                 except (OSError, ValueError, KeyError):
                     continue
         return sorted(out, key=lambda v: v.created)
@@ -177,13 +189,52 @@ class VoiceLibrary:
         if d.is_dir() and d.parent == voices_dir():
             shutil.rmtree(d, ignore_errors=True)
 
-    def prompt(self, voice_id: str) -> ClonePrompt:
+    def add_scene(self, voice_id: str, scene: str, audio: np.ndarray, ref_text: str) -> None:
+        """Keep a recording of this voice speaking in ``scene``'s way (replaces an earlier one)."""
+        if scene not in SCENES:
+            raise ValueError(f"unknown scene: {scene}")
+        d = voices_dir() / voice_id
+        meta = d / "voice.json"
+        j = json.loads(meta.read_text(encoding="utf-8"))
+        audio_io.write_wav(str(d / f"scene-{scene}.wav"), audio, SR)
+        j.setdefault("scenes", {})[scene] = {"ref_text": ref_text.strip(), "duration": len(audio) / SR}
+        meta.write_text(json.dumps(j, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def remove_scene(self, voice_id: str, scene: str) -> None:
+        d = voices_dir() / voice_id
+        meta = d / "voice.json"
+        j = json.loads(meta.read_text(encoding="utf-8"))
+        (j.get("scenes") or {}).pop(scene, None)
+        (d / f"scene-{scene}.wav").unlink(missing_ok=True)
+        meta.write_text(json.dumps(j, ensure_ascii=False, indent=2), encoding="utf-8")
+
+    def prompt(self, voice_id: str, scene: Optional[str] = None, text: str = "") -> ClonePrompt:
+        """The recording to clone from: ``scene``'s when the voice has one; with
+        no scene (or "auto"), the mixed-language recording for text that mixes
+        Chinese and English, else the main one."""
         v = self.get(voice_id)
         if v is None:
             raise KeyError(voice_id)
-        x, sr = audio_io.read_wav(str(v.wav_path))
+        pick = scene_for(text, v.scenes) if scene in (None, "", "auto") else scene
+        path, ref_text = v.wav_path, v.ref_text
+        if pick in v.scenes:
+            path = voices_dir() / v.id / f"scene-{pick}.wav"
+            j = json.loads((voices_dir() / v.id / "voice.json").read_text(encoding="utf-8"))
+            ref_text = j["scenes"][pick].get("ref_text", "")
+        x, sr = audio_io.read_wav(str(path))
         if x.ndim > 1:
             x = x.mean(axis=1)
         if sr != SR:
             x = audio_io.resample(x, sr, SR)
-        return ClonePrompt(x.astype(np.float32), v.ref_text, v.name)
+        return ClonePrompt(x.astype(np.float32), ref_text, v.name)
+
+
+def scene_for(text: str, have: tuple[str, ...]) -> Optional[str]:
+    """The scene a text calls for, among the ones a voice has. Only the
+    mixed-language case can be told from the text alone; anything else is the
+    speaker's choice, made in Speak or with --scene."""
+    if "mixed" in have and re.search(r"[一-鿿]", text):
+        latin = re.findall(r"[A-Za-z][A-Za-z0-9.+#-]{1,}", text)
+        if len(latin) >= 2:
+            return "mixed"
+    return None

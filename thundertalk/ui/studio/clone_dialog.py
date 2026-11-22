@@ -9,6 +9,7 @@ import numpy as np
 from PySide6.QtCore import QRectF, Qt, QTimer, Signal
 from PySide6.QtGui import QColor, QPainter, QPainterPath, QPen
 from PySide6.QtWidgets import (
+    QComboBox,
     QDialog,
     QFileDialog,
     QHBoxLayout,
@@ -44,8 +45,11 @@ class CloneDialog(QDialog):
     capture_ready = Signal(object)
 
     def __init__(self, parent: Optional[QWidget], asr_engine, library: voices.VoiceLibrary,
-                 microphone: str = "auto", mute_speakers: bool = True) -> None:
+                 microphone: str = "auto", mute_speakers: bool = True,
+                 for_voice: Optional[voices.SavedVoice] = None) -> None:
         super().__init__(parent)
+        self._for = for_voice              # set: record another way of speaking for this voice
+        self.scene_saved: Optional[str] = None
         self._asr = asr_engine
         self._lib = library
         self._mic = None if microphone in ("", "auto") else microphone
@@ -73,11 +77,28 @@ class CloneDialog(QDialog):
         ly.setSpacing(14)
         outer.addLayout(ly)
 
-        title = QLabel(t("studio.clone.title"))
+        title = QLabel(t("studio.scene.title").format(name=for_voice.name) if for_voice else t("studio.clone.title"))
         title.setFont(theme.font_heading(17))
         title.setStyleSheet(f"color: {theme.TEXT_PRIMARY}; background: transparent;")
         ly.addWidget(title)
-        ly.addWidget(_muted(t("studio.clone.intro"), 13))
+        intro = _muted(t("studio.scene.intro") if for_voice else t("studio.clone.intro"), 13)
+        intro.setWordWrap(True)
+        ly.addWidget(intro)
+        self._scene = None
+        if for_voice is not None:
+            srow = QHBoxLayout()
+            srow.setSpacing(10)
+            srow.addWidget(_muted(t("studio.scene.label"), 13))
+            self._scene = QComboBox()
+            theme.style_combo(self._scene)
+            for s in voices.SCENES:
+                self._scene.addItem(t(f"studio.scene.{s}"), s)
+            free = next((i for i, s in enumerate(voices.SCENES) if s not in for_voice.scenes), 0)
+            self._scene.setCurrentIndex(free)
+            self._scene.currentIndexChanged.connect(self._on_scene)
+            srow.addWidget(self._scene)
+            srow.addStretch()
+            ly.addLayout(srow)
 
         # source row: record / import
         src = QHBoxLayout()
@@ -102,7 +123,10 @@ class CloneDialog(QDialog):
 
         sample = t("studio.clone.sample_zh") if i18n.LANG == "zh" else t("studio.clone.sample_en")
         self._sample = _muted(t("studio.clone.try_reading").format(text=sample), 12)
+        self._sample.setWordWrap(True)
         ly.addWidget(self._sample)
+        if self._scene is not None:
+            self._on_scene()
 
         # prepared clip
         self._clip = QWidget()
@@ -141,6 +165,11 @@ class CloneDialog(QDialog):
         self._name.setStyleSheet(theme.INPUT_QSS)
         self._name.textChanged.connect(self._validate)
         ly.addWidget(self._name)
+        if for_voice is not None:
+            self._name.blockSignals(True)          # Save does not exist yet: nothing to validate
+            self._name.setText(for_voice.name)
+            self._name.blockSignals(False)
+            self._name.setVisible(False)
 
         self._msg = QLabel()
         self._msg.setWordWrap(True)
@@ -155,7 +184,8 @@ class CloneDialog(QDialog):
         cancel.clicked.connect(self.reject)
         cancel.setShortcut("Esc")
         row.addWidget(cancel)
-        self._save = theme.make_button(t("studio.clone.save"), "primary", 36, font_px=13)
+        self._save = theme.make_button(t("studio.scene.save" if for_voice else "studio.clone.save"), "primary", 36,
+                                       font_px=13)
         self._save.clicked.connect(self._do_save)
         self._save.setEnabled(False)
         row.addWidget(self._save)
@@ -358,6 +388,10 @@ class CloneDialog(QDialog):
         self._validate()
 
     # ── save ──────────────────────────────────────────────────────────
+    def _on_scene(self, _i: int = 0) -> None:
+        self._sample.setText(t("studio.clone.try_reading").format(
+            text=t(f"studio.scene.line.{self._scene.currentData()}")))
+
     def _validate(self) -> None:
         ok = bool(self._check and self._check.ok and self._said.toPlainText().strip()
                   and self._name.text().strip())
@@ -371,6 +405,13 @@ class CloneDialog(QDialog):
         if not (self._check and self._check.ok):
             return
         try:
+            if self._for is not None:
+                scene = self._scene.currentData()
+                self._lib.add_scene(self._for.id, scene, self._check.audio, self._said.toPlainText().strip())
+                self.scene_saved = scene
+                self.saved = self._lib.get(self._for.id)
+                self.accept()
+                return
             self.saved = self._lib.add(self._name.text().strip(), self._check.audio,
                                        self._said.toPlainText().strip())
         except OSError as exc:

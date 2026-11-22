@@ -4,6 +4,7 @@ from __future__ import annotations
 from pathlib import Path
 from types import SimpleNamespace
 
+import numpy as np
 import pytest
 
 from thundertalk import cli
@@ -30,6 +31,7 @@ def run(monkeypatch, tmp_path):
     from thundertalk.core import settings, asr
     monkeypatch.setattr(asr.AsrEngine, "load_model", lambda *a, **kw: pytest.fail("Unexpected real model load"))
     monkeypatch.setattr(settings, "_PATH", tmp_path / ".thundertalk/settings.json")
+    monkeypatch.setattr(cli, "_readback_engine", lambda out: None)     # read-back has tests of its own below
     def invoke(*args):
         out = Events()
         monkeypatch.setattr(cli, "_Out", lambda: out)
@@ -210,6 +212,41 @@ def test_voice_lifecycle_and_clone_synthesis(run, monkeypatch, tmp_path):
     assert rc == 0
     rc, events = run("voices", "remove", vid)
     assert rc == 1 and events[-1]["code"] == "not_found"
+
+
+def test_a_saved_voice_takes_scene_recordings_and_speak_uses_them(run, monkeypatch, tmp_path):
+    from thundertalk.core import audio_io, speech
+    monkeypatch.setattr(audio_io, "decode_audio", lambda *a: 0.1 * np.sin(np.arange(144000) * 0.03))
+    media = tmp_path / "me.wav"
+    media.touch()
+    rc, events = run("voices", "add", str(media), "--name", "Me", "--transcript", "main words here")
+    vid = events[-1]["id"]
+    rc, events = run("voices", "add", str(media), "--to", vid, "--scene", "chat")
+    assert rc == 1 and events[-1]["code"] == "transcript_required"
+    rc, events = run("voices", "add", str(media), "--to", vid, "--scene", "singing", "--transcript", "x")
+    assert rc == 1 and events[-1]["code"] == "bad_args"
+    rc, events = run("voices", "add", str(media), "--to", vid, "--scene", "chat", "--transcript", "chat words here")
+    assert rc == 0 and events[-1]["scenes"] == ["chat"]
+    rc, events = run("voices", "list", "--engine", "apple")
+    assert list(next(v for v in events[-1]["my_voices"] if v["id"] == vid)["scenes"]) == ["chat"]
+    b = SimpleNamespace(info=SimpleNamespace(id="voxcpm2"), is_ready=lambda: True)
+    monkeypatch.setattr(speech, "backend", lambda *a: b)
+    heard = []
+
+    def synth(text, voice, **kw):
+        heard.append(voice.text)
+        return SimpleNamespace(audio=np.zeros(24000), sample_rate=24000, duration=1, warnings=[])
+
+    monkeypatch.setattr(speech, "get_engine", lambda: SimpleNamespace(synthesize=synth, unload=lambda: None))
+    for scene in ("chat", "auto", "story"):
+        rc, events = run("speak", "--text", "hello there", "--voice", vid, "--engine", "voxcpm2", "--scene", scene,
+                         "--out", str(tmp_path / "o.wav"))
+        assert rc == 0, events
+    assert heard == ["chat words here", "main words here", "main words here"]
+    rc, events = run("voices", "remove", vid, "--scene", "chat")
+    assert rc == 0 and events[-1]["scenes"] == []
+    from thundertalk.core import voices
+    assert voices.VoiceLibrary().get(vid.removeprefix("my:")) is not None        # the voice itself stays
 
 
 def test_history_list_show_export_rename_edit_delete(run, fake_asr, tmp_path):
@@ -675,3 +712,56 @@ def test_compose_unavailable_check_is_advisory(run, fake_music, monkeypatch):
     rc, events = run("compose", "--lyrics", "[Verse]\nHello world", "--style", "pop", "--length", "10")
     assert rc == 0, events
     assert events[-1]["takes"][0]["lyric_check"] == dict(status="unavailable", code="music:no_asr")
+
+
+# ── speak: read-back and polish ──────────────────────────────────────────
+
+@pytest.fixture
+def speak_spy(run, monkeypatch, tmp_path):
+    """``speak`` with a fake engine and a fake checker; returns (invoke, seen)."""
+    from thundertalk.core import speech
+    import numpy as np
+    seen: dict = {"unloaded": False}
+
+    class Checker:
+        is_loaded = True
+
+        def recognize(self, x, sr):
+            return SimpleNamespace(text="hello there my good friend")
+
+        def unload(self):
+            seen["unloaded"] = True
+
+    monkeypatch.setattr(cli, "_readback_engine", lambda out: Checker())
+    monkeypatch.setattr(cli, "resolve_voice", lambda *a, **k: "voxcpm2:warm-female-zh")
+    monkeypatch.setattr(speech, "backend_id_for", lambda v, *a: "voxcpm2")
+
+    def synth(text, voice, **kw):
+        seen.update(kw)
+        return SimpleNamespace(audio=np.zeros(24000, np.float32), sample_rate=24000, duration=1.0, warnings=[])
+
+    monkeypatch.setattr(speech, "get_engine", lambda: SimpleNamespace(synthesize=synth, unload=lambda: None))
+    invoke = lambda *extra: run("speak", "--text", "hello there my good friend", "--out", str(tmp_path / "o.wav"), *extra)  # noqa: E731
+    return invoke, seen
+
+
+def test_speak_reads_its_pieces_back_like_the_app_does(speak_spy):
+    invoke, seen = speak_spy
+    rc, events = invoke()
+    assert rc == 0 and events[-1]["read_back"] is True and events[-1]["polish"] is False
+    assert seen["verifier"](np.zeros(24000, np.float32), "hello there my good friend", "english") == 0.0
+    assert seen["params"] is None and seen["unloaded"]                 # the checker does not outlive the request
+
+
+def test_no_check_skips_the_recognizer(speak_spy):
+    invoke, seen = speak_spy
+    rc, events = invoke("--no-check")
+    assert rc == 0 and events[-1]["read_back"] is False and seen["verifier"] is None
+
+
+def test_polish_asks_for_four_takes_per_sentence(speak_spy):
+    from thundertalk.core import speech
+    invoke, seen = speak_spy
+    rc, events = invoke("--polish")
+    assert rc == 0 and events[-1]["polish"] is True
+    assert seen["params"].takes == speech.POLISH_TAKES and seen["verifier"] is not None

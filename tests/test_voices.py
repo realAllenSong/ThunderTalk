@@ -166,3 +166,41 @@ def test_every_warning_has_words_in_both_languages():
     for key in ("noisy", "cut_end", "clipping", "trimmed_long", "too_quiet", "short"):
         entry = i18n._STRINGS[f"studio.clone.warn.{key}"]
         assert entry["en"].strip() and entry["zh"].strip()
+
+
+# ── ways of speaking ─────────────────────────────────────────────────────
+
+def test_a_voice_keeps_one_recording_per_way_of_speaking(isolated_home):
+    lib = voices.VoiceLibrary()
+    v = lib.add("Me", _speechlike(6.0), "main words")
+    assert v.scenes == ()
+    lib.add_scene(v.id, "chat", _speechlike(5.0, hz=200.0), "chat words")
+    lib.add_scene(v.id, "mixed", _speechlike(4.0, hz=180.0), "mixed words")
+    lib.add_scene(v.id, "chat", _speechlike(5.5, hz=210.0), "chat words again")          # replaces
+    v = lib.get(v.id)
+    assert v.scenes == ("chat", "mixed")                                                  # in SCENES order
+    assert lib.prompt(v.id, "chat").text == "chat words again"
+    assert lib.prompt(v.id, "main").text == "main words"
+    assert lib.prompt(v.id, "story").text == "main words"                                 # not recorded: the main one
+    lib.remove_scene(v.id, "chat")
+    assert lib.get(v.id).scenes == ("mixed",)
+    with pytest.raises(ValueError):
+        lib.add_scene(v.id, "singing", _speechlike(4.0), "x")
+
+
+def test_auto_uses_the_mixed_recording_only_for_mixed_text(isolated_home):
+    lib = voices.VoiceLibrary()
+    v = lib.add("Me", _speechlike(6.0), "main words")
+    assert lib.prompt(v.id, "auto", "我用 Claude Code 写了一个工具，放到 GitHub 上").text == "main words"
+    lib.add_scene(v.id, "mixed", _speechlike(4.0), "mixed words")
+    assert lib.prompt(v.id, "auto", "我用 Claude Code 写了一个工具，放到 GitHub 上").text == "mixed words"
+    assert lib.prompt(v.id, "auto", "今天天气不错，我们出去走走。").text == "main words"
+    assert lib.prompt(v.id, "auto", "Hello there, plain English only.").text == "main words"
+    assert voices.scene_for("只提到一次 iPhone 而已", ("mixed",)) is None                  # one word is not a mix
+
+
+def test_every_scene_has_a_name_and_a_line_to_read_in_both_languages():
+    from thundertalk.core import i18n
+    for s in voices.SCENES:
+        for key in (f"studio.scene.{s}", f"studio.scene.line.{s}"):
+            assert i18n._STRINGS[key]["en"].strip() and i18n._STRINGS[key]["zh"].strip()

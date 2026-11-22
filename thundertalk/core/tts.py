@@ -113,6 +113,7 @@ class TtsParams:
     ratio_max: float = 1.9
     chunk_scale: float = 2.5       # multiplier on the per-piece length targets
     verify_max_err: float = 0.12   # ASR read-back error above which a piece is redone (a skipped clause is ~15–20 %)
+    takes: int = 1                 # > 1: polished output, one piece per sentence, best of this many takes each
 
 
 # A verifier reads a generated piece back and returns its error rate against
@@ -208,31 +209,97 @@ def _is_terminator(text: str, i: int) -> bool:
     return False
 
 
+# Pauses between sentences, chosen by what the next sentence does rather than by
+# the punctuation mark: the listened values from Kaikou's post-production notes
+# (github.com/syydaniel/kaikou, docs/06). Seconds of silence.
+PAUSE_ANSWER = 0.36      # a question, answered by the next sentence
+PAUSE_ON = 0.40          # the same thought carries on (所以, 而且, 比如, so, and…)
+PAUSE_PLAIN = 0.43
+PAUSE_EXCLAIM = 0.45
+PAUSE_TURN = 0.50        # a new layer of the same paragraph (但是, 其实, however…)
+PAUSE_PARA = 0.60        # a paragraph is done
+PAUSE_PUNCH = 0.70       # after a short line that closes a paragraph
+PAUSE_BREAK = 0.55       # pieces are never merged across a pause this long
+PAUSE_STEP = 0.04        # neighbouring pauses of one kind alternate by this much
+
+_TURN = re.compile(r"^(?:但是|可是|不过|然而|其实|结果|没想到|可惜|反过来|说到底|"
+                   r"(?:however|but|actually|still|yet|instead)\b)", re.I)
+_ON = re.compile(r"^(?:所以|因此|而且|并且|然后|另外|同时|于是|也就是说|比如|例如|换句话说|再说|"
+                 r"(?:so|and|also|then|that means|for example|for instance)\b)", re.I)
+_PAUSE_MARK = re.compile(r"\[\s*(?:pause|停顿)\s*[:：]?\s*(\d+(?:\.\d+)?)\s*(?:s|sec|秒)?\s*\]", re.I)
+_LEAD = "\"'“‘「『（(《 "
+
+
+class Pause(float):
+    """A pause the text asked for (``[pause 0.8]`` / ``[停顿 0.8]``): kept as
+    written, and never lost by merging the sentences on either side of it."""
+    forced = True
+
+
+def _short(s: str) -> bool:
+    han = len(_HAN.findall(s))
+    return han <= 10 if han else len(_WORD.findall(s)) <= 6
+
+
+def _sentences(chunk: str) -> list[str]:
+    out, buf, i = [], [], 0
+    while i < len(chunk):
+        buf.append(chunk[i])
+        if _is_terminator(chunk, i):
+            while i + 1 < len(chunk) and chunk[i + 1] in _CLOSERS + "。！？!?….":
+                i += 1
+                buf.append(chunk[i])
+            if "".join(buf).strip():
+                out.append("".join(buf).strip())
+            buf = []
+        i += 1
+    if "".join(buf).strip():
+        out.append("".join(buf).strip())
+    return out
+
+
+def _pause_between(s: str, nxt: Optional[str], first: bool) -> float:
+    if nxt is None:                                         # the paragraph ends here
+        return PAUSE_PUNCH if (_short(s) and not first) else PAUSE_PARA
+    end = s.rstrip(_CLOSERS + " ")[-1:]
+    head = nxt.lstrip(_LEAD)
+    if end in "？?":
+        return PAUSE_ANSWER
+    if _TURN.match(head):
+        return PAUSE_TURN
+    if _ON.match(head):
+        return PAUSE_ON
+    if end in "！!":
+        return PAUSE_EXCLAIM
+    return PAUSE_PLAIN
+
+
 def split_sentences(text: str) -> list[tuple[str, float]]:
-    """Split into (sentence, pause_after_seconds). Blank lines are longer pauses."""
+    """Split into (sentence, pause_after_seconds), the pause chosen by what the
+    next sentence does. Blank lines end a paragraph; ``[pause 0.8]`` or
+    ``[停顿 0.8]`` sets the pause at that point (and is not read out)."""
     out: list[tuple[str, float]] = []
     for para in re.split(r"\n\s*\n", text.replace("\r", "")):
         para = re.sub(r"[ \t]*\n[ \t]*", " ", para.strip())
         if not para:
             continue
-        buf: list[str] = []
-        i = 0
-        while i < len(para):
-            buf.append(para[i])
-            if _is_terminator(para, i):
-                while i + 1 < len(para) and para[i + 1] in _CLOSERS + "。！？!?….":
-                    i += 1
-                    buf.append(para[i])
-                s = "".join(buf).strip()
-                if s:
-                    out.append((s, 0.34))
-                buf = []
-            i += 1
-        tail = "".join(buf).strip()
-        if tail:
-            out.append((tail, 0.34))
-        if out:
-            out[-1] = (out[-1][0], 0.7)            # paragraph break
+        parts = _PAUSE_MARK.split(para)                     # text, seconds, text, seconds, …, text
+        sents: list[str] = []
+        forced: dict[int, float] = {}
+        for k in range(0, len(parts), 2):
+            sents += _sentences(parts[k])
+            if k + 1 < len(parts) and sents:
+                forced[len(sents) - 1] = min(float(parts[k + 1]), 5.0)
+        prev, run = None, 0
+        for k, s in enumerate(sents):
+            if k in forced:
+                out.append((s, Pause(forced[k])))
+                prev, run = None, 0
+                continue
+            p = _pause_between(s, sents[k + 1] if k + 1 < len(sents) else None, k == 0)
+            run = run + 1 if p == prev else 0
+            prev = p
+            out.append((s, p + (PAUSE_STEP if run % 2 else 0.0)))
     return out
 
 
@@ -266,10 +333,35 @@ def plan_segments(text: str, lang: str, scale: float = 1.0) -> list[tuple[str, f
     sents = split_sentences(text)
     merged: list[tuple[str, float]] = []
     for s, pause in sents:
-        if merged and len(merged[-1][0]) + len(s) <= target and merged[-1][1] < 0.5:
+        if (merged and len(merged[-1][0]) + len(s) <= target and merged[-1][1] < PAUSE_BREAK
+                and not getattr(merged[-1][1], "forced", False)):
             prev, _ = merged[-1]
             joiner = "" if cjk else " "
             merged[-1] = (prev + joiner + s, pause)
+        else:
+            merged.append((s, pause))
+    out: list[tuple[str, float]] = []
+    for s, pause in merged:
+        parts = _split_long(s, hard)
+        for k, part in enumerate(parts):
+            out.append((part, pause if k == len(parts) - 1 else 0.16))
+    return out
+
+
+def plan_sentences(text: str, lang: str, scale: float = 1.0) -> list[tuple[str, float]]:
+    """One piece per sentence, for polished output: every pause between
+    sentences is then the chosen one instead of whatever the model does inside
+    a longer piece. Fragments too short to speak well join the next sentence;
+    sentences too long for one piece are split at a clause."""
+    cjk = lang in ("chinese", "japanese", "korean")
+    hard = int({"chinese": 80, "japanese": 90, "korean": 120}.get(lang, 200) * scale)
+    shortest = 5 if cjk else 12
+    merged: list[tuple[str, float]] = []
+    for s, pause in split_sentences(text):
+        prev = merged[-1] if merged else None
+        if (prev and len(re.sub(r"\W", "", prev[0])) < shortest and prev[1] < PAUSE_BREAK
+                and not getattr(prev[1], "forced", False)):
+            merged[-1] = (prev[0] + ("" if cjk else " ") + s, pause)
         else:
             merged.append((s, pause))
     out: list[tuple[str, float]] = []
@@ -319,6 +411,66 @@ def ends_cut(x: np.ndarray, sr: int = SR) -> bool:
         return False
     r = 20 * np.log10(_frame_rms(np.asarray(x, dtype=np.float32)[: n * frame], frame) + 1e-9)
     return bool(float(np.max(r[-3:])) > float(np.percentile(r, 95)) - 24.0)
+
+
+def median_semitones(x: np.ndarray, sr: int = SR) -> Optional[float]:
+    """Median pitch of the voiced part, in semitones above 55 Hz (None when too
+    little is voiced to tell). Autocorrelation on 40 ms frames at 8 kHz: crude
+    for one frame, steady as a median over a sentence, and cheap."""
+    from thundertalk.core import audio_io
+    y = np.asarray(audio_io.resample(np.asarray(x, dtype=np.float32), sr, 8000) if sr != 8000 else x, np.float32)
+    n, hop = 320, 80
+    if len(y) < n * 4:
+        return None
+    idx = np.arange(0, len(y) - n, hop)[:, None] + np.arange(n)[None, :]
+    frames = y[idx]
+    rms = np.sqrt(np.mean(frames ** 2, axis=1))
+    frames = frames[rms > max(0.1 * float(rms.max()), 1e-4)]
+    if len(frames) < 10:
+        return None
+    frames = (frames - frames.mean(axis=1, keepdims=True)) * np.hanning(n).astype(np.float32)
+    spec = np.fft.rfft(frames, 1024, axis=1)
+    ac = np.fft.irfft(np.abs(spec) ** 2, axis=1)[:, :n]
+    lo, hi = 8000 // 400, 8000 // 60
+    lag = lo + np.argmax(ac[:, lo:hi], axis=1)
+    strength = ac[np.arange(len(ac)), lag] / np.maximum(ac[:, 0], 1e-12)
+    f0 = 8000.0 / lag[strength > 0.35]
+    if len(f0) < 10:
+        return None
+    return float(12 * np.log2(np.median(f0) / 55.0))
+
+
+def pick_takes(costs: list[list[float]], pitches: list[list[Optional[float]]], weights: list[float],
+               slack: float = 0.5) -> list[int]:
+    """One take per piece, minimising each take's own cost plus, between
+    neighbours, ``weight`` per semitone their median pitches differ beyond
+    ``slack``. Each sentence on its own would pick its liveliest take; strung
+    together those jump up and down like a speaker who keeps changing mood
+    (Kaikou measured 3.85 → 2.75 semitones of film-wide wobble after re-picking
+    for neighbours). ``weights[i]`` applies between piece i and i + 1."""
+    if not costs:
+        return []
+    best = [list(costs[0])]
+    back: list[list[int]] = []
+    for i in range(1, len(costs)):
+        row, links = [], []
+        for k, c in enumerate(costs[i]):
+            opts = []
+            for j, prev in enumerate(best[-1]):
+                a, b = pitches[i - 1][j], pitches[i][k]
+                jump = 0.0 if a is None or b is None else max(0.0, abs(a - b) - slack)
+                opts.append(prev + weights[i - 1] * jump)
+            j = int(np.argmin(opts))
+            row.append(c + opts[j])
+            links.append(j)
+        best.append(row)
+        back.append(links)
+    k = int(np.argmin(best[-1]))
+    path = [k]
+    for links in reversed(back):
+        k = links[k]
+        path.append(k)
+    return path[::-1]
 
 
 _OPEN_END = re.compile(r"[,，、;；:：]\s*$")
@@ -456,6 +608,7 @@ class SegmentReport:
     ok: bool
     error_rate: Optional[float] = None      # ASR read-back error of the chosen take
     cut_end: bool = False                   # the chosen take stops while still sounding
+    pitch_st: Optional[float] = None        # median pitch of the chosen take (polished output only)
 
 
 @dataclass

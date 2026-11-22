@@ -320,6 +320,14 @@ STUDIO: dict[str, dict[str, str]] = {
     # ── speak: text & generation ─────────────────────────────────────
     "studio.text.placeholder": {"en": "Type or paste what you want to hear…", "zh": "输入或粘贴想听的文字…"},
     "studio.text.count": {"en": "{n} characters · about {est}", "zh": "{n} 字 · 约 {est}"},
+    "studio.polish.label": {"en": "Polish", "zh": "精修"},
+    "studio.polish.tip": {
+        "en": "Each sentence is generated four times; the take that reads back correctly and best matches its "
+              "neighbours' pitch is kept, and every pause is set by meaning. About four times slower: for voice-overs.",
+        "zh": "每句生成 4 遍，留下念得对、和前后句音高最协调的那一遍，句间停顿也按意思逐句安排。大约慢 4 倍，适合做视频配音。",
+    },
+    "studio.polish.na": {"en": "This engine says a text the same way every time, so there is nothing to choose between.",
+                         "zh": "这个引擎每次生成的结果都一样，没有可挑的。"},
     "studio.lang.label": {"en": "Language", "zh": "语言"},
     "studio.lang.auto": {"en": "Detect automatically", "zh": "自动识别"},
     "studio.lang.chinese": {"en": "Chinese", "zh": "中文"},
@@ -376,6 +384,53 @@ STUDIO: dict[str, dict[str, str]] = {
         "zh": "“今天天气很好，我打算先去咖啡店坐一会儿，然后沿着河边慢慢走回家。”",
     },
     "studio.clone.length": {"en": "{sec} seconds", "zh": "{sec} 秒"},
+    "studio.scene.label": {"en": "Way of speaking", "zh": "说法"},
+    "studio.scene.auto": {"en": "Auto", "zh": "自动"},
+    "studio.scene.main": {"en": "Main recording", "zh": "主录音"},
+    "studio.scene.explain": {"en": "Explaining", "zh": "讲解"},
+    "studio.scene.chat": {"en": "Chatting", "zh": "聊天"},
+    "studio.scene.story": {"en": "Storytelling", "zh": "讲故事"},
+    "studio.scene.mixed": {"en": "Chinese–English mix", "zh": "中英夹杂"},
+    "studio.scene.opener": {"en": "Opening", "zh": "开场"},
+    "studio.scene.tip": {
+        "en": "Which of this voice's recordings to clone from. Auto uses the Chinese–English one for mixed text, "
+              "the main one otherwise.",
+        "zh": "用这个声音的哪一段录音来克隆。自动：中英混合的内容用「中英夹杂」那段，其他用主录音。",
+    },
+    "studio.scene.add": {"en": "Add a way of speaking…", "zh": "加一种说法…"},
+    "studio.scene.remove": {"en": "Remove a way of speaking", "zh": "删除一种说法"},
+    "studio.scene.title": {"en": "Another way of speaking for “{name}”", "zh": "给「{name}」加一种说法"},
+    "studio.scene.intro": {
+        "en": "A clone copies the manner of its recording as much as the voice: one read like an explainer makes a "
+              "chat sound like an explainer too. Record this voice once more, speaking the way you will use it.",
+        "zh": "克隆不光学音色，也学录音里的讲法：用讲解的语气录的，读聊天内容也会像在讲解。用你要用的那种讲法再录一段。",
+    },
+    "studio.scene.save": {"en": "Save this recording", "zh": "保存这段录音"},
+    "studio.scene.saved": {"en": "Added “{scene}” to {name}", "zh": "已给 {name} 加上「{scene}」"},
+    "studio.scene.line.explain": {
+        "en": "“You may never have noticed, but a phone charges much more slowly after eighty percent. It isn't "
+              "broken: the battery is protecting itself.”",
+        "zh": "“你可能没注意过，手机充到百分之八十以后，速度会明显慢下来。这不是坏了，是电池在保护自己。”",
+    },
+    "studio.scene.line.chat": {
+        "en": "“Oh, I have to tell you, I finally tried that new place yesterday. Honestly? Better than I expected, "
+              "but the queue was ridiculous.”",
+        "zh": "“哎，我跟你说，昨天我去那家新开的店了。说实话，比我想的好吃，就是排队排得有点久。”",
+    },
+    "studio.scene.line.story": {
+        "en": "“It was raining that night, and I was walking home alone. Just before I reached my building, I noticed "
+              "someone standing by the door.”",
+        "zh": "“那天晚上下着雨，我一个人走在回家的路上。快到楼下的时候，我忽然发现，门口站着一个人。”",
+    },
+    "studio.scene.line.mixed": {
+        "en": "“我今天用 Claude Code 写了一个小工具，然后 push 到 GitHub 上，整个过程也就半个小时。”",
+        "zh": "“我今天用 Claude Code 写了一个小工具，然后 push 到 GitHub 上，整个过程也就半个小时。”",
+    },
+    "studio.scene.line.opener": {
+        "en": "“Hey everyone! In this video I'm going to show you something you have definitely never seen before. "
+              "Ready? Let's go!”",
+        "zh": "“大家好！今天这期视频，我要带你看一个你绝对没见过的东西。准备好了吗？我们开始！”",
+    },
     "studio.clone.warn.clipping": {"en": "too loud — move back from the mic", "zh": "音量过大——离麦克风远一点"},
     "studio.clone.warn.trimmed_long": {"en": "only the first ~20 s are used", "zh": "只使用前约 20 秒"},
     "studio.clone.warn.too_quiet": {"en": "too quiet to clone from", "zh": "声音太轻，无法克隆"},

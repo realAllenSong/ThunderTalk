@@ -14,6 +14,9 @@ def add_parsers(sub, vo):
     vo.add_argument("action", nargs="?", default="list", choices=("add", "list", "remove", "rename", "edit"))
     vo.add_argument("input", nargs="?", help="audio path for add; my:<id> for other actions")
     vo.add_argument("--name")
+    vo.add_argument("--to", help="add: my:<id> of an existing voice, to add a recording for --scene to it")
+    vo.add_argument("--scene", help="explain | chat | story | mixed | opener: the way of speaking in this "
+                                    "recording (add --to), or the scene recording to drop (remove)")
     text = vo.add_mutually_exclusive_group()
     text.add_argument("--transcript")
     text.add_argument("--transcript-file")
@@ -51,6 +54,26 @@ def cmd_voices(a, out):
         if not path.is_file():
             raise CliError("not_found", f"Transcript not found: {path}")
         ref_text = path.read_text(encoding="utf-8")
+    scene = getattr(a, "scene", None)
+    if scene is not None and scene not in voices.SCENES:
+        raise CliError("bad_args", f"--scene must be one of: {', '.join(voices.SCENES)}")
+    if a.action == "add" and getattr(a, "to", None):
+        vid = a.to.removeprefix("my:")
+        if not lib.get(vid):
+            raise CliError("not_found", f"Saved voice not found: {a.to}")
+        if not scene:
+            raise CliError("bad_args", "voices add --to needs --scene")
+        path = Path(a.input).expanduser()
+        if not path.is_file():
+            raise CliError("not_found", f"Reference audio not found: {path}")
+        out.stage("prepare_reference")
+        check = voices.prepare_reference(audio_io.decode_audio(str(path), 24000), 24000)
+        if not check.ok:
+            raise CliError("bad_reference", "Need at least 3 seconds of audible reference audio")
+        if not (ref_text or "").strip():
+            raise CliError("transcript_required", "A scene recording needs --transcript or --transcript-file")
+        lib.add_scene(vid, scene, check.audio, ref_text)
+        return dict(id="my:" + vid, scene=scene, scenes=list(lib.get(vid).scenes), warnings=check.warnings)
     if a.action == "add":
         if not a.name or not a.name.strip():
             raise CliError("bad_args", "voices add requires --name")
@@ -66,6 +89,9 @@ def cmd_voices(a, out):
     vid = a.input.removeprefix("my:")
     if not lib.get(vid):
         raise CliError("not_found", f"Saved voice not found: {a.input}")
+    if a.action == "remove" and scene:
+        lib.remove_scene(vid, scene)
+        return dict(id="my:" + vid, action="remove", scene=scene, scenes=list(lib.get(vid).scenes))
     if a.action == "remove":
         lib.delete(vid)
     elif a.action == "rename":

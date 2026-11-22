@@ -1352,3 +1352,56 @@ def test_compose_and_the_other_tabs_block_each_other(qapp, isolated_home, monkey
     finally:
         page.shutdown()
         page.close()
+
+
+
+def test_the_way_of_speaking_picker_shows_only_for_an_own_voice_with_scene_recordings(speak):
+    from thundertalk.core import voices
+    lib = voices.VoiceLibrary()
+    t = np.arange(int(6 * SR)) / SR
+    clip = (0.2 * (0.6 + 0.4 * np.sin(2 * np.pi * 3 * t)) * np.sin(2 * np.pi * 150 * t)).astype(np.float32)
+    v = lib.add("Me", clip, "main words here")
+    speak.refresh()
+    speak._select("my:" + v.id)
+    assert speak._scene.isHidden()
+    lib.add_scene(v.id, "chat", clip, "chat words here")
+    speak._select("my:" + v.id)
+    assert not speak._scene.isHidden()
+    assert [speak._scene.itemData(i) for i in range(speak._scene.count())] == ["auto", "main", "chat"]
+    speak._scene.setCurrentIndex(speak._scene.findData("chat"))
+    assert speak._voice_ref().text == "chat words here"
+    speak._scene.setCurrentIndex(speak._scene.findData("main"))
+    assert speak._voice_ref().text == "main words here"
+    speak._select(next(vid for vid in speak._chips if not vid.startswith("my:")))
+    assert speak._scene.isHidden()
+
+
+def test_polish_is_offered_only_where_takes_differ(speak):
+    from thundertalk.core import speech
+    pick_engine(speak, "voxcpm2")
+    assert speak._polish.isEnabled()
+    pick_engine(speak, "kokoro")
+    assert not speak._polish.isEnabled()
+    speak._polish.setChecked(True)
+    pick_engine(speak, "voxcpm2")
+    assert speak._polish.isEnabled() and speak._polish.isChecked()
+    assert speech.POLISH_TAKES == 4
+
+
+
+def test_the_dialog_for_another_way_of_speaking_opens_and_saves_to_that_voice(qapp, isolated_home):
+    from thundertalk.core import voices
+    from thundertalk.ui.studio.clone_dialog import CloneDialog
+    lib = voices.VoiceLibrary()
+    t = np.arange(int(6 * SR)) / SR
+    clip = (0.2 * (0.6 + 0.4 * np.sin(2 * np.pi * 3 * t)) * np.sin(2 * np.pi * 150 * t)).astype(np.float32)
+    v = lib.add("Me", clip, "main words here")
+    lib.add_scene(v.id, "explain", clip, "explain words")
+    d = CloneDialog(None, None, lib, for_voice=lib.get(v.id))
+    assert d._scene.currentData() == "chat"                        # the first way it does not have yet
+    assert d._name.isHidden() and "Me" in d.findChildren(type(d._sample))[0].text()
+    d._set_audio(clip)
+    d._said.setPlainText("chat words here")
+    d._do_save()
+    assert d.scene_saved == "chat" and lib.get(v.id).scenes == ("explain", "chat")
+    assert len(lib.list()) == 1                                    # no new voice was made

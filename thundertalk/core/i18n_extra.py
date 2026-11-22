@@ -441,6 +441,12 @@ EXTRA: dict[str, dict[str, str]] = {
               "documentary narration, in Studio ▸ Speak.",
         "zh": "冷静讲解、人文讲述、幽默讲堂、深夜电台、美食探店、纪录片女声等，在工作室 ▸ 朗读里。",
     },
+    "whatsnew.polish": {"en": "Polish, for voice-overs.", "zh": "精修模式，做配音用。"},
+    "whatsnew.polish.detail": {
+        "en": "Tick Polish in Speak: each sentence is made several times and the most natural take is kept, "
+              "with pauses set by meaning. Slower, so it is off for everyday reading.",
+        "zh": "在朗读页勾选「精修」：每句生成几遍，留下最自然的那一遍，停顿也按意思安排。速度会慢一些，所以平时朗读默认不开。",
+    },
     "whatsnew.loudness": {"en": "Every spoken clip now comes out equally loud.", "zh": "每条配音的音量现在一致了。"},
     "whatsnew.loudness.detail": {
         "en": "Whatever the voice, the result is brought to the same loudness, so clips for one video match.",

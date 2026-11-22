@@ -20,6 +20,7 @@ import math
 import threading
 import time
 from contextlib import contextmanager
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Callable, Optional, Union
 
@@ -35,19 +36,38 @@ from thundertalk.core.tts import (
     TtsModelMissing,
     TtsParams,
     Verifier,
+    PAUSE_BREAK,
     assemble,
     close_piece,
     detect_language,
     ends_cut,
     expected_seconds,
     fade,
+    median_semitones,
+    pick_takes,
     plan_segments,
+    plan_sentences,
     time_stretch,
     trim_silence,
 )
 from thundertalk.core.tts_backends.base import BackendInfo, BackendVoice, Download, TtsBackend
 
 VoiceSel = Union[str, ClonePrompt]          # "kokoro:3" / "voxcpm2:<slug>" or a clone prompt
+POLISH_TAKES = 4                 # takes per sentence in polished output
+# Cost per semitone two neighbouring sentences differ beyond half a semitone.
+# A three-semitone jump then weighs as much as a tenth of the sentence misheard.
+POLISH_PITCH_WEIGHT = 0.08
+
+
+@dataclass
+class _Take:
+    audio: np.ndarray
+    pen: float
+    ratio: float
+    err: Optional[float]
+    cut: bool
+    dur_ok: bool
+    misread: bool
 ProgressCB = Callable[[int, int, str], None]
 DEFAULT_CLONE_BACKEND = "voxcpm2"
 
@@ -460,59 +480,139 @@ class SpeechEngine:
             a = b.generate(text, voice, lang, seed=seed, speed=speed, context=ctx)
         return np.asarray(a, dtype=np.float32).reshape(-1)
 
+    def _take(self, b: TtsBackend, seg: str, said: str, voice: VoiceSel, lang: str, params: TtsParams,
+              seed: int, speed: float, ctx: dict, verifier: Optional[Verifier], state: dict) -> "_Take":
+        """Generate one take of a piece and judge it: length, read-back, ending."""
+        sr = b.sample_rate
+        stochastic = getattr(b, "stochastic", True)
+        raw = self._gen(b, said, voice, lang, seed, speed, ctx)
+        cut = stochastic and ends_cut(raw, sr)
+        audio = trim_silence(raw, sr)
+        native = bool(ctx.get("native_speed"))
+        exp = expected_seconds(seg, lang) / (speed if native else 1.0)
+        ratio = (len(audio) / sr) / exp
+        if stochastic:
+            # With a read-back verifier, a short take is judged by what it says:
+            # fast voices (and clones of fast speakers) legitimately run below the
+            # duration estimate, and the verifier catches dropped sentences and
+            # endings exactly. Without one, the duration band is the only guard.
+            floor = 0.45 if (verifier is not None and not state["off"]) else params.ratio_min
+            dur_ok = floor <= ratio <= params.ratio_max and len(audio) / sr > 0.25
+        else:   # non-autoregressive: can't run away or drop a sentence; only its pace differs
+            dur_ok = len(audio) / sr > 0.25
+            ratio = min(max(ratio, params.ratio_min), params.ratio_max)
+        err: Optional[float] = None
+        if dur_ok and verifier is not None and not state["off"]:
+            try:
+                from thundertalk.core import audio_io
+                err = verifier(audio_io.resample(audio, sr, 24000) if sr != 24000 else audio, seg, lang)
+            except Exception:
+                err = None
+        misread = err is not None and err > params.verify_max_err
+        pen = ((0.0 if dur_ok else 1.0) + 2.0 * (err or 0.0) + 0.1 * abs(math.log(max(ratio, 1e-3)))
+               + (0.15 if cut else 0.0))        # a clipped last word: worse than a few misheard characters
+        return _Take(audio, pen, ratio, err, cut, dur_ok, misread)
+
+    def _report(self, seg: str, lang: str, sr: int, t: Optional["_Take"], used: int, params: TtsParams,
+                state: dict, pitch: Optional[float] = None) -> tuple[np.ndarray, SegmentReport]:
+        if t is None:
+            audio = np.zeros(int(0.2 * sr), np.float32)
+            return audio, SegmentReport(seg, expected_seconds(seg, lang), len(audio) / sr, used, False, None)
+        floor = 0.45 if (t.err is not None and not state["off"]) else params.ratio_min
+        ok = (floor <= t.ratio <= params.ratio_max
+              and (state["off"] or t.err is None or t.err <= params.verify_max_err))
+        return t.audio, SegmentReport(seg, expected_seconds(seg, lang), len(t.audio) / sr, used, ok, t.err,
+                                      bool(t.cut), pitch)
+
+    @staticmethod
+    def _note_miss(t: "_Take", state: dict, misses: list) -> None:
+        """Two takes the recogniser hears as something else entirely: it can't
+        follow this voice (a whisper, a heavy accent), so stop asking it."""
+        if t.dur_ok and t.err is not None and t.err > 0.6:
+            misses.append(1)
+            if len(misses) >= 2:
+                state["off"] = True
+
     def _render_piece(self, b: TtsBackend, seg: str, voice: VoiceSel, lang: str, params: TtsParams,
                       seed: int, speed: float, ctx: dict, verifier: Optional[Verifier], state: dict,
                       cancel: Optional[threading.Event]) -> tuple[np.ndarray, SegmentReport]:
-        sr = b.sample_rate
-        stochastic = getattr(b, "stochastic", True)
-        attempts = params.max_attempts if stochastic else 1
-        best, best_pen, best_ratio, best_err, best_cut, used, misses = None, 1e9, 0.0, None, False, 0, 0
+        """The first take that passes, retried up to ``max_attempts`` times."""
+        attempts = params.max_attempts if getattr(b, "stochastic", True) else 1
         said = close_piece(seg, lang)        # what the model is given; ``seg`` is what it is checked against
+        best: Optional[_Take] = None
+        used, misses = 0, []
         for attempt in range(attempts):
             if cancel is not None and cancel.is_set():
                 raise TtsCancelled()
             used = attempt + 1
-            raw = self._gen(b, said, voice, lang, seed + attempt * 7919, speed, ctx)
-            cut = stochastic and ends_cut(raw, sr)
-            audio = trim_silence(raw, sr)
-            native = bool(ctx.get("native_speed"))
-            exp = expected_seconds(seg, lang) / (speed if native else 1.0)
-            ratio = (len(audio) / sr) / exp
-            if getattr(b, "stochastic", True):
-                # With a read-back verifier, a short take is judged by what it says:
-                # fast voices (and clones of fast speakers) legitimately run below the
-                # duration estimate, and the verifier catches dropped sentences and
-                # endings exactly. Without one, the duration band is the only guard.
-                floor = 0.45 if (verifier is not None and not state["off"]) else params.ratio_min
-                dur_ok = floor <= ratio <= params.ratio_max and len(audio) / sr > 0.25
-            else:   # non-autoregressive: can't run away or drop a sentence; only its pace differs
-                dur_ok = len(audio) / sr > 0.25
-                ratio = min(max(ratio, params.ratio_min), params.ratio_max)
-            err: Optional[float] = None
-            if dur_ok and verifier is not None and not state["off"]:
-                try:
-                    from thundertalk.core import audio_io
-                    err = verifier(audio_io.resample(audio, sr, 24000) if sr != 24000 else audio, seg, lang)
-                except Exception:
-                    err = None
-            misread = err is not None and err > params.verify_max_err
-            pen = ((0.0 if dur_ok else 1.0) + 2.0 * (err or 0.0) + 0.1 * abs(math.log(max(ratio, 1e-3)))
-                   + (0.15 if cut else 0.0))        # a clipped last word: worse than a few misheard characters
-            if pen < best_pen:
-                best, best_pen, best_ratio, best_err, best_cut = audio, pen, ratio, err, cut
-            if dur_ok and not misread and not cut:
+            t = self._take(b, seg, said, voice, lang, params, seed + attempt * 7919, speed, ctx, verifier, state)
+            if best is None or t.pen < best.pen:
+                best = t
+            if t.dur_ok and not t.misread and not t.cut:
                 break
-            if dur_ok and err is not None and err > 0.6:
-                misses += 1
-                if misses >= 2:
-                    state["off"] = True
-                    break
-        floor = 0.45 if (best_err is not None and not state["off"]) else params.ratio_min
-        ok = (floor <= best_ratio <= params.ratio_max
-              and (state["off"] or best_err is None or best_err <= params.verify_max_err))
-        audio = best if best is not None else np.zeros(int(0.2 * sr), np.float32)
-        return audio, SegmentReport(seg, expected_seconds(seg, lang), len(audio) / sr, used, ok, best_err,
-                                    bool(best_cut and best is not None))
+            self._note_miss(t, state, misses)
+            if state["off"]:
+                break
+        return self._report(seg, lang, b.sample_rate, best, used, params, state)
+
+    def _takes(self, b: TtsBackend, seg: str, voice: VoiceSel, lang: str, params: TtsParams, seed: int,
+               speed: float, ctx: dict, verifier: Optional[Verifier], state: dict,
+               cancel: Optional[threading.Event], keep: int = 3) -> tuple[list["_Take"], int]:
+        """``params.takes`` takes of one piece (two more if none passes), the
+        best ``keep`` of them kept for choosing against the neighbours."""
+        said = close_piece(seg, lang)
+        takes: list[_Take] = []
+        misses: list = []
+        k = 0
+        while k < params.takes + 2:
+            if cancel is not None and cancel.is_set():
+                raise TtsCancelled()
+            t = self._take(b, seg, said, voice, lang, params, seed + k * 7919, speed, ctx, verifier, state)
+            takes.append(t)
+            k += 1
+            self._note_miss(t, state, misses)
+            if k >= params.takes and any(x.dur_ok and not x.misread for x in takes):
+                break
+        takes.sort(key=lambda x: x.pen + (1.0 if x.misread else 0.0))
+        return takes[:keep], k
+
+    def _synthesize_polished(self, b: TtsBackend, text: str, voice: VoiceSel, lang: str, speed: float,
+                             params: TtsParams, base_seed: int, progress: Optional[ProgressCB],
+                             cancel: Optional[threading.Event], verifier: Optional[Verifier]
+                             ) -> tuple[list[np.ndarray], list[float], list[SegmentReport], dict]:
+        """One piece per sentence, several takes each, then one take per
+        sentence chosen for the whole text: read correctly first, then in
+        step with its neighbours' pitch."""
+        from thundertalk.core.priority import DICTATION
+        sr = b.sample_rate
+        plan = plan_sentences(text, lang, b.chunk_scale(voice, lang, 1.0))
+        ctx: dict = {}
+        state = {"off": False}
+        options: list[list[_Take]] = []
+        used: list[int] = []
+        for idx, (seg, _pause) in enumerate(plan):
+            DICTATION.wait_clear(cancel)
+            if cancel is not None and cancel.is_set():
+                raise TtsCancelled()
+            if progress:
+                progress(idx, len(plan), seg)
+            takes, n = self._takes(b, seg, voice, lang, params, base_seed + idx * 1009, speed, ctx, verifier,
+                                   state, cancel)
+            options.append(takes)
+            used.append(n)
+            if progress:
+                progress(idx + 1, len(plan), seg)
+        pitches = [[median_semitones(t.audio, sr) for t in takes] for takes in options]
+        costs = [[t.pen + (1.0 if t.misread else 0.0) for t in takes] for takes in options]
+        # Across a paragraph break a change of register is natural: half the weight.
+        weights = [POLISH_PITCH_WEIGHT * (0.5 if pause >= PAUSE_BREAK else 1.0) for _, pause in plan[:-1]]
+        chosen = pick_takes(costs, pitches, weights)
+        pieces, reports = [], []
+        for (seg, _), takes, k, n, pitch in zip(plan, options, chosen, used, pitches):
+            audio, rep = self._report(seg, lang, sr, takes[k], n, params, state, pitch[k])
+            pieces.append(audio)
+            reports.append(rep)
+        return pieces, [p for _, p in plan], reports, ctx
 
     def synthesize(self, text: str, voice: VoiceSel, language: Optional[str] = None, speed: float = 1.0,
                    params: Optional[TtsParams] = None, seed: Optional[int] = None,
@@ -540,8 +640,12 @@ class SpeechEngine:
         lang = language if language and language != "auto" else detect_language(text)
         base_seed = seed if seed is not None else int(time.time()) & 0x7FFFFFFF
         sr = b.sample_rate
-        plan = plan_segments(text, lang, b.chunk_scale(voice, lang, params.chunk_scale))
         t0 = time.monotonic()
+        if params.takes > 1 and getattr(b, "stochastic", True):
+            raw, pauses, reports, ctx = self._synthesize_polished(b, text, voice, lang, speed, params, base_seed,
+                                                                  progress, cancel, verifier)
+            return self._finish([fade(p, sr=sr) for p in raw], pauses, reports, ctx, sr, speed, lang, t0)
+        plan = plan_segments(text, lang, b.chunk_scale(voice, lang, params.chunk_scale))
         ctx: dict = {}
         reports: list[SegmentReport] = []
         pieces: list[np.ndarray] = []
@@ -561,6 +665,11 @@ class SpeechEngine:
             pauses.append(pause)
             if progress:
                 progress(idx + 1, len(plan), seg)
+        return self._finish(pieces, pauses, reports, ctx, sr, speed, lang, t0)
+
+    @staticmethod
+    def _finish(pieces: list[np.ndarray], pauses: list[float], reports: list[SegmentReport], ctx: dict, sr: int,
+                speed: float, lang: str, t0: float) -> SynthResult:
         # Pieces are matched by loudness, and the whole clip leaves at one loudness
         # (-16 LUFS): two clips for the same video sound equally loud whatever the
         # voice. It used to be peak-normalised, which follows a clip's sharpest

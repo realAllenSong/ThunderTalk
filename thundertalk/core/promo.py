@@ -133,7 +133,7 @@ def x_weight(text: str) -> int:
 # Add an entry in the release that ships them; versions without one show nothing.
 WHATS_NEW: dict[str, tuple[str, ...]] = {
     "1.17.0": ("whatsnew.finish", "whatsnew.bar", "whatsnew.esc"),
-    "1.18.0": ("whatsnew.voices", "whatsnew.loudness", "whatsnew.longcat"),
+    "1.18.0": ("whatsnew.voices", "whatsnew.polish", "whatsnew.loudness"),
 }
 
 

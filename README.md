@@ -35,10 +35,13 @@ The interface is deliberately quiet: warm paper background, near-black ink, one 
 ## New in v1.18.0
 
 - **Seven new Chinese voices,** chosen by ear from 88 candidates in 22 styles: 冷静讲解 (a clean, restrained explainer), 人文讲述 (a warm woman sharing poetry and culture), 幽默讲堂 (a witty lecturer telling a case), 深夜电台 and 深夜低音 (two late-night radio hosts, one deeper), 美食探店 (an excited food vlogger) and 纪录片女声 (a woman's documentary narration). Like every built-in voice they are designed from a text description, not recorded from or modelled on a person's voice. 25 built-in voices now.
+- **Polish, for voice-overs** (Speak ▸ Polish, `thundertalk speak --polish`): each sentence is generated four times and read back, and the take kept is the one that reads correctly and stays in step with its neighbours' pitch. On a 9-sentence paragraph in six voices and three engines, the average pitch jump between neighbouring sentences halved (1.82 → 0.90 semitones), and a sentence IndexTTS had misread (16% error) came out right. It takes about 4.5 times as long, so it is off for everyday reading.
+- **Pauses chosen by meaning.** The silence between sentences now depends on what comes next: short before the answer to a question or a "所以", longer before "但是/其实", longest after a short line that closes a paragraph. `[停顿 0.8]` or `[pause 0.8]` in the text sets one yourself.
+- **Your own voice, in more than one way of speaking.** A clone copies the manner of its recording as well as the voice. A saved voice can now keep a recording for explaining, chatting, storytelling, Chinese–English mix and openings (⋯ ▸ Add a way of speaking), and Speak uses the one you pick. Chinese–English text picks the mixed one by itself.
 - **Every clip comes out equally loud.** Speech used to be normalised to its highest peak, so a voice with sharp consonants came out quieter than a smooth one: 12 clips in six voices ranged from -15.0 to -21.9 LUFS. They now all land between -16.0 and -16.7 LUFS, with the pieces inside a clip matched too.
 - **A fourth local voice engine, LongCat-AudioDiT** (Meituan, MIT, a 2.1 GB download in Studio ▸ Speak): cloning in Chinese and English, mixed sentences included. It generates a whole piece at once, so a long sentence takes no longer than a short one: a 36-second Chinese paragraph took 32–34 s, against 44–70 s with VoxCPM2 on the same Mac.
 - **Adding your own voice tells you what will be copied into it:** a warning when the room noise is less than 22 dB under your voice, and when the recording stops in the middle of a word.
-- `--engine best` now prefers VoxCPM2, then IndexTTS, LongCat and Kokoro. A take that stops dead before its last word has died away is redone.
+- `--engine best` now prefers VoxCPM2, then IndexTTS, LongCat and Kokoro. A take that stops dead before its last word has died away is redone. `thundertalk speak` now reads each piece back with a local recognizer like the app does (`--no-check` skips it).
 
 ## New in v1.17.0
 

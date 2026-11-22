@@ -263,9 +263,10 @@ class SynthWorker(_Worker):
     step = Signal(int, int)              # finished pieces, total pieces
 
     def __init__(self, text: str, voice, language: Optional[str], speed: float,
-                 asr_engine=None, clone_backend: Optional[str] = None) -> None:
+                 asr_engine=None, clone_backend: Optional[str] = None, polish: bool = False) -> None:
         super().__init__()
         self._a = (text, voice, language, speed, clone_backend)
+        self._polish = polish
         self._asr = asr_engine            # reads each piece back to catch skipped/garbled text
 
     def work(self):
@@ -278,7 +279,8 @@ class SynthWorker(_Worker):
                 last[0] = i
                 self.step.emit(i, n)
 
-        return speech.get_engine().synthesize(text, voice, language=language, speed=speed,
+        params = tts.TtsParams(takes=speech.POLISH_TAKES) if self._polish else None
+        return speech.get_engine().synthesize(text, voice, language=language, speed=speed, params=params,
                                               progress=prog, cancel=self._cancel,
                                               verifier=tts_verify.make_verifier(self._asr),
                                               clone_backend=clone_backend)
