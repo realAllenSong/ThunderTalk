@@ -2,6 +2,11 @@
 
 ThunderTalk 每个版本新增和修复的内容。带测量数据的完整说明见每个 [GitHub Release](https://github.com/realAllenSong/ThunderTalk/releases)。
 
+## v1.20.1（未发布）
+
+- **Kokoro 的英文发音修好了。**英文原先由 espeak 转成音标，而 Kokoro 不认识其中的 "-er" 音（teacher、water、better、calendar、computer、customer……），于是被悄悄略掉了："my teach said the wet would be better"、"the lad to the up floor"。现在英文单词按 Kokoro 自带的发音词典来读。12 句英文、两个音色，用 Whisper large-v3-turbo 回读：修之前 252 个词错 49 个（19.4%），修之后错 2 个（0.8%）。中文输出逐字节不变，中文里夹的英文单词也一起修好了，生成速度不变。凡是用 Kokoro 朗读的地方都受益：工作室 ▸ 朗读、`thundertalk speak`、MCP 和 `thundertalk serve`。
+- **准确率如何？** README 新增对比：在模型训练时从未见过的公开测试集（AISHELL-1 和 LibriSpeech，120 段）上，ThunderTalk ASR 错误率 2.8%，Whisper large-v3-turbo 4.7%，OpenAI gpt-4o-transcribe 4.4%，macOS 自带 9.2%；每秒音频只需 0.05 秒计算。
+
 ## v1.20.0 (2026-11-22)
 
 - **给语音 Agent 用的本地语音接口：`thundertalk serve`**（打包版：`ThunderTalk --cli serve`）。默认监听 127.0.0.1:8765，无需账号，数据不出这台 Mac。
