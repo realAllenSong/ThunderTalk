@@ -1,0 +1,51 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Mac 上中英混说的语音输入怎么选：ThunderTalk</title>
+<meta name="description" content="在 Mac 上说话夹着英文单词，系统听写总是认错？对比 Mac 自带听写和 ThunderTalk，看哪种更适合中英混说、离线和隐私。" />
+<link rel="canonical" href="https://thundertalk.entropinia.com/zh/guides/mac-chinese-english-dictation/" />
+<meta name="robots" content="index, follow, max-snippet:-1" />
+<meta property="og:type" content="article" />
+<meta property="og:url" content="https://thundertalk.entropinia.com/zh/guides/mac-chinese-english-dictation/" />
+<meta property="og:title" content="Mac 上中英混说的语音输入怎么选：ThunderTalk" />
+<meta property="og:description" content="在 Mac 上说话夹着英文单词，系统听写总是认错？对比 Mac 自带听写和 ThunderTalk，看哪种更适合中英混说、离线和隐私。" />
+<meta property="og:image" content="https://thundertalk.entropinia.com/assets/og.png" />
+<meta name="twitter:card" content="summary_large_image" />
+<link rel="icon" type="image/svg+xml" href="/assets/mark.svg" />
+<link rel="stylesheet" href="/assets/guide.css" />
+<script type="application/ld+json">{"@context": "https://schema.org", "@graph": [{"@type": "Article", "headline": "Mac 上中英混说的语音输入", "description": "在 Mac 上说话夹着英文单词，系统听写总是认错？对比 Mac 自带听写和 ThunderTalk，看哪种更适合中英混说、离线和隐私。", "inLanguage": "zh-CN", "datePublished": "2026-11-22", "dateModified": "2026-11-22", "author": {"@type": "Person", "name": "realAllenSong", "url": "https://github.com/realAllenSong"}, "mainEntityOfPage": "https://thundertalk.entropinia.com/zh/guides/mac-chinese-english-dictation/", "about": {"@type": "SoftwareApplication", "name": "ThunderTalk", "operatingSystem": "macOS", "applicationCategory": "UtilitiesApplication", "url": "https://thundertalk.entropinia.com/", "offers": {"@type": "Offer", "price": "0", "priceCurrency": "USD"}}, "publisher": {"@type": "Organization", "name": "ThunderTalk", "url": "https://thundertalk.entropinia.com/"}}, {"@type": "FAQPage", "mainEntity": [{"@type": "Question", "name": "Mac 自带的听写能中英混说吗？", "acceptedAnswer": {"@type": "Answer", "text": "可以设置多种听写语言并在听写时切换，但一句话里中英夹着说时，夹在中间的英文常常认错。"}}, {"@type": "Question", "name": "ThunderTalk 断网能用吗？", "acceptedAnswer": {"@type": "Answer", "text": "能。模型下载一次后，听写和转写都不需要联网。"}}, {"@type": "Question", "name": "怎么让它认对专有名词？", "acceptedAnswer": {"@type": "Answer", "text": "在设置里添加热词，比如产品名、人名、技术术语，它只会修改听起来像这些词的地方。"}}]}, {"@type": "BreadcrumbList", "itemListElement": [{"@type": "ListItem", "position": 1, "name": "ThunderTalk", "item": "https://thundertalk.entropinia.com/"}, {"@type": "ListItem", "position": 2, "name": "指南", "item": "https://thundertalk.entropinia.com/zh/guides/"}, {"@type": "ListItem", "position": 3, "name": "Mac 上中英混说的语音输入", "item": "https://thundertalk.entropinia.com/zh/guides/mac-chinese-english-dictation/"}]}]}</script>
+</head>
+<body>
+<header class="top"><a class="brand" href="/"><img src="/assets/mark.svg" alt="" width="22" height="22" />ThunderTalk</a><nav><a href="/zh/guides/">指南</a><a href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener">下载</a></nav></header>
+<main>
+<div class="kicker">中英混说</div>
+<h1>Mac 上中英混说的语音输入</h1>
+<div class="meta">更新于 <time datetime="2026-11-22">2026-11-22</time></div>
+<div class="answer"><p>如果你说话时常夹着英文单词，比如"帮我把这个 bug fix 一下"，Mac 自带的听写往往要在中文和英文之间来回切换，夹在一句话里的英文很容易认错。<strong>ThunderTalk</strong> 的默认模型专门针对中英混说的短句做过微调，在你自己的 Mac 上识别，免费，也能离线用。</p></div>
+<div class="tbl"><table><thead><tr><th></th><th class=me>ThunderTalk</th><th>Mac 自带听写</th></tr></thead><tbody><tr><td>中英混在一句话里</td><td class=me>专门调过，一句话里混着说也能认</td><td>可以设置多种语言并在听写时切换，一句话里混说较难</td></tr><tr><td>在哪里识别</td><td class=me>默认在你的 Mac 上</td><td>Apple 芯片的 Mac 上，支持的语言在本机识别；其他情况会发给 Apple</td></tr><tr><td>专有名词</td><td class=me>支持热词，教一次就记住</td><td>有限</td></tr><tr><td>长段落</td><td class=me>边说边识别，停下后约 0.45 秒出字</td><td>适合短句</td></tr><tr><td>其他功能</td><td class=me>转写录音和视频链接、分出说话人、克隆声音、翻译</td><td>无</td></tr><tr><td>价格</td><td class=me>免费</td><td>免费（系统自带）</td></tr></tbody></table></div><h2>识别得有多准、多快</h2>
+<p>ThunderTalk 默认的听写模型是 <strong>ThunderTalk ASR 0.6B</strong>，基于 Qwen3-ASR-0.6B 微调，在 Apple 芯片的 GPU 上以 8-bit 运行。根据项目的发布说明：</p>
+<ul>
+<li><strong>错得更少：</strong>在标准测试集上的 token 错误率是 8.0%，之前的默认模型是 10.1%，速度快约 <strong>2.3 倍</strong>；后续版本又降到 7.66%。</li>
+<li><strong>人名认得更准：</strong>在 724 个人名的测试里，写对的比例从 67.7% 提高到 80.4%。热词功能可以教它认识常被认错的名字和术语。</li>
+<li><strong>说得再久也不用等：</strong>你还在说话时它就在识别。36 段 30 秒到 4.5 分钟的听写，停下后的等待时间中位数从 3.4 秒降到 <strong>0.45 秒</strong>。</li>
+</ul>
+<h2>适合谁</h2>
+<ul>
+<li><strong>程序员和研究者：</strong>说话里全是 API、PR、模型名，热词功能能把常用术语教给它。</li>
+<li><strong>中英双语工作的人：</strong>写邮件、写文档、和 AI 对话时，不用每说一句就切一次输入法。</li>
+<li><strong>在意隐私的人：</strong>会议、病历、合同这类内容，声音不离开你的电脑。</li>
+</ul>
+<h2>怎么开始</h2>
+<ol><li>用 <code>brew install --cask realallensong/tap/thundertalk</code> 安装，或者从 GitHub Releases 下载。</li>
+<li>按提示授予麦克风和辅助功能权限，它会自动下载推荐的模型。</li>
+<li>在设置里加几个你常说的英文术语作为热词，然后按右边的 ⌘ 开口说。</li></ol>
+<section class="faq"><h2>常见问题</h2><details><summary>Mac 自带的听写能中英混说吗？</summary><p>可以设置多种听写语言并在听写时切换，但一句话里中英夹着说时，夹在中间的英文常常认错。</p></details><details><summary>ThunderTalk 断网能用吗？</summary><p>能。模型下载一次后，听写和转写都不需要联网。</p></details><details><summary>怎么让它认对专有名词？</summary><p>在设置里添加热词，比如产品名、人名、技术术语，它只会修改听起来像这些词的地方。</p></details></section>
+<div class="cta"><strong>免费试试 ThunderTalk</strong><p>需要 Apple 芯片的 Mac 和 macOS 15 或更高版本。不用注册，不用订阅。</p><a class="btn" href="https://github.com/realAllenSong/ThunderTalk/releases/latest" rel="noopener">下载 macOS 版</a><code>brew install --cask realallensong/tap/thundertalk</code></div>
+<p class="more">相关指南: <a href="/zh/guides/wispr-flow-typeless-alternative/">Wispr Flow 和 Typeless 的免费替代</a></p>
+<section class="src"><h2>资料来源</h2><ol><li><a href="https://github.com/realAllenSong/ThunderTalk" rel="noopener">ThunderTalk release notes and README</a></li><li><a href="https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B" rel="noopener">ThunderTalk ASR 0.6B model card</a></li><li><a href="https://support.apple.com/zh-cn/guide/mac-help/mh40584/mac" rel="noopener">Apple：在 Mac 上听写信息和文稿</a></li></ol></section>
+</main>
+<footer><a href="/">ThunderTalk 首页</a> · <a href="https://github.com/realAllenSong/ThunderTalk" rel="noopener">GitHub</a></footer>
+</body>
+</html>
