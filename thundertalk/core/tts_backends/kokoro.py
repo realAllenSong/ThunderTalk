@@ -132,6 +132,11 @@ class KokoroBackend(TtsBackend):
                         data_dir=f"{k}/espeak-ng-data",
                         dict_dir=f"{k}/dict",
                         lexicon=f"{k}/lexicon-us-en.txt,{k}/lexicon-zh.txt",
+                        # Without it English goes through espeak, whose "-er" sound (ɚ: teacher,
+                        # water, better) is not in Kokoro's token set and was silently dropped.
+                        # With it English words come from lexicon-us-en.txt ("ə ɹ"); Chinese
+                        # output is bit-for-bit the same.
+                        lang="en",
                     ),
                     num_threads=self._num_threads,
                     provider="cpu",
