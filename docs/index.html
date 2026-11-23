@@ -44,7 +44,7 @@
     "description": "ThunderTalk is a free, open-source voice input app for macOS. New in v1.16.0: the text lands within a second of stopping however long you speak, and the dictation bar goes where you want it. Its own speech model, ThunderTalk ASR 0.6B, is the default on Apple Silicon; hotwords change only the words they are about; Esc cancels a dictation. Optional cloud engines with your own API key, and every feature available to AI agents through the CLI and MCP.",
     "url": "https://realallensong.github.io/ThunderTalk/",
     "downloadUrl": "https://github.com/realAllenSong/ThunderTalk/releases/download/v1.18.0/ThunderTalk-v1.18.0-macOS.dmg",
-    "license": "https://opensource.org/licenses/MIT",
+    "license": "https://www.gnu.org/licenses/agpl-3.0.html",
     "offers": { "@type": "Offer", "price": "0", "priceCurrency": "USD" },
     "author": { "@type": "Person", "name": "Allen Song", "url": "https://github.com/realAllenSong" },
     "sameAs": ["https://github.com/realAllenSong/ThunderTalk"]
@@ -60,7 +60,7 @@
       {
         "@type": "Question",
         "name": "Is ThunderTalk free?",
-        "acceptedAnswer": {"@type": "Answer", "text": "Yes, for individuals, schools, non-profits and companies with fewer than 250 employees and under US$10 million in revenue: no account, no subscription, no usage limit. The app code is MIT licensed on GitHub. Larger companies using ThunderTalk's own models at work need a licence (song@entropinia.com)."}
+        "acceptedAnswer": {"@type": "Answer", "text": "Yes, for individuals, schools, non-profits and companies with fewer than 250 employees and under US$10 million in revenue: no account, no subscription, no usage limit. The app code is open source under the AGPL-3.0 on GitHub; using it in a closed-source or commercial product needs a commercial licence. Larger companies using ThunderTalk's own models at work need a licence too (song@entropinia.com)."}
       },
       {
         "@type": "Question",
@@ -709,7 +709,7 @@
             </a>
             <a class="btn btn-line btn-lg" href="https://github.com/realAllenSong/ThunderTalk" rel="noopener" data-i18n="hero.cta2">View the source</a>
           </div>
-          <p class="fine" data-i18n="hero.fine">Free for personal use and small teams. App code MIT licensed. Apple Silicon Mac, macOS 15 or later.</p>
+          <p class="fine" data-i18n="hero.fine">Free for personal use and small teams. App code open source under AGPL-3.0. Apple Silicon Mac, macOS 15 or later.</p>
         </div>
       </div>
 
@@ -988,7 +988,7 @@
           <div class="fact"><dt data-i18n="pv.r2k">History</dt><dd data-i18n="pv.r2v">A plain file in <code>~/.thundertalk</code> on your disk. Search it, delete a line, or clear it.</dd></div>
           <div class="fact"><dt data-i18n="pv.r3k">Network</dt><dd data-i18n="pv.r3v">Model/component downloads, GitHub update checks and Studio links. Optional proofreading/notes send text to your chosen provider: cloud CLIs use your account; Ollama and LM Studio use local servers; Cherry Studio and custom APIs may forward text to cloud models. AI Proofread is off by default. Optional cloud speech engines (off until you choose one) send audio or text to that provider with your own key, kept in the macOS Keychain.</dd></div>
           <div class="fact"><dt data-i18n="pv.r4k">Account</dt><dd data-i18n="pv.r4v">No ThunderTalk account, subscription or usage limit. Optional AI providers use your own account or server.</dd></div>
-          <div class="fact"><dt data-i18n="pv.r5k">Code</dt><dd data-i18n="pv.r5v">App code MIT licensed: read it, build it yourself. ThunderTalk's own models have their own licence.</dd></div>
+          <div class="fact"><dt data-i18n="pv.r5k">Code</dt><dd data-i18n="pv.r5v">App code open source under AGPL-3.0: read it, build it yourself. ThunderTalk's own models have their own licence.</dd></div>
         </dl>
         <div class="card diagram-card rv">
           <svg class="diagram" id="diagram" viewBox="0 0 520 300" role="img" aria-labelledby="dgT">
@@ -1088,7 +1088,7 @@
           <thead><tr><th></th><th class="me">ThunderTalk</th><th><a href="https://wisprflow.ai/pricing" rel="noopener">Wispr Flow</a></th><th><a href="https://superwhisper.com" rel="noopener">Superwhisper</a></th><th><a href="https://github.com/beingpax/VoiceInk" rel="noopener">VoiceInk</a></th></tr></thead>
           <tbody>
             <tr><th data-i18n="cp.r1">Price</th><td class="me" data-i18n="cp.tt1">Free</td><td data-i18n="cp.w1">Free up to 2,000 words a week; Pro $15 a month ($12 billed yearly)</td><td data-i18n="cp.s1">Free plan; Pro subscription or lifetime licence</td><td data-i18n="cp.v1">Free trial; paid licence</td></tr>
-            <tr><th data-i18n="cp.r2">Open source</th><td class="me" data-i18n="cp.tt2">Yes, app code MIT</td><td data-i18n="cp.no">No</td><td data-i18n="cp.no2">No</td><td data-i18n="cp.v2">Yes, GPL-3.0</td></tr>
+            <tr><th data-i18n="cp.r2">Open source</th><td class="me" data-i18n="cp.tt2">Yes, app code AGPL-3.0</td><td data-i18n="cp.no">No</td><td data-i18n="cp.no2">No</td><td data-i18n="cp.v2">Yes, GPL-3.0</td></tr>
             <tr><th data-i18n="cp.r3">Where speech is processed</th><td class="me" data-i18n="cp.tt3">On your Mac (cloud optional, your own key)</td><td data-i18n="cp.w3">In the cloud (<a href="https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq" rel="noopener">their security FAQ</a>)</td><td data-i18n="cp.s3">On your device or in the cloud, your choice</td><td data-i18n="cp.v3">On your Mac</td></tr>
             <tr><th data-i18n="cp.r4">Platforms</th><td class="me" data-i18n="cp.tt4">macOS 15 or later (Apple Silicon)</td><td data-i18n="cp.w4">Mac, Windows, iOS, Android</td><td data-i18n="cp.s4">Mac, Windows, iOS, Android</td><td data-i18n="cp.v4">macOS 15 or later</td></tr>
           </tbody>
@@ -1104,7 +1104,7 @@
         <p class="sec-p rv" data-i18n="faq.p">Something not covered here? Open an issue on GitHub and it will get an answer.</p>
       </div>
       <div class="faq rv">
-        <details open><summary><span data-i18n="faq.1q">Is ThunderTalk free?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.1a">Yes, for individuals, schools, non-profits and companies with fewer than 250 employees and under US$10 million in revenue: no account, no subscription, no usage limit. The app code is MIT licensed on GitHub. Larger companies using ThunderTalk's own models at work need a licence (song@entropinia.com).</p></div></details>
+        <details open><summary><span data-i18n="faq.1q">Is ThunderTalk free?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.1a">Yes, for individuals, schools, non-profits and companies with fewer than 250 employees and under US$10 million in revenue: no account, no subscription, no usage limit. The app code is open source under the AGPL-3.0 on GitHub; using it in a closed-source or commercial product needs a commercial licence. Larger companies using ThunderTalk's own models at work need a licence too (song@entropinia.com).</p></div></details>
         <details><summary><span data-i18n="faq.2q">Does it work offline?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.2a">Yes. After downloading the models and any required component, speech recognition, translation, file transcription and text to speech work offline. Studio links need a connection. Optional AI Proofread and meeting notes depend on your chosen provider: Ollama and LM Studio use local servers; cloud providers need a connection and receive text. Optional cloud speech engines need a connection.</p></div></details>
         <details><summary><span data-i18n="faq.3q">Which apps can I dictate into?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.3a">Any app with a text cursor: browsers, editors, Slack, mail, terminals. ThunderTalk pastes the text where the cursor is, so it asks for Microphone and Accessibility permission the first time you run it.</p></div></details>
         <details><summary><span data-i18n="faq.4q">What is Studio?</span><span class="pm" aria-hidden="true"></span></summary><div class="ans"><p data-i18n="faq.4a">Studio has Transcribe, Speak and Compose. Compose generates original songs locally with ACE-Step 1.5: turbo by default, optional XL on Macs with at least 32 GB RAM and enough free memory. Transcribe handles audio/video files and single-video links from YouTube, Bilibili and other yt-dlp-supported sites, with a model choice per job, timestamps, optional speaker labels, batch exports and subtitle burn-in for local videos. Every completed transcript goes to History. The layout stays compact, with instant timestamp/text switching. Export TXT, Markdown, SRT, VTT or JSON. AI meeting notes reuse the provider/model on the AI Proofread sidebar page, even with proofreading off. Notes support up to 16 parts of about 6,000 characters plus one merge, a 60-second timeout per call and Cancel; split oversized recordings. Speak uses local VoxCPM2, IndexTTS-2.5 or Kokoro, with built-in voices or a voice cloned from a 5 to 15 second recording. Links and cloud AI providers need a connection.</p></div></details>
@@ -1124,7 +1124,7 @@
       <div class="close-row">
         <div>
           <h2 class="rv" data-i18n="cta.h">Try it. Voice input, without a subscription.</h2>
-          <p class="fine rv" data-i18n="cta.fine">Apple Silicon, macOS 15 or later. App code MIT licensed. Downloads come from GitHub Releases, or <code>brew install --cask realallensong/tap/thundertalk</code>.</p>
+          <p class="fine rv" data-i18n="cta.fine">Apple Silicon, macOS 15 or later. App code open source under AGPL-3.0. Downloads come from GitHub Releases, or <code>brew install --cask realallensong/tap/thundertalk</code>.</p>
         </div>
         <div class="close-btns rv">
           <a class="btn btn-paper btn-lg" href="https://github.com/realAllenSong/ThunderTalk/releases/download/v1.18.0/ThunderTalk-v1.18.0-macOS.dmg" rel="noopener" download>
@@ -1174,7 +1174,7 @@
       "hero.h1a": "开口说，它来打字。", "hero.h1b": "声音不会离开你的 Mac。",
       "hero.lede": "ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键、开口说话，文字就出现在光标处。识别在你自己的电脑上完成：无需账号，无需订阅。云端引擎为可选项，使用你自己的密钥。",
       "hero.cta1": "下载 macOS 版", "hero.cta2": "查看源码",
-      "hero.fine": "个人和小团队免费，App 代码 MIT 协议。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
+      "hero.fine": "个人和小团队免费，App 代码以 AGPL-3.0 开源。需要 Apple Silicon 的 Mac，macOS 15 或更高版本。",
       "hero.newtag": "v1.16.0 新增", "hero.newtxt": "说上几分钟，停下后也在一秒内出字。听写条可以放在顶部、底部，或拖到任意位置。",
       "scene.cap": "主页界面的交互式复刻，数据为示例。点击按键即可试一次听写。",
       "app.home": "主页", "app.models": "模型", "app.hotwords": "热词", "app.settings": "设置", "app.studio": "工作室", "app.about": "关于",
@@ -1223,7 +1223,7 @@
       "pv.r2k": "历史", "pv.r2v": "保存在你磁盘上 <code>~/.thundertalk</code> 里的普通文件。可搜索、可删除单条、可清空。",
       "pv.r3k": "网络", "pv.r3v": "下载模型/组件、检查 GitHub 更新和获取工作室链接。可选的校对/纪要会把文字发送给你选择的服务：云端 CLI 使用你的账号，Ollama 和 LM Studio 使用本机服务，Cherry Studio 和自定义 API 可能转发给云端模型。听写校对默认关闭。可选的云端语音引擎（选择前不启用）会用你自己的密钥把音频或文字发送给对应服务商，密钥保存在 macOS 钥匙串中。",
       "pv.r4k": "账号", "pv.r4v": "ThunderTalk 无需账号、无订阅、无使用次数限制。可选的 AI 服务使用你已有的账号或服务器。",
-      "pv.r5k": "代码", "pv.r5v": "App 代码采用 MIT 协议，可以阅读、自行构建。ThunderTalk 自有模型使用单独的许可证。",
+      "pv.r5k": "代码", "pv.r5v": "App 代码采用 AGPL-3.0 协议，可以阅读、自行构建。ThunderTalk 自有模型使用单独的许可证。",
       "pv.d.title": "语音识别在你的 Mac 上把音频变成光标处的文字。音频不会上传；可选的 AI 校对可能把文字发送给你选择的服务。",
       "pv.d.net": "互联网", "pv.d.mac": "在你的 Mac 上", "pv.d.line": "音频留在你的 Mac 上",
       "pv.d.a": "你的声音", "pv.d.a2": "麦克风", "pv.d.b": "语音模型", "pv.d.b2": "在你的芯片上运行", "pv.d.c": "光标处的文字", "pv.d.c2": "任意应用",
@@ -1245,12 +1245,12 @@
       "md.n8": "48 kHz 录音棚音质与声音克隆，约为实时速度。Apache-2.0。", "md.n8b": "克隆还原度很高，支持中、英、日、西、阿语，约为实时速度。模型 1.7 GB，另需 2.3 GB 编码器。bilibili 模型使用许可。", "md.n8c": "小巧快速，约为实时的 4 倍。23 种内置音色（20 种中文、3 种英文）。Apache-2.0。", "md.n9": "语音与文本翻译，建议 16 GB 及以上内存。",
       "cp.kicker": "对比", "cp.h2": "和同类产品比一比。", "cp.p": "内容取自各产品官网，核对日期 2026 年 9 月 29 日。价格会变，请以链接为准。",
       "cp.r1": "价格", "cp.tt1": "免费", "cp.w1": "每周 2,000 词以内免费；Pro 每月 15 美元（按年付每月 12 美元）", "cp.s1": "有免费版；Pro 可订阅或买断", "cp.v1": "免费试用；付费授权",
-      "cp.r2": "开源", "cp.tt2": "是，App 代码 MIT", "cp.no": "否", "cp.no2": "否", "cp.v2": "是，GPL-3.0",
+      "cp.r2": "开源", "cp.tt2": "是，App 代码 AGPL-3.0", "cp.no": "否", "cp.no2": "否", "cp.v2": "是，GPL-3.0",
       "cp.r3": "语音在哪里处理", "cp.tt3": "你的 Mac 上（云端可选，使用你自己的密钥）", "cp.w3": "云端（<a href=\"https://docs.wisprflow.ai/articles/3467817258-security-and-compliance-faq\" rel=\"noopener\">见其安全 FAQ</a>）", "cp.s3": "本机或云端，可自选", "cp.v3": "你的 Mac 上",
       "cp.r4": "平台", "cp.tt4": "macOS 15 及以上（Apple Silicon）", "cp.w4": "Mac、Windows、iOS、Android", "cp.s4": "Mac、Windows、iOS、Android", "cp.v4": "macOS 15 及以上",
       "cp.note": "ThunderTalk 还能转写会议并区分说话人、用四个本地语音引擎朗读文字、克隆你自己的声音，全部在本机完成。我们没有核实其他产品是否提供这些功能，所以没有放进表格。ThunderTalk 需要 Apple Silicon 且 macOS 15 或更新版本的 Mac，使用 Apple 开发者 ID 签名并经过 Apple 公证。",
       "faq.kicker": "常见问题", "faq.h2": "直接回答。", "faq.p": "这里没讲到的问题？在 GitHub 上提一个 issue，就会有回复。",
-      "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "对个人、学校、非营利组织，以及员工少于 250 人且年收入低于 1000 万美元的公司免费：无需账号，无订阅，无使用次数限制。App 代码以 MIT 协议开源在 GitHub 上。规模更大的公司在工作中使用 ThunderTalk 自有模型需要授权（song@entropinia.com）。",
+      "faq.1q": "ThunderTalk 收费吗？", "faq.1a": "对个人、学校、非营利组织，以及员工少于 250 人且年收入低于 1000 万美元的公司免费：无需账号，无订阅，无使用次数限制。App 代码以 AGPL-3.0 协议开源在 GitHub 上，用于闭源或商业产品需要商业授权。规模更大的公司在工作中使用 ThunderTalk 自有模型也需要授权（song@entropinia.com）。",
       "faq.2q": "能离线使用吗？", "faq.2a": "可以。下载模型及所需组件后，语音识别、翻译、文件转写和文字转语音可离线使用。工作室链接需要联网。可选的 AI 校对与会议纪要取决于所选服务：Ollama 和 LM Studio 使用本机服务；云端服务需要联网并接收文字。可选的云端语音引擎需要联网。",
       "faq.3q": "可以在哪些应用里听写？", "faq.3a": "任何有文字光标的应用：浏览器、编辑器、Slack、邮件、终端。ThunderTalk 会把文字粘贴到光标处，所以第一次运行时会请求“麦克风”和“辅助功能”权限。",
       "faq.4q": "工作室（Studio）是什么？", "faq.4a": "工作室包含“转写”“朗读”和“作曲”。作曲使用 ACE-Step 1.5 本地生成原创歌曲，默认 turbo；至少 32 GB 内存且空闲内存充足的 Mac 可选 XL。“转写”支持音频/视频文件及 YouTube、Bilibili 等 yt-dlp 支持的网站的单个视频链接，每次可选模型，提供时间戳、可选说话人标签、批量导出和本地视频字幕烧录。每份完成的文稿都保存在“历史记录”中。页面保持紧凑，时间戳与纯文本即时切换。可导出 TXT、Markdown、SRT、VTT 或 JSON。AI 会议纪要复用侧边栏“AI 校对”页面的服务与模型，校对开关可保持关闭。纪要最多处理约 6,000 字符的 16 段加一次合并，每次请求限 60 秒，可取消；过长录音需拆分。“朗读”使用本地 VoxCPM2、IndexTTS-2.5 或 Kokoro，可用内置音色或你自己 5 到 15 秒录音克隆的声音。链接和云端 AI 服务需要联网。",
@@ -1260,7 +1260,7 @@
       "faq.8q": "支持哪些 Mac？", "faq.8a": "需要 Apple Silicon（M1 或更新）的 Mac，以及 macOS 15 或更高版本。下载版只为 Apple Silicon 构建，内置的语音库也需要 macOS 15。发布版不支持 Intel Mac。",
       "faq.9q": "打开时 macOS 会警告吗？", "faq.9a": "不会。从 v1.9.2 起，ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后可以像其他应用一样直接打开。从 v1.9.1 或更早版本更新时会再请求一次麦克风和辅助功能权限，之后的更新都会保留。",
       "faq.10q": "和 Typeless、Wispr Flow、superwhisper 有什么区别？", "faq.10a": "它们是闭源产品，有付费方案；Wispr Flow 在云端处理语音，Superwhisper 可选本地或云端模型。ThunderTalk 免费、开源，语音在你的 Mac 上处理。可选的 AI 校对与纪要使用你选择的服务。出处见<a href=\"#compare\">对比</a>。",
-      "cta.h": "试一试。语音输入，无需订阅。", "cta.fine": "Apple Silicon，macOS 15 或更高版本。App 代码 MIT 协议。从 GitHub Releases 下载，或运行 <code>brew install --cask realallensong/tap/thundertalk</code>。",
+      "cta.h": "试一试。语音输入，无需订阅。", "cta.fine": "Apple Silicon，macOS 15 或更高版本。App 代码以 AGPL-3.0 开源。从 GitHub Releases 下载，或运行 <code>brew install --cask realallensong/tap/thundertalk</code>。",
       "cta.btn": "下载 macOS 版", "cta.btn2": "阅读源码",
       "foot.rel": "版本发布", "foot.issues": "反馈问题", "foot.lic": "许可证"
     };

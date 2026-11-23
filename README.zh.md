@@ -15,7 +15,7 @@
 </p>
 
 <p align="center">
-  <a href="LICENSE"><img src="https://img.shields.io/badge/license-MIT-blue.svg" alt="MIT License" /></a>
+  <a href="LICENSE"><img src="https://img.shields.io/badge/license-AGPL--3.0-blue.svg" alt="AGPL-3.0 License" /></a>
   <img src="https://img.shields.io/badge/platform-macOS-brightgreen" alt="Platform: macOS" />
   <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest"><img src="https://img.shields.io/github/v/release/realAllenSong/ThunderTalk?color=orange" alt="最新版本" /></a>
   <a href="https://github.com/realAllenSong/ThunderTalk/releases"><img src="https://img.shields.io/github/downloads/realAllenSong/ThunderTalk/total?color=blue" alt="下载量" /></a>
@@ -28,7 +28,7 @@
 
 ---
 
-ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方，除非你主动选择使用自己 API 密钥的可选云端引擎。App 免费并以 MIT 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
+ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷键，说出你想写的内容，文字就落在光标所在的位置。识别在你的本机完成：通过 MLX 使用 Apple Silicon 的 GPU，或通过 ONNX 使用 CPU，所以你的录音不会发往任何地方，除非你主动选择使用自己 API 密钥的可选云端引擎。App 免费，并以 AGPL-3.0 协议开源，是 **Typeless**、**Wispr Flow**、**superwhisper** 以及 macOS 自带听写的开源替代品。
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
@@ -552,7 +552,7 @@ HF_HUB_OFFLINE=1 TRANSFORMERS_OFFLINE=1 "$APP" --selftest translate
 
 ## 常见问题
 
-**ThunderTalk 收费吗？** 个人和工作中使用都不收费：无账号、无订阅、无使用次数限制。App 代码以 MIT 协议开源。ThunderTalk 自有模型对个人和员工少于 250 人且年收入低于 1000 万美元的公司免费；更大的公司以及基于模型做产品，需要授权（见[许可证](#许可证)）。
+**ThunderTalk 收费吗？** 个人和工作中使用都不收费：无账号、无订阅、无使用次数限制。App 代码以 AGPL-3.0 协议开源，用于闭源或商业产品需要商业授权。ThunderTalk 自有模型对个人和员工少于 250 人且年收入低于 1000 万美元的公司免费；更大的公司以及基于模型做产品，需要授权（见[许可证](#许可证)）。
 
 **能离线使用吗？** 可以。模型下载完成后，识别、翻译、文件转写和文字转语音都在你的 Mac 上运行。工作室链接需要联网。可选的 AI 校对与会议纪要取决于你选择的服务，云端服务需要联网。
 
@@ -576,7 +576,8 @@ ThunderTalk 对个人、学校、非营利组织，以及员工少于 250 人且
 
 ## 许可证
 
-- **App 代码：**[MIT License](LICENSE)。请保留版权声明，并在基于它构建的产品中注明 ThunderTalk。
+- **App 代码：**[GNU AGPL v3](LICENSE)，署名要求见 [NOTICE](NOTICE)。你可以自由使用、研究、修改和分享。如果分发 ThunderTalk 或基于它的作品，或通过网络把它提供给别人使用，需要以同样的许可证公开源代码，并保留“Based on ThunderTalk by realAllenSong”的署名。
+- **商业授权：**如果想在闭源产品或服务中使用 App 代码，或需要 AGPL 以外的条款，请[联系我们](mailto:song@entropinia.com)。
 - **ThunderTalk 自有模型**（ThunderTalk ASR 0.6B）：[ThunderTalk 模型许可证](https://huggingface.co/Oulasong/ThunderTalk-ASR-0.6B/blob/main/LICENSE)。个人和非商业用途、非营利组织免费；员工少于 250 人且年收入低于 1000 万美元的公司在 ThunderTalk App 内使用免费。规模更大的公司在工作中使用、集成到其他商业产品或服务、或作为托管服务提供，需要书面授权（[联系](mailto:song@entropinia.com)）。
 - **名称和标志：**“ThunderTalk”名称和标志代表本项目。基于代码的 fork 和产品须使用自己的名称和标志。
 - 其他模型沿用各自的许可证（见[支持的模型](#支持的模型)）。
