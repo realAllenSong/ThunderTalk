@@ -19,11 +19,16 @@ uv run python run.py
 - Follow the existing code style (PySide6 / Qt6, Python 3.12+).
 - Include a short description of what the change does and why.
 
-## License
+## License and contributor agreement
 
-By contributing you agree that your changes will be released under the same
-[MIT License](LICENSE) that covers the project. You retain copyright to your
-contribution.
+ThunderTalk is offered under the [GNU AGPL v3](LICENSE) (with the attribution terms in
+[NOTICE](NOTICE)) and, separately, under commercial licences. So that both stay possible, every
+contributor signs the [Contributor License Agreement](CLA.md) once: you assign the copyright in
+your contributions to realAllenSong (or, where that is not possible, grant a licence that allows
+relicensing), and confirm the work is yours to give. When you open your first pull request, a bot
+asks you to sign by posting a comment; a pull request cannot be merged before that.
+
+Your contribution is released to everyone under the AGPL v3.
 
 ## Questions
 
