@@ -26,11 +26,11 @@ ThunderTalk is offered under the [GNU AGPL v3](LICENSE) (with the attribution te
 opening a pull request you agree that:
 
 - the contribution is your own original work, and you have the right to submit it;
-- you grant realAllenSong a perpetual, worldwide, royalty-free licence to use, modify,
-  sublicense and relicense your contribution, including under commercial terms.
+- you assign the copyright in your contribution to realAllenSong. Where an assignment is not
+  possible, you grant realAllenSong a perpetual, irrevocable, worldwide, royalty-free licence to
+  use, modify, sublicense and relicense it, including under commercial terms.
 
-You keep the copyright to your contribution, and it is also released to everyone under the
-AGPL v3.
+Your contribution is released to everyone under the AGPL v3.
 
 ## Questions
 
