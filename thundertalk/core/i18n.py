@@ -604,8 +604,8 @@ _STRINGS: dict[str, dict[str, str]] = {
               "歌词读音：pypinyin（MIT）。艺人名称：Wikidata（CC0）。",
     },
     "about.copyright": {
-        "en": "© 2024–2026 realAllenSong · AGPL-3.0",
-        "zh": "© 2024–2026 realAllenSong · AGPL-3.0",
+        "en": "© 2024–2026 Zhiyuan Song · AGPL-3.0",
+        "zh": "© 2024–2026 Zhiyuan Song · AGPL-3.0",
     },
 
     # ── Tray ────────────────────────────────────────────────────────

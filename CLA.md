@@ -1,9 +1,9 @@
 # ThunderTalk Contributor License Agreement
 
-Thank you for contributing to ThunderTalk. This agreement is between you ("you") and realAllenSong,
-the owner of the ThunderTalk project ("the owner"). It covers every contribution you submit to
-ThunderTalk, now or later: code, documentation, translations, voices, images and any other material
-("your contribution").
+Thank you for contributing to ThunderTalk. This agreement is between you ("you") and Zhiyuan Song
+(github.com/realAllenSong), the owner of the ThunderTalk project ("the owner"). It covers every
+contribution you submit to ThunderTalk, now or later: code, documentation, translations, voices,
+images and any other material ("your contribution").
 
 ThunderTalk is released under the GNU Affero General Public License v3 with the attribution terms
 in [NOTICE](NOTICE), and the owner also offers it under commercial licences. This agreement keeps

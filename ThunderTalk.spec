@@ -181,6 +181,7 @@ app = BUNDLE(
         # ThunderTalk is never launched with arguments it would not understand.
         # 2: transcribe --engine best / --speakers / md, speak --engine best.
         'ThunderTalkCLIVersion': 3,
+        'NSHumanReadableCopyright': '© 2024–2026 Zhiyuan Song · AGPL-3.0',
         'ThunderTalkMCP': 1,          # `ThunderTalk --mcp` (stdio MCP server)
         'CFBundleShortVersionString': _APP_VERSION,
         'CFBundleVersion': _APP_VERSION,

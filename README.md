@@ -478,7 +478,7 @@ ThunderTalk is free for individuals, schools, non-profits and companies with few
 
 ## License
 
-- **App code:** [GNU Affero General Public License v3.0](LICENSE). Use it, study it, change it and share it freely. If you distribute ThunderTalk or a modified version, or offer it to others as a network service, you must publish your complete source under the AGPL-3.0 as well, keep the copyright and licence notices, and keep the attribution "Based on ThunderTalk by realAllenSong" in your product's about page and documentation ([NOTICE](NOTICE), section 7(b) of the licence).
+- **App code:** [GNU Affero General Public License v3.0](LICENSE). Use it, study it, change it and share it freely. If you distribute ThunderTalk or a modified version, or offer it to others as a network service, you must publish your complete source under the AGPL-3.0 as well, keep the copyright and licence notices, and keep the attribution "Based on ThunderTalk by Zhiyuan Song" in your product's about page and documentation ([NOTICE](NOTICE), section 7(b) of the licence).
 - **Commercial licence for the code:** to build ThunderTalk into a closed-source product or service, or to use it without the AGPL's conditions, write to song@entropinia.com. A licence can come with support.
 - **Earlier versions:** releases up to v1.18.0 were published under the MIT License and stay under it.
 - **Contributions:** by sending a pull request you agree that your contribution may be distributed under the AGPL-3.0 and under ThunderTalk's commercial licences.
