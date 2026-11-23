@@ -2,6 +2,15 @@
 
 ThunderTalk 每个版本新增和修复的内容。带测量数据的完整说明见每个 [GitHub Release](https://github.com/realAllenSong/ThunderTalk/releases)。
 
+## v1.20.0（未发布）
+
+- **给语音 Agent 用的本地语音接口：`thundertalk serve`**（打包版：`ThunderTalk --cli serve`）。默认监听 127.0.0.1:8765，无需账号，数据不出这台 Mac。
+  - `WS /v1/realtime/transcribe?language=en|zh|auto&silence_ms=350`：发送 16 kHz PCM16；说话期间约每 0.4 秒返回一次 `partial`，停顿达到 `silence_ms` 后返回该句的 `final`。`commit` 立即结束当前一句，`reset` 丢弃它。说话人一停（约 0.1 秒）就开始准备 final，停顿够长时它已经好了。
+  - `POST /v1/audio/speech`（OpenAI 风格；默认 Kokoro，也支持 VoxCPM2/IndexTTS/LongCat）按句流式返回 WAV 或原始 PCM；第一句较长时在分句处先切一次，让第一段音频更早出来。`GET /v1/audio/voices` 列出已下载引擎的音色；`POST /v1/audio/transcriptions` 格式不变，没指定模型时改用已下载中最准的模型，不再返回 503。
+  - M3 Max、微调 0.6B 模型实测，15 段英文和 15 段中文实时回放：每句都有 final，收到结尾音频后中位数 3 毫秒送达（最慢 137 毫秒），只在停顿结束时才解码的话约 0.22 秒；识别错误数和停顿结束时解码相同（30 段）。开口后 0.34–0.40 秒出第一段 partial。3 路同时连接：没有错误，全部有 final。Kokoro 第一段音频：14 个词的句子 245 毫秒（10 次中位数，240–301 毫秒）。
+  - 来自网页的请求会被拒绝（否则浏览器能访问 127.0.0.1 并连上 WebSocket），在本地地址上 `Host` 头也必须是本地的（防 DNS 重绑定）。
+  - 它和应用并行运行、自己加载模型：不走应用的任务队列，也不给应用里的听写让路。
+
 ## v1.19.0 (2026-11-22)
 
 - **Agent 和脚本共用一个队列，听写优先。**应用开着时，`thundertalk transcribe/speak/translate/notes/burn/compose`（因此每个 MCP 工具也是）把任务交给应用，不再各自开进程加载模型。任务按到达顺序一次一个，十个 Agent 同时调用也不会把内存用光。用听写模型转写时直接用应用已经加载的引擎，不会加载第二份。你听写时及结束后 1.5 秒内不开始任务，长任务在每段之间也会让路。关掉命令（Ctrl-C、停掉的 Agent）即取消它的任务。实测：一个 4 个文件的批处理经应用运行时，听写中位数 0.368 秒、最慢 0.729 秒，什么都不跑时是 0.337 秒；四个任务都用同一个已加载的引擎，整个进程 1.36 GB。

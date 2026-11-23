@@ -32,13 +32,11 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 界面刻意保持安静：暖色纸面背景、近黑的墨色、唯一一种橙色强调色，动效只用在有信息量的地方（实时音量条、加载圈、真实的下载进度）。
 
-## v1.19.0 新功能
+## v1.20.0 新功能
 
-- **Agent 和脚本共用一个队列。**应用开着时，`thundertalk` 命令行和 MCP 服务把任务交给应用：一次一个，用已经加载的模型，你听写时不会开始。跑一个 4 个文件的批处理时，听写耗时 0.37 秒（中位数），什么都不跑时是 0.34 秒。
-- **`thundertalk batch`** 从一个文件里读多条任务。重跑时已完成的会跳过，一条失败不影响其余。
-- **许可证：**应用代码改用 [AGPL-3.0](#许可证)。v1.18.0 及更早的版本仍是 MIT。
+- **给语音 Agent 用的本地语音接口：**`thundertalk serve` 通过 WebSocket 流式识别（边说边出字，停顿够长后 3 毫秒给出整句），并通过 HTTP 一句一句地把文字读出来，只在这台 Mac 上。见[语音接口](#语音接口)。
 
-上一版（v1.18.0）：配音精修模式、七个新中文音色、收藏音色，以及第四个本地语音引擎 LongCat-AudioDiT。
+上一版（v1.19.0）：Agent 和脚本在应用里共用一个任务队列、`thundertalk batch`、后台配音一步之内给听写让路，以及 AGPL-3.0。
 
 每个版本的完整内容和测量数据：[更新日志](CHANGELOG.zh.md) · [GitHub Releases](https://github.com/realAllenSong/ThunderTalk/releases)。
 
@@ -104,7 +102,7 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 
 **工作室：**转写文件和链接（YouTube、Bilibili 等）、批量导出、字幕、会议纪要、用克隆的声音朗读，以及原创歌曲。见[工作室](#工作室studio)。
 
-**给 Agent 和脚本用：**`thundertalk` 命令行覆盖工作室的全部功能，输出 JSON lines，支持批量；`ThunderTalk --mcp` 是给 Claude Code、Codex、Cursor 等 Agent 用的 MCP 服务。应用开着时，它们的任务在同一个队列里排队，并给你的听写让路。见[命令行](#命令行)。
+**给 Agent 和脚本用：**`thundertalk` 命令行覆盖工作室的全部功能，输出 JSON lines，支持批量；`ThunderTalk --mcp` 是给 Claude Code、Codex、Cursor 等 Agent 用的 MCP 服务。应用开着时，它们的任务在同一个队列里排队，并给你的听写让路。`thundertalk serve` 是给语音 Agent 用的本地流式语音接口。见[命令行](#命令行)。
 
 **日常细节**
 
@@ -168,6 +166,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 "$TT" --cli status
 "$TT" --cli batch jobs.txt      # 每行一条任务，例如 transcribe a.m4a --out a.md
 "$TT" --cli jobs                # 应用里排着的任务
+"$TT" --cli serve --port 8765   # 本地语音接口（见下），Ctrl-C 结束
 ```
 
 - **协议：** stdout 仅输出 UTF-8 JSON 行：`stage`、`progress`（`value` 为 0…1，未知总量时为 `null`）、`result`（`ok`、输出字段或固定 `code` + `error`）。日志写 stderr；成功退出 0，失败退出 1。批处理事件含从 0 开始的 `item` 和原始 `input`，逐项返回结果，最后汇总 `items`、`succeeded`、`failed`。作曲逐版本返回 `take`、`metadata` 和 `lyric_check`，最后汇总 `takes`。应读到进程退出，并忽略未知字段。`status` 含 `cli_version: 3` 和能力列表。
@@ -178,6 +177,7 @@ TT=/Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk
 - **队列：** 应用开着时，`transcribe`、`speak`、`translate`、`notes`、`burn`、`compose` 在应用里按先后一次一个地运行，经由只有当前用户能打开的套接字。用听写模型转写时直接用应用已经加载的引擎。听写时及结束后 1.5 秒内不开始任务；关掉命令（Ctrl-C、停掉的 Agent）即取消它的任务。内存或共享模型槽被占时，任务报告 `waiting` 并重试，最长 `THUNDERTALK_WAIT` 秒（默认 900）。没开应用时照旧在本进程运行；`THUNDERTALK_LOCAL=1` 始终如此。
 - **批处理：** `batch FILE` 每行一条任务：JSON 参数数组或普通命令行。`--out` 已存在的任务会跳过（`--redo` 重跑），一条失败不影响其余（`--stop-on-error` 则停下），没开应用时每个模型整批只加载一次。见[批处理与任务队列](docs/cli-v3.md#batch-and-the-job-service--批处理与任务队列)。
 - **错误码：** 常见 `bad_args`、`not_found`、`no_model`、`no_speech`、`decode`、`permission_denied`、`cancelled`、`tts_missing`、`ffmpeg_missing`、`no_provider`、`bad_transcript`、`bad_reference`、`transcript_required`、`model_busy`、`batch_failed`。网址沿用 `login`（会员/预览）、`private`、`geo`、`unavailable`、`blocked`、`network`、`playlist`、`live`、`no_audio`、`missing`、`unsupported`、`other`。作曲使用 `music:memory`、`music:memory_low`、`music:stalled`、`music:load_failed`、`music:failed`、`worker_stopped`，完整错误表见参考。
+- <a id="语音接口"></a>**语音接口：** `serve` 启动一个给语音 Agent 用的本地服务（默认 127.0.0.1，无需账号，数据不出这台 Mac）。`WS /v1/realtime/transcribe` 接收 16 kHz PCM16，说话期间约每 0.4 秒返回一次 `partial`，停顿达到 `silence_ms`（默认 350）后返回该句的 `final`。`POST /v1/audio/speech`（OpenAI 风格）按句流式返回 WAV 或原始 PCM。另有 `GET /v1/audio/voices` 和 `POST /v1/audio/transcriptions`。M3 Max 实测：停顿够长后 final 中位数 3 毫秒送达，开口后 0.3–0.4 秒出第一段 partial，Kokoro 245 毫秒出第一段音频。来自网页的请求会被拒绝。它自己加载模型，和应用并行运行；详见[参考文档](docs/cli-v3.md)。
 - **MCP：** `ThunderTalk --mcp` 在应用内启动 stdio MCP 服务，Claude Code、Codex、Cursor 等智能体在任何项目里都能用：`claude mcp add -s user thundertalk -- /Applications/ThunderTalk.app/Contents/MacOS/ThunderTalk --mcp`。14 个工具覆盖所有命令（`run_batch` 一次交一批任务），`studio_command(command, arguments)` 可传其余参数。结果是单行紧凑 JSON，省 token。麦克风录制、播放/预听、剪贴板/对话框控件及运行中队列编辑保留在 GUI，原因和命令行替代数据见[功能对照](docs/cli-v3.md#studio-capability-audit--工作室功能对照)。
 
 ## 支持的模型

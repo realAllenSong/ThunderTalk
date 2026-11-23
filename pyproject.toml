@@ -1,6 +1,6 @@
 [project]
 name = "thundertalk"
-version = "1.19.0"
+version = "1.20.0"
 description = "Lightning-fast voice-to-text for every desktop"
 license = "AGPL-3.0-only"
 requires-python = ">=3.12"

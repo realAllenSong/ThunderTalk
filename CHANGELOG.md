@@ -2,6 +2,15 @@
 
 What each ThunderTalk release added and fixed. The full notes, with measurements, are on each [GitHub release](https://github.com/realAllenSong/ThunderTalk/releases).
 
+## v1.20.0 (unreleased)
+
+- **A local speech API for voice agents: `thundertalk serve`** (packaged: `ThunderTalk --cli serve`). It listens on 127.0.0.1:8765 by default, needs no account and sends nothing off the Mac.
+  - `WS /v1/realtime/transcribe?language=en|zh|auto&silence_ms=350`: send 16 kHz PCM16; get `partial` text about every 0.4 s while someone speaks and a `final` per utterance once the pause reaches `silence_ms`. `commit` closes an utterance now, `reset` drops it. The final is prepared the moment the speaker stops (~0.1 s), so it is ready when the pause is long enough.
+  - `POST /v1/audio/speech` (OpenAI-style; Kokoro by default, VoxCPM2/IndexTTS/LongCat too) streams speech sentence by sentence as WAV or raw PCM; a long first sentence is cut once at a clause so the first audio comes sooner. `GET /v1/audio/voices` lists the downloaded engines' voices; `POST /v1/audio/transcriptions` keeps its shape and now uses the most accurate downloaded model when none was named, instead of answering 503.
+  - Measured on an M3 Max with the tuned 0.6B model, 15 English and 15 Chinese clips replayed in real time: every utterance got its final, 3 ms (median) after the closing audio arrived (worst 137 ms), against about 0.22 s when decoding only at the end of the pause; same recognition errors as decoding at the end (30 clips). First partial 0.34–0.40 s after speech began. Three connections at once: no errors, all finals. Kokoro's first audio: 245 ms (median of 10; 240–301 ms) for a 14-word sentence.
+  - Requests from web pages are refused (a browser can otherwise reach 127.0.0.1 and open WebSockets to it), and on a local address the `Host` header must be local too (DNS rebinding).
+  - It runs beside the app with its own models: it does not share the app's queue or give way to its dictation.
+
 ## v1.19.0 (2026-11-22)
 
 - **Agents and scripts share one queue, and your dictation comes first.** While the app is open, `thundertalk transcribe/speak/translate/notes/burn/compose` (and so every MCP tool) hand their job to the app instead of loading models in a process of their own. Jobs run one at a time in the order they came, so ten agents calling at once cannot run the Mac out of memory. A transcription with the dictation model uses the engine the app already holds, so nothing is loaded twice. No job starts while you dictate or within 1.5 s after, and a long job still gives way between pieces. Closing the command (Ctrl-C, a stopped agent) cancels its job. Measured with a four-file batch running through the app: dictation 0.368 s median and 0.729 s at worst, against 0.337 s with nothing running; all four jobs used the one loaded engine, 1.36 GB for the whole process.
