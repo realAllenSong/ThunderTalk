@@ -66,6 +66,9 @@ class TtsBackend:
 
     info: BackendInfo
     sample_rate: int
+    # Generation steps aside for dictation between its own steps (gpu_lock.py),
+    # so the engine need not pause between sentences while the user dictates.
+    preemptible = False
 
     def is_ready(self) -> bool:
         """True when every download is present and complete."""

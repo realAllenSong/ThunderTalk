@@ -16,7 +16,7 @@ from thundertalk.core.audio import AudioRecorder
 from thundertalk.core.device_watcher import get_watcher
 from thundertalk.core.history import HistoryStore
 from thundertalk.core.hotkey import HotkeyListener
-from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.gpu_lock import DICTATION_GPU
 from thundertalk.core.live_preview import LivePreview, preview_wanted
 from thundertalk.core.priority import DICTATION
 from thundertalk.core.settings import Settings
@@ -576,11 +576,11 @@ def main() -> None:
     # --- Local engines: speech that is over is decoded while the user goes on,
     # with the final's own settings; at stop only the last stretch is left, so
     # the wait no longer grows with the length of the take (#15).
-    # GPU_LOCK for every engine: the live preview takes it without waiting too, so the two skip a
+    # DICTATION_GPU for every engine: the live preview takes it without waiting too, so the two skip a
     # turn for each other instead of queueing (a preview that waits looks slow and switches itself off).
     from thundertalk.core.local_stream import DEFAULT_WINDOW_S, FAST_WINDOW_S, LocalStream
     local_live = LocalStream(pipe.recorder.snapshot, pipe.asr.recognize_window,
-                             lambda: pipe.asr.max_clip_seconds, pipe.asr.stream_token, lock=GPU_LOCK)
+                             lambda: pipe.asr.max_clip_seconds, pipe.asr.stream_token, lock=DICTATION_GPU)
     pipe.asr.attach_local_stream(local_live)
 
     # --- Cloud dictation: each finished stretch of speech goes to the selected
@@ -830,7 +830,7 @@ def main() -> None:
             from thundertalk.core.asr import AsrResult
             recording["recovery_attempted"] = True
             recovery = AsrWorker(pipe.asr, recording["samples"], wait_before=live.wait_idle,
-                                 lock=GPU_LOCK, preview_text=reference,
+                                 lock=DICTATION_GPU, preview_text=reference,
                                  initial=AsrResult(text, dur, ms, recording["model"], backend,
                                                    truncated=recording.get("truncated", False)))
 
@@ -1140,7 +1140,7 @@ def main() -> None:
                     local_live.wait_idle()      # a piece in flight (it holds the GPU lock)
 
                 worker = AsrWorker(pipe.asr, samples,
-                                   wait_before=_settle, lock=GPU_LOCK,
+                                   wait_before=_settle, lock=DICTATION_GPU,
                                    preview_text=recording["preview"])
                 worker.done.connect(_done)
                 worker.error.connect(_error)

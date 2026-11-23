@@ -30,7 +30,7 @@ from typing import Optional
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
-from thundertalk.core.mlx_runtime import serialized_mlx
+from thundertalk.core.mlx_runtime import chunked, preemptible, replaced, serialized_mlx
 from thundertalk.core.tts_backends.base import BackendInfo, BackendVoice, Download, TtsBackend
 from thundertalk.core.tts_backends.presets import load_presets
 
@@ -87,6 +87,7 @@ def split_to_fit(text: str, fits) -> list[str]:
 
 
 class LongCatBackend(TtsBackend):
+    preemptible = True
     info = BackendInfo(
         params="1B", language_codes=("zh", "en"), speed="realtime",
         id="longcat",
@@ -171,7 +172,10 @@ class LongCatBackend(TtsBackend):
         ref = mx.array(audio)
         out: list[np.ndarray] = []
         for k, part in enumerate(parts):
-            with GPU_LOCK:
+            # Per diffusion pass, and the VAE in pieces (16 latents of context: equal to one pass).
+            vae = getattr(self._model, "vae", None)
+            decode = chunked(vae.decode, in_axis=1, out_axis=1, chunk=64, ctx=16) if vae is not None else None
+            with GPU_LOCK, preemptible((self._model, "transformer")), replaced(vae, "decode", decode):
                 res = list(self._model.generate(
                     text=part, ref_audio=ref, ref_text=ref_text, guidance_method="apg", cfg_strength=4.0,
                     steps=16, seed=(BASE_SEED + int(seed) + k) & 0x7FFFFFFF))

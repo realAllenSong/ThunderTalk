@@ -21,7 +21,7 @@ from typing import Optional
 import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
-from thundertalk.core.mlx_runtime import serialized_mlx
+from thundertalk.core.mlx_runtime import chunked, preemptible, replaced, serialized_mlx
 from thundertalk.core.tts_backends.base import BackendInfo, BackendVoice, Download, TtsBackend
 from thundertalk.core.tts_backends.presets import load_presets
 
@@ -45,6 +45,7 @@ def _third_party() -> Path:
 
 
 class IndexTTSBackend(TtsBackend):
+    preemptible = True
     info = BackendInfo(
         params="~0.8B", language_codes=("zh", "en", "ja", "es", "ar"), speed="realtime",
         backbone_params=True,
@@ -125,7 +126,18 @@ class IndexTTSBackend(TtsBackend):
         self.load()
         if context is not None:
             context["native_speed"] = True
-        with GPU_LOCK:
+        m = self._model
+        cfm = getattr(getattr(m, "s2mel_mlx", None), "cfm", None)
+        # Steps aside for dictation per GPT token, per diffusion step of the mel
+        # decoder, and between pieces of the vocoder (one pass over a 15 s
+        # sentence held the GPU for 6.8 s). 32 frames of context make the pieces
+        # equal to the one-pass vocoder (measured 104 dB SNR). 128-frame pieces
+        # (about 0.5 s of GPU each; 256 took up to 1.3 s under load), 64 while the
+        # user dictates; ~6% more time for the whole sentence.
+        voc = getattr(m, "bigvgan_mlx", None)
+        vocoder = chunked(voc, in_axis=2, out_axis=2, chunk=128, ctx=32, small_chunk=64) if voc is not None else None
+        with GPU_LOCK, preemptible((getattr(m, "gpt", None), "generate_step"), (cfm, "estimator")), \
+                replaced(m if voc is not None else None, "bigvgan_mlx", vocoder):
             audio = self._model.generate(
                 text, str(ref), language=_LANG.get(language, "auto"), seed=int(seed) & 0x7FFFFFFF,
                 speed=float(speed), max_text_tokens_per_segment=120, interval_silence=200)

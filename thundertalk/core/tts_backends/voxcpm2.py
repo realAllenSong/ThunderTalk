@@ -34,7 +34,7 @@ import numpy as np
 
 from thundertalk.core.gpu_lock import GPU_LOCK
 from thundertalk.core.model_metadata import VOXCPM_LANGUAGES
-from thundertalk.core.mlx_runtime import evaluate_model, serialized_mlx
+from thundertalk.core.mlx_runtime import chunked, evaluate_model, preemptible, replaced, serialized_mlx
 from thundertalk.core.tts_backends.base import (
     BackendInfo,
     BackendVoice,
@@ -114,6 +114,7 @@ def _cache_complete(repo: str) -> bool:
 
 
 class VoxCPM2Backend(TtsBackend):
+    preemptible = True
     info = BackendInfo(
         params="2B", language_codes=VOXCPM_LANGUAGES, speed="realtime",
         id="voxcpm2",
@@ -331,7 +332,12 @@ class VoxCPM2Backend(TtsBackend):
     def _run(self, text: str, seed: int, max_tokens: Optional[int] = None, **kw) -> np.ndarray:
         prompt_text = kw.get("prompt_text") or ""
         cap = max_tokens or int(_PATCHES_PER_S * 3.0 * _expected_s(text)) + 25
-        with GPU_LOCK:
+        # One checkpoint per generated patch, and the audio VAE in pieces of ~3 s
+        # (16 latents of context: equal to one pass, 131 dB SNR measured), so
+        # dictation waits one step, never the sentence.
+        vae = getattr(self._model, "audio_vae", None)
+        decode = chunked(vae.decode, in_axis=1, out_axis=1, chunk=80, ctx=16) if vae is not None else None
+        with GPU_LOCK, preemptible((self._model, "base_lm")), replaced(vae, "decode", decode):
             try:
                 import mlx.core as mx
                 mx.random.seed(int(seed) & 0xFFFFFFFF)

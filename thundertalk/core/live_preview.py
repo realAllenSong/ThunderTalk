@@ -13,8 +13,9 @@ the previous one is still decoding is skipped — and a slow model stretches
 the interval and shrinks the window instead of lagging behind. One that
 can't keep up at all (MAX_DECODE_S) is switched off for that recording.
 
-Every decode holds GPU_LOCK, taken without waiting: if a synthesis or file
-transcription holds the GPU, the tick is skipped. After stop() no new decode
+Every decode holds GPU_LOCK, taken without waiting (``DICTATION_GPU``): a
+synthesis that can step aside is asked to (it does within one of its steps);
+anything else holding the GPU makes the tick skip. After stop() no new decode
 starts; the final recognition calls wait_idle() so it never runs at the same
 time as a preview decode (the ONNX models share one recognizer).
 """
@@ -28,7 +29,7 @@ from typing import Callable, Optional
 import numpy as np
 from PySide6.QtCore import QObject, QTimer, Signal
 
-from thundertalk.core.gpu_lock import GPU_LOCK
+from thundertalk.core.gpu_lock import DICTATION_GPU
 from thundertalk.core.priority import STUDIO
 from thundertalk.core.preview_guard import preview_is_looping
 
@@ -126,7 +127,7 @@ class LivePreview(QObject):
         snapshot: Callable[[], Optional[np.ndarray]],
         recognize: Callable[[np.ndarray], str],
         *,
-        lock=GPU_LOCK,
+        lock=DICTATION_GPU,
         interval_ms: int = BASE_INTERVAL_MS,
         first_tick_ms: int = FIRST_TICK_MS,
         window_s: float = WINDOW_S,

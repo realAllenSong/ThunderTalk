@@ -622,7 +622,8 @@ class SpeechEngine:
         options: list[list[_Take]] = []
         used: list[int] = []
         for idx, (seg, _pause) in enumerate(plan):
-            DICTATION.wait_clear(cancel)
+            if not b.preemptible:            # a preemptible engine steps aside inside the sentence
+                DICTATION.wait_clear(cancel)
             if cancel is not None and cancel.is_set():
                 raise TtsCancelled()
             if progress:
@@ -686,7 +687,8 @@ class SpeechEngine:
         state = {"off": False}
         for idx, (seg, pause) in enumerate(plan):
             from thundertalk.core.priority import DICTATION
-            DICTATION.wait_clear(cancel)
+            if not b.preemptible:            # a preemptible engine steps aside inside the sentence
+                DICTATION.wait_clear(cancel)
             if cancel is not None and cancel.is_set():
                 raise TtsCancelled()
             if progress:
