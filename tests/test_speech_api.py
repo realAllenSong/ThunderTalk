@@ -184,3 +184,28 @@ def test_cli_serve_passes_its_options(monkeypatch):
     assert cli.main(["serve", "--port", "9999", "--asr", "qwen3-asr-06b-mlx", "--no-warm-up"]) == 0
     assert seen == {"host": "127.0.0.1", "port": 9999, "asr": "qwen3-asr-06b-mlx", "tts": "kokoro", "warm": False}
     assert events[0]["label"] == "serve" and events[-1]["ok"]
+
+
+# ── local-only guard ──
+def test_web_pages_are_refused_native_clients_are_not():
+    from fastapi.testclient import TestClient
+    from thundertalk.api import server
+    c = TestClient(server.app)
+    assert c.get("/health").status_code == 200                                     # no Origin: a native client
+    assert c.get("/health", headers={"Origin": "http://localhost:3000"}).status_code == 200
+    assert c.get("/health", headers={"Origin": "https://evil.example"}).status_code == 403
+    assert c.get("/health", headers={"Origin": "null"}).status_code == 403
+    import pytest
+    from starlette.websockets import WebSocketDisconnect
+    with pytest.raises(WebSocketDisconnect):
+        with c.websocket_connect("/v1/realtime/transcribe", headers={"Origin": "https://evil.example"}) as ws:
+            ws.receive_text()
+
+
+def test_on_a_local_address_the_host_header_must_be_local(monkeypatch):
+    from fastapi.testclient import TestClient
+    from thundertalk.api import server
+    monkeypatch.setattr(server.app.state, "local_host_only", True, raising=False)
+    c = TestClient(server.app, base_url="http://127.0.0.1:8765")
+    assert c.get("/health").status_code == 200
+    assert c.get("/health", headers={"Host": "rebind.evil.example:8765"}).status_code == 403

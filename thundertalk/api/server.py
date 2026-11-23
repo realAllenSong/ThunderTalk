@@ -52,6 +52,52 @@ from thundertalk.api.speech_stream import FORMATS, MAX_INPUT_CHARS, MAX_SPEED, M
 
 app = FastAPI(title="ThunderTalk Speech API", version="2.0.0")
 
+_LOCAL_NAMES = {"127.0.0.1", "localhost", "::1"}
+
+
+def _hostname(value: str) -> str:
+    """'http://localhost:8765' / 'localhost:8765' / '[::1]:8765' → 'localhost' / '::1'."""
+    from urllib.parse import urlsplit
+    value = value.strip()
+    if "://" not in value:
+        value = "//" + value
+    try:
+        return (urlsplit(value).hostname or "").lower()
+    except ValueError:
+        return ""
+
+
+class LocalOnly:
+    """No authentication, so keep web pages out. A browser lets any site send
+    requests to 127.0.0.1 and open WebSockets to it (no CORS for WebSockets),
+    and a DNS-rebinding page can even read the answers. Native clients send no
+    ``Origin``; a browser always does, so a request with a non-local ``Origin``
+    is refused. When serving on a local address, the ``Host`` header must name
+    a local address too (``app.state.local_host_only``, set by ``serve``)."""
+
+    def __init__(self, app) -> None:                    # Starlette passes the wrapped app as `app`
+        self.inner = app
+
+    async def __call__(self, scope, receive, send):
+        if scope["type"] in ("http", "websocket"):
+            headers = {k.decode("latin-1").lower(): v.decode("latin-1") for k, v in scope.get("headers", [])}
+            origin = headers.get("origin")
+            bad = origin is not None and _hostname(origin) not in _LOCAL_NAMES   # "null" (file://, sandbox) too
+            if getattr(app.state, "local_host_only", False) and _hostname(headers.get("host", "")) not in _LOCAL_NAMES:
+                bad = True
+            if bad:
+                if scope["type"] == "websocket":
+                    await send({"type": "websocket.close", "code": 1008})
+                    return
+                await send({"type": "http.response.start", "status": 403,
+                            "headers": [(b"content-type", b"text/plain; charset=utf-8")]})
+                await send({"type": "http.response.body", "body": b"Forbidden: requests from web pages are not accepted"})
+                return
+        await self.inner(scope, receive, send)
+
+
+app.add_middleware(LocalOnly)
+
 def _find_ffmpeg() -> Optional[str]:
     p = shutil.which("ffmpeg")
     if p:
@@ -433,7 +479,8 @@ def serve(host: str = "127.0.0.1", port: int = 8765, asr: Optional[str] = None, 
         raise SystemExit(str(exc)) from None
     if warm:
         warm_up(tts)
-    if host not in ("127.0.0.1", "localhost", "::1"):
+    app.state.local_host_only = host in _LOCAL_NAMES      # DNS rebinding: Host must be local too
+    if host not in _LOCAL_NAMES:
         print(f"Warning: listening on {host} with no authentication", flush=True)
     print(f"ThunderTalk speech API listening on http://{host}:{port}", flush=True)
     uvicorn.run(app, host=host, port=port, log_level="warning", ws_max_size=4 * 1024 * 1024)
