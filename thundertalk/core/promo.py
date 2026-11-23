@@ -20,7 +20,7 @@ from dataclasses import dataclass
 from typing import Optional, Sequence
 from urllib.parse import quote
 
-SITE_URL = "https://realallensong.github.io/ThunderTalk/"
+SITE_URL = "https://thundertalk.entropinia.com/"
 REPO_URL = "https://github.com/realAllenSong/ThunderTalk"
 RELEASE_URL = REPO_URL + "/releases/tag/v{version}"
 

@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="README.zh.md">中文文档</a> · <a href="https://realallensong.github.io/ThunderTalk/">Website</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">Download</a>
+  <a href="README.zh.md">中文文档</a> · <a href="https://thundertalk.entropinia.com/">Website</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">Download</a>
 </p>
 
 <p align="center">
@@ -127,7 +127,7 @@ With Homebrew:
 brew install --cask realallensong/tap/thundertalk
 ```
 
-Or download the disk image (`.dmg`) from the [website](https://realallensong.github.io/ThunderTalk/) or [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), open it, drag **ThunderTalk** into **Applications**, and open it from there. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
+Or download the disk image (`.dmg`) from the [website](https://thundertalk.entropinia.com/) or [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest), open it, drag **ThunderTalk** into **Applications**, and open it from there. On first launch, grant **Microphone** and **Accessibility** access when prompted (Accessibility is what lets ThunderTalk type the text for you).
 
 ThunderTalk is signed with an Apple Developer ID and notarised by Apple, so it opens like any other downloaded app.
 

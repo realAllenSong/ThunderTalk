@@ -1,4 +1,4 @@
 User-agent: *
 Allow: /
 
-Sitemap: https://realallensong.github.io/ThunderTalk/sitemap.xml
+Sitemap: https://thundertalk.entropinia.com/sitemap.xml

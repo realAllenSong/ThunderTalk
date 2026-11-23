@@ -11,7 +11,7 @@
 </p>
 
 <p align="center">
-  <a href="README.md">English</a> · <a href="https://realallensong.github.io/ThunderTalk/">官网</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">下载</a>
+  <a href="README.md">English</a> · <a href="https://thundertalk.entropinia.com/">官网</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">下载</a>
 </p>
 
 <p align="center">
@@ -127,7 +127,7 @@ ThunderTalk 是一款 macOS 语音输入应用。在任意应用里按下快捷�
 brew install --cask realallensong/tap/thundertalk
 ```
 
-或者从[官网](https://realallensong.github.io/ThunderTalk/)或 [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest) 下载磁盘映像（`.dmg`），打开后把 **ThunderTalk** 拖进“应用程序”，再从那里打开。首次启动时按提示授予“麦克风”和“辅助功能”权限（“辅助功能”让 ThunderTalk 能替你把文字输入到光标处）。
+或者从[官网](https://thundertalk.entropinia.com/)或 [Releases](https://github.com/realAllenSong/ThunderTalk/releases/latest) 下载磁盘映像（`.dmg`），打开后把 **ThunderTalk** 拖进“应用程序”，再从那里打开。首次启动时按提示授予“麦克风”和“辅助功能”权限（“辅助功能”让 ThunderTalk 能替你把文字输入到光标处）。
 
 ThunderTalk 使用 Apple 开发者 ID 签名并经过 Apple 公证，下载后可以像其他应用一样直接打开。
 
