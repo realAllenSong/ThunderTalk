@@ -11,6 +11,11 @@
 </p>
 
 <p align="center">
+  <b>Mac 上最好的语音识别之一：</b>在训练时从未见过的公开测试集上错误率 2.8%，<br/>
+  Whisper 为 4.7%，OpenAI 为 4.4%，速度是 Whisper 的两倍多。<a href="#准确率如何">测试方法</a>
+</p>
+
+<p align="center">
   <a href="README.md">English</a> · <a href="https://thundertalk.entropinia.com/">官网</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">下载</a>
 </p>
 

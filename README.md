@@ -11,6 +11,11 @@
 </p>
 
 <p align="center">
+  <b>One of the best speech recognizers on the Mac:</b> 2.8% errors on public test sets it never trained on,<br/>
+  against 4.7% for Whisper and 4.4% for OpenAI, at more than twice Whisper's speed. <a href="#how-accurate-is-it">How it was measured</a>
+</p>
+
+<p align="center">
   <a href="README.zh.md">中文文档</a> · <a href="https://thundertalk.entropinia.com/">Website</a> · <a href="https://github.com/realAllenSong/ThunderTalk/releases/latest">Download</a>
 </p>
 
