@@ -136,6 +136,13 @@ def _parser() -> argparse.ArgumentParser:
     add_batch(sub)
     from thundertalk.cli_cloud import add_parser as add_cloud
     add_cloud(sub)
+    se = sub.add_parser("serve", help="local speech API: streaming recognition (WebSocket) + speech (HTTP)")
+    se.add_argument("--host", default="127.0.0.1", help="127.0.0.1 (default); there is no authentication")
+    se.add_argument("--port", type=int, default=8765)
+    se.add_argument("--asr", default="", help="recognition model id; default: the most accurate downloaded")
+    se.add_argument("--tts", default="kokoro", choices=("kokoro", "voxcpm2", "indextts", "longcat"),
+                    help="default speech engine (warmed up at start)")
+    se.add_argument("--no-warm-up", action="store_true", help="load models on first use")
     return ap
 
 
@@ -621,6 +628,20 @@ def cmd_voices(a, out: _Out) -> dict:
     return run(a, out)
 
 
+def cmd_serve(a, out: _Out) -> dict:
+    """Run the speech API server (thundertalk/api/server.py) until interrupted."""
+    try:
+        from thundertalk.api import server
+    except SystemExit as exc:                                  # FastAPI / uvicorn / websockets missing
+        raise CliError("missing_dependency", str(exc)) from None
+    out.emit(type="stage", label="serve", url=f"http://{a.host}:{a.port}")
+    try:
+        server.serve(a.host, a.port, asr=a.asr or None, tts=a.tts or None, warm=not a.no_warm_up)
+    except SystemExit as exc:
+        raise CliError("bad_args", str(exc)) from None
+    return {"stopped": True}
+
+
 def cmd_status(_a, out: _Out) -> dict:
     import thundertalk
     from thundertalk.core import apple_speech, audio_io, speech
@@ -640,7 +661,7 @@ def cmd_status(_a, out: _Out) -> dict:
     return {
         "version": thundertalk.__version__, "cli_version": 3,
         "capabilities": ["transcribe", "batch", "notes", "burn", "translate", "speak", "voices", "compose", "history", "models",
-                         "cloud", "jobs", "service"],
+                         "cloud", "jobs", "service", "serve"],
         "service": service.available() is not None,
         "asr": {"downloaded": downloaded, "dictation_model": settings.get("active_model_id") or "",
                 "auto": resolve_asr("auto", settings) if downloaded else "",
@@ -677,7 +698,7 @@ def cmd_jobs(_a, out) -> dict:
 
 
 COMMANDS = {"transcribe": cmd_transcribe, "speak": cmd_speak, "voices": cmd_voices, "status": cmd_status,
-            "jobs": cmd_jobs}
+            "jobs": cmd_jobs, "serve": cmd_serve}
 
 
 def error_result(exc):

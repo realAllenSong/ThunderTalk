@@ -51,7 +51,7 @@ def read_jobs(path: Path) -> list[list[str]]:
             raise CliError("bad_args", f"Line {n}: {exc}") from exc
         if not isinstance(argv, list) or not argv or not all(isinstance(x, str) for x in argv):
             raise CliError("bad_args", f"Line {n}: expected a list of arguments")
-        if argv[0] in ("batch", "--cli"):
+        if argv[0] in ("batch", "--cli", "serve"):           # serve never returns
             raise CliError("bad_args", f"Line {n}: a batch cannot contain {argv[0]}")
         jobs.append(argv)
     if not jobs:
