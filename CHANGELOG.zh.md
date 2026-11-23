@@ -2,7 +2,7 @@
 
 ThunderTalk 每个版本新增和修复的内容。带测量数据的完整说明见每个 [GitHub Release](https://github.com/realAllenSong/ThunderTalk/releases)。
 
-## v1.20.0（未发布）
+## v1.20.0 (2026-11-22)
 
 - **给语音 Agent 用的本地语音接口：`thundertalk serve`**（打包版：`ThunderTalk --cli serve`）。默认监听 127.0.0.1:8765，无需账号，数据不出这台 Mac。
   - `WS /v1/realtime/transcribe?language=en|zh|auto&silence_ms=350`：发送 16 kHz PCM16；说话期间约每 0.4 秒返回一次 `partial`，停顿达到 `silence_ms` 后返回该句的 `final`。`commit` 立即结束当前一句，`reset` 丢弃它。说话人一停（约 0.1 秒）就开始准备 final，停顿够长时它已经好了。

@@ -2,7 +2,7 @@
 
 What each ThunderTalk release added and fixed. The full notes, with measurements, are on each [GitHub release](https://github.com/realAllenSong/ThunderTalk/releases).
 
-## v1.20.0 (unreleased)
+## v1.20.0 (2026-11-22)
 
 - **A local speech API for voice agents: `thundertalk serve`** (packaged: `ThunderTalk --cli serve`). It listens on 127.0.0.1:8765 by default, needs no account and sends nothing off the Mac.
   - `WS /v1/realtime/transcribe?language=en|zh|auto&silence_ms=350`: send 16 kHz PCM16; get `partial` text about every 0.4 s while someone speaks and a `final` per utterance once the pause reaches `silence_ms`. `commit` closes an utterance now, `reset` drops it. The final is prepared the moment the speaker stops (~0.1 s), so it is ready when the pause is long enough.
