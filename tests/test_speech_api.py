@@ -209,3 +209,11 @@ def test_on_a_local_address_the_host_header_must_be_local(monkeypatch):
     c = TestClient(server.app, base_url="http://127.0.0.1:8765")
     assert c.get("/health").status_code == 200
     assert c.get("/health", headers={"Host": "rebind.evil.example:8765"}).status_code == 403
+
+
+def test_a_cut_without_punctuation_adds_no_pause_a_cut_at_a_comma_does():
+    from thundertalk.api.speech_stream import CLAUSE_PAUSE, plan_pieces
+    joined = plan_pieces("I checked your calendar and there is nothing booked for Friday afternoon at all.", "english")
+    assert joined[0][0] == "I checked your calendar" and joined[0][1] == 0.0
+    comma = plan_pieces("The weather today looks sunny, so let's take a long walk in the park.", "english")
+    assert comma[0][0].endswith(",") and comma[0][1] == CLAUSE_PAUSE

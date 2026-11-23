@@ -42,6 +42,7 @@ FIRST_MIN_WORDS = 3
 FIRST_MAX_HAN = 12            # Chinese
 FIRST_MIN_HAN = 4
 CLAUSE_PAUSE = 0.16           # the pipeline's pause inside a split sentence
+_CLAUSE_END = re.compile(r"[,，、;；:：—–]\s*$")
 
 _WORD = re.compile(r"[A-Za-z0-9À-ɏ']+")
 _HAN = re.compile(r"[㐀-䶿一-鿿]")
@@ -94,7 +95,9 @@ def plan_pieces(text: str, lang: str) -> list[tuple[str, float]]:
         return []
     first, pause = pieces[0]
     parts = split_first(first, lang)
-    out = [(p, CLAUSE_PAUSE) for p in parts[:-1]] + [(parts[-1], float(pause))] + [
+    # A cut at a clause mark gets the comma's pause; a cut before a connective
+    # ("… calendar | and there is …") has no punctuation and gets none.
+    out = [(p, CLAUSE_PAUSE if _CLAUSE_END.search(p) else 0.0) for p in parts[:-1]] + [(parts[-1], float(pause))] + [
         (s, float(p)) for s, p in pieces[1:]]
     out[-1] = (out[-1][0], 0.0)
     return out
@@ -244,10 +247,14 @@ class TtsHost:
         pieces = plan_pieces(text, lang)
         with self._run:
             self.load(bid)
-            for piece, pause in pieces:
+            after_join = False
+            for k, (piece, pause) in enumerate(pieces):
                 if cancel is not None and cancel.is_set():
                     return
-                audio = trim_silence(self._generate(b, piece, voice, lang, speed), sr)
+                joined = pause == 0 and k < len(pieces) - 1      # mid-sentence cut: keep the join tight
+                audio = trim_silence(self._generate(b, piece, voice, lang, speed), sr,
+                                     keep_head=0.01 if after_join else 0.05, keep_tail=0.03 if joined else 0.12)
+                after_join = joined
                 if pause > 0:
                     audio = np.concatenate([audio, np.zeros(int(pause * sr), np.float32)])
                 yield pcm16(audio)
