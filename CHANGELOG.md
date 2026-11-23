@@ -15,7 +15,7 @@ What each ThunderTalk release added and fixed. The full notes, with measurements
   - Measured on an M3 Max with the tuned 0.6B model, 15 English and 15 Chinese clips replayed in real time: every utterance got its final, 3 ms (median) after the closing audio arrived (worst 137 ms), against about 0.22 s when decoding only at the end of the pause; same recognition errors as decoding at the end (30 clips). First partial 0.34–0.40 s after speech began. Three connections at once: no errors, all finals. Kokoro's first audio: 245 ms (median of 10; 240–301 ms) for a 14-word sentence.
   - Requests from web pages are refused (a browser can otherwise reach 127.0.0.1 and open WebSockets to it), and on a local address the `Host` header must be local too (DNS rebinding).
   - It runs beside the app with its own models: it does not share the app's queue or give way to its dictation.
-- The copyright holder is named as Zhiyuan Song (NOTICE, the attribution line, the CLA, CONTRIBUTING, the About page and the app's Info.plist); links stay at github.com/realAllenSong.
+- NOTICE, the attribution line, the CLA, the About box and the app's Info.plist name the copyright holder by legal name; everywhere else, and in every link, the project goes by realAllenSong.
 
 ## v1.19.0 (2026-11-22)
 
