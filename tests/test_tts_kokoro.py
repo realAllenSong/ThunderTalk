@@ -85,6 +85,21 @@ def test_not_ready_raises_model_missing(tmp_path):
         b.generate("你好", "kokoro:3", "chinese")
 
 
+def test_english_words_come_from_the_lexicon_not_espeak(monkeypatch, tmp_path):
+    """lang="en": espeak's "-er" sound (ɚ) is not in Kokoro's tokens and was dropped
+    ("teacher" → "teach"); lexicon-us-en.txt spells it "ə ɹ"."""
+    import sherpa_onnx as so
+    seen = {}
+    monkeypatch.setattr(so, "OfflineTtsKokoroModelConfig", lambda **kw: seen.update(kw) or kw)
+    monkeypatch.setattr(so, "OfflineTtsModelConfig", lambda **kw: kw)
+    monkeypatch.setattr(so, "OfflineTtsConfig", lambda **kw: kw)
+    monkeypatch.setattr(so, "OfflineTts", lambda cfg: object())
+    b = KokoroBackend(model_dir=tmp_path)
+    monkeypatch.setattr(b, "is_ready", lambda: True)
+    b.load()
+    assert seen["lang"] == "en" and "lexicon-us-en.txt" in seen["lexicon"]
+
+
 def test_default_model_dir_is_under_models_dir():
     from thundertalk.core.models import get_models_dir
     assert KokoroBackend().model_dir == get_models_dir() / "kokoro-multi-lang-v1_1"
