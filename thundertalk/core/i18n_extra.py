@@ -441,6 +441,12 @@ EXTRA: dict[str, dict[str, str]] = {
               "documentary narration, in Studio ▸ Speak.",
         "zh": "冷静讲解、人文讲述、幽默讲堂、深夜电台、美食探店、纪录片女声等，在工作室 ▸ 朗读里。",
     },
+    "whatsnew.kokoro_en": {"en": "Kokoro now pronounces English correctly.", "zh": "Kokoro 的英文发音修好了。"},
+    "whatsnew.kokoro_en.detail": {
+        "en": "It used to drop the \"-er\" sound (\"teacher\" came out as \"teach\"). English words now come from "
+              "its pronunciation dictionary, in Studio ▸ Speak and for agents.",
+        "zh": "以前它会吞掉 \"-er\" 的音（\"teacher\" 读成 \"teach\"）。现在英文单词按它的发音词典来读，工作室 ▸ 朗读和 Agent 都一样。",
+    },
     "whatsnew.queue": {"en": "Agents now wait for your dictation.", "zh": "Agent 的任务现在会给听写让路。"},
     "whatsnew.queue.detail": {
         "en": "While ThunderTalk is open, jobs from Claude Code, Codex and scripts run one at a time inside the app, "

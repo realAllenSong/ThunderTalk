@@ -135,6 +135,7 @@ WHATS_NEW: dict[str, tuple[str, ...]] = {
     "1.17.0": ("whatsnew.finish", "whatsnew.bar", "whatsnew.esc"),
     "1.18.0": ("whatsnew.voices", "whatsnew.polish", "whatsnew.loudness"),
     "1.19.0": ("whatsnew.queue",),
+    "1.20.1": ("whatsnew.kokoro_en",),
 }
 
 

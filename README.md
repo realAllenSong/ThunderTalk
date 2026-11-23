@@ -32,8 +32,9 @@ ThunderTalk is a voice input app for macOS. Press a hotkey in any app, say what 
 
 The interface is deliberately quiet: warm paper background, near-black ink, one orange accent, and motion only where it tells you something (the live level meter, a spinner, a real progress bar).
 
-## What's new in v1.20.0
+## What's new in v1.20
 
+- **Kokoro speaks English correctly (v1.20.1).** It used to drop the "-er" sound ("teacher" came out as "teach"); English words now come from its pronunciation dictionary. Word errors read back from its English speech: 19.4% → 0.8%.
 - **A local speech API for voice agents:** `thundertalk serve` streams recognition over a WebSocket (words so far while you talk, the final text 3 ms after the pause is long enough) and speaks text back sentence by sentence over HTTP, on this Mac only. See [Speech API](#speech-api).
 
 Last release (v1.19.0): one job queue for agents and scripts inside the app, `thundertalk batch`, background voice-overs that give way to your dictation within one step, and the AGPL-3.0.
@@ -118,6 +119,23 @@ Use genre, mood and instruments for style prompts; Compose warns on real artist 
 - Audio is recognised on your Mac and never uploaded.
 - Network traffic includes model/component downloads, GitHub update checks and fetching Studio links. AI Proofread is off by default; optional proofreading and meeting notes use your selected provider. Cloud CLIs send dictated or transcript text to that provider using your account. Ollama and LM Studio inference stays local; Cherry Studio and custom APIs may forward text to cloud models.
 - The code is open. Read it, build it, fork it.
+
+## How accurate is it?
+
+ThunderTalk ASR 0.6B, the default model, is one of the best speech recognizers you can run on a Mac for Chinese, English and the two mixed, and the fastest of those we tested. Same recordings and the same scoring for every engine (case, punctuation and number formats ignored; Chinese compared in simplified characters), on an M3 Max, November 2026:
+
+| Engine | Public test sets it never trained on: 120 recordings (AISHELL-1 Chinese, LibriSpeech English) | Our test set: 98 recordings, 25 min (Chinese, English, mixed; short and long) | Compute per second of audio |
+| --- | --- | --- | --- |
+| **ThunderTalk ASR 0.6B** (default) | **2.8%** | **8.5%** | **0.05 s** |
+| Qwen3-ASR 1.7B (also in ThunderTalk) | 2.1% | 9.1% | 0.31 s |
+| OpenAI gpt-4o-transcribe (cloud) | 4.4% | 12.3% | 0.22 s, network included |
+| Whisper large-v3-turbo | 4.7% | 13.8% | 0.12 s |
+| macOS built-in | 9.2% | 25.9% | 0.07 s |
+
+- Error rate: word errors (English) and character errors (Chinese) per word or character of the human reference.
+- The first column is the fair one: ThunderTalk ASR was trained on other public corpora (ASCEND, FLEURS, AMI). There its lead comes from Chinese (3.3%, against 6.6% for OpenAI and 7.5% for Whisper); in English the three best are within noise of each other (2.4–2.6%).
+- Our own test set comes from the same public corpora as the training data (different recordings), which favours our model. OpenAI's score there is mostly its short English clips (49%): it answered Chinese speakers' English in Chinese. On long English recordings it was the most accurate of all (3.4%).
+- Strong Chinese-only local models (SenseVoice, Paraformer) were not part of this comparison.
 
 ## Download
 

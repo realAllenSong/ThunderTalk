@@ -2,6 +2,11 @@
 
 What each ThunderTalk release added and fixed. The full notes, with measurements, are on each [GitHub release](https://github.com/realAllenSong/ThunderTalk/releases).
 
+## v1.20.1 (unreleased)
+
+- **Kokoro speaks English correctly.** English text was turned into sounds by espeak, whose "-er" sound (in teacher, water, better, calendar, computer, customer…) Kokoro does not know, so it was silently left out: "my teach said the wet would be better", "the lad to the up floor". English words now come from Kokoro's own pronunciation dictionary. Twelve English sentences in two voices, read back by Whisper large-v3-turbo: 49 of 252 words wrong before (19.4%), 2 of 252 after (0.8%). Chinese comes out bit for bit the same, English words inside Chinese text are fixed too, and generation takes as long as before. This applies everywhere Kokoro speaks: Studio ▸ Speak, `thundertalk speak`, MCP and `thundertalk serve`.
+- **How accurate is it?** The README now compares ThunderTalk ASR with Whisper, OpenAI and macOS on public test sets the model never trained on (AISHELL-1 and LibriSpeech, 120 recordings): 2.8% errors against 4.7% (Whisper large-v3-turbo), 4.4% (OpenAI gpt-4o-transcribe) and 9.2% (macOS), at 0.05 s of computing per second of audio.
+
 ## v1.20.0 (2026-11-22)
 
 - **A local speech API for voice agents: `thundertalk serve`** (packaged: `ThunderTalk --cli serve`). It listens on 127.0.0.1:8765 by default, needs no account and sends nothing off the Mac.
