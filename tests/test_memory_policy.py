@@ -191,3 +191,17 @@ def test_real_sysctl_reads_an_int_on_mac():
         pytest.skip("macOS only")
     assert 0 <= memory._sysctl_int("kern.memorystatus_level") <= 100
     assert memory._sysctl_int("kern.no_such_name") is None
+
+
+def test_memory_pressure_shortens_the_idle_grace(policy):
+    owner = Owner()
+    policy.register(owner)
+    with policy.using(owner):
+        pass
+    policy.now[0] = memory.PRESSURE_GRACE - 1
+    assert policy.sweep(pressure=2) == [] and owner.unloads == 0      # just used: back-to-back jobs keep it
+    policy.now[0] = memory.PRESSURE_GRACE + 1
+    assert policy.sweep(pressure=1) == [] and owner.unloads == 0      # no pressure: the 180 s grace holds
+    assert policy.sweep(pressure=2) == ["Owner"] and owner.unloads == 1  # warning: idle models give memory back
+    with policy.using(owner):
+        assert policy.sweep(pressure=4) == []                          # never while in use
