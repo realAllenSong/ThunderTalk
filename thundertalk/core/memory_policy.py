@@ -2,6 +2,9 @@
 
 One daemon checks weak registrations every 15 seconds. Leases cover complete
 jobs (including loads/cancellation), and restart the grace period on completion.
+Under macOS memory pressure (warning or critical) the grace period drops to
+PRESSURE_GRACE and the daemon checks every 3 seconds: an idle model gives its
+memory back before the system swaps, and loads again on the next use.
 Reclamation takes Metal first, never waits for it, and never imports a runtime.
 Owner callbacks must not wait for a job's private lock: return False to retry.
 """
@@ -23,6 +26,8 @@ import weakref
 from thundertalk.core.gpu_lock import GPU_LOCK
 
 IDLE_SECONDS = 180.0
+PRESSURE_GRACE = 10.0   # under memory pressure: idle this long is enough (not 0: back-to-back jobs keep the model)
+PRESSURE_WARNING = 2
 MLX_CACHE_BYTES = 512 << 20
 PRESSURE_CRITICAL = 4
 log = logging.getLogger(__name__)
@@ -117,14 +122,17 @@ class MemoryPolicy:
                 entry.active -= 1
                 entry.used = self.clock()
 
-    def sweep(self) -> list[str]:
+    def sweep(self, pressure: int | None = None) -> list[str]:
         released = []
+        timeout = self.timeout
+        if pressure is not None and pressure >= PRESSURE_WARNING:
+            timeout = min(timeout, PRESSURE_GRACE)
         if not GPU_LOCK.acquire(blocking=False):
             return released
         try:
             with self._lock:
                 for owner, entry in list(self._entries.items()):
-                    if (not entry.armed or entry.active or self.clock() - entry.used < self.timeout
+                    if (not entry.armed or entry.active or self.clock() - entry.used < timeout
                             or (entry.busy and getattr(owner, entry.busy)())):
                         continue
                     try:
@@ -135,6 +143,8 @@ class MemoryPolicy:
                     except Exception:
                         log.exception("Idle release failed for %s", type(owner).__name__)
                 if released:
+                    if timeout < self.timeout:
+                        log.info("Memory pressure %s: released idle %s early", pressure, ", ".join(released))
                     trim_caches()
         finally:
             GPU_LOCK.release()
@@ -147,8 +157,10 @@ class MemoryPolicy:
                 self._thread.start()
 
     def _run(self):
-        while not self._stop.wait(15):
-            self.sweep()
+        pressure = None
+        while not self._stop.wait(3 if pressure and pressure >= PRESSURE_WARNING else 15):
+            pressure = pressure_level()
+            self.sweep(pressure)
 
     def stop(self) -> None:
         self._stop.set()
